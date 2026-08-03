@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -23,4 +23,5 @@ class Farm(TimestampMixin, Base):
         CheckConstraint("status IN ('active', 'inactive')", name="ck_farms_status"),
         CheckConstraint("country_code ~ '^[A-Z]{2}$'", name="ck_farms_country_code_format"),
         Index("ux_farms_tenant_code_lower", "tenant_id", func.lower(code), unique=True),
+        UniqueConstraint("tenant_id", "id", name="uq_farms_tenant_id_id"),
     )

@@ -43,6 +43,9 @@ class WorkflowTransition(Base):
         UniqueConstraint(
             "workflow_version_id", "from_stage_id", "to_stage_id", name="uq_workflow_transitions_pair"
         ),
+        UniqueConstraint(
+            "tenant_id", "workflow_version_id", "id", name="uq_workflow_transitions_tenant_version_id"
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "workflow_version_id"],
             ["workflow_versions.tenant_id", "workflow_versions.id"],

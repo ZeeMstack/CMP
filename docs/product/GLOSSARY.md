@@ -25,6 +25,14 @@
 | Workflow Stage | A step within one workflow version, carrying a stage category, optional expected duration, and optional location/carrier constraints |
 | Workflow Transition | A permitted movement between two stages of the same workflow version |
 
+## Crop batch execution (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/CROP_BATCH_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Crop Batch | One real production run, tenant- and farm-owned, permanently bound to the workflow version published at its creation |
+| Batch Stage Run | Immutable-history record of one batch occupying one workflow stage; the batch's current stage is always its one run with no exit time |
+| Batch Stage Transition | Immutable, insert-only record of one stage-progression command — either a batch's initial entry or a configured-transition move |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

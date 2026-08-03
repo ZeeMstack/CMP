@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.assets import router as assets_router
 from app.api.carriers import router as carriers_router
+from app.api.crop_batches import router as crop_batches_router
 from app.api.crops import router as crops_router
 from app.api.farms import router as farms_router
 from app.api.health import router as health_router
@@ -30,6 +31,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(crops_router)
     api.include_router(production_systems_router)
     api.include_router(workflows_router)
+    api.include_router(crop_batches_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

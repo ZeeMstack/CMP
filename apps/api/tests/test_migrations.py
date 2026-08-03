@@ -116,6 +116,63 @@ def test_migration_downgrade_removes_crop_workflow_triggers_and_functions(test_e
 
 
 @pytest.mark.integration
+def test_migration_downgrade_removes_crop_batch_triggers_functions_and_additive_constraints(
+    test_engine,
+) -> None:
+    command.downgrade(_cfg(), "b2f6c9d3e178")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'crop_batches_enforce_lifecycle', 'crop_batches_no_delete', "
+                "'batch_stage_runs_enforce_closure_only', 'batch_stage_runs_enforce_insert_integrity', "
+                "'batch_stage_runs_no_delete', 'batch_stage_transitions_enforce_version_match', "
+                "'batch_stage_transitions_no_update', 'batch_stage_transitions_no_delete')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_crop_batch_lifecycle', 'enforce_batch_stage_run_closure_only', "
+                "'enforce_batch_stage_run_insert_integrity', "
+                "'enforce_batch_stage_transition_version_match', 'reject_append_only_mutation')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'crop_batches', 'batch_stage_runs', 'batch_stage_transitions')"
+            )
+        ).all()
+        additive_constraints = conn.execute(
+            text(
+                "SELECT conname FROM pg_constraint WHERE conname IN ("
+                "'uq_farms_tenant_id_id', 'uq_workflow_versions_tenant_workflow_id', "
+                "'uq_workflow_transitions_tenant_version_id')"
+            )
+        ).all()
+        prior_ticket_constraint = conn.execute(
+            text("SELECT 1 FROM pg_indexes WHERE indexname = 'ux_farms_tenant_code_lower'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert additive_constraints == []
+    assert prior_ticket_constraint is not None, "prior-ticket farms schema must remain intact"
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'crop_batches_enforce_lifecycle'")
+        ).first()
+        constraint_exists = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_farms_tenant_id_id'")
+        ).first()
+    assert trigger_exists is not None
+    assert constraint_exists is not None
+
+
+@pytest.mark.integration
 def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
     command.downgrade(_cfg(), "5f3a9c2d1b44")
     with test_engine.connect() as conn:

@@ -45,6 +45,9 @@ class WorkflowVersion(Base):
         ),
         UniqueConstraint("workflow_id", "version_number", name="uq_workflow_versions_workflow_number"),
         UniqueConstraint("tenant_id", "id", name="uq_workflow_versions_tenant_id_id"),
+        UniqueConstraint(
+            "tenant_id", "workflow_id", "id", name="uq_workflow_versions_tenant_workflow_id"
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "workflow_id"],
             ["workflows.tenant_id", "workflows.id"],

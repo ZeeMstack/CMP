@@ -198,6 +198,48 @@ class SelfTransitionError(DomainError):
     pass
 
 
+class CropBatchNotFoundError(DomainError):
+    pass
+
+
+class DuplicateBatchCodeError(DomainError):
+    pass
+
+
+class BatchCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class WorkflowInactiveError(DomainError):
+    pass
+
+
+class WorkflowHasNoPublishedVersionError(DomainError):
+    pass
+
+
+class BatchCreationValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class CropBatchClosedError(DomainError):
+    pass
+
+
+class ConfiguredTransitionNotFoundError(DomainError):
+    pass
+
+
+class StageMismatchError(DomainError):
+    pass
+
+
+class InvalidBatchEffectiveTimeError(DomainError):
+    pass
+
+
 class StageVersionMismatchError(DomainError):
     pass
 
