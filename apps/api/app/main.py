@@ -2,12 +2,15 @@ from fastapi import FastAPI
 
 from app.api.assets import router as assets_router
 from app.api.carriers import router as carriers_router
+from app.api.crops import router as crops_router
 from app.api.farms import router as farms_router
 from app.api.health import router as health_router
 from app.api.locations import router as locations_router
 from app.api.memberships import router as memberships_router
 from app.api.movements import router as movements_router
+from app.api.production_systems import router as production_systems_router
 from app.api.ready import router as ready_router
+from app.api.workflows import router as workflows_router
 from app.core.dev_auth import check_dev_auth_startup_invariant
 from app.core.settings import Settings, settings
 
@@ -24,6 +27,9 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(assets_router)
     api.include_router(carriers_router)
     api.include_router(movements_router)
+    api.include_router(crops_router)
+    api.include_router(production_systems_router)
+    api.include_router(workflows_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

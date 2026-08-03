@@ -13,6 +13,18 @@
 | Movement | Same entity changes location | trolley moved to another chamber position |
 | Transformation | Inputs become outputs | seedlings transferred from tray to plates |
 
+## Crop and workflow configuration (`CMP_MASTER_SPEC.md` §8, `docs/domain/CROP_WORKFLOW_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Crop | Tenant-owned catalog entry identifying what is grown (e.g. Iceberg Lettuce); crop-agnostic — never referenced by name in code |
+| Variety | A specific cultivar of one crop, belonging to exactly one crop and tenant (e.g. Mamutik RZ under Iceberg Lettuce) |
+| Production System | Tenant-owned description of how a crop is physically produced (e.g. nursery seed tray, leafy cultivation plate) |
+| Workflow | A named production process for one crop, optional variety, and production system, owned by one tenant |
+| Workflow Version | An immutable-once-published revision of a workflow's stage/transition structure; states `draft` → `published` → `retired` |
+| Workflow Stage | A step within one workflow version, carrying a stage category, optional expected duration, and optional location/carrier constraints |
+| Workflow Transition | A permitted movement between two stages of the same workflow version |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

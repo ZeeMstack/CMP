@@ -77,6 +77,45 @@ def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_e
 
 
 @pytest.mark.integration
+def test_migration_downgrade_removes_crop_workflow_triggers_and_functions(test_engine) -> None:
+    command.downgrade(_cfg(), "8a2c6f1e9d33")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'workflows_enforce_identity_immutable', 'workflow_transitions_enforce_draft_only', "
+                "'workflow_stages_enforce_draft_only', 'workflow_versions_no_delete_when_published', "
+                "'workflow_versions_enforce_transition')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_workflow_identity_immutable', 'enforce_workflow_transition_draft_only', "
+                "'enforce_workflow_stage_draft_only', 'reject_non_draft_workflow_version_delete', "
+                "'enforce_workflow_version_transition')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'crops', 'varieties', 'production_systems', 'workflows', 'workflow_versions', "
+                "'workflow_stages', 'workflow_transitions')"
+            )
+        ).all()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'workflows_enforce_identity_immutable'")
+        ).first()
+    assert trigger_exists is not None
+
+
+@pytest.mark.integration
 def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
     command.downgrade(_cfg(), "5f3a9c2d1b44")
     with test_engine.connect() as conn:
