@@ -118,3 +118,79 @@ def active_context_with_farm(active_context, db_session):
         timezone="Asia/Dubai",
     )
     return tenant, user, headers, farm
+
+
+@pytest.fixture
+def placed_trolley_and_tray(active_context_with_farm, db_session):
+    """Builds the CMP-006 core scenario: nursery greenhouse -> area ->
+    germination chamber -> 20 chamber positions; a germination trolley with
+    8 shelves x 5 slots; a seed tray. The trolley is placed at chamber
+    position P12; the tray is placed at shelf 3 / slot 4. Returns a dict of
+    the ids/objects used across occupancy and movement tests."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from app.services import asset_service, carrier_service, location_service, movement_service
+
+    tenant, user, headers, farm = active_context_with_farm
+    greenhouse = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code="nursery-gh", name="Nursery Greenhouse",
+        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+    )
+    area = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="area", code="germ-area", name="Germination Area",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
+    chamber = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="germination_chamber", code="GC-01", name="Germination Chamber GC-01",
+        parent_location_id=area.id, greenhouse_classification=None, occupiable=None,
+    )
+    positions = location_service.bulk_generate_children(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, parent_id=chamber.id, actor_user_id=user.id,
+        location_type_code="chamber_position", code_prefix="P", start=1, end=20, pad_width=2, name_template=None,
+    )
+    position_by_code = {p.code: p for p in positions}
+
+    trolley = asset_service.register_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code="GT-0001", name="Trolley 1", commissioned_date=None,
+    )
+    shelf_slots = asset_service.generate_positions(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id,
+        shelf_count=8, slots_per_shelf=5, shelf_prefix="SH-", slot_prefix="SL-",
+        shelf_pad_width=2, slot_pad_width=2,
+    )
+    shelf_03 = next(p for p in shelf_slots if p.position_kind == "shelf" and p.code == "SH-03")
+    slot_03_04 = next(
+        p for p in shelf_slots
+        if p.position_kind == "slot" and p.parent_position_id == shelf_03.id and p.code == "SL-04"
+    )
+
+    tray = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        carrier_type_code="seed_tray", code="ST-0001", issued_date=None,
+    )
+
+    now = datetime.now(timezone.utc)
+    trolley_movement = movement_service.execute_movement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        client_command_id=uuid.uuid4(), effective_time=now,
+        occupant_kind="asset", occupant_id=trolley.id,
+        destination_kind="location", destination_id=position_by_code["P12"].id, reason=None,
+    )
+    tray_movement = movement_service.execute_movement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        client_command_id=uuid.uuid4(), effective_time=now,
+        occupant_kind="carrier", occupant_id=tray.id,
+        destination_kind="asset_position", destination_id=slot_03_04.id, reason=None,
+    )
+
+    return {
+        "tenant": tenant, "user": user, "headers": headers, "farm": farm,
+        "greenhouse": greenhouse, "area": area, "chamber": chamber, "positions": position_by_code,
+        "trolley": trolley, "shelf_03": shelf_03, "slot_03_04": slot_03_04, "tray": tray,
+        "trolley_movement": trolley_movement, "tray_movement": tray_movement,
+    }

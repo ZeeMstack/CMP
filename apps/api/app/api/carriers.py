@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
 from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
-from app.services import carrier_service
+from app.schemas.movement import MovementRead
+from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead
+from app.services import carrier_service, movement_service
 from app.services.errors import (
     CarrierNotFoundError,
     CarrierTypeNotFoundError,
@@ -109,3 +111,51 @@ def list_carriers(
     except CarrierTypeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier type") from exc
     return [CarrierRead.model_validate(carrier) for carrier in carriers]
+
+
+@router.get("/farms/{farm_id}/carriers/{carrier_id}/occupancy", response_model=OccupancyRead | None)
+def get_carrier_occupancy(
+    farm_id: uuid.UUID,
+    carrier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> OccupancyRead | None:
+    try:
+        occupancy = movement_service.get_occupancy(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, occupant_kind="carrier", occupant_id=carrier_id
+        )
+    except (FarmNotFoundError, CarrierNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return OccupancyRead.from_model(occupancy) if occupancy is not None else None
+
+
+@router.get("/farms/{farm_id}/carriers/{carrier_id}/movement-history", response_model=list[MovementRead])
+def get_carrier_movement_history(
+    farm_id: uuid.UUID,
+    carrier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> list[MovementRead]:
+    try:
+        movements = movement_service.get_movement_history(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, occupant_kind="carrier", occupant_id=carrier_id
+        )
+    except (FarmNotFoundError, CarrierNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return [MovementRead.from_model(m) for m in movements]
+
+
+@router.get("/farms/{farm_id}/carriers/{carrier_id}/resolved-location", response_model=ResolvedLocationRead)
+def get_carrier_resolved_location(
+    farm_id: uuid.UUID,
+    carrier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> ResolvedLocationRead:
+    try:
+        resolved = movement_service.get_resolved_location(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, occupant_kind="carrier", occupant_id=carrier_id
+        )
+    except (FarmNotFoundError, CarrierNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return ResolvedLocationRead(**resolved)

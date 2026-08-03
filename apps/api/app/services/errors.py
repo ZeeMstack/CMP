@@ -76,3 +76,51 @@ class InvalidPositionHierarchyError(DomainError):
 
 class DuplicatePositionCodeError(DomainError):
     pass
+
+
+class AssetPositionNotFoundError(DomainError):
+    pass
+
+
+class InactiveOccupantError(DomainError):
+    pass
+
+
+class InactiveTargetError(DomainError):
+    pass
+
+
+class TargetNotOccupiableError(DomainError):
+    pass
+
+
+class IncompatibleOccupantTargetError(DomainError):
+    pass
+
+
+class AssetCannotOccupyOwnPositionError(DomainError):
+    pass
+
+
+class TargetOccupiedError(DomainError):
+    pass
+
+
+class OccupantAlreadyActiveError(DomainError):
+    pass
+
+
+class NoOpMovementError(DomainError):
+    pass
+
+
+class NothingToRemoveError(DomainError):
+    pass
+
+
+class MovementCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InvalidEffectiveTimeError(DomainError):
+    pass

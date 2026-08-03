@@ -9,6 +9,9 @@ from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
 from app.models.membership import TenantMembership
+from app.models.movement import Movement
+from app.models.occupancy import Occupancy
+from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.tenant import Tenant
 from app.models.user import User
 
@@ -23,6 +26,9 @@ __all__ = [
     "Location",
     "LocationType",
     "LocationTypeHierarchyRule",
+    "Movement",
+    "Occupancy",
+    "OccupancyCompatibilityRule",
     "Tenant",
     "TenantMembership",
     "User",

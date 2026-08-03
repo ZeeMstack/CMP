@@ -74,3 +74,32 @@ def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_e
             text("SELECT 1 FROM pg_trigger WHERE tgname = 'asset_positions_enforce_structure'")
         ).first()
     assert trigger_exists is not None
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
+    command.downgrade(_cfg(), "5f3a9c2d1b44")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'occupancies_enforce_insert_integrity', 'occupancies_enforce_closure_only', "
+                "'occupancies_no_delete', 'movements_no_update', 'movements_no_delete')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN "
+                "('enforce_occupancy_insert_integrity', 'enforce_occupancy_closure_only', "
+                "'reject_movement_mutation')"
+            )
+        ).all()
+    assert triggers == []
+    assert functions == []
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'occupancies_enforce_insert_integrity'")
+        ).first()
+    assert trigger_exists is not None

@@ -13,7 +13,9 @@ from app.schemas.location import (
     LocationRead,
     LocationTreeNode,
 )
-from app.services import location_service
+from app.schemas.movement import TargetRef
+from app.schemas.occupancy import OccupancyRead, TargetOccupantRead
+from app.services import location_service, movement_service
 from app.services.errors import (
     DuplicateLocationCodeError,
     FarmNotFoundError,
@@ -197,4 +199,23 @@ def get_path(
     entries = [LocationPathEntry(id=row["id"], code=row["code"], name=row["name"]) for row in rows]
     return LocationPathRead(
         location_id=location_id, path=entries, path_string=" / ".join(e.code for e in entries)
+    )
+
+
+@router.get("/farms/{farm_id}/locations/{location_id}/occupant", response_model=TargetOccupantRead)
+def get_location_occupant(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> TargetOccupantRead:
+    try:
+        occupancy = movement_service.get_target_occupant(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, target_kind="location", target_id=location_id
+        )
+    except (FarmNotFoundError, LocationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return TargetOccupantRead(
+        target=TargetRef(kind="location", id=location_id),
+        active_occupancy=OccupancyRead.from_model(occupancy) if occupancy is not None else None,
     )
