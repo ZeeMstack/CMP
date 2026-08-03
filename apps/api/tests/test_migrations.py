@@ -46,3 +46,31 @@ def test_migration_downgrade_removes_classification_trigger_and_function(test_en
             )
         ).first()
     assert trigger_exists is not None
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_engine) -> None:
+    command.downgrade(_cfg(), "3cbaeceee9dc")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'asset_positions_enforce_structure', 'assets_no_delete', "
+                "'carriers_no_delete', 'asset_positions_no_delete')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN "
+                "('enforce_asset_position_structure', 'reject_hard_delete')"
+            )
+        ).all()
+    assert triggers == []
+    assert functions == []
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'asset_positions_enforce_structure'")
+        ).first()
+    assert trigger_exists is not None

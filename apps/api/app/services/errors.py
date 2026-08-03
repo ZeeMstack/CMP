@@ -40,3 +40,39 @@ class InvalidLocationHierarchyError(DomainError):
 
 class DuplicateLocationCodeError(DomainError):
     pass
+
+
+class AssetTypeNotFoundError(DomainError):
+    pass
+
+
+class CarrierTypeNotFoundError(DomainError):
+    pass
+
+
+class AssetNotFoundError(DomainError):
+    pass
+
+
+class CarrierNotFoundError(DomainError):
+    pass
+
+
+class DuplicateAssetCodeError(DomainError):
+    pass
+
+
+class DuplicateCarrierCodeError(DomainError):
+    pass
+
+
+class PositionsNotSupportedError(DomainError):
+    pass
+
+
+class InvalidPositionHierarchyError(DomainError):
+    pass
+
+
+class DuplicatePositionCodeError(DomainError):
+    pass

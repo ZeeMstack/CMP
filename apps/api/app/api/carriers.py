@@ -1,0 +1,111 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
+from app.services import carrier_service
+from app.services.errors import (
+    CarrierNotFoundError,
+    CarrierTypeNotFoundError,
+    DuplicateCarrierCodeError,
+    FarmNotFoundError,
+)
+
+router = APIRouter(tags=["carriers"])
+
+
+@router.post("/farms/{farm_id}/carriers", response_model=CarrierRead, status_code=status.HTTP_201_CREATED)
+def register_carrier(
+    farm_id: uuid.UUID,
+    payload: CarrierCreate,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> CarrierRead:
+    try:
+        carrier = carrier_service.register_carrier(
+            db,
+            tenant_id=ctx.tenant_id,
+            farm_id=farm_id,
+            actor_user_id=ctx.user_id,
+            carrier_type_code=payload.carrier_type_code,
+            code=payload.code,
+            issued_date=payload.issued_date,
+        )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
+    except CarrierTypeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier type") from exc
+    except DuplicateCarrierCodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Carrier code already exists in this tenant"
+        ) from exc
+    return CarrierRead.model_validate(carrier)
+
+
+@router.post(
+    "/farms/{farm_id}/carriers/bulk", response_model=list[CarrierRead], status_code=status.HTTP_201_CREATED
+)
+def bulk_register_carriers(
+    farm_id: uuid.UUID,
+    payload: CarrierBulkCreate,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> list[CarrierRead]:
+    try:
+        created = carrier_service.bulk_register_carriers(
+            db,
+            tenant_id=ctx.tenant_id,
+            farm_id=farm_id,
+            actor_user_id=ctx.user_id,
+            carrier_type_code=payload.carrier_type_code,
+            code_prefix=payload.code_prefix,
+            start=payload.start,
+            end=payload.end,
+            pad_width=payload.pad_width,
+        )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
+    except CarrierTypeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier type") from exc
+    except DuplicateCarrierCodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="One or more generated carrier codes already exist"
+        ) from exc
+    return [CarrierRead.model_validate(carrier) for carrier in created]
+
+
+@router.get("/farms/{farm_id}/carriers/{carrier_id}", response_model=CarrierRead)
+def get_carrier(
+    farm_id: uuid.UUID,
+    carrier_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> CarrierRead:
+    try:
+        carrier = carrier_service.get_carrier(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, carrier_id=carrier_id
+        )
+    except (FarmNotFoundError, CarrierNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return CarrierRead.model_validate(carrier)
+
+
+@router.get("/farms/{farm_id}/carriers", response_model=list[CarrierRead])
+def list_carriers(
+    farm_id: uuid.UUID,
+    carrier_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> list[CarrierRead]:
+    try:
+        carriers = carrier_service.list_carriers(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, carrier_type_code=carrier_type
+        )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
+    except CarrierTypeNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier type") from exc
+    return [CarrierRead.model_validate(carrier) for carrier in carriers]
