@@ -2,6 +2,7 @@ from app.models.asset import Asset
 from app.models.asset_position import AssetPosition
 from app.models.asset_type import AssetType
 from app.models.audit_event import AuditEvent
+from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
 from app.models.batch_stage_transition import BatchStageTransition
 from app.models.carrier import Carrier
@@ -17,6 +18,9 @@ from app.models.movement import Movement
 from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.production_system import ProductionSystem
+from app.models.seed_lot import SeedLot
+from app.models.sowing_event import SowingEvent
+from app.models.sowing_event_line import SowingEventLine
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.models.variety import Variety
@@ -30,6 +34,7 @@ __all__ = [
     "AssetPosition",
     "AssetType",
     "AuditEvent",
+    "BatchCarrierAssignment",
     "BatchStageRun",
     "BatchStageTransition",
     "Carrier",
@@ -44,6 +49,9 @@ __all__ = [
     "Occupancy",
     "OccupancyCompatibilityRule",
     "ProductionSystem",
+    "SeedLot",
+    "SowingEvent",
+    "SowingEventLine",
     "Tenant",
     "TenantMembership",
     "User",

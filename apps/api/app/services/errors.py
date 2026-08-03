@@ -248,3 +248,43 @@ class WorkflowPublicationValidationError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class DuplicateSeedLotCodeError(DomainError):
+    pass
+
+
+class SeedLotNotFoundError(DomainError):
+    pass
+
+
+class SeedLotValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class SowingEventNotFoundError(DomainError):
+    pass
+
+
+class SowingCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class SowingValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class CarrierAlreadyAssignedError(DomainError):
+    pass
+
+
+class InvalidSowingEffectiveTimeError(DomainError):
+    pass
+
+
+class TooManySowingLinesError(DomainError):
+    pass

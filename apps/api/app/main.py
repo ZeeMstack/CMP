@@ -11,6 +11,8 @@ from app.api.memberships import router as memberships_router
 from app.api.movements import router as movements_router
 from app.api.production_systems import router as production_systems_router
 from app.api.ready import router as ready_router
+from app.api.seed_lots import router as seed_lots_router
+from app.api.sowings import router as sowings_router
 from app.api.workflows import router as workflows_router
 from app.core.dev_auth import check_dev_auth_startup_invariant
 from app.core.settings import Settings, settings
@@ -32,6 +34,8 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(production_systems_router)
     api.include_router(workflows_router)
     api.include_router(crop_batches_router)
+    api.include_router(seed_lots_router)
+    api.include_router(sowings_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

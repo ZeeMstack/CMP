@@ -173,6 +173,68 @@ def test_migration_downgrade_removes_crop_batch_triggers_functions_and_additive_
 
 
 @pytest.mark.integration
+def test_migration_downgrade_removes_seed_sowing_triggers_functions_and_additive_constraints(
+    test_engine,
+) -> None:
+    command.downgrade(_cfg(), "c48f21a6b3d9")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'seed_lots_no_delete', 'sowing_events_enforce_insert_integrity', "
+                "'sowing_events_no_update', 'sowing_events_no_delete', "
+                "'batch_carrier_assignments_enforce_insert_integrity', "
+                "'batch_carrier_assignments_no_update', 'batch_carrier_assignments_no_delete', "
+                "'sowing_event_lines_enforce_insert_integrity', 'sowing_event_lines_no_update', "
+                "'sowing_event_lines_no_delete')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_sowing_event_insert_integrity', "
+                "'enforce_batch_carrier_assignment_insert_integrity', "
+                "'enforce_sowing_event_line_insert_integrity')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'seed_lots', 'sowing_events', 'batch_carrier_assignments', 'sowing_event_lines')"
+            )
+        ).all()
+        additive_constraints = conn.execute(
+            text(
+                "SELECT conname FROM pg_constraint WHERE conname IN ("
+                "'uq_carriers_tenant_farm_id', 'uq_batch_stage_runs_tenant_farm_batch_id')"
+            )
+        ).all()
+        prior_ticket_constraint = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_crop_batches_tenant_farm_id'")
+        ).first()
+        shared_function_still_present = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'reject_append_only_mutation'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert additive_constraints == []
+    assert prior_ticket_constraint is not None, "prior-ticket crop_batches schema must remain intact"
+    assert shared_function_still_present is not None, "reject_append_only_mutation is shared with CMP-008"
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'sowing_events_enforce_insert_integrity'")
+        ).first()
+        constraint_exists = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_carriers_tenant_farm_id'")
+        ).first()
+    assert trigger_exists is not None
+    assert constraint_exists is not None
+
+
+@pytest.mark.integration
 def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
     command.downgrade(_cfg(), "5f3a9c2d1b44")
     with test_engine.connect() as conn:

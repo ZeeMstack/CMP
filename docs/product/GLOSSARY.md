@@ -33,6 +33,15 @@
 | Batch Stage Run | Immutable-history record of one batch occupying one workflow stage; the batch's current stage is always its one run with no exit time |
 | Batch Stage Transition | Immutable, insert-only record of one stage-progression command — either a batch's initial entry or a configured-transition move |
 
+## Seed sowing and carrier assignment (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/SEED_SOWING_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Seed Lot | Tenant- and farm-owned identity of a supplier seed source for one crop/variety; traceability only, no inventory balance |
+| Sowing Event | Immutable, insert-only record of one sowing command, tied to the batch's exact active seeding-stage run at execution time |
+| Sowing Event Line | One immutable per-carrier line of a sowing event: one carrier, one seed lot, sown-site count, seed count |
+| Batch Carrier Assignment | Immutable-history record of one carrier holding one crop batch; answers "what batch", never "where" (see Occupancy) |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |
