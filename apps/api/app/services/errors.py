@@ -288,3 +288,69 @@ class InvalidSowingEffectiveTimeError(DomainError):
 
 class TooManySowingLinesError(DomainError):
     pass
+
+
+class BatchCarrierAssignmentNotFoundError(DomainError):
+    pass
+
+
+class DuplicateObservationDefinitionCodeError(DomainError):
+    pass
+
+
+class ObservationDefinitionNotFoundError(DomainError):
+    pass
+
+
+class ObservationDefinitionValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ObservationEventNotFoundError(DomainError):
+    pass
+
+
+class ObservationCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class ObservationValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidObservationEffectiveTimeError(DomainError):
+    pass
+
+
+class TooManyObservationEntriesError(DomainError):
+    pass
+
+
+class QualityHoldNotFoundError(DomainError):
+    pass
+
+
+class QualityHoldCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class QualityHoldValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidQualityHoldEffectiveTimeError(DomainError):
+    pass
+
+
+class QualityHoldAlreadyReleasedError(DomainError):
+    pass
+
+
+class QualityHoldOpenError(DomainError):
+    pass

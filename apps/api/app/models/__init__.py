@@ -10,14 +10,20 @@ from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.farm import Farm
+from app.models.germination_check import GerminationCheck
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
 from app.models.membership import TenantMembership
 from app.models.movement import Movement
+from app.models.observation_definition import ObservationDefinition
+from app.models.observation_event import ObservationEvent
+from app.models.observation_value import ObservationValue
 from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.production_system import ProductionSystem
+from app.models.quality_hold import QualityHold
+from app.models.quality_hold_release import QualityHoldRelease
 from app.models.seed_lot import SeedLot
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
@@ -42,13 +48,19 @@ __all__ = [
     "Crop",
     "CropBatch",
     "Farm",
+    "GerminationCheck",
     "Location",
     "LocationType",
     "LocationTypeHierarchyRule",
     "Movement",
+    "ObservationDefinition",
+    "ObservationEvent",
+    "ObservationValue",
     "Occupancy",
     "OccupancyCompatibilityRule",
     "ProductionSystem",
+    "QualityHold",
+    "QualityHoldRelease",
     "SeedLot",
     "SowingEvent",
     "SowingEventLine",

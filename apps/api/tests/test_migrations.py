@@ -235,6 +235,71 @@ def test_migration_downgrade_removes_seed_sowing_triggers_functions_and_additive
 
 
 @pytest.mark.integration
+def test_migration_downgrade_removes_observation_quality_triggers_functions_and_tables(test_engine) -> None:
+    command.downgrade(_cfg(), "d17a4e2f9c86")
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'observation_definitions_enforce_status_only_update', 'observation_definitions_no_delete', "
+                "'observation_events_enforce_insert_integrity', 'observation_events_no_update', "
+                "'observation_events_no_delete', 'observation_values_enforce_insert_integrity', "
+                "'observation_values_no_update', 'observation_values_no_delete', "
+                "'germination_checks_enforce_insert_integrity', 'germination_checks_no_update', "
+                "'germination_checks_no_delete', 'quality_holds_enforce_insert_integrity', "
+                "'quality_holds_no_update', 'quality_holds_no_delete', "
+                "'quality_hold_releases_enforce_insert_integrity', 'quality_hold_releases_no_update', "
+                "'quality_hold_releases_no_delete', 'batch_stage_transitions_enforce_no_open_hold')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_observation_definition_status_only_update', "
+                "'enforce_observation_event_insert_integrity', "
+                "'enforce_observation_value_insert_integrity', "
+                "'enforce_germination_check_insert_integrity', "
+                "'enforce_quality_hold_insert_integrity', "
+                "'enforce_quality_hold_release_insert_integrity', "
+                "'enforce_no_open_quality_hold')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'observation_definitions', 'observation_events', 'observation_values', "
+                "'germination_checks', 'quality_holds', 'quality_hold_releases')"
+            )
+        ).all()
+        shared_function_still_present = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'reject_append_only_mutation'")
+        ).first()
+        prior_ticket_table_intact = conn.execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name = 'batch_stage_transitions'")
+        ).first()
+        prior_ticket_constraint_intact = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_sowing_events_tenant_farm_id'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert shared_function_still_present is not None, "reject_append_only_mutation is shared with CMP-008/009"
+    assert prior_ticket_table_intact is not None, "prior-ticket batch_stage_transitions must remain intact"
+    assert prior_ticket_constraint_intact is not None, "prior-ticket sowing_events schema must remain intact"
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'observation_events_enforce_insert_integrity'")
+        ).first()
+        hold_block_trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'batch_stage_transitions_enforce_no_open_hold'")
+        ).first()
+    assert trigger_exists is not None
+    assert hold_block_trigger_exists is not None
+
+
+@pytest.mark.integration
 def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
     command.downgrade(_cfg(), "5f3a9c2d1b44")
     with test_engine.connect() as conn:

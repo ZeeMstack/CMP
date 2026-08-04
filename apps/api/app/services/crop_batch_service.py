@@ -24,7 +24,7 @@ from app.schemas.crop_batch import (
     VarietySummary,
     WorkflowSummary,
 )
-from app.services import farm_service
+from app.services import farm_service, quality_hold_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCommandReusedWithDifferentPayloadError,
@@ -35,6 +35,7 @@ from app.services.errors import (
     DuplicateBatchCodeError,
     FarmNotFoundError,
     InvalidBatchEffectiveTimeError,
+    QualityHoldOpenError,
     StageMismatchError,
     WorkflowHasNoPublishedVersionError,
     WorkflowInactiveError,
@@ -304,6 +305,14 @@ def transition_stage(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise BatchCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # A genuinely new transition (not a replay) is blocked while any
+    # CMP-010 quality hold on this batch remains open. Checked after the
+    # idempotency replay above so an exact retry of an already-successful
+    # transition still returns its original result even if a hold was
+    # placed afterward.
+    if quality_hold_service.has_open_quality_hold(db, batch_id=batch.id):
+        raise QualityHoldOpenError(str(batch_id))
 
     if batch.state != "active":
         raise CropBatchClosedError(str(batch_id))

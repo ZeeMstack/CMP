@@ -42,6 +42,17 @@
 | Sowing Event Line | One immutable per-carrier line of a sowing event: one carrier, one seed lot, sown-site count, seed count |
 | Batch Carrier Assignment | Immutable-history record of one carrier holding one crop batch; answers "what batch", never "where" (see Occupancy) |
 
+## Observations and quality holds (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/OBSERVATION_QUALITY_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Observation Definition | Tenant-owned, reusable structured metric (type, unit, target scope, bounds); immutable once created except `status` |
+| Observation Event | Immutable, insert-only record of one observation command, tied to the batch's exact active stage run at execution time |
+| Observation Value | One immutable typed value within an observation event, targeting a crop batch, a carrier assignment, or both depending on its definition |
+| Germination Check | Immutable, narrow (non-generic) inspection record for one carrier assignment; same-row `CHECK` constraints enforce category counts against the inspected population |
+| Quality Hold | Immutable, batch-level block on stage progression; multiple simultaneous open holds are permitted; open/released state is derived, never stored |
+| Quality-Hold Release | Immutable decision record removing one quality hold; a new record, never a mutation of the original hold |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

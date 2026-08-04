@@ -9,7 +9,10 @@ from app.api.health import router as health_router
 from app.api.locations import router as locations_router
 from app.api.memberships import router as memberships_router
 from app.api.movements import router as movements_router
+from app.api.observation_definitions import router as observation_definitions_router
+from app.api.observations import router as observations_router
 from app.api.production_systems import router as production_systems_router
+from app.api.quality_holds import router as quality_holds_router
 from app.api.ready import router as ready_router
 from app.api.seed_lots import router as seed_lots_router
 from app.api.sowings import router as sowings_router
@@ -36,6 +39,9 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(crop_batches_router)
     api.include_router(seed_lots_router)
     api.include_router(sowings_router)
+    api.include_router(observation_definitions_router)
+    api.include_router(observations_router)
+    api.include_router(quality_holds_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

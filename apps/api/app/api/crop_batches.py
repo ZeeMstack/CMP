@@ -23,6 +23,7 @@ from app.services.errors import (
     DuplicateBatchCodeError,
     FarmNotFoundError,
     InvalidBatchEffectiveTimeError,
+    QualityHoldOpenError,
     StageMismatchError,
     WorkflowHasNoPublishedVersionError,
     WorkflowInactiveError,
@@ -114,7 +115,12 @@ def create_stage_transition(
         )
     except (FarmNotFoundError, CropBatchNotFoundError, ConfiguredTransitionNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    except (CropBatchClosedError, StageMismatchError, BatchCommandReusedWithDifferentPayloadError) as exc:
+    except (
+        CropBatchClosedError,
+        StageMismatchError,
+        BatchCommandReusedWithDifferentPayloadError,
+        QualityHoldOpenError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidBatchEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
