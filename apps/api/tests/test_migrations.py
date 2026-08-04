@@ -17,6 +17,21 @@ def _cfg() -> Config:
     return cfg
 
 
+def _assert_operating_on_cmp_test_database(test_engine) -> None:
+    """Every test in this file runs a destructive schema downgrade/upgrade
+    cycle. Before any of them touch the database, confirm — by literal
+    database name, not just by the pre-existing
+    `test_database_url != database_url` distinctness check in conftest.py —
+    that the connection genuinely points at `cmp_test`. Never run a
+    destructive reset against anything else."""
+    with test_engine.connect() as conn:
+        current_db = conn.execute(text("SELECT current_database()")).scalar_one()
+    assert current_db == "cmp_test", (
+        f"refusing destructive migration downgrade/upgrade against database {current_db!r} — "
+        "expected exactly 'cmp_test'"
+    )
+
+
 @pytest.mark.integration
 def test_migration_downgrade_then_upgrade_on_test_database(test_engine) -> None:
     command.downgrade(_cfg(), "base")
@@ -326,3 +341,150 @@ def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functio
             text("SELECT 1 FROM pg_trigger WHERE tgname = 'occupancies_enforce_insert_integrity'")
         ).first()
     assert trigger_exists is not None
+
+
+# --- CMP-011: carrier release and transplantation ---------------------------
+#
+# The two "blocked downgrade" guard tests live in their own file,
+# test_transplant_downgrade_guard.py. They commit real
+# transplant/transplanting-stage rows via dedicated connections, but — like
+# test_transplant_concurrency.py and test_transplant_rollback.py's deferred
+# tests — they clean up everything they commit in a `finally` block, scoped
+# to their own tenant, using the same `session_replication_role = replica`
+# bypass technique. That is what keeps this test's assumption below valid
+# regardless of execution order: no CMP-011 test is meant to leave
+# transplant history, transplant-created assignments, or a
+# transplanting-category workflow stage behind for another test to observe.
+# This test does not itself rely on running before or after any other file —
+# it relies only on every other CMP-011 test cleaning up after itself, which
+# is verified separately by the repeated/randomized-order runs in the
+# correction report.
+#
+# The downgrade/upgrade cycle below is destructive schema DDL, so it first
+# confirms it is genuinely operating against `cmp_test`, and guarantees head
+# is restored in `finally` even if an assertion below fails mid-test — a
+# failed assertion here must never leave the database downgraded for
+# whichever test runs next.
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_transplant_triggers_functions_tables_and_restores_cmp009_shape(
+    test_engine,
+) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "e29b5c1a7d43")
+    try:
+        _assert_downgraded_transplant_schema_removed(test_engine)
+    finally:
+        command.upgrade(_cfg(), "head")
+    _assert_upgraded_transplant_schema_restored(test_engine)
+
+
+def _assert_downgraded_transplant_schema_removed(test_engine) -> None:
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'transplant_events_enforce_insert_integrity', 'transplant_events_no_update', "
+                "'transplant_events_no_delete', 'transplant_source_lines_enforce_insert_integrity', "
+                "'transplant_source_lines_no_update', 'transplant_source_lines_no_delete', "
+                "'transplant_destination_lines_enforce_insert_integrity', "
+                "'transplant_destination_lines_no_update', 'transplant_destination_lines_no_delete', "
+                "'transplant_allocations_no_update', 'transplant_allocations_no_delete', "
+                "'transplant_events_enforce_reconciliation', 'transplant_source_lines_enforce_reconciliation', "
+                "'transplant_destination_lines_enforce_reconciliation', "
+                "'transplant_allocations_enforce_reconciliation', "
+                "'batch_carrier_assignments_enforce_reconciliation_on_open', "
+                "'batch_carrier_assignments_enforce_reconciliation_on_release', "
+                "'batch_carrier_assignments_enforce_origin_insert_integrity', "
+                "'batch_carrier_assignments_enforce_closure_only')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_transplant_event_insert_integrity', "
+                "'enforce_transplant_source_line_insert_integrity', "
+                "'enforce_transplant_destination_line_insert_integrity', "
+                "'enforce_transplant_reconciliation', "
+                "'enforce_batch_carrier_assignment_origin_insert_integrity', "
+                "'enforce_batch_carrier_assignment_closure_only')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'transplant_events', 'transplant_source_lines', 'transplant_destination_lines', "
+                "'transplant_allocations')"
+            )
+        ).all()
+        assignment_columns = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'batch_carrier_assignments' "
+                "AND column_name IN ('opening_transplant_event_id', 'released_by_transplant_event_id')"
+            )
+        ).all()
+        opening_sowing_nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'batch_carrier_assignments' "
+                "AND column_name = 'opening_sowing_event_id'"
+            )
+        ).scalar_one()
+        category_check_def = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_workflow_stages_category_allowed'"
+            )
+        ).scalar_one()
+        # CMP-009's original function and trigger must have been restored
+        # untouched — never dropped, only re-attached.
+        cmp009_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = 'batch_carrier_assignments_enforce_insert_integrity'"
+            )
+        ).first()
+        cmp009_function = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_batch_carrier_assignment_insert_integrity'")
+        ).first()
+        cmp009_update_trigger = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'batch_carrier_assignments_no_update'")
+        ).first()
+        shared_function_still_present = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'reject_append_only_mutation'")
+        ).first()
+        prior_ticket_constraint_intact = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_sowing_events_tenant_farm_id'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert assignment_columns == []
+    assert opening_sowing_nullable == "NO"
+    assert "transplanting" not in category_check_def
+    assert cmp009_trigger is not None
+    assert cmp009_function is not None
+    assert cmp009_update_trigger is not None
+    assert shared_function_still_present is not None, "reject_append_only_mutation is shared with CMP-008/009/010"
+    assert prior_ticket_constraint_intact is not None, "prior-ticket sowing_events schema must remain intact"
+
+
+def _assert_upgraded_transplant_schema_restored(test_engine) -> None:
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'transplant_events_enforce_insert_integrity'")
+        ).first()
+        deferred_trigger_exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = "
+                "'batch_carrier_assignments_enforce_reconciliation_on_release'"
+            )
+        ).first()
+        category_check_def = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_workflow_stages_category_allowed'"
+            )
+        ).scalar_one()
+    assert trigger_exists is not None
+    assert deferred_trigger_exists is not None
+    assert "transplanting" in category_check_def

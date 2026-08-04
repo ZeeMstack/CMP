@@ -129,7 +129,9 @@ def test_blocked_transition_leaves_no_partial_data(db_session, active_context_wi
     ).scalar_one()
     assert active_run.workflow_stage_id == s["stages"][0].id
     audit_count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.stage_transitioned")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.stage_transitioned", AuditEvent.entity_id == s["batch"].id
+        )
     ).scalar_one()
     assert audit_count == 0
     # Session must remain usable after the rejected command.

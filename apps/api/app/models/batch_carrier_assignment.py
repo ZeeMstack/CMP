@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -18,11 +19,11 @@ from app.core.db import Base
 class BatchCarrierAssignment(Base):
     """Immutable-history record of one carrier holding one crop batch —
     "what crop batch does this carrier contain", never "where is it"
-    (occupancy, CMP-006, remains untouched). In CMP-009 `released_effective_time`
-    is always NULL: no release command exists yet, and every UPDATE/DELETE is
-    rejected outright by a DB trigger. A future release/transformation ticket
-    will add a typed closing-command reference and replace this trigger with
-    a closure-only variant."""
+    (occupancy, CMP-006, remains untouched). Opened by exactly one command
+    (a CMP-009 sowing event or a CMP-011 transplant event) and, once
+    released, permanently closed — never reopened. Only sowing-origin
+    assignments may ever be released (CMP-011); transplant-created
+    assignments cannot yet be released — that remains deferred."""
 
     __tablename__ = "batch_carrier_assignments"
 
@@ -36,8 +37,14 @@ class BatchCarrierAssignment(Base):
     )
     assigned_effective_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     released_effective_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    opening_sowing_event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sowing_events.id"), nullable=False
+    opening_sowing_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("sowing_events.id"), nullable=True
+    )
+    opening_transplant_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("transplant_events.id"), nullable=True
+    )
+    released_by_transplant_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("transplant_events.id"), nullable=True
     )
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
@@ -45,6 +52,18 @@ class BatchCarrierAssignment(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "(opening_sowing_event_id IS NOT NULL) <> (opening_transplant_event_id IS NOT NULL)",
+            name="ck_batch_carrier_assignments_exactly_one_opener",
+        ),
+        CheckConstraint(
+            "(released_effective_time IS NULL) = (released_by_transplant_event_id IS NULL)",
+            name="ck_batch_carrier_assignments_release_fields_together",
+        ),
+        CheckConstraint(
+            "released_by_transplant_event_id IS NULL OR opening_sowing_event_id IS NOT NULL",
+            name="ck_batch_carrier_assignments_only_sowing_origin_releasable",
+        ),
         Index(
             "ux_batch_carrier_assignments_active_carrier",
             "tenant_id",
@@ -79,5 +98,25 @@ class BatchCarrierAssignment(Base):
             ["tenant_id", "farm_id", "opening_sowing_event_id"],
             ["sowing_events.tenant_id", "sowing_events.farm_id", "sowing_events.id"],
             name="fk_batch_carrier_assignments_opening_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_id", "opening_transplant_event_id"],
+            [
+                "transplant_events.tenant_id",
+                "transplant_events.farm_id",
+                "transplant_events.batch_id",
+                "transplant_events.id",
+            ],
+            name="fk_batch_carrier_assignments_opening_transplant_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_id", "released_by_transplant_event_id"],
+            [
+                "transplant_events.tenant_id",
+                "transplant_events.farm_id",
+                "transplant_events.batch_id",
+                "transplant_events.id",
+            ],
+            name="fk_batch_carrier_assignments_released_by_transplant_event",
         ),
     )

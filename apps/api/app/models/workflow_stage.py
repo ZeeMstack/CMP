@@ -20,6 +20,7 @@ STAGE_CATEGORIES = (
     "seeding",
     "germination",
     "nursery",
+    "transplanting",
     "intermediate",
     "production",
     "harvest_ready",

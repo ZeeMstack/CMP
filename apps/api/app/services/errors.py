@@ -354,3 +354,37 @@ class QualityHoldAlreadyReleasedError(DomainError):
 
 class QualityHoldOpenError(DomainError):
     pass
+
+
+class TransplantEventNotFoundError(DomainError):
+    pass
+
+
+class TransplantCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class TransplantValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidTransplantEffectiveTimeError(DomainError):
+    pass
+
+
+class SourceAssignmentNotFoundError(DomainError):
+    pass
+
+
+class SourceAssignmentAlreadyReleasedError(DomainError):
+    pass
+
+
+class DestinationCarrierAlreadyAssignedError(DomainError):
+    pass
+
+
+class TooManyTransplantLinesError(DomainError):
+    pass

@@ -281,7 +281,9 @@ def test_failed_publication_leaves_version_in_draft_and_no_audit_event(db_sessio
     db_session.refresh(version)
     assert version.state == "draft"
     count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "workflow.published")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "workflow.published", AuditEvent.entity_id == version.id
+        )
     ).scalar_one()
     assert count == 0
 
@@ -295,7 +297,9 @@ def test_successful_publication_creates_one_audit_event(db_session, active_conte
     _publish(db_session, tenant, workflow, version)
 
     count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "workflow.published")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "workflow.published", AuditEvent.entity_id == version.id
+        )
     ).scalar_one()
     assert count == 1
 

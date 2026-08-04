@@ -218,7 +218,9 @@ def test_core_observation_quality_acceptance_flow(client, active_context, db_ses
     ).json()
     assert current_stage["current_stage"]["code"] == "SEEDING"
     stage_transitioned_count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.stage_transitioned")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.stage_transitioned", AuditEvent.entity_id == uuid.UUID(batch["id"])
+        )
     ).scalar_one()
     assert stage_transitioned_count == 0
 

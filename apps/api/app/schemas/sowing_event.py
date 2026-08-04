@@ -120,4 +120,6 @@ class BatchCarrierAssignmentRead(BaseModel):
     carrier: CarrierSummary
     assigned_effective_time: datetime
     released_effective_time: datetime | None
-    opening_sowing_event_id: uuid.UUID
+    opening_sowing_event_id: uuid.UUID | None
+    opening_transplant_event_id: uuid.UUID | None
+    released_by_transplant_event_id: uuid.UUID | None

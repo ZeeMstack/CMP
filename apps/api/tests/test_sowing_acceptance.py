@@ -193,7 +193,9 @@ def test_core_sowing_acceptance_flow(client, active_context, db_session) -> None
     ).json()
     assert len(assignments_after_retry) == 4
     sown_events = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.sown")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.sown", AuditEvent.entity_id == uuid.UUID(sowing_event["id"])
+        )
     ).scalar_one()
     assert sown_events == 1
 
@@ -253,7 +255,9 @@ def test_core_sowing_acceptance_flow(client, active_context, db_session) -> None
     assert final_retry_resp.status_code == 201
     assert final_retry_resp.json()["id"] == sowing_event["id"]
     sown_events_after_progression = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.sown")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.sown", AuditEvent.entity_id == uuid.UUID(sowing_event["id"])
+        )
     ).scalar_one()
     assert sown_events_after_progression == 1
 

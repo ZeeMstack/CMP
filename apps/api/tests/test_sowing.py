@@ -196,8 +196,12 @@ def test_sow_single_carrier_creates_event_assignment_and_audit(db_session, activ
     s = _build_scenario(db_session, tenant, user, farm)
     event = _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][0], s["seed_lot"])])
 
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 1
-    assert db_session.execute(select(func.count()).select_from(SowingEventLine)).scalar_one() == 1
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 1
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEventLine).where(SowingEventLine.sowing_event_id == event.id)
+    ).scalar_one() == 1
     assignments = list(
         db_session.execute(select(BatchCarrierAssignment).where(BatchCarrierAssignment.batch_id == s["batch"].id))
         .scalars()
@@ -206,7 +210,9 @@ def test_sow_single_carrier_creates_event_assignment_and_audit(db_session, activ
     assert assignments[0].carrier_id == s["carriers"][0].id
     assert assignments[0].released_effective_time is None
     audit_count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.sown")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.sown", AuditEvent.entity_id == event.id
+        )
     ).scalar_one()
     assert audit_count == 1
     assert event.batch_id == s["batch"].id
@@ -217,10 +223,16 @@ def test_sow_multiple_carriers_atomic(db_session, active_context_with_farm) -> N
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     lines = [_simple_line(c, s["seed_lot"]) for c in s["carriers"]]
-    _sow(db_session, tenant, user, farm, s["batch"], lines)
+    event = _sow(db_session, tenant, user, farm, s["batch"], lines)
 
-    assert db_session.execute(select(func.count()).select_from(SowingEventLine)).scalar_one() == 4
-    assert db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one() == 4
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEventLine).where(SowingEventLine.sowing_event_id == event.id)
+    ).scalar_one() == 4
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.batch_id == s["batch"].id
+        )
+    ).scalar_one() == 4
 
 
 @pytest.mark.integration
@@ -401,7 +413,9 @@ def test_sow_too_many_lines_rejected_before_writes(db_session, active_context_wi
         line["carrier_id"] = uuid.uuid4()
     with pytest.raises(TooManySowingLinesError):
         _sow(db_session, tenant, user, farm, s["batch"], lines)
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 0
 
 
 @pytest.mark.integration
@@ -410,8 +424,14 @@ def test_sow_repeated_events_with_disjoint_carriers_succeed(db_session, active_c
     s = _build_scenario(db_session, tenant, user, farm)
     _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][0], s["seed_lot"])])
     _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][1], s["seed_lot"])])
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 2
-    assert db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one() == 2
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 2
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.batch_id == s["batch"].id
+        )
+    ).scalar_one() == 2
 
 
 # --- Idempotency --------------------------------------------------------------------
@@ -432,8 +452,14 @@ def test_sow_exact_retry_returns_original_event(db_session, active_context_with_
         client_command_id=command_id, effective_time=effective_time,
     )
     assert first.id == second.id
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 1
-    assert db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one() == 1
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 1
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.batch_id == s["batch"].id
+        )
+    ).scalar_one() == 1
 
 
 @pytest.mark.integration
@@ -472,7 +498,9 @@ def test_sow_retry_after_batch_progression_returns_original_event(db_session, ac
         client_command_id=command_id, effective_time=effective_time,
     )
     assert retry.id == first.id
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 1
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 1
 
 
 # --- Direct-SQL immutability ---------------------------------------------------------

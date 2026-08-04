@@ -28,6 +28,10 @@ from app.models.seed_lot import SeedLot
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
 from app.models.tenant import Tenant
+from app.models.transplant_allocation import TransplantAllocation
+from app.models.transplant_destination_line import TransplantDestinationLine
+from app.models.transplant_event import TransplantEvent
+from app.models.transplant_source_line import TransplantSourceLine
 from app.models.user import User
 from app.models.variety import Variety
 from app.models.workflow import Workflow
@@ -66,6 +70,10 @@ __all__ = [
     "SowingEventLine",
     "Tenant",
     "TenantMembership",
+    "TransplantAllocation",
+    "TransplantDestinationLine",
+    "TransplantEvent",
+    "TransplantSourceLine",
     "User",
     "Variety",
     "Workflow",

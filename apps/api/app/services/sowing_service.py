@@ -543,6 +543,8 @@ def _assignment_row_to_read(row) -> BatchCarrierAssignmentRead:
         assigned_effective_time=assignment.assigned_effective_time,
         released_effective_time=assignment.released_effective_time,
         opening_sowing_event_id=assignment.opening_sowing_event_id,
+        opening_transplant_event_id=assignment.opening_transplant_event_id,
+        released_by_transplant_event_id=assignment.released_by_transplant_event_id,
     )
 
 

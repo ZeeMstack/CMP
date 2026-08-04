@@ -174,7 +174,9 @@ def test_core_acceptance_flow(client, active_context, db_session) -> None:
     from app.models.audit_event import AuditEvent
 
     closed_events = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.closed")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.closed", AuditEvent.entity_id == uuid.UUID(batch["id"])
+        )
     ).scalar_one()
     assert closed_events == 1
 

@@ -183,10 +183,14 @@ def test_terminal_progression_closes_batch_with_one_audit_event(db_session, acti
     assert batch.state == "closed"
 
     stage_transitioned_count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.stage_transitioned")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.stage_transitioned", AuditEvent.entity_id == batch.id
+        )
     ).scalar_one()
     closed_count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.closed")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.closed", AuditEvent.entity_id == batch.id
+        )
     ).scalar_one()
     assert stage_transitioned_count == 0, "a terminal command must not also emit stage_transitioned"
     assert closed_count == 1

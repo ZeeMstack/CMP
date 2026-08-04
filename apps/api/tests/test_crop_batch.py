@@ -294,7 +294,9 @@ def test_terminal_start_stage_closes_batch_atomically(db_session, active_context
     assert run.exited_effective_time is None, "terminal run must remain the active current stage"
 
     count = db_session.execute(
-        select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.created")
+        select(func.count()).select_from(AuditEvent).where(
+            AuditEvent.action == "crop_batch.created", AuditEvent.entity_id == batch.id
+        )
     ).scalar_one()
     assert count == 1
 

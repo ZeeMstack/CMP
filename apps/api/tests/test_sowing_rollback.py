@@ -116,13 +116,27 @@ def _lines(scenario):
     ]
 
 
-def _assert_no_partial_writes(db_session) -> None:
-    assert db_session.execute(select(func.count()).select_from(SowingEvent)).scalar_one() == 0
-    assert db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one() == 0
-    assert db_session.execute(select(func.count()).select_from(SowingEventLine)).scalar_one() == 0
+def _assert_no_partial_writes(db_session, tenant, s) -> None:
+    """Scoped to this test's own tenant/batch — never a bare table-wide
+    count, which would be corrupted by committed rows any other test (e.g.
+    CMP-011's dedicated-connection scenarios, which also call sow_batch) has
+    left in the shared database."""
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.batch_id == s["batch"].id
+        )
+    ).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEventLine).where(SowingEventLine.tenant_id == tenant.id)
+    ).scalar_one() == 0
     assert (
         db_session.execute(
-            select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "crop_batch.sown")
+            select(func.count()).select_from(AuditEvent).where(
+                AuditEvent.action == "crop_batch.sown", AuditEvent.tenant_id == tenant.id
+            )
         ).scalar_one()
         == 0
     )
@@ -144,7 +158,7 @@ def test_rollback_after_event_insert_before_assignments(db_session, active_conte
             client_command_id=uuid.uuid4(), effective_time=_now(), note=None, lines=_lines(s),
         )
 
-    _assert_no_partial_writes(db_session)
+    _assert_no_partial_writes(db_session, tenant, s)
     _assert_session_usable(db_session)
 
 
@@ -160,7 +174,7 @@ def test_rollback_after_assignments_insert_before_lines(db_session, active_conte
             client_command_id=uuid.uuid4(), effective_time=_now(), note=None, lines=_lines(s),
         )
 
-    _assert_no_partial_writes(db_session)
+    _assert_no_partial_writes(db_session, tenant, s)
     _assert_session_usable(db_session)
 
 
@@ -176,7 +190,7 @@ def test_rollback_after_lines_insert_before_audit_and_commit(db_session, active_
             client_command_id=uuid.uuid4(), effective_time=_now(), note=None, lines=_lines(s),
         )
 
-    _assert_no_partial_writes(db_session)
+    _assert_no_partial_writes(db_session, tenant, s)
     _assert_session_usable(db_session)
 
 
@@ -206,5 +220,9 @@ def test_rollback_leaves_carriers_unassigned_and_batch_unchanged(db_session, act
     assert active_run.id == original_run.id
     for carrier in s["carriers"]:
         db_session.refresh(db_session.get(Carrier, carrier.id))
-    assert db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.batch_id == s["batch"].id
+        )
+    ).scalar_one() == 0
     _assert_session_usable(db_session)

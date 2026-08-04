@@ -53,6 +53,17 @@
 | Quality Hold | Immutable, batch-level block on stage progression; multiple simultaneous open holds are permitted; open/released state is derived, never stored |
 | Quality-Hold Release | Immutable decision record removing one quality hold; a new record, never a mutation of the original hold |
 
+## Carrier release and transplantation (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/TRANSPLANTATION_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Transplant Event | Immutable, insert-only record of one transplantation command, tied to the batch's exact active transplanting-stage run at execution time |
+| Transplant Source Line | One immutable line of a transplant event naming a released, sowing-origin carrier assignment and its plant/discard counts; each assignment can be a source at most once, ever |
+| Transplant Destination Line | One immutable line of a transplant event naming a freshly assigned destination carrier and its plant count |
+| Transplant Allocation | One immutable integer plant count moving from one source line to one destination line; the many-to-many bridge between them |
+| Assignment Origin | Which command opened a `batch_carrier_assignment` — exactly one of a sowing event (CMP-009) or a transplant event (CMP-011) |
+| Assignment Release | The closing of a sowing-origin `batch_carrier_assignment` by a transplant event; only sowing-origin assignments are releasable in CMP-011 |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |
