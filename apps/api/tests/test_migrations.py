@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app.core.settings import settings
@@ -15,6 +16,13 @@ def _cfg() -> Config:
     cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
     cfg.set_main_option("sqlalchemy.url", settings.test_database_url)
     return cfg
+
+
+def _resolve_head_revision(cfg: Config) -> str:
+    """Never hardcode "current head" in a test — resolve it dynamically from
+    the Alembic script graph so tests that assert "at head" stay correct as
+    later tickets add revisions on top of whichever one is head today."""
+    return ScriptDirectory.from_config(cfg).get_current_head()
 
 
 def _assert_operating_on_cmp_test_database(test_engine) -> None:
@@ -36,6 +44,31 @@ def _assert_operating_on_cmp_test_database(test_engine) -> None:
 def test_migration_downgrade_then_upgrade_on_test_database(test_engine) -> None:
     command.downgrade(_cfg(), "base")
     command.upgrade(_cfg(), "head")
+
+
+@pytest.mark.integration
+def test_alembic_script_graph_resolves_single_unambiguous_head() -> None:
+    """Guards against a future migration accidentally creating a second,
+    divergent head (e.g. a bad down_revision) — every downgrade-guard test
+    in this suite that resolves "current head" dynamically depends on there
+    being exactly one."""
+    script = ScriptDirectory.from_config(_cfg())
+    heads = script.get_heads()
+    assert len(heads) == 1, f"expected exactly one Alembic head, found {heads}"
+
+
+@pytest.mark.integration
+def test_migration_upgrade_head_matches_dynamically_resolved_alembic_head(test_engine) -> None:
+    """Proves the dynamic head-resolution helper actually tracks whichever
+    migration is current head (CMP-012 today) without any test hardcoding
+    its revision string — the same helper test_transplant_downgrade_guard.py
+    and test_batch_derivation_downgrade_guard.py use."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.upgrade(_cfg(), "head")
+    expected_head = _resolve_head_revision(_cfg())
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert current == expected_head
 
 
 @pytest.mark.integration
@@ -177,8 +210,13 @@ def test_migration_downgrade_removes_crop_batch_triggers_functions_and_additive_
 
     command.upgrade(_cfg(), "head")
     with test_engine.connect() as conn:
+        # Not `crop_batches_enforce_lifecycle` itself: CMP-012 supersedes
+        # that trigger attachment with `crop_batches_enforce_lifecycle_v2`
+        # (same pattern CMP-011 already used for CMP-009's
+        # `batch_carrier_assignments_enforce_insert_integrity`), so this
+        # smoke check uses a CMP-008 trigger no later ticket has touched.
         trigger_exists = conn.execute(
-            text("SELECT 1 FROM pg_trigger WHERE tgname = 'crop_batches_enforce_lifecycle'")
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'batch_stage_transitions_enforce_version_match'")
         ).first()
         constraint_exists = conn.execute(
             text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_farms_tenant_id_id'")
@@ -488,3 +526,164 @@ def _assert_upgraded_transplant_schema_restored(test_engine) -> None:
     assert trigger_exists is not None
     assert deferred_trigger_exists is not None
     assert "transplanting" in category_check_def
+
+
+# --- CMP-012: crop-batch split and merge lineage foundation -----------------------
+#
+# Isolation here follows the same self-cleaning discipline as CMP-011's own
+# section: no test in this file assumes a particular collection order, and
+# no committed-connection scenario is built here — this file only exercises
+# the migration's own downgrade/upgrade DDL cycle, never real derivation
+# data (that lives in test_batch_derivation_downgrade_guard.py, which cleans
+# up after itself).
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_derivation_triggers_functions_tables_and_restores_cmp011_shape(
+    test_engine,
+) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "f3a8c2e1b975")
+    try:
+        _assert_downgraded_derivation_schema_removed(test_engine)
+    finally:
+        command.upgrade(_cfg(), "head")
+    _assert_upgraded_derivation_schema_restored(test_engine)
+
+
+def _assert_downgraded_derivation_schema_removed(test_engine) -> None:
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'batch_derivation_events_no_update', 'batch_derivation_events_no_delete', "
+                "'batch_derivation_sources_no_update', 'batch_derivation_sources_no_delete', "
+                "'batch_derivation_outputs_no_update', 'batch_derivation_outputs_no_delete', "
+                "'batch_assignment_transfers_enforce_insert_integrity', "
+                "'batch_assignment_transfers_no_update', 'batch_assignment_transfers_no_delete', "
+                "'batch_derivation_events_enforce_reconciliation', "
+                "'batch_derivation_sources_enforce_reconciliation', "
+                "'batch_derivation_outputs_enforce_reconciliation', "
+                "'batch_assignment_transfers_enforce_reconciliation', "
+                "'crop_batches_enforce_derivation_reconciliation_on_create', "
+                "'crop_batches_enforce_derivation_reconciliation_on_supersede', "
+                "'batch_stage_transitions_enforce_derivation_reconciliation', "
+                "'batch_stage_runs_enforce_derivation_reconciliation', "
+                "'batch_carrier_assignments_enforce_reconcile_bde_on_open', "
+                "'batch_carrier_assignments_enforce_reconcile_bde_on_release', "
+                "'batch_carrier_assignments_enforce_origin_insert_integrity_v2', "
+                "'batch_carrier_assignments_enforce_closure_only_v2', "
+                "'crop_batches_enforce_lifecycle_v2')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_batch_assignment_transfer_insert_integrity', "
+                "'enforce_batch_derivation_reconciliation', "
+                "'enforce_batch_carrier_assignment_origin_insert_integrity_v2', "
+                "'enforce_batch_carrier_assignment_closure_only_v2', "
+                "'enforce_crop_batch_lifecycle_v2')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'batch_derivation_events', 'batch_derivation_sources', 'batch_derivation_outputs', "
+                "'batch_assignment_transfers')"
+            )
+        ).all()
+        crop_batches_columns = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'crop_batches' "
+                "AND column_name IN ('superseded_effective_time', 'superseded_by_batch_derivation_event_id', "
+                "'created_by_batch_derivation_event_id')"
+            )
+        ).all()
+        client_command_nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'crop_batches' "
+                "AND column_name = 'client_command_id'"
+            )
+        ).scalar_one()
+        transition_columns = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'batch_stage_transitions' "
+                "AND column_name = 'batch_derivation_event_id'"
+            )
+        ).all()
+        transition_client_command_nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'batch_stage_transitions' "
+                "AND column_name = 'client_command_id'"
+            )
+        ).scalar_one()
+        assignment_columns = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'batch_carrier_assignments' "
+                "AND column_name IN ('opening_batch_derivation_event_id', 'released_by_batch_derivation_event_id')"
+            )
+        ).all()
+        state_check_def = conn.execute(
+            text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_crop_batches_state'")
+        ).scalar_one()
+        command_kind_check_def = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_batch_stage_transitions_command_kind'"
+            )
+        ).scalar_one()
+        # CMP-011's and CMP-008's original functions/triggers must have been
+        # restored untouched — never dropped, only re-attached.
+        cmp011_closure_trigger = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'batch_carrier_assignments_enforce_closure_only'")
+        ).first()
+        cmp011_origin_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = "
+                "'batch_carrier_assignments_enforce_origin_insert_integrity'"
+            )
+        ).first()
+        cmp008_lifecycle_trigger = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'crop_batches_enforce_lifecycle'")
+        ).first()
+        cmp008_lifecycle_function = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_crop_batch_lifecycle'")
+        ).first()
+        prior_ticket_constraint_intact = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_transplant_events_tenant_farm_id'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert crop_batches_columns == []
+    assert client_command_nullable == "NO"
+    assert transition_columns == []
+    assert transition_client_command_nullable == "NO"
+    assert assignment_columns == []
+    assert "superseded" not in state_check_def
+    assert "derivation_entry" not in command_kind_check_def
+    assert cmp011_closure_trigger is not None
+    assert cmp011_origin_trigger is not None
+    assert cmp008_lifecycle_trigger is not None
+    assert cmp008_lifecycle_function is not None
+    assert prior_ticket_constraint_intact is not None, "prior-ticket transplant schema must remain intact"
+
+
+def _assert_upgraded_derivation_schema_restored(test_engine) -> None:
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'batch_derivation_events_no_update'")
+        ).first()
+        deferred_trigger_exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = "
+                "'batch_carrier_assignments_enforce_reconcile_bde_on_release'"
+            )
+        ).first()
+        state_check_def = conn.execute(
+            text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'ck_crop_batches_state'")
+        ).scalar_one()
+    assert trigger_exists is not None
+    assert deferred_trigger_exists is not None
+    assert "superseded" in state_check_def

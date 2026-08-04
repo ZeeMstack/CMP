@@ -36,4 +36,6 @@ Downgrading past CMP-011 is destructive to production history by nature (it woul
 
 ## Deferred
 
-Repeated/chained transplantation, releasing a transplant-created assignment, batch split/merge, new batch creation, stage auto-progression, carrier movement/occupancy, capacity enforcement, inventory, quality-hold-blocks-transplantation (holds remain a stage-progression lock only), harvest, packing, QR identities, labels, frontend, RLS, role-specific authorization.
+Repeated/chained transplantation, releasing a transplant-created assignment, new batch creation, stage auto-progression, carrier movement/occupancy, capacity enforcement, inventory, quality-hold-blocks-transplantation (holds remain a stage-progression lock only), harvest, packing, QR identities, labels, frontend, RLS, role-specific authorization.
+
+Batch split/merge is implemented — see `docs/domain/BATCH_DERIVATION_MODEL.md` (CMP-012). It widens the assignment-origin CHECK to a third opener (`opening_batch_derivation_event_id`) and, for derivation-release only, drops the sowing-origin-only restriction described above under Assignment origin and release; transplant-release itself is unchanged.

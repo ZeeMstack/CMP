@@ -46,6 +46,12 @@ class BatchCarrierAssignment(Base):
     released_by_transplant_event_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("transplant_events.id"), nullable=True
     )
+    opening_batch_derivation_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batch_derivation_events.id"), nullable=True
+    )
+    released_by_batch_derivation_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batch_derivation_events.id"), nullable=True
+    )
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -53,12 +59,19 @@ class BatchCarrierAssignment(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "(opening_sowing_event_id IS NOT NULL) <> (opening_transplant_event_id IS NOT NULL)",
+            "(CASE WHEN opening_sowing_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN opening_transplant_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN opening_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_batch_carrier_assignments_exactly_one_opener",
         ),
         CheckConstraint(
-            "(released_effective_time IS NULL) = (released_by_transplant_event_id IS NULL)",
+            "(released_effective_time IS NULL) = "
+            "(released_by_transplant_event_id IS NULL AND released_by_batch_derivation_event_id IS NULL)",
             name="ck_batch_carrier_assignments_release_fields_together",
+        ),
+        CheckConstraint(
+            "NOT (released_by_transplant_event_id IS NOT NULL AND released_by_batch_derivation_event_id IS NOT NULL)",
+            name="ck_batch_carrier_assignments_at_most_one_releaser",
         ),
         CheckConstraint(
             "released_by_transplant_event_id IS NULL OR opening_sowing_event_id IS NOT NULL",
@@ -118,5 +131,23 @@ class BatchCarrierAssignment(Base):
                 "transplant_events.id",
             ],
             name="fk_batch_carrier_assignments_released_by_transplant_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "opening_batch_derivation_event_id"],
+            [
+                "batch_derivation_events.tenant_id",
+                "batch_derivation_events.farm_id",
+                "batch_derivation_events.id",
+            ],
+            name="fk_batch_carrier_assignments_opening_derivation_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "released_by_batch_derivation_event_id"],
+            [
+                "batch_derivation_events.tenant_id",
+                "batch_derivation_events.farm_id",
+                "batch_derivation_events.id",
+            ],
+            name="fk_batch_carrier_assignments_released_by_derivation_event",
         ),
     )

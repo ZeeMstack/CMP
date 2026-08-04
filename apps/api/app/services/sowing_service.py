@@ -545,6 +545,8 @@ def _assignment_row_to_read(row) -> BatchCarrierAssignmentRead:
         opening_sowing_event_id=assignment.opening_sowing_event_id,
         opening_transplant_event_id=assignment.opening_transplant_event_id,
         released_by_transplant_event_id=assignment.released_by_transplant_event_id,
+        opening_batch_derivation_event_id=assignment.opening_batch_derivation_event_id,
+        released_by_batch_derivation_event_id=assignment.released_by_batch_derivation_event_id,
     )
 
 

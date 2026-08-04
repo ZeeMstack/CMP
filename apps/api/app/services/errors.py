@@ -388,3 +388,29 @@ class DestinationCarrierAlreadyAssignedError(DomainError):
 
 class TooManyTransplantLinesError(DomainError):
     pass
+
+
+class BatchDerivationEventNotFoundError(DomainError):
+    pass
+
+
+class BatchDerivationCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class BatchDerivationValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidBatchDerivationEffectiveTimeError(DomainError):
+    pass
+
+
+class SourceBatchAlreadySupersededError(DomainError):
+    pass
+
+
+class TooManyBatchDerivationLinesError(DomainError):
+    pass

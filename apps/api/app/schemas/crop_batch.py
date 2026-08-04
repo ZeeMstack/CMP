@@ -85,6 +85,9 @@ class CropBatchRead(BaseModel):
     created_effective_time: datetime
     created_at: datetime
     closed_effective_time: datetime | None
+    superseded_effective_time: datetime | None
+    superseded_by_batch_derivation_event_id: uuid.UUID | None
+    created_by_batch_derivation_event_id: uuid.UUID | None
 
 
 class CurrentStageRead(BaseModel):

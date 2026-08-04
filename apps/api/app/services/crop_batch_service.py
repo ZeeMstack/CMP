@@ -494,6 +494,9 @@ def _row_to_batch_read(row) -> CropBatchRead:
         created_effective_time=batch.created_effective_time,
         created_at=batch.created_at,
         closed_effective_time=batch.closed_effective_time,
+        superseded_effective_time=batch.superseded_effective_time,
+        superseded_by_batch_derivation_event_id=batch.superseded_by_batch_derivation_event_id,
+        created_by_batch_derivation_event_id=batch.created_by_batch_derivation_event_id,
     )
 
 

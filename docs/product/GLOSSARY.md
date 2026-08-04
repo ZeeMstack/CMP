@@ -64,6 +64,19 @@
 | Assignment Origin | Which command opened a `batch_carrier_assignment` — exactly one of a sowing event (CMP-009) or a transplant event (CMP-011) |
 | Assignment Release | The closing of a sowing-origin `batch_carrier_assignment` by a transplant event; only sowing-origin assignments are releasable in CMP-011 |
 
+## Crop-batch split and merge lineage (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/BATCH_DERIVATION_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Batch Derivation | Umbrella term for the two CMP-012 commands that change crop-batch identity: split and merge |
+| Batch Split | One active crop batch becomes two or more new active crop batches; its active carrier assignments are partitioned among the outputs |
+| Batch Merge | Two or more compatible active crop batches become one new active crop batch; all their active carrier assignments move to the output |
+| Source Batch | A batch consumed by a derivation event; becomes superseded, never terminally closed |
+| Output Batch | A batch newly created by a derivation event; never an existing batch selected by the client |
+| Superseded Batch | Terminal crop-batch lifecycle state reached only via one valid split or merge event; distinct from `closed` |
+| Assignment Transfer | One immutable record of a single carrier's complete active assignment moving from a source batch to an output batch |
+| Derivation Entry | Internal, non-client-facing `batch_stage_transition` provenance record opening an output batch's first active stage run |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

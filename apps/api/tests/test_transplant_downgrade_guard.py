@@ -35,13 +35,23 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
 
 API_ROOT = Path(__file__).resolve().parent.parent
-_HEAD_REVISION = "f3a8c2e1b975"
+# Never hardcode "current head" — later tickets (e.g. CMP-012) add revisions
+# on top of this one, and alembic wraps an entire multi-revision
+# downgrade/upgrade run in one transaction (migrations/env.py's single
+# `context.begin_transaction()` around `context.run_migrations()`), so when
+# CMP-011's guard blocks partway through a downgrade that would otherwise
+# walk back through later tickets first, the whole attempt — including
+# those later tickets' own, otherwise-clean downgrade steps — rolls back
+# atomically, leaving the database at whatever the true head is *today*.
+# Resolved dynamically via the Alembic script graph so this never goes
+# stale again as new tickets land.
 _PRE_CMP011_REVISION = "e29b5c1a7d43"
 
 
@@ -52,6 +62,10 @@ def _cfg() -> Config:
     return cfg
 
 
+def _resolve_head_revision(cfg: Config) -> str:
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -59,7 +73,8 @@ def _now():
 def _assert_at_head(test_engine) -> None:
     with test_engine.connect() as conn:
         current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert current == _HEAD_REVISION, "a blocked downgrade must leave the database at Alembic head"
+    expected_head = _resolve_head_revision(_cfg())
+    assert current == expected_head, "a blocked downgrade must leave the database at Alembic head"
 
 
 def _create_minimal_tenant_farm(session, *, code_suffix: str):

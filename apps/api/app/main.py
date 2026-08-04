@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.assets import router as assets_router
+from app.api.batch_derivations import router as batch_derivations_router
 from app.api.carriers import router as carriers_router
 from app.api.crop_batches import router as crop_batches_router
 from app.api.crops import router as crops_router
@@ -38,6 +39,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(production_systems_router)
     api.include_router(workflows_router)
     api.include_router(crop_batches_router)
+    api.include_router(batch_derivations_router)
     api.include_router(seed_lots_router)
     api.include_router(sowings_router)
     api.include_router(observation_definitions_router)

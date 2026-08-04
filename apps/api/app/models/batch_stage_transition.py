@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-COMMAND_KINDS = ("initial_entry", "stage_transition")
+COMMAND_KINDS = ("initial_entry", "stage_transition", "derivation_entry")
 
 
 class BatchStageTransition(Base):
@@ -42,23 +42,33 @@ class BatchStageTransition(Base):
     configured_transition_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("workflow_transitions.id"), nullable=True
     )
+    batch_derivation_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batch_derivation_events.id"), nullable=True
+    )
     effective_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     recorded_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    client_command_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
-    request_fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
     reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
-            "command_kind IN ('initial_entry', 'stage_transition')",
+            "command_kind IN ('initial_entry', 'stage_transition', 'derivation_entry')",
             name="ck_batch_stage_transitions_command_kind",
         ),
         CheckConstraint(
-            "(command_kind = 'initial_entry' AND source_stage_id IS NULL AND configured_transition_id IS NULL) OR "
-            "(command_kind = 'stage_transition' AND source_stage_id IS NOT NULL AND configured_transition_id IS NOT NULL)",
+            "(command_kind = 'initial_entry' AND source_stage_id IS NULL AND configured_transition_id IS NULL "
+            "AND batch_derivation_event_id IS NULL AND client_command_id IS NOT NULL "
+            "AND request_fingerprint IS NOT NULL) OR "
+            "(command_kind = 'stage_transition' AND source_stage_id IS NOT NULL "
+            "AND configured_transition_id IS NOT NULL AND batch_derivation_event_id IS NULL "
+            "AND client_command_id IS NOT NULL AND request_fingerprint IS NOT NULL) OR "
+            "(command_kind = 'derivation_entry' AND source_stage_id IS NULL AND configured_transition_id IS NULL "
+            "AND batch_derivation_event_id IS NOT NULL AND client_command_id IS NULL "
+            "AND request_fingerprint IS NULL)",
             name="ck_batch_stage_transitions_shape",
         ),
         CheckConstraint(
@@ -78,10 +88,25 @@ class BatchStageTransition(Base):
             unique=True,
             postgresql_where=text("command_kind = 'initial_entry'"),
         ),
+        Index(
+            "ux_batch_stage_transitions_one_derivation_entry",
+            "batch_id",
+            unique=True,
+            postgresql_where=text("command_kind = 'derivation_entry'"),
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "batch_id"],
             ["crop_batches.tenant_id", "crop_batches.farm_id", "crop_batches.id"],
             name="fk_batch_stage_transitions_tenant_farm_batch",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_derivation_event_id"],
+            [
+                "batch_derivation_events.tenant_id",
+                "batch_derivation_events.farm_id",
+                "batch_derivation_events.id",
+            ],
+            name="fk_batch_stage_transitions_derivation_event",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "workflow_version_id", "destination_stage_id"],

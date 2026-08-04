@@ -42,8 +42,9 @@ class BatchStageTransitionRead(BaseModel):
     source_stage_id: uuid.UUID | None
     destination_stage_id: uuid.UUID
     configured_transition_id: uuid.UUID | None
+    batch_derivation_event_id: uuid.UUID | None
     effective_time: datetime
     recorded_time: datetime
     actor_user_id: uuid.UUID
-    client_command_id: uuid.UUID
+    client_command_id: uuid.UUID | None
     reason: str | None

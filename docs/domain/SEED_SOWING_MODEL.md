@@ -36,4 +36,6 @@ Composite foreign keys prove tenant/farm/batch consistency structurally, reusing
 
 ## Deferred
 
-Seed inventory balances, material issues, stock deduction, costing, germination observations, carrier-capacity configuration, carrier release, reassignment, transplanting, transformations, split/merge, quality, harvest, packing, QR identities, labels, frontend, RLS, role-specific authorization.
+Seed inventory balances, material issues, stock deduction, costing, germination observations, carrier-capacity configuration, carrier release, reassignment, transplanting, transformations, quality, harvest, packing, QR identities, labels, frontend, RLS, role-specific authorization.
+
+Carrier release/reassignment (transplanting, CMP-011) and split/merge (CMP-012) are both now implemented — see `docs/domain/TRANSPLANTATION_MODEL.md` and `docs/domain/BATCH_DERIVATION_MODEL.md`. Both amend the `batch_carrier_assignment` shape described here (adding typed openers/releasers) rather than replacing it.

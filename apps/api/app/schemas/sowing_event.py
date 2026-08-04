@@ -123,3 +123,5 @@ class BatchCarrierAssignmentRead(BaseModel):
     opening_sowing_event_id: uuid.UUID | None
     opening_transplant_event_id: uuid.UUID | None
     released_by_transplant_event_id: uuid.UUID | None
+    opening_batch_derivation_event_id: uuid.UUID | None
+    released_by_batch_derivation_event_id: uuid.UUID | None
