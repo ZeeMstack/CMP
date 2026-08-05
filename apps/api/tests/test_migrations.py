@@ -687,3 +687,92 @@ def _assert_upgraded_derivation_schema_restored(test_engine) -> None:
     assert trigger_exists is not None
     assert deferred_trigger_exists is not None
     assert "superseded" in state_check_def
+
+
+# --- CMP-013: harvest event and harvested produce lot foundation ------------------
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_harvest_triggers_functions_tables_and_restores_cmp012_shape(
+    test_engine,
+) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "a4d92f7c1e6b")
+    try:
+        _assert_downgraded_harvest_schema_removed(test_engine)
+    finally:
+        command.upgrade(_cfg(), "head")
+    _assert_upgraded_harvest_schema_restored(test_engine)
+
+
+def _assert_downgraded_harvest_schema_removed(test_engine) -> None:
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'harvest_events_enforce_insert_integrity', 'harvest_events_no_update', "
+                "'harvest_events_no_delete', 'harvest_source_lines_enforce_insert_integrity', "
+                "'harvest_source_lines_no_update', 'harvest_source_lines_no_delete', "
+                "'harvested_produce_lots_enforce_insert_integrity', 'harvested_produce_lots_no_update', "
+                "'harvested_produce_lots_no_delete', 'harvest_events_enforce_reconciliation', "
+                "'harvest_source_lines_enforce_reconciliation', "
+                "'harvested_produce_lots_enforce_reconciliation')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_harvest_event_insert_integrity', 'enforce_harvest_source_line_insert_integrity', "
+                "'enforce_harvested_produce_lot_insert_integrity', 'enforce_harvest_reconciliation')"
+            )
+        ).all()
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'harvest_events', 'harvest_source_lines', 'harvested_produce_lots')"
+            )
+        ).all()
+        category_check_def = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_workflow_stages_category_allowed'"
+            )
+        ).scalar_one()
+        # Shared functions must remain present (used by other tickets' tables).
+        shared_functions_still_present = conn.execute(
+            text(
+                "SELECT count(*) FROM pg_proc WHERE proname IN "
+                "('reject_append_only_mutation', 'reject_hard_delete')"
+            )
+        ).scalar_one()
+        prior_ticket_constraint_intact = conn.execute(
+            text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_batch_derivation_events_tenant_farm_id'")
+        ).first()
+    assert triggers == []
+    assert functions == []
+    assert tables == []
+    assert "harvesting" not in category_check_def
+    assert "harvest_ready" in category_check_def
+    assert shared_functions_still_present == 2
+    assert prior_ticket_constraint_intact is not None, "prior-ticket batch-derivation schema must remain intact"
+
+
+def _assert_upgraded_harvest_schema_restored(test_engine) -> None:
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'harvest_events_enforce_insert_integrity'")
+        ).first()
+        deferred_trigger_exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = 'harvested_produce_lots_enforce_reconciliation'"
+            )
+        ).first()
+        category_check_def = conn.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'ck_workflow_stages_category_allowed'"
+            )
+        ).scalar_one()
+    assert trigger_exists is not None
+    assert deferred_trigger_exists is not None
+    assert "harvesting" in category_check_def

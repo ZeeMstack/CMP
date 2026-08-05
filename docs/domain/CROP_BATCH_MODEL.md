@@ -31,6 +31,6 @@ Composite foreign keys (mirroring CMP-007's `(tenant_id, ...) → parent(tenant_
 
 ## Deferred
 
-Seed lots, sowing, seed counts, germination observations, batch-to-carrier assignment, grow locations, occupancy/movement commands, quality, approvals/holds, transformations, harvest, packing, QR identities, labels, frontend, RLS, role-specific authorization.
+Seed lots, sowing, seed counts, germination observations, batch-to-carrier assignment, grow locations, occupancy/movement commands, quality, approvals/holds, transformations, packing, QR identities, labels, frontend, RLS, role-specific authorization.
 
-Split/merge (batch identity derivation) is implemented — see `docs/domain/BATCH_DERIVATION_MODEL.md` (CMP-012), which adds a third lifecycle state (`superseded`) and a third `batch_stage_transitions` command kind (`derivation_entry`) on top of the model described here.
+Split/merge (batch identity derivation) is implemented — see `docs/domain/BATCH_DERIVATION_MODEL.md` (CMP-012), which adds a third lifecycle state (`superseded`) and a third `batch_stage_transitions` command kind (`derivation_entry`) on top of the model described here. Harvest is implemented — see `docs/domain/HARVEST_MODEL.md` (CMP-013); it reads a batch's active stage run and carrier assignments but touches no `crop_batches` column and adds no lifecycle state or command kind.

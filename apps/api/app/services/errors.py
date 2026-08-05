@@ -414,3 +414,37 @@ class SourceBatchAlreadySupersededError(DomainError):
 
 class TooManyBatchDerivationLinesError(DomainError):
     pass
+
+
+class HarvestEventNotFoundError(DomainError):
+    pass
+
+
+class HarvestCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class HarvestValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidHarvestEffectiveTimeError(DomainError):
+    pass
+
+
+class TooManyHarvestLinesError(DomainError):
+    pass
+
+
+class DuplicateProduceLotCodeError(DomainError):
+    pass
+
+
+class HarvestedProduceLotNotFoundError(DomainError):
+    pass
+
+
+class HarvestSourceAssignmentNotFoundError(DomainError):
+    pass

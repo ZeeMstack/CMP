@@ -1,0 +1,47 @@
+# Harvest Event and Harvested Produce Lot Model
+
+Full detail: `CMP_MASTER_SPEC.md` §2, §8; `CLAUDE.md` rules 1, 3, 4, 5, 6, 7, 8, 10, 12. This document summarizes the approved model as implemented in CMP-013; it does not restate the spec.
+
+## Scope
+
+CMP-013 is the first command whose output is a genuinely new kind of entity: a harvested-produce lot, not a batch-identity or carrier-assignment change. Harvest quantity is always operator-recorded — unlike CMP-011/012, there is no origin-branching quantity-derivation logic, because a harvest weight is never inherited from an assignment's opening event. Out of scope: packing, grading, sorting, rejected/waste quantities, cold-store receipt/occupancy, dispatch, sales orders, invoicing, inventory valuation, remaining-balance/quantity-on-hand tracking, lot consumption, lot split/merge, harvest correction, reversal, void, automatic batch closure or stage progression, carrier/assignment release, occupancy/movement commands, capacity enforcement, QR identities, labels, frontend, RLS, role-specific authorization. A produce lot is a record of what was harvested — not yet inventory.
+
+## Harvesting-stage category
+
+`STAGE_CATEGORIES` gains `harvesting`, additive to the existing 9-value list (including the already-present, still-unused-by-any-command `harvest_ready`). The two are distinct on purpose: `harvest_ready` may represent operational readiness before harvesting; `harvesting` is the one category CMP-013's harvest command actually gates on (current active stage run's `stage_category = 'harvesting'`). `required_carrier_type_id` is not required for a harvesting stage and is not reinterpreted — harvest opens no carrier assignment, it only reads existing active ones.
+
+## Harvest event, source lines, and produce lot
+
+One `harvest_event` is one command, tied by trigger to the batch's exact active stage run, which must be `harvesting`-category. It carries one or more `harvest_source_lines` (one active carrier assignment each — `UNIQUE(harvest_event_id, batch_carrier_assignment_id)`, **not** global, so the same assignment may be harvested again in a later, separate event) and drives exactly one `harvested_produce_lot` (`UNIQUE(harvest_event_id)` — a lot cannot exist without its event, and an event cannot commit without exactly one lot). There is no `lot_id` column on the event; the lot points back via its own `harvest_event_id` FK, the same reverse-pointing shape CMP-011's destination lines and CMP-012's outputs already use to resolve the same identity-comes-first ordering problem.
+
+**One lot per event, deliberately narrow**: different grades, destinations, or commercial lots require separate harvest commands until grading/packing are designed — no many-to-many harvest-allocation model in CMP-013.
+
+## Weight and count semantics
+
+Weight is mandatory and authoritative; count is optional and per-line, but an event is all-lines-counted or zero-lines-counted — never partial. Weight is never derived from count or vice versa, and harvest never reads `sown_site_count`/`assigned_plant_count`/`transferred_plant_count`/germination counts as inventory — those remain lineage evidence only. `whole_unit_count`/`total_whole_unit_count` are `BIGINT` columns (not `INTEGER`), matching the Pydantic layer's `le=9223372036854775807` bound; the service also rejects an aggregate weight or count sum that would exceed its own maximum before any row is written, rather than surfacing the database's own range/CHECK protection as a raw, untranslated error.
+
+**Decimal storage, deliberately not `NUMERIC(14,3)`**: PostgreSQL silently rounds excess scale to a column's declared scale on insert, which would defeat "reject rather than round." Both weight columns are unconstrained `NUMERIC` with an explicit CHECK reproducing the intended envelope (`value > 0 AND value = trunc(value, 3) AND value < 100000000000` — up to 11 integer digits, exactly ≤3 decimal places). The Pydantic layer mirrors this before any write and additionally rejects binary floats outright — a JSON float is inherently lossy, so clients send weight as a string (e.g. `"12.375"`). The "at most 3 decimal places" check runs on the *normalized* value (`Decimal.normalize()`), not the literal input, so a trailing-zero-padded literal (`"1.2000"`) or safe scientific notation (`"1.000E-3"`) that normalizes to <=3 places is accepted, while genuine excess precision (`"1.2345"`, or scientific notation that normalizes to more than 3 places) is rejected either way. Idempotency-fingerprint canonicalization normalizes equivalent representations (`1.2`/`1.20`/`1.200`) to the same non-exponent string, and API responses serialize weight the same way — never as a JSON float.
+
+## Reconciliation
+
+Per event: `sum(harvest_source_lines.harvested_weight_kg) == harvested_produce_lots.total_harvested_weight_kg`, and when counts are used, `sum(harvest_source_lines.whole_unit_count) == harvested_produce_lots.total_whole_unit_count`. Validated in-memory before any write, and independently by one shared database function (`enforce_harvest_reconciliation`) attached to three `DEFERRABLE INITIALLY DEFERRED` constraint triggers (`AFTER INSERT` on `harvest_events`, `harvest_source_lines`, `harvested_produce_lots`), re-validating the event's complete state at real commit — catching a later, separate transaction's direct-SQL tampering. Unlike CMP-012, no separate reverse-reference check is needed: source lines and the lot both reference `harvest_event_id` directly, so counting "by event" already is the complete set.
+
+## Database-level effective-time enforcement
+
+The harvest-event insert-integrity trigger independently re-derives every effective-time bound the service already checks, in the same order the service checks them (batch lock and tenant/farm match → batch active → not in the future → not before batch creation → active stage run resolved → not before stage-run entry → stage category `harvesting` → no open hold), so a direct-SQL insert can never bypass timing rules the service alone enforced. `clock_timestamp()` is the one clock function used for "now" throughout this trigger — deliberately not `now()`/`transaction_timestamp()`, which freeze at the transaction's start and would misclassify a genuinely-current `effective_time` as "future" whenever the surrounding transaction has already been open for any real elapsed time (e.g. earlier locks/reads in the same request, or — concretely — this ticket's own test fixtures, which hold one transaction open across an entire multi-step scenario build). `clock_timestamp()` always reflects the true current instant. The source-line trigger independently re-derives its own bound (event effective time not before the selected assignment's `assigned_effective_time`), which needs no clock function at all — it compares two already-stored timestamps.
+
+## Quality-hold policy
+
+Harvest creates a produce lot that may later enter packing and dispatch, so an open hold blocks a genuinely new harvest exactly like CMP-012 blocks derivation (see `OBSERVATION_QUALITY_MODEL.md`'s hold-blocking-scope section). Service-level: `quality_hold_service.has_open_quality_hold`, checked after idempotency replay, before mutable-state validation. Database-level (a first for this net): the harvest-event insert-integrity trigger explicitly `SELECT ... FOR UPDATE`-locks the `crop_batches` row before checking for an open hold — not an unlocked read — so a direct-SQL insert genuinely serializes against every other command that already locks the batch (stage progression, transplantation, split/merge, hold placement, another harvest).
+
+## Locking, idempotency, and transaction shape
+
+Locking: batch → active stage run → selected assignments (sorted) → carriers (sorted) — the same shape `transplant_service`/`batch_derivation_service` use, so all of them serialize against harvest via the shared batch-row lock. Idempotency: tenant-wide `client_command_id` + SHA-256 fingerprint on `harvest_events`, excluding stage-run id, current assignment/carrier/hold state, and computed totals. The write phase is **one** `try` block covering the event insert through commit, with one `except IntegrityError` (branching on constraint name for both command-id replay and lot-code collision) and one `except Exception` (rollback, re-raise) — a deliberate simplification from CMP-011/012's two-stage own-flush-then-wrap pattern, since duplicate-command and duplicate-lot-code are both just named-constraint outcomes of the same single write attempt.
+
+## Database protection and downgrade guard
+
+Composite foreign keys prove tenant/farm/batch consistency structurally throughout; batch-membership of a source assignment (assignment.batch_id == event.batch_id) is a trigger check, mirroring `transplant_source_lines`. All three new tables are append-only/no-delete. Downgrading past CMP-013 is destructive by nature; the migration's `downgrade()` queries, before any DDL, for any row in the three new tables or any `harvesting`-category workflow stage — if any exist, it raises `RuntimeError` and aborts with zero schema change.
+
+## Deferred
+
+Packing, grading, sorting, rejected/waste quantities, cold storage, dispatch, sales orders, invoicing, inventory valuation, remaining/available/consumed quantity tracking, lot consumption, lot split/merge, harvest correction, reversal, void, automatic batch closure/stage progression, carrier/assignment release, occupancy/movement changes, QR identities, labels, frontend, RLS, role-specific authorization.

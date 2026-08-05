@@ -77,6 +77,16 @@
 | Assignment Transfer | One immutable record of a single carrier's complete active assignment moving from a source batch to an output batch |
 | Derivation Entry | Internal, non-client-facing `batch_stage_transition` provenance record opening an output batch's first active stage run |
 
+## Harvest event and harvested produce lot (`CMP_MASTER_SPEC.md` §2, §8, `docs/domain/HARVEST_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Harvest Event | Immutable, insert-only record of one harvest command, tied to the batch's exact active harvesting-stage run at execution time |
+| Harvest Source Line | One immutable per-assignment line of a harvest event naming an active carrier assignment and its harvested weight/count; the same assignment may be harvested again in a later, separate event |
+| Harvested Produce Lot | Immutable identity created by exactly one harvest event, carrying the event's total harvested weight/count and snapshot batch/workflow/crop/variety traceability; not yet inventory |
+| Harvest Weight | The authoritative harvested quantity, in kilograms, stored as an exact Decimal — never binary float, never derived from count |
+| Whole-Unit Count | Optional per-line unit count; an event is either all-lines-counted or zero-lines-counted, never partial, and is never derived from weight |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

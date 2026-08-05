@@ -24,6 +24,7 @@ STAGE_CATEGORIES = (
     "intermediate",
     "production",
     "harvest_ready",
+    "harvesting",
     "completed",
     "rejected",
 )
