@@ -776,3 +776,345 @@ def _assert_upgraded_harvest_schema_restored(test_engine) -> None:
     assert trigger_exists is not None
     assert deferred_trigger_exists is not None
     assert "harvesting" in category_check_def
+
+
+# --- CMP-014: produce lot opening receipt ledger ----------------------------------
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_ledger_triggers_functions_table_and_restores_cmp013_shape(
+    test_engine,
+) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "c7f14b8e29a3")
+    try:
+        _assert_downgraded_ledger_schema_removed(test_engine)
+    finally:
+        command.upgrade(_cfg(), "head")
+    _assert_upgraded_ledger_schema_restored(test_engine)
+
+
+def _assert_downgraded_ledger_schema_removed(test_engine) -> None:
+    with test_engine.connect() as conn:
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN ("
+                "'produce_lot_ledger_entries_enforce_insert_integrity', "
+                "'produce_lot_ledger_entries_no_update', 'produce_lot_ledger_entries_no_delete', "
+                "'produce_lot_ledger_entries_enforce_reconciliation', "
+                "'harvested_produce_lots_enforce_ledger_reconciliation')"
+            )
+        ).all()
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_produce_lot_ledger_entry_insert_integrity', "
+                "'enforce_produce_lot_ledger_reconciliation')"
+            )
+        ).all()
+        table_exists = conn.execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name = 'produce_lot_ledger_entries'")
+        ).first()
+        # CMP-013's own reconciliation trigger on harvested_produce_lots
+        # must remain untouched — only CMP-014's second, distinctly-named
+        # trigger on that same table is dropped.
+        cmp013_lot_trigger_intact = conn.execute(
+            text("SELECT 1 FROM pg_trigger WHERE tgname = 'harvested_produce_lots_enforce_reconciliation'")
+        ).first()
+        shared_functions_still_present = conn.execute(
+            text(
+                "SELECT count(*) FROM pg_proc WHERE proname IN "
+                "('reject_append_only_mutation', 'reject_hard_delete')"
+            )
+        ).scalar_one()
+    assert triggers == []
+    assert functions == []
+    assert table_exists is None
+    assert cmp013_lot_trigger_intact is not None, "CMP-013's own lot reconciliation trigger must remain intact"
+    assert shared_functions_still_present == 2
+
+
+def _assert_upgraded_ledger_schema_restored(test_engine) -> None:
+    with test_engine.connect() as conn:
+        trigger_exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = 'produce_lot_ledger_entries_enforce_insert_integrity'"
+            )
+        ).first()
+        deferred_trigger_exists = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = 'harvested_produce_lots_enforce_ledger_reconciliation'"
+            )
+        ).first()
+        table_exists = conn.execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name = 'produce_lot_ledger_entries'")
+        ).first()
+    assert trigger_exists is not None
+    assert deferred_trigger_exists is not None
+    assert table_exists is not None
+
+
+def _cleanup_ledger_migration_scenario(test_engine, tenant_id) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    conn = test_engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(text("SET session_replication_role = replica"))
+        conn.execute(text("DELETE FROM produce_lot_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM harvest_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM harvested_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM harvest_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM crop_batches WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM workflow_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM workflow_stages WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM workflow_versions WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM workflows WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM production_systems WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM varieties WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM crops WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+    except Exception:
+        trans.rollback()
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        conn.commit()
+        raise
+    else:
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.integration
+def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reupgrade(test_engine) -> None:
+    """Simulates data that already existed under CMP-013 before CMP-014
+    ever ran: a harvest event/lot/source-line triple is built directly via
+    SQL (mirroring exactly what `harvest_service.record_harvest` produced
+    before this ticket amended it) while the database is downgraded to
+    CMP-013 — the current `harvest_service` code cannot be used for this
+    step, since it now unconditionally inserts a ledger row that would not
+    exist at CMP-013 schema. Upgrading to CMP-014 must then backfill one
+    receipt whose every field exactly matches the lot/event, and a
+    downgrade-then-re-upgrade cycle must reproduce an identical row."""
+    import uuid
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from sqlalchemy.orm import Session
+
+    from app.services import (
+        carrier_service,
+        crop_batch_service,
+        crop_service,
+        farm_service,
+        membership_service,
+        production_system_service,
+        sowing_service,
+        tenant_service,
+        user_service,
+        workflow_service,
+    )
+
+    def now():
+        return datetime.now(timezone.utc)
+
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "c7f14b8e29a3")
+
+    suffix = uuid.uuid4().hex[:8]
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant = tenant_service.create_tenant(session, code=f"ledger-mig-{suffix}", name="Ledger Migration Tenant")
+    user = user_service.create_user(
+        session, oidc_issuer="ledger-mig", oidc_subject=suffix, email=f"ledger-mig-{suffix}@example.com",
+        display_name="Migration User",
+    )
+    membership_service.add_membership(
+        session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None
+    )
+    farm = farm_service.create_farm(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="Migration Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    crop = crop_service.register_crop(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"crop-{suffix}", common_name="Iceberg",
+        scientific_name=None, crop_category="leafy_green",
+    )
+    variety = crop_service.register_variety(
+        session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"var-{suffix}",
+        name="Variety", supplier_reference=None,
+    )
+    ps = production_system_service.register_production_system(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ps-{suffix}", name="System", description=None,
+    )
+    workflow = workflow_service.register_workflow(
+        session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
+        production_system_id=ps.id, code=f"wf-{suffix}", name="Workflow",
+    )
+    version = workflow_service.create_draft_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
+    )
+    seeding = workflow_service.add_stage(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
+        expected_duration_minutes=None, permitted_location_type_code=None,
+        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    )
+    harvesting = workflow_service.add_stage(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="HARVESTING", name="Harvesting", display_order=1, stage_category="harvesting",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=False,
+    )
+    complete = workflow_service.add_stage(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="COMPLETE", name="Complete", display_order=2, stage_category="completed",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=True,
+    )
+    t1 = workflow_service.add_transition(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=seeding.id, to_stage_id=harvesting.id, code="ADV-1", name="Advance 1",
+    )
+    workflow_service.add_transition(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=harvesting.id, to_stage_id=complete.id, code="ADV-2", name="Advance 2",
+    )
+    workflow_service.publish_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
+    )
+    batch = crop_batch_service.create_batch(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"batch-{suffix}", workflow_id=workflow.id, effective_time=now(),
+    )
+    seed_lot = sowing_service.register_seed_lot(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
+        variety_id=variety.id, code=f"lot-{suffix}", supplier_name=None, supplier_lot_reference=None,
+        received_date=None, expiry_date=None,
+    )
+    carrier = carrier_service.register_carrier(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"tray-{suffix}", issued_date=None,
+    )
+    sowing_service.sow_batch(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), effective_time=now(), note=None,
+        lines=[{"carrier_id": carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": 20, "seed_count": 20, "line_note": None}],
+    )
+    assignment = sowing_service.list_batch_carriers(session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id)[0]
+    crop_batch_service.transition_stage(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=now(), reason=None,
+    )
+    active_run_id = session.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": batch.id},
+    ).scalar_one()
+
+    # Build the harvest event/line/lot directly via SQL — exactly what
+    # harvest_service produced before this ticket amended it — since the
+    # database is currently at CMP-013 schema (no ledger table exists yet).
+    event_id = uuid.uuid4()
+    event_effective_time = now()
+    session.execute(
+        text(
+            "INSERT INTO harvest_events "
+            "(id, tenant_id, farm_id, batch_id, active_batch_stage_run_id, effective_time, actor_user_id, "
+            "client_command_id, request_fingerprint, note) VALUES "
+            "(:id, :tid, :fid, :bid, :run_id, :eff, :uid, :cmd, :fp, NULL)"
+        ),
+        {
+            "id": event_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "run_id": active_run_id,
+            "eff": event_effective_time, "uid": user.id, "cmd": uuid.uuid4(), "fp": "pre-existing-cmp013-data",
+        },
+    )
+    session.execute(
+        text(
+            "INSERT INTO harvest_source_lines "
+            "(id, tenant_id, farm_id, harvest_event_id, batch_carrier_assignment_id, carrier_id, "
+            "harvested_weight_kg, whole_unit_count, note) VALUES "
+            "(:id, :tid, :fid, :eid, :aid, :cid, :w, :c, NULL)"
+        ),
+        {
+            "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": assignment.id,
+            "cid": carrier.id, "w": Decimal("6.750"), "c": 22,
+        },
+    )
+    lot_id = uuid.uuid4()
+    session.execute(
+        text(
+            "INSERT INTO harvested_produce_lots "
+            "(id, tenant_id, farm_id, code, harvest_event_id, batch_id, workflow_id, workflow_version_id, "
+            "crop_id, variety_id, total_harvested_weight_kg, total_whole_unit_count, effective_time) VALUES "
+            "(:id, :tid, :fid, :code, :eid, :bid, :wf, :wfv, :crop, :variety, :w, :c, :eff)"
+        ),
+        {
+            "id": lot_id, "tid": tenant.id, "fid": farm.id, "code": f"PREEXIST-{suffix}", "eid": event_id,
+            "bid": batch.id, "wf": workflow.id, "wfv": version.id, "crop": crop.id, "variety": variety.id,
+            "w": Decimal("6.750"), "c": 22, "eff": event_effective_time,
+        },
+    )
+    session.commit()
+    lot_recorded_at = session.execute(
+        text("SELECT recorded_at FROM harvested_produce_lots WHERE id = :id"), {"id": lot_id}
+    ).scalar_one()
+    tenant_id, farm_id, user_id = tenant.id, farm.id, user.id
+    session.close()
+    conn.close()
+
+    try:
+        command.upgrade(_cfg(), "head")
+
+        def _receipt_snapshot():
+            with test_engine.connect() as verify_conn:
+                return verify_conn.execute(
+                    text(
+                        "SELECT id, tenant_id, farm_id, produce_lot_id, harvest_event_id, entry_kind, "
+                        "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, "
+                        "note FROM produce_lot_ledger_entries WHERE produce_lot_id = :lid"
+                    ),
+                    {"lid": lot_id},
+                ).mappings().all()
+
+        first_backfill = _receipt_snapshot()
+        assert len(first_backfill) == 1
+        row = first_backfill[0]
+        assert row["id"] == lot_id
+        assert row["tenant_id"] == tenant_id
+        assert row["farm_id"] == farm_id
+        assert row["produce_lot_id"] == lot_id
+        assert row["harvest_event_id"] == event_id
+        assert row["entry_kind"] == "harvest_receipt"
+        assert row["weight_delta_kg"] == Decimal("6.750")
+        assert row["whole_unit_count_delta"] == 22
+        assert row["effective_time"] == event_effective_time
+        assert row["recorded_time"] == lot_recorded_at
+        assert row["actor_user_id"] == user_id
+        assert row["note"] is None
+
+        command.downgrade(_cfg(), "c7f14b8e29a3")
+        with test_engine.connect() as verify_conn:
+            table_exists = verify_conn.execute(
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'produce_lot_ledger_entries'")
+            ).first()
+            lot_still_present = verify_conn.execute(
+                text("SELECT count(*) FROM harvested_produce_lots WHERE id = :id"), {"id": lot_id}
+            ).scalar_one()
+        assert table_exists is None, "downgrade must drop the ledger table"
+        assert lot_still_present == 1, "downgrade must leave the underlying CMP-013 lot untouched"
+
+        command.upgrade(_cfg(), "head")
+        second_backfill = _receipt_snapshot()
+        assert second_backfill == first_backfill, "re-upgrade must reproduce an identical receipt row"
+    finally:
+        _cleanup_ledger_migration_scenario(test_engine, tenant_id)

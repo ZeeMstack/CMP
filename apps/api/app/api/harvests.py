@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
 from app.schemas.harvest import HarvestedProduceLotRead, HarvestEventCreate, HarvestEventRead
-from app.services import harvest_service
+from app.schemas.produce_lot_ledger import ProduceLotBalanceRead, ProduceLotLedgerEntryRead
+from app.services import harvest_service, produce_lot_ledger_service
 from app.services.errors import (
     CarrierNotFoundError,
     CropBatchClosedError,
@@ -139,6 +140,42 @@ def get_harvested_produce_lot(
 ) -> HarvestedProduceLotRead:
     try:
         return harvest_service.get_produce_lot(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, produce_lot_id=produce_lot_id
+        )
+    except (FarmNotFoundError, HarvestedProduceLotNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/harvested-produce-lots/{produce_lot_id}/ledger",
+    response_model=list[ProduceLotLedgerEntryRead],
+)
+def get_produce_lot_ledger(
+    farm_id: uuid.UUID,
+    produce_lot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> list[ProduceLotLedgerEntryRead]:
+    try:
+        return produce_lot_ledger_service.get_ledger(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, produce_lot_id=produce_lot_id
+        )
+    except (FarmNotFoundError, HarvestedProduceLotNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/harvested-produce-lots/{produce_lot_id}/balance",
+    response_model=ProduceLotBalanceRead,
+)
+def get_produce_lot_balance(
+    farm_id: uuid.UUID,
+    produce_lot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> ProduceLotBalanceRead:
+    try:
+        return produce_lot_ledger_service.get_balance(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, produce_lot_id=produce_lot_id
         )
     except (FarmNotFoundError, HarvestedProduceLotNotFoundError) as exc:

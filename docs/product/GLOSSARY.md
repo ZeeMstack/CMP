@@ -87,6 +87,16 @@
 | Harvest Weight | The authoritative harvested quantity, in kilograms, stored as an exact Decimal — never binary float, never derived from count |
 | Whole-Unit Count | Optional per-line unit count; an event is either all-lines-counted or zero-lines-counted, never partial, and is never derived from weight |
 
+## Produce-lot opening receipt ledger (`CMP_MASTER_SPEC.md` §2, §7, §8, `docs/domain/PRODUCE_LOT_LEDGER_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Produce-Lot Ledger | Immutable, append-only `produce_lot_ledger_entries` record of every quantity movement against one harvested produce lot; CMP-014 permits only opening receipts |
+| Harvest Receipt | The one immutable ledger entry every harvested produce lot receives automatically, inside the harvest transaction, recording its original harvested weight/count; not a second user command |
+| Ledger Entry | One immutable row in the produce-lot ledger, typed by `entry_kind`, carrying a weight delta (and optional whole-unit-count delta) rather than a stored balance |
+| Available Produce Weight | Derived `SUM(weight_delta_kg)` across a lot's ledger entries — never a stored/editable column; equals received weight until a future typed entry kind exists |
+| Available Whole-Unit Count | Derived `SUM(whole_unit_count_delta)` across a lot's ledger entries — never a stored/editable column; null when the lot itself carries no unit count |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

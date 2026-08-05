@@ -217,6 +217,16 @@ def test_migration_downgrade_blocked_when_harvest_history_exists(test_engine) ->
             source_lines=[{"batch_carrier_assignment_id": assignment.id, "harvested_weight_kg": Decimal("1.000"), "whole_unit_count": None, "note": None}],
         )
         event_id = event.id
+        # record_harvest's own db.refresh(event) opens a fresh implicit
+        # transaction after its commit, holding an AccessShareLock on
+        # harvest_events for as long as this session stays open. Release it
+        # before triggering a downgrade cascade: since CMP-014, downgrading
+        # to _PRE_CMP013_REVISION first runs the CMP-014 migration's own
+        # downgrade(), which finds nothing wrong with this well-formed data
+        # and proceeds to DROP TABLE produce_lot_ledger_entries — an
+        # operation that needs to lock harvest_events too (FK dependency)
+        # and would otherwise deadlock against this test's own connection.
+        session.commit()
 
         with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-013"):
             command.downgrade(_cfg(), _PRE_CMP013_REVISION)

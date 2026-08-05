@@ -16,6 +16,7 @@ from app.models.crop_batch import CropBatch
 from app.models.harvest_event import HarvestEvent
 from app.models.harvest_source_line import HarvestSourceLine
 from app.models.harvested_produce_lot import HarvestedProduceLot
+from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
 from app.models.variety import Variety
 from app.models.workflow import Workflow
 from app.models.workflow_stage import WorkflowStage
@@ -248,6 +249,23 @@ def record_harvest(
             total_harvested_weight_kg=total_weight, total_whole_unit_count=total_count, effective_time=effective_time,
         )
         db.add(lot)
+        db.flush()
+
+        # Deterministic opening receipt (CMP-014): id and produce_lot_id
+        # both equal the lot's own id — an exact, reconstructible
+        # projection of the lot/event, not an independent user command.
+        # recorded_time is taken from the lot's own recorded_at (not a
+        # fresh server default) so live creation and migration backfill
+        # always produce identical rows; note is always NULL — the harvest
+        # event already owns the user-provided note.
+        db.add(
+            ProduceLotLedgerEntry(
+                id=lot.id, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=lot.id, harvest_event_id=event.id,
+                entry_kind="harvest_receipt", weight_delta_kg=lot.total_harvested_weight_kg,
+                whole_unit_count_delta=lot.total_whole_unit_count, effective_time=lot.effective_time,
+                recorded_time=lot.recorded_at, actor_user_id=actor_user_id, note=None,
+            )
+        )
         db.flush()
 
         for line in source_lines:
