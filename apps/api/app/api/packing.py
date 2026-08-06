@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.schemas.finished_goods_ledger import FinishedGoodsBalanceRead, FinishedGoodsLedgerEntryRead
 from app.schemas.packing import FinishedGoodsLotRead, PackingEventCreate, PackingEventRead
-from app.services import packing_service
+from app.services import finished_goods_ledger_service, packing_service
 from app.services.errors import (
     DuplicateFinishedGoodsLotCodeError,
     FarmNotFoundError,
@@ -130,6 +131,42 @@ def get_finished_goods_lot(
 ) -> FinishedGoodsLotRead:
     try:
         return packing_service.get_finished_goods_lot(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, finished_goods_lot_id=finished_goods_lot_id
+        )
+    except (FarmNotFoundError, FinishedGoodsLotNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/finished-goods-lots/{finished_goods_lot_id}/ledger",
+    response_model=list[FinishedGoodsLedgerEntryRead],
+)
+def get_finished_goods_ledger(
+    farm_id: uuid.UUID,
+    finished_goods_lot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> list[FinishedGoodsLedgerEntryRead]:
+    try:
+        return finished_goods_ledger_service.get_ledger(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, finished_goods_lot_id=finished_goods_lot_id
+        )
+    except (FarmNotFoundError, FinishedGoodsLotNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/finished-goods-lots/{finished_goods_lot_id}/balance",
+    response_model=FinishedGoodsBalanceRead,
+)
+def get_finished_goods_balance(
+    farm_id: uuid.UUID,
+    finished_goods_lot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+) -> FinishedGoodsBalanceRead:
+    try:
+        return finished_goods_ledger_service.get_balance(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, finished_goods_lot_id=finished_goods_lot_id
         )
     except (FarmNotFoundError, FinishedGoodsLotNotFoundError) as exc:

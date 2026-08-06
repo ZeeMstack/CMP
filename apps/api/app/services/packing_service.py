@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
+from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_lot import FinishedGoodsLot
 from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.packing_event import PackingEvent
@@ -275,6 +276,24 @@ def record_packing(
         db.add(fg_lot)
         db.flush()
 
+        # Deterministic opening receipt (CMP-016, mirrors CMP-014's own
+        # harvest_receipt convention one level up the chain): id and
+        # finished_goods_lot_id both equal the lot's own id — an exact,
+        # reconstructible projection of the lot/event, not an independent
+        # command. recorded_time is taken from the lot's own recorded_time
+        # (not a fresh server default) so live creation and migration
+        # backfill always produce identical rows; note is always NULL.
+        db.add(
+            FinishedGoodsLedgerEntry(
+                id=fg_lot.id, tenant_id=tenant_id, farm_id=farm_id, finished_goods_lot_id=fg_lot.id,
+                packing_event_id=event.id, entry_kind="packing_receipt",
+                weight_delta_kg=fg_lot.net_packed_weight_kg, package_count_delta=fg_lot.package_count,
+                effective_time=fg_lot.effective_time, recorded_time=fg_lot.recorded_time,
+                actor_user_id=actor_user_id, note=None,
+            )
+        )
+        db.flush()
+
         # Deterministic packing_consumption debit identity (CMP-015, mirrors
         # CMP-014's harvest_receipt convention): each ledger debit's id
         # equals its own PackingInputLine's id — one exact debit per line,
@@ -319,6 +338,7 @@ def record_packing(
                 "rejected_weight_kg": canonical_decimal_str(rejected_weight_kg), "package_count": package_count,
             },
         )
+        db.flush()
         db.commit()
     except IntegrityError as exc:
         db.rollback()

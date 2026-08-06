@@ -110,6 +110,15 @@
 | Rejected Weight | The portion of a packing event's total input weight rejected during packing; zero or positive, never negative |
 | Package Count | The number of finished packs or containers a packing event produced; not the same semantic quantity as a source lot's whole-unit count, and never reconciled against it |
 
+## Finished-goods opening receipt ledger (`CMP_MASTER_SPEC.md` §2, §7, §8, `docs/domain/FINISHED_GOODS_LEDGER_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Finished-Goods Ledger | Immutable, append-only `finished_goods_ledger_entries` record of every quantity movement against one finished-goods lot; CMP-016 permits only opening receipts |
+| Packing Receipt | The one immutable ledger entry every finished-goods lot receives automatically, inside the packing transaction, recording its original packed weight/package count; not a second user command |
+| Finished-Goods Available Weight | Derived `SUM(weight_delta_kg)` across a lot's ledger entries — never a stored/editable column; equals received weight until a future typed entry kind exists |
+| Available Package Count | Derived `SUM(package_count_delta)` across a lot's ledger entries — never a stored/editable column; distinct from a source produce lot's whole-unit count, never reconciled against it |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

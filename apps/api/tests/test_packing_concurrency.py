@@ -126,8 +126,23 @@ def test_exact_duplicate_packing_command_race_creates_one_event(test_engine) -> 
                 text("SELECT count(*) FROM produce_lot_ledger_entries WHERE produce_lot_id = :lid AND entry_kind = 'packing_consumption'"),
                 {"lid": scenario["lot_a_id"]},
             ).scalar_one()
+            # CMP-016: the racing duplicate command must also leave exactly
+            # one finished-goods lot and exactly one packing receipt behind.
+            fg_lot_count = verify_conn.execute(
+                text("SELECT count(*) FROM finished_goods_lots WHERE packing_event_id = :eid"),
+                {"eid": results["a"][1]},
+            ).scalar_one()
+            receipt_count = verify_conn.execute(
+                text(
+                    "SELECT count(*) FROM finished_goods_ledger_entries "
+                    "WHERE packing_event_id = :eid AND entry_kind = 'packing_receipt'"
+                ),
+                {"eid": results["a"][1]},
+            ).scalar_one()
         assert event_count == 1
         assert debit_count == 1
+        assert fg_lot_count == 1
+        assert receipt_count == 1
     finally:
         cleanup_scenario(test_engine, scenario["tenant_id"])
 
@@ -180,7 +195,18 @@ def test_same_finished_goods_lot_code_race_leaves_one_winner(test_engine) -> Non
                 text("SELECT count(*) FROM finished_goods_lots WHERE tenant_id = :tid AND lower(code) = lower(:code)"),
                 {"tid": scenario["tenant_id"], "code": code},
             ).scalar_one()
+            # CMP-016: the losing command's rollback must leave no orphan
+            # receipt — exactly one receipt exists, for the winner's lot.
+            receipt_count = verify_conn.execute(
+                text(
+                    "SELECT count(*) FROM finished_goods_ledger_entries r "
+                    "JOIN finished_goods_lots fg ON fg.id = r.finished_goods_lot_id "
+                    "WHERE fg.tenant_id = :tid AND lower(fg.code) = lower(:code) AND r.entry_kind = 'packing_receipt'"
+                ),
+                {"tid": scenario["tenant_id"], "code": code},
+            ).scalar_one()
         assert lot_count == 1, "only the winning packing command may leave a finished-goods lot behind"
+        assert receipt_count == 1, "only the winning packing command may leave a receipt behind"
     finally:
         cleanup_scenario(test_engine, scenario["tenant_id"])
 

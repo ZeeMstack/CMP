@@ -47,7 +47,9 @@ def _create_committed_tenant(test_engine, *, suffix: str) -> uuid.UUID:
 def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     """The same hardened shape as the three CMP-011 committed-connection
     test files' own `_cleanup_scenario` (trimmed to the tables this test
-    actually creates: tenants, tenant_memberships, farms)."""
+    actually creates: tenants, tenant_memberships, farms, and the
+    tenant.created/membership.created/farm.created audit trail those three
+    services each emit)."""
     with test_engine.connect() as guard_conn:
         current_db = guard_conn.execute(text("SELECT current_database()")).scalar_one()
     if current_db != "cmp_test":
@@ -62,6 +64,7 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("SET session_replication_role = replica"))
         conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
     except Exception:
         trans.rollback()

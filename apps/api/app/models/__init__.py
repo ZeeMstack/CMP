@@ -10,6 +10,7 @@ from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.farm import Farm
+from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.germination_check import GerminationCheck
 from app.models.location import Location
 from app.models.location_type import LocationType
@@ -52,6 +53,7 @@ __all__ = [
     "Crop",
     "CropBatch",
     "Farm",
+    "FinishedGoodsLedgerEntry",
     "GerminationCheck",
     "Location",
     "LocationType",

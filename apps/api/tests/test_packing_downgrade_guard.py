@@ -150,7 +150,13 @@ def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_
     ledger debit — the debit's own composite FK to packing_events means the
     event can never be removed while the debit remains) still blocks
     downgrade, proving the guard does not depend on every row existing
-    together."""
+    together. The CMP-016 opening receipt is removed along with its lot
+    (both are torn down here as one unit) so this remains a proof of
+    CMP-015's own unconditional guard specifically — without it, the
+    orphaned receipt left behind would trip CMP-016's own (correct, and
+    separately proven in test_finished_goods_ledger_downgrade_guard.py)
+    orphan-receipt guard first, since CMP-016 now sits above CMP-015 in the
+    downgrade cascade."""
     scenario = build_committed_scenario(test_engine, lot_a_count=None)
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -162,6 +168,7 @@ def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_
     trans = conn2.begin()
     try:
         conn2.execute(text("SET session_replication_role = replica"))
+        conn2.execute(text("DELETE FROM finished_goods_ledger_entries WHERE tenant_id = :tid"), {"tid": scenario["tenant_id"]})
         conn2.execute(text("DELETE FROM packing_input_lines WHERE tenant_id = :tid"), {"tid": scenario["tenant_id"]})
         conn2.execute(text("DELETE FROM finished_goods_lots WHERE tenant_id = :tid"), {"tid": scenario["tenant_id"]})
         conn2.execute(text("SET session_replication_role = DEFAULT"))

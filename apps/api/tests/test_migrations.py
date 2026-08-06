@@ -1254,3 +1254,158 @@ def _assert_upgraded_packing_schema_restored(test_engine) -> None:
             )
         ).first()
         assert harvested_produce_lots_composite_unique is not None
+
+
+@pytest.mark.integration
+def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event_reference(test_engine) -> None:
+    """Proves CMP-016's upgrade-time backfill validation is a real,
+    reachable safety net, not dead code. The backfill's INSERT ... SELECT
+    computes every receipt field directly from its lot/event in one pass,
+    so a field-mismatched or orphaned *receipt* can never actually occur
+    during backfill (there is no pre-existing ledger table for a stray row
+    to live in, and the same join used to build a row is used to verify
+    it). The one genuinely reachable failure is a pre-existing
+    finished_goods_lot whose packing_event_id no longer resolves to a real
+    packing_event (simulating data corruption that predates CMP-016) —
+    the backfill's INSERT ... SELECT JOIN silently excludes that lot,
+    which the very first check (lot_count vs receipt_count) catches. The
+    16 downgrade-guard states in test_finished_goods_ledger_downgrade_guard.py
+    exercise the same shared mismatch/orphan/duplicate predicates against
+    genuinely reachable *downgrade-time* corruption instead."""
+    import uuid
+    from decimal import Decimal
+
+    from sqlalchemy.orm import Session
+
+    from app.services import packing_service
+    from tests._packing_scenario import build_committed_scenario, cleanup_scenario, require_cmp_test
+
+    def now():
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc)
+
+    _assert_operating_on_cmp_test_database(test_engine)
+    require_cmp_test(test_engine)
+
+    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    event = packing_service.record_packing(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        client_command_id=uuid.uuid4(), effective_time=now(), finished_goods_lot_code=f"FG-{scenario['suffix']}",
+        package_count=6, packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
+        rejected_weight_kg=Decimal("0"), note=None,
+        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+    )
+    detail = packing_service.get_packing_event(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event.id
+    )
+    fg_lot_id = detail.finished_goods_lot.id
+    event_id = event.id
+    session.commit()
+    session.close()
+    conn.close()
+
+    try:
+        # The receipt is well-formed, so this downgrade succeeds (proven
+        # separately by the with-data downgrade-guard test) and drops the
+        # ledger table entirely, leaving CMP-015 schema with no ledger to
+        # corrupt directly.
+        command.downgrade(_cfg(), "a91f4c7b2e58")
+
+        bypass_conn = test_engine.connect()
+        trans = bypass_conn.begin()
+        bypass_conn.execute(text("SET session_replication_role = replica"))
+        bypass_conn.execute(
+            text("UPDATE finished_goods_lots SET packing_event_id = :bogus WHERE id = :lid"),
+            {"bogus": uuid.uuid4(), "lid": fg_lot_id},
+        )
+        bypass_conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+        bypass_conn.close()
+
+        with pytest.raises(RuntimeError, match="finished-goods lots but .* packing receipts"):
+            command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == "a91f4c7b2e58", "a failed backfill must leave the database at its pre-upgrade revision"
+    finally:
+        # Repair the corrupted reference before cleanup/re-upgrade: cleanup_scenario
+        # itself does not touch finished_goods_lots.packing_event_id, and a
+        # dangling reference would otherwise make the next upgrade fail again
+        # for a test run afterward.
+        repair_conn = test_engine.connect()
+        repair_trans = repair_conn.begin()
+        repair_conn.execute(text("SET session_replication_role = replica"))
+        repair_conn.execute(
+            text("UPDATE finished_goods_lots SET packing_event_id = :eid WHERE id = :lid"),
+            {"eid": event_id, "lid": fg_lot_id},
+        )
+        repair_conn.execute(text("SET session_replication_role = DEFAULT"))
+        repair_trans.commit()
+        repair_conn.close()
+        command.upgrade(_cfg(), "head")
+        cleanup_scenario(test_engine, scenario["tenant_id"])
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_finished_goods_ledger_triggers_functions_and_table(test_engine) -> None:
+    """CMP-016's own downgrade guard follows CMP-014's reconstructible-
+    projection model (not CMP-015's unconditional-block model): downgrade
+    succeeds even while finished_goods_lots/packing_events data exists,
+    as long as every receipt is well-formed. This test only proves clean
+    schema removal/restoration with no data present; see
+    test_finished_goods_ledger_downgrade_guard.py for the with-data and
+    guard-triggering cases."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "a91f4c7b2e58")
+    try:
+        with test_engine.connect() as conn:
+            table_exists = conn.execute(
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_ledger_entries'")
+            ).first()
+            assert table_exists is None
+            functions = conn.execute(
+                text(
+                    "SELECT proname FROM pg_proc WHERE proname IN ("
+                    "'enforce_finished_goods_ledger_entry_insert_integrity', "
+                    "'enforce_finished_goods_ledger_reconciliation')"
+                )
+            ).all()
+            assert functions == []
+            # CMP-015's own packing schema and reconciliation must remain untouched.
+            packing_tables = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                    "('packing_events', 'packing_input_lines', 'finished_goods_lots')"
+                )
+            ).scalars().all()
+            assert sorted(packing_tables) == ["finished_goods_lots", "packing_events", "packing_input_lines"]
+            cmp015_reconciliation_intact = conn.execute(
+                text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_packing_reconciliation'")
+            ).first()
+            assert cmp015_reconciliation_intact is not None
+    finally:
+        command.upgrade(_cfg(), "head")
+
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+        table_exists = conn.execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_ledger_entries'")
+        ).first()
+        assert table_exists is not None
+        triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                "AND NOT tgisinternal ORDER BY tgname"
+            )
+        ).scalars().all()
+        assert triggers == [
+            "finished_goods_ledger_entries_enforce_insert_integrity",
+            "finished_goods_ledger_entries_enforce_reconciliation",
+            "finished_goods_ledger_entries_no_delete",
+            "finished_goods_ledger_entries_no_update",
+        ]

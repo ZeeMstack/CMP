@@ -46,6 +46,10 @@ Exactly one `produce_lot.packed` audit event per successful command — never on
 
 Adds `uq_harvested_produce_lots_tenant_farm_id` (a composite unique constraint CMP-013/014 never added) so `packing_input_lines` can use a real database-enforced composite foreign key to its source lot, rather than trigger-only consistency (the pattern `produce_lot_ledger_entries.produce_lot_id` was forced into). Downgrade blocks unconditionally whenever any packing event, input line, finished-goods lot, or `packing_consumption` ledger row exists — unlike CMP-014's own reconstructible-projection guard, packing history is genuinely new operational data, never discardable. When clean, downgrade restores `produce_lot_ledger_entries` and `harvested_produce_lots` to their exact CMP-014 shape, including byte-identical CHECK constraint bodies and the original trigger attachment; the CMP-013/014 migration files themselves are never modified.
 
+## Finished-goods opening receipt
+
+Every finished-goods lot now also receives one immutable opening-receipt ledger entry, created automatically inside the same packing transaction — see `docs/domain/FINISHED_GOODS_LEDGER_MODEL.md` (CMP-016). It reads only the just-inserted lot/event, adds no new command, audit event, or API route on this model, and does not change any behavior described above.
+
 ## Deferred
 
 Grading, repacking, unpacking, correction, reversal, void, finished-goods inventory/storage/occupancy, dispatch, sales orders, invoicing, costing, valuation, multi-output packing, packaging-material inventory, frontend, RLS, role-specific authorization.
