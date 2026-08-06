@@ -274,7 +274,15 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
     conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="entry kind other than"):
+        # CMP-016A's own env.py pre-migration guard now intercepts this
+        # exact scenario before de82132ef837.downgrade() itself ever runs
+        # (it fires for any downgrade whose path includes that step,
+        # regardless of where the walk starts) — de82132ef837's own
+        # "entry kind other than" message is consequently unreachable
+        # through this path today, though the check remains as defence in
+        # depth. See test_produce_lot_ledger_downgrade_guard_hardening.py
+        # for the dedicated, per-state proofs of the new guard.
+        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-014"):
             command.downgrade(_cfg(), "a4d92f7c1e6b")
         with test_engine.connect() as conn2:
             current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
@@ -320,7 +328,10 @@ def test_downgrade_blocked_by_malformed_receipt(test_engine) -> None:
     conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="does not exactly reconstruct"):
+        # Same interception as test_downgrade_blocked_by_unknown_entry_kind
+        # above: CMP-016A's env.py guard now catches this before
+        # de82132ef837.downgrade() itself runs.
+        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-014"):
             command.downgrade(_cfg(), _PRE_CMP014_REVISION)
         _assert_at_head(test_engine)
     finally:
