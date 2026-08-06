@@ -215,28 +215,56 @@ def _build_harvest(test_engine, *, suffix: str):
     return {"tenant_id": tenant_id, "lot_id": lot_id}
 
 
+_CMP014_ENTRY_KIND_DEPENDENT_CHECKS = (
+    "ck_produce_lot_ledger_entries_kind_allowed", "ck_produce_lot_ledger_entries_weight_envelope",
+    "ck_produce_lot_ledger_entries_count_positive",
+)
+
+
 @pytest.mark.integration
 def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
-    """`entry_kind` is also protected by a CHECK constraint, so this branch
-    of the downgrade guard is unreachable through any ordinary INSERT/UPDATE
-    against the current schema — even `session_replication_role = replica`
-    (which bypasses triggers) does not bypass CHECK constraints. It exists
-    purely as a forward-compatibility tripwire for a future ticket that
-    widens the CHECK to a new entry kind. Proven here by temporarily
-    dropping the CHECK constraint itself, inside a guaranteed
-    restore-in-finally block, so the guard's own detection query is
-    genuinely exercised even though today's schema can never reach this
-    state unassisted."""
+    """`entry_kind` is protected by a CHECK constraint (plus, since CMP-015,
+    two more CHECKs that are kind-conditional), so this branch of CMP-014's
+    own downgrade guard is unreachable through any ordinary INSERT/UPDATE
+    against the current schema. To exercise it in isolation, this test
+    first downgrades cleanly past CMP-015 (no packing history exists, so
+    that guard passes and CMP-015's own downgrade() restores the exact
+    original CMP-014 constraint bodies — captured dynamically via
+    `pg_get_constraintdef` rather than hardcoded, so this test stays
+    correct regardless of what CMP-015 restores), *then* corrupts the
+    row against that now-CMP-014-shaped schema, then attempts the final
+    downgrade step into CMP-013 to prove CMP-014's own guard independently
+    catches it — even `session_replication_role = replica` (which bypasses
+    triggers) does not bypass CHECK constraints, so the corruption itself
+    requires temporarily dropping the CHECKs, restored in a guaranteed
+    finally block."""
     suffix = uuid.uuid4().hex[:8]
     scenario = _build_harvest(test_engine, suffix=suffix)
     _require_cmp_test(test_engine)
 
+    # Downgrade exactly one step, landing at CMP-014's own final shape
+    # (de82132ef837) — not all the way to _PRE_CMP014_REVISION, which would
+    # also run CMP-014's own downgrade() and drop the table entirely.
+    command.downgrade(_cfg(), "de82132ef837")
+
+    with test_engine.connect() as capture_conn:
+        original_bodies = dict(
+            capture_conn.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid = 'produce_lot_ledger_entries'::regclass AND contype = 'c' "
+                    "AND conname = ANY(:names)"
+                ),
+                {"names": list(_CMP014_ENTRY_KIND_DEPENDENT_CHECKS)},
+            ).all()
+        )
+    assert set(original_bodies) == set(_CMP014_ENTRY_KIND_DEPENDENT_CHECKS)
+
     conn = test_engine.connect()
     trans = conn.begin()
     conn.execute(text("SET session_replication_role = replica"))
-    conn.execute(
-        text("ALTER TABLE produce_lot_ledger_entries DROP CONSTRAINT ck_produce_lot_ledger_entries_kind_allowed")
-    )
+    for name in _CMP014_ENTRY_KIND_DEPENDENT_CHECKS:
+        conn.execute(text(f"ALTER TABLE produce_lot_ledger_entries DROP CONSTRAINT {name}"))
     conn.execute(
         text("UPDATE produce_lot_ledger_entries SET entry_kind = 'future_kind' WHERE produce_lot_id = :lid"),
         {"lid": scenario["lot_id"]},
@@ -247,22 +275,22 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
 
     try:
         with pytest.raises(RuntimeError, match="entry kind other than"):
-            command.downgrade(_cfg(), _PRE_CMP014_REVISION)
-        _assert_at_head(test_engine)
+            command.downgrade(_cfg(), "a4d92f7c1e6b")
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == "de82132ef837", "a blocked downgrade must leave the database at CMP-014"
     finally:
         # Restore order matters: delete the tenant's bad row *before*
-        # re-adding the CHECK, since Postgres validates all existing rows
+        # re-adding the CHECKs, since Postgres validates all existing rows
         # against a newly added CHECK unless declared NOT VALID.
         _cleanup_scenario(test_engine, scenario["tenant_id"])
         restore_conn = test_engine.connect()
         restore_trans = restore_conn.begin()
         try:
-            restore_conn.execute(
-                text(
-                    "ALTER TABLE produce_lot_ledger_entries ADD CONSTRAINT "
-                    "ck_produce_lot_ledger_entries_kind_allowed CHECK (entry_kind IN ('harvest_receipt'))"
+            for name, body in original_bodies.items():
+                restore_conn.execute(
+                    text(f"ALTER TABLE produce_lot_ledger_entries ADD CONSTRAINT {name} {body}")
                 )
-            )
         except Exception:
             restore_trans.rollback()
             raise
@@ -270,6 +298,8 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
             restore_trans.commit()
         finally:
             restore_conn.close()
+        command.upgrade(_cfg(), "head")
+        _assert_at_head(test_engine)
 
 
 @pytest.mark.integration

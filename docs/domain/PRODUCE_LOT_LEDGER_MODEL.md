@@ -4,11 +4,11 @@ Full detail: `CMP_MASTER_SPEC.md` §2, §7, §8; `CLAUDE.md` rules 1, 3, 5, 7, 8
 
 ## Scope
 
-Every CMP-013 harvested produce lot now receives exactly one immutable ledger receipt recording its original harvested quantity — an append-only foundation ready for the first typed consumer, CMP-015 packing, to post debits against later. CMP-014 adds no consumption, reservation, allocation, adjustment, correction, waste, rejection, shrinkage, transfer, cold-store receipt, storage location, dispatch, costing, valuation, editable balance, negative ledger entry, reversal, or void. The receipt is not a second user command — it is an automatic, atomic consequence of the harvest command that already existed.
+Every CMP-013 harvested produce lot receives exactly one immutable ledger receipt recording its original harvested quantity. CMP-014 itself added no consumption, reservation, allocation, adjustment, correction, waste, rejection, shrinkage, transfer, cold-store receipt, storage location, dispatch, costing, valuation, editable balance, reversal, or void — the receipt is not a second user command, it is an automatic, atomic consequence of the harvest command that already existed. CMP-015 (see `docs/domain/PACKING_MODEL.md`) is the first typed consumer, adding a second `entry_kind` and negative deltas exactly as anticipated below; the rest of this document's scope boundary is otherwise unchanged.
 
-## Ledger entry and the one permitted kind
+## Ledger entry and entry kinds
 
-`produce_lot_ledger_entries` carries `tenant_id`, `farm_id`, `produce_lot_id`, `harvest_event_id`, `entry_kind`, `weight_delta_kg`, `whole_unit_count_delta`, `effective_time`, `recorded_time`, `actor_user_id`, `note`. CMP-014 permits exactly one `entry_kind`, `harvest_receipt` — no unused enum values are pre-added for packing, adjustment, consumption, or transfer; a future ticket widens the `entry_kind` CHECK, and separately relaxes the weight/count sign CHECKs to allow negative deltas, only once a typed process actually needs them. No balance, previous-balance, available-balance, consumed-balance, reserved-balance, status, location, cost, or valuation column exists — balance is always derived (see below).
+`produce_lot_ledger_entries` carries `tenant_id`, `farm_id`, `produce_lot_id`, `harvest_event_id` (nullable since CMP-015), `packing_event_id` (added by CMP-015, nullable), `entry_kind`, `weight_delta_kg`, `whole_unit_count_delta`, `effective_time`, `recorded_time`, `actor_user_id`, `note`. CMP-014 permitted exactly one `entry_kind`, `harvest_receipt`; CMP-015 widened this to also permit `packing_consumption`, with a CHECK enforcing that each kind's own source-event reference (`harvest_event_id` vs. `packing_event_id`) is populated exclusively (see `PACKING_MODEL.md`). No balance, previous-balance, available-balance, consumed-balance, reserved-balance, status, location, cost, or valuation column exists — balance is always derived (see below).
 
 ## Deterministic receipt identity
 
@@ -16,7 +16,7 @@ A `harvest_receipt` row is an exact, reconstructible projection of its produce l
 
 ## One-to-one enforcement
 
-Two partial unique indexes — `UNIQUE(produce_lot_id) WHERE entry_kind = 'harvest_receipt'` and `UNIQUE(harvest_event_id) WHERE entry_kind = 'harvest_receipt'` — are kind-scoped, not table-wide, so a future consumption kind can reference the same lot or event repeatedly without being blocked by this ticket's one-receipt-per-lot rule. In practice, the deterministic-ID convention already makes a second `harvest_receipt` row for the same lot collide on the primary key before either index is even reached.
+Two partial unique indexes — `UNIQUE(produce_lot_id) WHERE entry_kind = 'harvest_receipt'` and `UNIQUE(harvest_event_id) WHERE entry_kind = 'harvest_receipt'` — are kind-scoped, not table-wide, so CMP-015's `packing_consumption` kind can reference the same lot repeatedly (across separate packing events) without being blocked by this ticket's one-receipt-per-lot rule. A third partial index, `UNIQUE(packing_event_id, produce_lot_id) WHERE entry_kind = 'packing_consumption'`, was added by CMP-015 for its own one-lot-per-event rule. In practice, the deterministic-ID convention already makes a second `harvest_receipt` row for the same lot collide on the primary key before either index is even reached.
 
 ## Harvest transaction amendment
 
@@ -28,11 +28,11 @@ One immediate `BEFORE INSERT` trigger independently re-verifies, for `harvest_re
 
 ## Balance
 
-`available_weight_kg` and `available_whole_unit_count` are `SUM`s over every ledger entry for a lot; `received_weight_kg`/`received_whole_unit_count` sum only `harvest_receipt` entries — the lot's original inflow, which must never shrink once a future negative-delta kind exists. With only `harvest_receipt` rows possible today, received and available are numerically identical, but the query shape already supports a future typed debit without any editable balance column.
+`available_weight_kg` and `available_whole_unit_count` are `SUM`s over every ledger entry for a lot; `received_weight_kg`/`received_whole_unit_count` sum only `harvest_receipt` entries — the lot's original inflow, which never shrinks regardless of later consumption. Since CMP-015, `available_*` correctly decreases as negative `packing_consumption` deltas post, with no query-shape change from what CMP-014 already anticipated.
 
 ## API
 
-Exactly two new GET operations: `GET .../harvested-produce-lots/{produce_lot_id}/ledger` and `.../balance`. No POST/PUT/PATCH/DELETE ledger route exists. Existing produce-lot list/detail responses are not amended with an embedded balance — with only receipts possible today it would just restate the total a second time; this is deferred to CMP-015, when balance becomes operationally meaningful.
+Exactly two GET operations: `GET .../harvested-produce-lots/{produce_lot_id}/ledger` and `.../balance`. No POST/PUT/PATCH/DELETE ledger route exists — CMP-015's packing consumption still posts only through the packing command, never through a ledger route.
 
 ## Migration backfill and downgrade
 
@@ -40,4 +40,4 @@ The upgrade creates the table/constraints/triggers, backfills one deterministic 
 
 ## Deferred
 
-Packing, grading, consumption, reservations, allocation, adjustment, correction, waste, rejection, shrinkage, transfer, cold-store receipt, storage location, dispatch, costing, valuation, customer ownership, editable quantity-on-hand, negative ledger entries, reversal, void, frontend, RLS, role-specific authorization. CMP-015 packing will introduce the first typed debit entry kind.
+Grading, reservations, allocation, generic adjustment, correction, waste, rejection, shrinkage, transfer, cold-store receipt, storage location, dispatch, costing, valuation, customer ownership, editable quantity-on-hand, reversal, void, frontend, RLS, role-specific authorization. Packing consumption (CMP-015) is implemented — see `docs/domain/PACKING_MODEL.md`.

@@ -47,3 +47,5 @@ Composite foreign keys prove tenant/farm/batch consistency structurally througho
 Packing, grading, sorting, rejected/waste quantities, cold storage, dispatch, sales orders, invoicing, inventory valuation, remaining/available/consumed quantity tracking, lot consumption, lot split/merge, harvest correction, reversal, void, automatic batch closure/stage progression, carrier/assignment release, occupancy/movement changes, QR identities, labels, frontend, RLS, role-specific authorization.
 
 Every harvested produce lot now also receives one immutable opening-receipt ledger entry, created automatically inside the same harvest transaction — see `docs/domain/PRODUCE_LOT_LEDGER_MODEL.md` (CMP-014). It reads only the just-inserted lot/event, adds no new command, audit event, or API route on this model, and does not change any behavior described above.
+
+A harvested produce lot's weight/count may now also be consumed by a typed packing command — see `docs/domain/PACKING_MODEL.md` (CMP-015). Packing reads and locks existing harvest/lot data but never modifies it; none of this document's behavior changes.

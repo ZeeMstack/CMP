@@ -448,3 +448,45 @@ class HarvestedProduceLotNotFoundError(DomainError):
 
 class HarvestSourceAssignmentNotFoundError(DomainError):
     pass
+
+
+class PackingEventNotFoundError(DomainError):
+    pass
+
+
+class PackingCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackingValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidPackingEffectiveTimeError(DomainError):
+    pass
+
+
+class TooManyPackingInputLinesError(DomainError):
+    pass
+
+
+class PackingInputProduceLotNotFoundError(DomainError):
+    pass
+
+
+class PackingCropVarietyMismatchError(DomainError):
+    pass
+
+
+class InsufficientProduceLotBalanceError(DomainError):
+    pass
+
+
+class DuplicateFinishedGoodsLotCodeError(DomainError):
+    pass
+
+
+class FinishedGoodsLotNotFoundError(DomainError):
+    pass

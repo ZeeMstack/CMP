@@ -42,7 +42,8 @@ def get_ledger(
     return [
         ProduceLotLedgerEntryRead(
             id=e.id, entry_kind=e.entry_kind, produce_lot_id=e.produce_lot_id, produce_lot_code=lot.code,
-            harvest_event_id=e.harvest_event_id, actor_user_id=e.actor_user_id, weight_delta_kg=e.weight_delta_kg,
+            harvest_event_id=e.harvest_event_id, packing_event_id=e.packing_event_id,
+            actor_user_id=e.actor_user_id, weight_delta_kg=e.weight_delta_kg,
             whole_unit_count_delta=e.whole_unit_count_delta, effective_time=e.effective_time,
             recorded_time=e.recorded_time, note=e.note,
         )
@@ -56,13 +57,11 @@ def get_balance(
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     lot = _get_lot(db, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=produce_lot_id)
 
-    # `available_*` sums every ledger entry ever posted against this lot;
-    # `received_*` sums only `harvest_receipt` entries — the lot's original
-    # inflow, which must never shrink even once a future typed entry kind
-    # (e.g. CMP-015 packing consumption) posts a negative delta. With only
-    # `harvest_receipt` rows possible today the two are numerically equal,
-    # but the query already has the shape a future negative entry kind
-    # needs without any editable balance column.
+    # `available_*` sums every ledger entry ever posted against this lot —
+    # CMP-015's negative `packing_consumption` deltas correctly reduce it,
+    # with no query change needed here (the shape already anticipated
+    # this). `received_*` sums only `harvest_receipt` entries — the lot's
+    # original inflow, which never shrinks regardless of later consumption.
     row = db.execute(
         select(
             func.sum(ProduceLotLedgerEntry.weight_delta_kg).label("available_weight"),

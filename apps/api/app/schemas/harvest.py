@@ -44,7 +44,13 @@ def canonical_decimal_str(d: Decimal) -> str:
     return format(normalized, "f")
 
 
-def _parse_strict_decimal(v: object) -> Decimal:
+def _parse_strict_decimal(v: object, *, allow_zero: bool = False) -> Decimal:
+    """Shared exact-Decimal parser for every weight field in the codebase
+    (harvest, produce-lot ledger, and CMP-015 packing). `allow_zero` widens
+    the lower bound from "> 0" to ">= 0" for fields like process-loss and
+    rejected weight, which are legitimately zero on a clean pack — every
+    other rule (no binary float, <=3 decimal places, < MAX_WEIGHT_KG)
+    stays identical for every caller."""
     if isinstance(v, bool):
         raise ValueError("weight must be a string, integer, or Decimal, not a boolean")
     if isinstance(v, float):
@@ -62,7 +68,10 @@ def _parse_strict_decimal(v: object) -> Decimal:
         raise ValueError("weight must be a string, integer, or Decimal")
     if not d.is_finite():
         raise ValueError("weight must be a finite value")
-    if d <= 0:
+    if allow_zero:
+        if d < 0:
+            raise ValueError("weight must not be negative")
+    elif d <= 0:
         raise ValueError("weight must be positive")
     if d >= MAX_WEIGHT_KG:
         raise ValueError("weight exceeds the supported range")

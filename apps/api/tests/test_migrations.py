@@ -836,9 +836,15 @@ def _assert_downgraded_ledger_schema_removed(test_engine) -> None:
 
 def _assert_upgraded_ledger_schema_restored(test_engine) -> None:
     with test_engine.connect() as conn:
+        # Since CMP-015, head's own insert-integrity trigger on this table
+        # is named `..._v2` (CMP-015 replaces, rather than modifies,
+        # CMP-014's original attachment — see test_packing_downgrade_guard.py).
+        # Match by prefix so this assertion stays correct for whichever
+        # revision is head, instead of hardcoding one specific trigger name.
         trigger_exists = conn.execute(
             text(
-                "SELECT 1 FROM pg_trigger WHERE tgname = 'produce_lot_ledger_entries_enforce_insert_integrity'"
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'produce_lot_ledger_entries'::regclass "
+                "AND tgname LIKE 'produce_lot_ledger_entries_enforce_insert_integrity%'"
             )
         ).first()
         deferred_trigger_exists = conn.execute(
@@ -1118,3 +1124,133 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         assert second_backfill == first_backfill, "re-upgrade must reproduce an identical receipt row"
     finally:
         _cleanup_ledger_migration_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_packing_triggers_functions_tables_and_restores_cmp014_shape(
+    test_engine,
+) -> None:
+    """CMP-015's clean downgrade (no packing history) must remove every new
+    table/trigger/function it introduced and restore produce_lot_ledger_entries
+    and harvested_produce_lots to their exact CMP-014 shape — verified here
+    by comparing CHECK constraint bodies byte-for-byte via
+    pg_get_constraintdef, not just by name."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "de82132ef837")
+    try:
+        _assert_downgraded_packing_schema_removed(test_engine)
+    finally:
+        command.upgrade(_cfg(), "head")
+    _assert_upgraded_packing_schema_restored(test_engine)
+
+
+def _assert_downgraded_packing_schema_removed(test_engine) -> None:
+    with test_engine.connect() as conn:
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                "('packing_events', 'packing_input_lines', 'finished_goods_lots')"
+            )
+        ).scalars().all()
+        assert tables == []
+
+        functions = conn.execute(
+            text(
+                "SELECT proname FROM pg_proc WHERE proname IN ("
+                "'enforce_packing_event_insert_integrity', 'enforce_packing_input_line_insert_integrity', "
+                "'enforce_finished_goods_lot_insert_integrity', "
+                "'enforce_produce_lot_ledger_entry_insert_integrity_v2', 'enforce_packing_reconciliation')"
+            )
+        ).all()
+        assert functions == [], "every CMP-015 function, including the v2 ledger function, must be dropped"
+
+        # CMP-014's own function must be untouched — never modified, never dropped.
+        cmp014_function_intact = conn.execute(
+            text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_produce_lot_ledger_entry_insert_integrity'")
+        ).first()
+        assert cmp014_function_intact is not None
+
+        original_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'produce_lot_ledger_entries'::regclass "
+                "AND tgname = 'produce_lot_ledger_entries_enforce_insert_integrity'"
+            )
+        ).first()
+        assert original_trigger is not None, "downgrade must restore the exact original CMP-014 trigger attachment"
+
+        columns = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'produce_lot_ledger_entries' "
+                "AND column_name = 'packing_event_id'"
+            )
+        ).first()
+        assert columns is None, "the packing_event_id column must be dropped on downgrade"
+
+        harvest_event_id_nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'produce_lot_ledger_entries' "
+                "AND column_name = 'harvest_event_id'"
+            )
+        ).scalar_one()
+        assert harvest_event_id_nullable == "NO", "harvest_event_id must be restored to NOT NULL"
+
+        check_bodies = dict(
+            conn.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid = 'produce_lot_ledger_entries'::regclass AND contype = 'c' "
+                    "AND conname IN ('ck_produce_lot_ledger_entries_kind_allowed', "
+                    "'ck_produce_lot_ledger_entries_weight_envelope', 'ck_produce_lot_ledger_entries_count_positive')"
+                )
+            ).all()
+        )
+        assert check_bodies["ck_produce_lot_ledger_entries_kind_allowed"] == (
+            "CHECK (((entry_kind)::text = 'harvest_receipt'::text))"
+        )
+        assert "packing_consumption" not in check_bodies["ck_produce_lot_ledger_entries_weight_envelope"]
+        assert "packing_consumption" not in check_bodies["ck_produce_lot_ledger_entries_count_positive"]
+
+        harvested_produce_lots_composite_unique = conn.execute(
+            text(
+                "SELECT 1 FROM pg_constraint WHERE conrelid = 'harvested_produce_lots'::regclass "
+                "AND conname = 'uq_harvested_produce_lots_tenant_farm_id'"
+            )
+        ).first()
+        assert harvested_produce_lots_composite_unique is None, (
+            "the CMP-015-added composite unique constraint must be dropped on downgrade"
+        )
+
+
+def _assert_upgraded_packing_schema_restored(test_engine) -> None:
+    with test_engine.connect() as conn:
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                "('packing_events', 'packing_input_lines', 'finished_goods_lots')"
+            )
+        ).scalars().all()
+        assert sorted(tables) == ["finished_goods_lots", "packing_events", "packing_input_lines"]
+
+        v2_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'produce_lot_ledger_entries'::regclass "
+                "AND tgname = 'produce_lot_ledger_entries_enforce_insert_integrity_v2'"
+            )
+        ).first()
+        assert v2_trigger is not None
+
+        original_trigger_gone = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'produce_lot_ledger_entries'::regclass "
+                "AND tgname = 'produce_lot_ledger_entries_enforce_insert_integrity'"
+            )
+        ).first()
+        assert original_trigger_gone is None, "re-upgrade must not leave the original CMP-014 attachment alongside v2"
+
+        harvested_produce_lots_composite_unique = conn.execute(
+            text(
+                "SELECT 1 FROM pg_constraint WHERE conrelid = 'harvested_produce_lots'::regclass "
+                "AND conname = 'uq_harvested_produce_lots_tenant_farm_id'"
+            )
+        ).first()
+        assert harvested_produce_lots_composite_unique is not None

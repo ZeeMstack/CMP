@@ -91,11 +91,24 @@
 
 | Term | Meaning |
 |---|---|
-| Produce-Lot Ledger | Immutable, append-only `produce_lot_ledger_entries` record of every quantity movement against one harvested produce lot; CMP-014 permits only opening receipts |
+| Produce-Lot Ledger | Immutable, append-only `produce_lot_ledger_entries` record of every quantity movement against one harvested produce lot; CMP-014 permits opening receipts, CMP-015 adds typed packing debits |
 | Harvest Receipt | The one immutable ledger entry every harvested produce lot receives automatically, inside the harvest transaction, recording its original harvested weight/count; not a second user command |
 | Ledger Entry | One immutable row in the produce-lot ledger, typed by `entry_kind`, carrying a weight delta (and optional whole-unit-count delta) rather than a stored balance |
-| Available Produce Weight | Derived `SUM(weight_delta_kg)` across a lot's ledger entries — never a stored/editable column; equals received weight until a future typed entry kind exists |
+| Available Produce Weight | Derived `SUM(weight_delta_kg)` across a lot's ledger entries — never a stored/editable column; decreases as `packing_consumption` debits post |
 | Available Whole-Unit Count | Derived `SUM(whole_unit_count_delta)` across a lot's ledger entries — never a stored/editable column; null when the lot itself carries no unit count |
+
+## Typed packing consumption and finished-goods lots (`CMP_MASTER_SPEC.md` §2, §7, §8, `docs/domain/PACKING_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Packing Event | Immutable, insert-only record of one packing command, consuming weight/count from one or more source harvested produce lots and creating exactly one finished-goods lot |
+| Packing Input Line | One immutable line of a packing event naming a source harvested produce lot and the weight/optional count consumed from it; one lot appears at most once per event |
+| Packing Consumption | The `entry_kind` of the one negative ledger debit each packing input line creates automatically, inside the packing transaction; its id equals its input line's own id |
+| Finished-Goods Lot | Immutable identity created by exactly one packing event, carrying its packed-output weight and package count; carries no balance, status, storage location, grade, SKU, customer, or cost |
+| Packed Output Weight | The portion of a packing event's total input weight that became the finished-goods lot's own net weight |
+| Process Loss | The portion of a packing event's total input weight lost to processing; zero or positive, never negative |
+| Rejected Weight | The portion of a packing event's total input weight rejected during packing; zero or positive, never negative |
+| Package Count | The number of finished packs or containers a packing event produced; not the same semantic quantity as a source lot's whole-unit count, and never reconciled against it |
 
 ## Terms introduced by approved architecture decisions
 
