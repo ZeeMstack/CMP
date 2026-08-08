@@ -1694,3 +1694,59 @@ def test_migration_downgrade_removes_storage_triggers_functions_table_and_restor
             "finished_goods_storage_movements_no_delete",
             "finished_goods_storage_movements_no_update",
         ]
+
+
+# --- CMP-019: end-to-end recall and traceability foundation -----------------
+#
+# Indexes-only migration -- no table, trigger, or function of its own. See
+# test_traceability_migration.py for the full with-data downgrade/re-upgrade
+# proof; this section only adds the standard per-ticket smoke check.
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_shape(test_engine) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "dd8b86a52acf")
+    try:
+        with test_engine.connect() as conn:
+            indexes = conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE indexname IN ("
+                    "'ix_packing_input_lines_tenant_farm_produce_lot', "
+                    "'ix_dispatch_lines_tenant_farm_finished_goods_lot', "
+                    "'ix_finished_goods_storage_movements_tenant_farm_lot')"
+                )
+            ).scalars().all()
+            assert indexes == [], "downgrade must remove all three CMP-019 indexes"
+
+            # CMP-018's own table/triggers must remain fully intact.
+            storage_triggers = conn.execute(
+                text(
+                    "SELECT tgname FROM pg_trigger WHERE tgrelid = 'finished_goods_storage_movements'::regclass "
+                    "AND NOT tgisinternal ORDER BY tgname"
+                )
+            ).scalars().all()
+            assert storage_triggers == [
+                "finished_goods_storage_movements_enforce_insert_integrity",
+                "finished_goods_storage_movements_no_delete",
+                "finished_goods_storage_movements_no_update",
+            ]
+    finally:
+        command.upgrade(_cfg(), "head")
+
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+        indexes = conn.execute(
+            text(
+                "SELECT indexname FROM pg_indexes WHERE indexname IN ("
+                "'ix_packing_input_lines_tenant_farm_produce_lot', "
+                "'ix_dispatch_lines_tenant_farm_finished_goods_lot', "
+                "'ix_finished_goods_storage_movements_tenant_farm_lot')"
+            )
+        ).scalars().all()
+        assert sorted(indexes) == [
+            "ix_dispatch_lines_tenant_farm_finished_goods_lot",
+            "ix_finished_goods_storage_movements_tenant_farm_lot",
+            "ix_packing_input_lines_tenant_farm_produce_lot",
+        ]

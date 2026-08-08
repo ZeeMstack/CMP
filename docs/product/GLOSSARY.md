@@ -143,6 +143,16 @@
 | Location Balance | Derived `SUM(weight/count arriving) − SUM(weight/count leaving)` for one location across a lot's storage movements — always ≥ 0 |
 | Release-Before-Dispatch | The rule that a dispatch line may consume only currently unplaced quantity, in addition to CMP-017's own commercial-balance checks; there is no automatic release |
 
+## End-to-end recall and traceability (`CMP_MASTER_SPEC.md` §2, §7, §8, §10, `docs/domain/TRACEABILITY_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Backward Trace | A read-only query starting from one finished-goods lot, resolving its complete provable upstream lineage (packing → harvest → crop-batch ancestry → seed/sowing origin) plus current storage/dispatch/quality state |
+| Forward Impact | A read-only query starting from one crop batch or harvested produce lot, resolving every reachable downstream finished-goods lot and dispatch that may contain material from it |
+| Potentially Affected Quantity | A finished-goods lot's own entire current available/placed/unplaced/dispatched quantity, reported for a forward-impact result — never a quantity computed by scaling a source input against the lot's total; CMP-019 never invents proportional attribution |
+| Source Input Quantity | The exact weight/count of an affected upstream input that entered one packing event — a known fact, distinct from (and never used to derive) the potentially affected output quantity |
+| Trace Completeness | The `trace_complete`/`limitations`/`capability_limitations` triad describing whether a trace fully resolved within CMP's modeled graph; a legitimately empty branch is complete, a missing optional historical edge is a limitation, and a genuine invariant violation (e.g. a lineage cycle) is a `TraceabilityIntegrityError`, never a silent partial result |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

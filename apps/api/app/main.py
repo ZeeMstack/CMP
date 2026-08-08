@@ -8,6 +8,7 @@ from app.api.crops import router as crops_router
 from app.api.dispatch import router as dispatch_router
 from app.api.farms import router as farms_router
 from app.api.finished_goods_storage import router as finished_goods_storage_router
+from app.api.traceability import router as traceability_router
 from app.api.harvests import router as harvests_router
 from app.api.health import router as health_router
 from app.api.locations import router as locations_router
@@ -54,6 +55,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(packing_router)
     api.include_router(dispatch_router)
     api.include_router(finished_goods_storage_router)
+    api.include_router(traceability_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

@@ -71,6 +71,8 @@ Exactly one `finished_goods.storage_moved` audit event per successful movement c
 
 Adds `finished_goods_storage_movements`, its triggers/function, `enforce_finished_goods_ledger_entry_insert_integrity_v3`, and `uq_locations_tenant_farm_id` on `locations`. Downgrade blocks unconditionally whenever any storage movement row exists — CMP-015/017's own unconditional-block model: a movement row is independent operational data, never reconstructible, and the guard fires on row *existence*, not net balance (a place immediately followed by a matching release still blocks downgrade). When clean, downgrade drops the storage table/triggers/function, drops the v3 function, restores the exact CMP-017 v2 attachment (the v2 function itself was never modified, so only re-attached), and removes only the CMP-018-added `uq_locations_tenant_farm_id` constraint. Every packing/dispatch/audit row is untouched. CMP-016A's own `env.py` guard targets a different, unrelated revision and is unaffected.
 
+CMP-019's recall traceability reads storage movement/placement data (full movement history for a single lot's backward trace; current per-location balances for a forward-impact lot set) via its own bulk, set-based queries — it never calls this service's single-lot functions repeatedly, and never changes storage semantics. See `docs/domain/TRACEABILITY_MODEL.md`.
+
 ## Deferred
 
 Sales orders, customers, reservations, allocations, FIFO/FEFO, pallets, cartons, storage capacity, pricing, invoicing, transport, delivery confirmation, corrections, reversals, adjustments, valuation, frontend, RLS, role-specific authorization, automatic storage-location selection, auto-release.

@@ -550,3 +550,13 @@ class InsufficientUnplacedQuantityError(DomainError):
 
 class InsufficientStorageLocationBalanceError(DomainError):
     pass
+
+
+class TraceabilityIntegrityError(DomainError):
+    """Raised when a traceability traversal encounters a state the schema's
+    own invariants should make impossible: a lineage cycle, a required-edge
+    reference that resolves to nothing, or a defensive recursion-depth
+    guard being hit. Never raised for a legitimately empty or historically
+    incomplete branch -- those are reported as limitations, not errors."""
+
+    pass

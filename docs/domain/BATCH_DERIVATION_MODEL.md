@@ -37,3 +37,5 @@ Composite foreign keys prove tenant/farm consistency structurally throughout. Th
 ## Deferred
 
 Partial carrier-content splitting, quantity adjustment, discard, cross-farm/cross-tenant derivation, carrier movement/occupancy changes, automatic stage progression, reversal, correction, reopening a superseded batch, a general transformation engine, harvest, packing, inventory deduction, costing, frontend, RLS, role-specific authorization.
+
+CMP-019's recall traceability recursively walks `batch_derivation_sources`/`batch_derivation_outputs` (never a snapshot column) for multi-generation ancestor/descendant lineage — see `docs/domain/TRACEABILITY_MODEL.md`. It is read-only and adds no new derivation behavior.

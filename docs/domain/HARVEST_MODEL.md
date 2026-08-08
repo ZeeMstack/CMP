@@ -49,3 +49,5 @@ Packing, grading, sorting, rejected/waste quantities, cold storage, dispatch, sa
 Every harvested produce lot now also receives one immutable opening-receipt ledger entry, created automatically inside the same harvest transaction — see `docs/domain/PRODUCE_LOT_LEDGER_MODEL.md` (CMP-014). It reads only the just-inserted lot/event, adds no new command, audit event, or API route on this model, and does not change any behavior described above.
 
 A harvested produce lot's weight/count may now also be consumed by a typed packing command — see `docs/domain/PACKING_MODEL.md` (CMP-015). Packing reads and locks existing harvest/lot data but never modifies it; none of this document's behavior changes.
+
+CMP-019's recall traceability reads `harvest_events`/`harvested_produce_lots` as part of both backward and forward traversal — read-only, no behavior change here. See `docs/domain/TRACEABILITY_MODEL.md`.

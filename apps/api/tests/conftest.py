@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
+from app.core.db import get_db, get_engine
 from app.core.settings import settings
 from app.main import app
 
@@ -62,16 +62,24 @@ def db_session(test_engine, apply_test_migrations):
 
 
 @pytest.fixture
-def client(db_session):
+def client(db_session, test_engine):
     def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    # CMP-019's traceability service deliberately does not use the
+    # request-scoped `db_session` (it owns its own dedicated,
+    # REPEATABLE-READ connection via `get_engine`) -- point that dependency
+    # at `test_engine` too, so an HTTP test's own committed-connection
+    # scenario data is visible to it. Harmless for every other route,
+    # which never depends on `get_engine`.
+    app.dependency_overrides[get_engine] = lambda: test_engine
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_engine, None)
 
 
 @pytest.fixture
