@@ -13,6 +13,7 @@ from app.models.dispatch_event import DispatchEvent
 from app.models.dispatch_line import DispatchLine
 from app.models.farm import Farm
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
+from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.germination_check import GerminationCheck
 from app.models.location import Location
 from app.models.location_type import LocationType
@@ -58,6 +59,7 @@ __all__ = [
     "DispatchLine",
     "Farm",
     "FinishedGoodsLedgerEntry",
+    "FinishedGoodsStorageMovement",
     "GerminationCheck",
     "Location",
     "LocationType",

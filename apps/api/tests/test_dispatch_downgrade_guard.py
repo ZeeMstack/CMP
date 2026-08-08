@@ -379,14 +379,18 @@ def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp01
     conn.close()
 
     with test_engine.connect() as c:
-        v2_before = c.execute(
+        # CMP-018 sits above CMP-017 at "head", so the currently-attached
+        # function is v3 (which supersedes v2's attachment), not v2 itself
+        # -- see test_finished_goods_storage_downgrade_guard.py for CMP-018's
+        # own dedicated downgrade/re-upgrade proof.
+        v3_before = c.execute(
             text(
                 "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                 "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v2'::regproc"
+                "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v3'::regproc"
             )
         ).scalar_one()
-        assert v2_before == 1, "the v2 trigger must be attached at head"
+        assert v3_before == 1, "the v3 trigger must be attached at head"
 
     try:
         command.downgrade(_cfg(), _PRE_CMP017_REVISION)
@@ -471,14 +475,16 @@ def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp01
         with test_engine.connect() as c:
             current = c.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
             assert current == _resolve_head_revision(_cfg())
-            v2_after_reupgrade = c.execute(
+            # CMP-018 sits above CMP-017 at "head", so re-upgrading here also
+            # reattaches its own v3 trigger (superseding v2's attachment).
+            v3_after_reupgrade = c.execute(
                 text(
                     "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                     "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v2'::regproc"
+                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v3'::regproc"
                 )
             ).scalar_one()
-            assert v2_after_reupgrade == 1, "re-upgrade must reattach the v2 trigger"
+            assert v3_after_reupgrade == 1, "re-upgrade must reattach the v3 trigger"
             receipt_after_reupgrade = dict(
                 c.execute(
                     text(

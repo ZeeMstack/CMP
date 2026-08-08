@@ -15,6 +15,7 @@ from app.services.errors import (
     DuplicateDispatchCodeError,
     FarmNotFoundError,
     InsufficientFinishedGoodsBalanceError,
+    InsufficientUnplacedQuantityError,
     InvalidDispatchEffectiveTimeError,
     QualityHoldOpenError,
 )
@@ -61,6 +62,7 @@ def record_dispatch(
         DispatchCommandReusedWithDifferentPayloadError,
         DuplicateDispatchCodeError,
         InsufficientFinishedGoodsBalanceError,
+        InsufficientUnplacedQuantityError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (

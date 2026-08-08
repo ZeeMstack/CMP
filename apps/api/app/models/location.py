@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, func, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -50,4 +50,10 @@ class Location(TimestampMixin, Base):
             unique=True,
             postgresql_where=text("parent_location_id IS NULL"),
         ),
+        # CMP-018-added: backs the composite foreign keys from
+        # finished_goods_storage_movements.source_location_id/
+        # destination_location_id, matching every other typed-source
+        # composite FK convention in this codebase. Removed on clean
+        # CMP-018 downgrade.
+        UniqueConstraint("tenant_id", "farm_id", "id", name="uq_locations_tenant_farm_id"),
     )

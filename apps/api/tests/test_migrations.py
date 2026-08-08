@@ -1528,14 +1528,18 @@ def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_rest
         ).scalars().all()
         assert sorted(tables) == ["dispatch_events", "dispatch_lines"]
 
-        v2_trigger = conn.execute(
+        # CMP-018 sits above CMP-017 at "head", so re-upgrading here also
+        # reattaches its own v3 trigger (which supersedes, rather than
+        # coexists with, v2's attachment) -- see the CMP-018 section below
+        # for its own dedicated downgrade/re-upgrade proof.
+        v3_trigger = conn.execute(
             text(
                 "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                 "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v2')"
+                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v3')"
             )
         ).first()
-        assert v2_trigger is not None, "re-upgrade must reattach the v2 trigger"
+        assert v3_trigger is not None, "re-upgrade must reattach the v3 trigger"
 
         fgle_triggers = conn.execute(
             text(
@@ -1569,4 +1573,124 @@ def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_rest
         ).scalars().all()
         assert dispatch_lines_triggers == [
             "dispatch_lines_enforce_reconciliation", "dispatch_lines_no_delete", "dispatch_lines_no_update",
+        ]
+
+
+# --- CMP-018: cold-store location and finished-goods physical occupancy -----
+#
+# Follows the same unconditional-block model as CMP-015/017's own dispatch
+# section above, not CMP-016's reconstructible-projection one: a storage
+# movement row is independent operational data, never reconstructible, so
+# downgrade is blocked outright whenever any exists. This test only proves
+# clean schema removal/restoration with no movement history present; see
+# test_finished_goods_storage_downgrade_guard.py for the with-data and
+# guard-triggering cases. Unlike dispatch, CMP-018 adds no deferred
+# reconciliation trigger on finished_goods_ledger_entries or on its own new
+# table -- a storage movement is a single self-contained row with no child
+# fan-out to reconcile, so none is needed (see FINISHED_GOODS_STORAGE_MODEL.md).
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_storage_triggers_functions_table_and_restores_cmp017_shape(
+    test_engine,
+) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "63d4d7e184e2")
+    try:
+        with test_engine.connect() as conn:
+            table_exists = conn.execute(
+                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_storage_movements'")
+            ).first()
+            assert table_exists is None, "downgrade must drop the storage movement table"
+
+            functions = conn.execute(
+                text(
+                    "SELECT proname FROM pg_proc WHERE proname IN ("
+                    "'enforce_finished_goods_storage_movement_insert_integrity', "
+                    "'enforce_finished_goods_ledger_entry_insert_integrity_v3')"
+                )
+            ).all()
+            assert functions == [], "every CMP-018 function, including the v3 ledger function, must be dropped"
+
+            # CMP-017's own v2 function must be untouched -- never modified, never dropped.
+            cmp017_function_intact = conn.execute(
+                text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_finished_goods_ledger_entry_insert_integrity_v2'")
+            ).first()
+            assert cmp017_function_intact is not None
+
+            v2_trigger = conn.execute(
+                text(
+                    "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                    "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v2'::regproc"
+                )
+            ).first()
+            assert v2_trigger is not None, "downgrade must restore the exact CMP-017 v2 trigger attachment"
+
+            locations_unique_constraint = conn.execute(
+                text(
+                    "SELECT 1 FROM pg_constraint WHERE conname = 'uq_locations_tenant_farm_id' "
+                    "AND conrelid = 'locations'::regclass"
+                )
+            ).first()
+            assert locations_unique_constraint is None, "downgrade must remove the CMP-018-added composite unique"
+
+            # CMP-017's own dispatch schema and reconciliation must remain untouched.
+            dispatch_tables = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                    "('dispatch_events', 'dispatch_lines')"
+                )
+            ).scalars().all()
+            assert sorted(dispatch_tables) == ["dispatch_events", "dispatch_lines"]
+            cmp017_reconciliation_intact = conn.execute(
+                text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_dispatch_reconciliation'")
+            ).first()
+            assert cmp017_reconciliation_intact is not None
+
+            # location_types/location_type_hierarchy_rules seed data (CMP-004)
+            # is never touched by this ticket.
+            cold_store_position_type = conn.execute(
+                text("SELECT 1 FROM location_types WHERE code = 'cold_store_position'")
+            ).first()
+            assert cold_store_position_type is not None
+    finally:
+        command.upgrade(_cfg(), "head")
+
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+
+        table_exists = conn.execute(
+            text("SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_storage_movements'")
+        ).first()
+        assert table_exists is not None
+
+        v3_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v3')"
+            )
+        ).first()
+        assert v3_trigger is not None, "re-upgrade must reattach the v3 trigger"
+
+        locations_unique_constraint = conn.execute(
+            text(
+                "SELECT 1 FROM pg_constraint WHERE conname = 'uq_locations_tenant_farm_id' "
+                "AND conrelid = 'locations'::regclass"
+            )
+        ).first()
+        assert locations_unique_constraint is not None, "re-upgrade must recreate the composite unique on locations"
+
+        storage_triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'finished_goods_storage_movements'::regclass "
+                "AND NOT tgisinternal ORDER BY tgname"
+            )
+        ).scalars().all()
+        assert storage_triggers == [
+            "finished_goods_storage_movements_enforce_insert_integrity",
+            "finished_goods_storage_movements_no_delete",
+            "finished_goods_storage_movements_no_update",
         ]

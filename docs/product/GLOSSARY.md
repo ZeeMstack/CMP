@@ -129,6 +129,20 @@
 | Dispatched Weight | The weight, in kilograms, removed from a finished-goods lot by one dispatch line; always strictly positive on the line, always strictly negative on its ledger issue |
 | Dispatched Package Count | The number of packages removed from a finished-goods lot by one dispatch line; always strictly positive on the line, always strictly negative on its ledger issue; not the same semantic quantity as any source produce lot's whole-unit count |
 
+## Cold-store location and finished-goods physical occupancy (`CMP_MASTER_SPEC.md` §3.4, §10, `docs/domain/FINISHED_GOODS_STORAGE_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Storage Movement | One immutable, insert-only row in `finished_goods_storage_movements` recording a single physical relocation (`place`, `transfer`, or `release`) of a finished-goods lot; never alters the finished-goods ledger's own commercial quantity |
+| Place | A storage movement moving quantity from unplaced into a named storage-eligible location (source NULL, destination required) |
+| Transfer | A storage movement moving quantity from one storage-eligible location directly to another (both required, must differ) |
+| Release | A storage movement moving quantity from a named location back to unplaced (source required, destination NULL) |
+| Storage-Eligible Location | A location whose type is exactly `cold_store_position`; the sole eligible target/source for storage movements |
+| Total Placed Quantity | Derived `SUM(place) − SUM(release)` across a lot's storage movements — never a stored column; transfers have zero net effect on this total by construction |
+| Unplaced Quantity | Derived `available − total_placed` for a finished-goods lot — never a stored column and never a fake "unplaced location" row |
+| Location Balance | Derived `SUM(weight/count arriving) − SUM(weight/count leaving)` for one location across a lot's storage movements — always ≥ 0 |
+| Release-Before-Dispatch | The rule that a dispatch line may consume only currently unplaced quantity, in addition to CMP-017's own commercial-balance checks; there is no automatic release |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

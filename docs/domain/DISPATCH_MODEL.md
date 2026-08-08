@@ -52,4 +52,6 @@ Adds `uq_dispatch_events_tenant_farm_id` and `uq_dispatch_lines_tenant_farm_id` 
 
 ## Deferred
 
-Customers, sales orders, reservations, allocations, pricing, invoicing, storage locations, pallets, transport, delivery confirmation, returns, cancellation, correction, reversal, write-off, costing, valuation, frontend, RLS, role-specific authorization. A future correction ticket will introduce the first typed compensating entry kind.
+Customers, sales orders, reservations, allocations, pricing, invoicing, pallets, transport, delivery confirmation, returns, cancellation, correction, reversal, write-off, costing, valuation, frontend, RLS, role-specific authorization. A future correction ticket will introduce the first typed compensating entry kind.
+
+> **CMP-018 update**: storage locations are no longer deferred. `dispatch_service.record_dispatch` gains a release-before-dispatch rule — each line now additionally requires `dispatched ≤ unplaced` (weight and count independently), on top of the balance checks above — and a dispatch's `effective_time` may no longer precede the lot's latest storage movement. The v2 ledger trigger described above is itself superseded by `..._v3`. See `docs/domain/FINISHED_GOODS_STORAGE_MODEL.md`.

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.models.dispatch_event import DispatchEvent
 from app.models.dispatch_line import DispatchLine
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_lot import FinishedGoodsLot
+from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.packing_input_line import PackingInputLine
 from app.schemas.dispatch import DispatchEventRead, DispatchLineRead
@@ -26,6 +27,7 @@ from app.services.errors import (
     DuplicateDispatchCodeError,
     FarmNotFoundError,
     InsufficientFinishedGoodsBalanceError,
+    InsufficientUnplacedQuantityError,
     InvalidDispatchEffectiveTimeError,
     QualityHoldOpenError,
 )
@@ -183,6 +185,35 @@ def record_dispatch(
     ).all()
     balances_by_lot = {r.finished_goods_lot_id: r for r in balance_rows}
 
+    # CMP-018: a lot's own physical-placement history is a second,
+    # independent chronology that must stay monotonic against dispatch
+    # too -- computed in the same batched shape as the ledger balance
+    # above. total_placed = SUM(place) - SUM(release); transfers cancel
+    # out across the total by construction.
+    storage_rows = db.execute(
+        select(
+            FinishedGoodsStorageMovement.finished_goods_lot_id,
+            func.sum(
+                case(
+                    (FinishedGoodsStorageMovement.movement_kind == "place", FinishedGoodsStorageMovement.moved_weight_kg),
+                    (FinishedGoodsStorageMovement.movement_kind == "release", -FinishedGoodsStorageMovement.moved_weight_kg),
+                    else_=0,
+                )
+            ).label("placed_weight"),
+            func.sum(
+                case(
+                    (FinishedGoodsStorageMovement.movement_kind == "place", FinishedGoodsStorageMovement.moved_package_count),
+                    (FinishedGoodsStorageMovement.movement_kind == "release", -FinishedGoodsStorageMovement.moved_package_count),
+                    else_=0,
+                )
+            ).label("placed_count"),
+            func.max(FinishedGoodsStorageMovement.effective_time).label("last_movement_effective_time"),
+        )
+        .where(FinishedGoodsStorageMovement.finished_goods_lot_id.in_(lot_ids))
+        .group_by(FinishedGoodsStorageMovement.finished_goods_lot_id)
+    ).all()
+    storage_by_lot = {r.finished_goods_lot_id: r for r in storage_rows}
+
     for lid in lot_ids:
         lot = locked_lots_by_id[lid]
         if effective_time < lot.effective_time:
@@ -193,6 +224,14 @@ def record_dispatch(
         if bal is not None and bal.last_effective_time is not None and effective_time < bal.last_effective_time:
             raise InvalidDispatchEffectiveTimeError(
                 f"effective_time precedes the latest existing ledger entry for finished-goods lot {lid}"
+            )
+        storage_row = storage_by_lot.get(lid)
+        if (
+            storage_row is not None and storage_row.last_movement_effective_time is not None
+            and effective_time < storage_row.last_movement_effective_time
+        ):
+            raise InvalidDispatchEffectiveTimeError(
+                f"effective_time precedes the latest storage movement for finished-goods lot {lid}"
             )
 
     for line in lines:
@@ -207,6 +246,19 @@ def record_dispatch(
             raise InsufficientFinishedGoodsBalanceError(str(lid))
         if dispatched_count > available_count:
             raise InsufficientFinishedGoodsBalanceError(str(lid))
+
+        # CMP-018: dispatch may only consume currently unplaced quantity --
+        # release-before-dispatch. Checked independently of, and in
+        # addition to, the plain commercial-balance check above.
+        storage_row = storage_by_lot.get(lid)
+        placed_weight = storage_row.placed_weight if storage_row is not None and storage_row.placed_weight is not None else Decimal("0")
+        placed_count = storage_row.placed_count if storage_row is not None and storage_row.placed_count is not None else 0
+        unplaced_weight = available_weight - placed_weight
+        unplaced_count = available_count - placed_count
+        if dispatched_weight > unplaced_weight:
+            raise InsufficientUnplacedQuantityError(str(lid))
+        if dispatched_count > unplaced_count:
+            raise InsufficientUnplacedQuantityError(str(lid))
 
     event_id = uuid.uuid4()
     line_ids = {lid: uuid.uuid4() for lid in lot_ids}

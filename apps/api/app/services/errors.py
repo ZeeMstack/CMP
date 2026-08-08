@@ -518,3 +518,35 @@ class DuplicateDispatchCodeError(DomainError):
 
 class InsufficientFinishedGoodsBalanceError(DomainError):
     pass
+
+
+class StorageLocationNotFoundError(DomainError):
+    pass
+
+
+class IneligibleStorageLocationError(DomainError):
+    pass
+
+
+class InactiveDestinationLocationError(DomainError):
+    pass
+
+
+class StorageMovementValidationError(DomainError):
+    pass
+
+
+class StorageCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InvalidStorageMovementEffectiveTimeError(DomainError):
+    pass
+
+
+class InsufficientUnplacedQuantityError(DomainError):
+    pass
+
+
+class InsufficientStorageLocationBalanceError(DomainError):
+    pass

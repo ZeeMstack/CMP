@@ -48,7 +48,7 @@ Adds `uq_harvested_produce_lots_tenant_farm_id` (a composite unique constraint C
 
 ## Finished-goods opening receipt
 
-Every finished-goods lot now also receives one immutable opening-receipt ledger entry, created automatically inside the same packing transaction — see `docs/domain/FINISHED_GOODS_LEDGER_MODEL.md` (CMP-016). It reads only the just-inserted lot/event, adds no new command, audit event, or API route on this model, and does not change any behavior described above. CMP-017 (`docs/domain/DISPATCH_MODEL.md`) later adds the first typed negative entry against that same ledger — a dispatch issue — with no change to packing itself.
+Every finished-goods lot now also receives one immutable opening-receipt ledger entry, created automatically inside the same packing transaction — see `docs/domain/FINISHED_GOODS_LEDGER_MODEL.md` (CMP-016). It reads only the just-inserted lot/event, adds no new command, audit event, or API route on this model, and does not change any behavior described above. CMP-017 (`docs/domain/DISPATCH_MODEL.md`) later adds the first typed negative entry against that same ledger — a dispatch issue — with no change to packing itself. CMP-018 (`docs/domain/FINISHED_GOODS_STORAGE_MODEL.md`) adds physical storage placement as a wholly separate table with no change to packing either: a newly packed finished-goods lot begins with zero storage movements, and is therefore fully unplaced by construction until an operator explicitly places it.
 
 ## Deferred
 
