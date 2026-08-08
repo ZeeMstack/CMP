@@ -9,6 +9,8 @@ from app.models.carrier import Carrier
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
+from app.models.dispatch_event import DispatchEvent
+from app.models.dispatch_line import DispatchLine
 from app.models.farm import Farm
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.germination_check import GerminationCheck
@@ -52,6 +54,8 @@ __all__ = [
     "CarrierType",
     "Crop",
     "CropBatch",
+    "DispatchEvent",
+    "DispatchLine",
     "Farm",
     "FinishedGoodsLedgerEntry",
     "GerminationCheck",

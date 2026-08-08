@@ -16,7 +16,8 @@ class FinishedGoodsLedgerEntryRead(BaseModel):
     entry_kind: str
     finished_goods_lot_id: uuid.UUID
     finished_goods_lot_code: str
-    packing_event_id: uuid.UUID
+    packing_event_id: uuid.UUID | None
+    dispatch_line_id: uuid.UUID | None
     actor_user_id: uuid.UUID
     weight_delta_kg: Decimal
     package_count_delta: int

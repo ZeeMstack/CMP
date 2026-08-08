@@ -667,6 +667,44 @@ def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine) ->
         cleanup_scenario(test_engine, scenario["tenant_id"])
 
 
+def _walk_down_revisions(cfg: Config, steps: int) -> list[str]:
+    """[head, head-1, head-2, ..., head-steps], derived by walking
+    `down_revision` from the live script graph -- never a hardcoded
+    assumption about which specific revision is "current head"."""
+    script = ScriptDirectory.from_config(cfg)
+    revs = [script.get_current_head()]
+    for _ in range(steps):
+        revs.append(script.get_revision(revs[-1]).down_revision)
+    return revs
+
+
+@pytest.mark.integration
+def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine) -> None:
+    """CMP-017 verification pass: an explicit, single-step-at-a-time walk
+    head (CMP-017) -> CMP-016A -> CMP-016 -> CMP-015 -> CMP-014, with no
+    dispatch or packing history at all, proving every individual leg is
+    legal on its own (not just as part of a larger multi-step jump) --
+    and that CMP-016A's own env.py guard does not block any of them.
+    Revisions are resolved dynamically from the live graph; only the
+    number of steps (4, matching CMP-017/CMP-016A/CMP-016/CMP-015) is
+    fixed, since that is a structural fact about this linear history, not
+    a "current head" assumption."""
+    require_cmp_test(test_engine)
+    head, cmp016a, cmp016, cmp015, cmp014 = _walk_down_revisions(_cfg(), 4)
+
+    command.downgrade(_cfg(), cmp016a)
+    _assert_at(test_engine, cmp016a)
+    command.downgrade(_cfg(), cmp016)
+    _assert_at(test_engine, cmp016)
+    command.downgrade(_cfg(), cmp015)
+    _assert_at(test_engine, cmp015)
+    command.downgrade(_cfg(), cmp014)
+    _assert_at(test_engine, cmp014)
+
+    command.upgrade(_cfg(), "head")
+    _assert_at(test_engine, head)
+
+
 # --- clean paths, ambiguity, upgrades, boundaries ----------------------------
 
 @pytest.mark.integration
@@ -708,7 +746,11 @@ def test_clean_downgrade_with_no_produce_lots(test_engine) -> None:
 
 @pytest.mark.integration
 def test_current_head_resolution_is_dynamic(test_engine) -> None:
-    assert _resolve_head_revision(_cfg()) == NEW_REVISION
+    # NEW_REVISION ("dd4e6fab718a") is CMP-016A's own marker migration, not
+    # necessarily "head" — CMP-017 ("63d4d7e184e2") now sits above it, so
+    # this asserts against the true current head directly rather than
+    # reusing that older, unrelated constant.
+    assert _resolve_head_revision(_cfg()) == "63d4d7e184e2"
     assert _pre_cmp014_revision(_cfg()) == "c7f14b8e29a3"
 
 

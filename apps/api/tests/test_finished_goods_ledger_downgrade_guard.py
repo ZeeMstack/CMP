@@ -498,7 +498,14 @@ def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine) -> None:
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="does not exactly reconstruct"):
+        # CMP-017 now sits above CMP-016 in the migration chain and, as
+        # part of its own downgrade, validates every remaining ledger row
+        # against the exact CMP-016 shape being restored (including
+        # `id = finished_goods_lot_id`) before CMP-016's own downgrade()
+        # ever runs — so its guard fires first, making CMP-016's own
+        # "does not exactly reconstruct" message unreachable via a single
+        # multi-step downgrade from head for this specific malformed state.
+        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-017"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -603,7 +610,10 @@ def test_downgrade_blocked_by_non_null_note(test_engine) -> None:
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="does not exactly reconstruct"):
+        # See test_downgrade_blocked_by_deterministic_id_mismatch above:
+        # CMP-017's own downgrade guard fires first now that it sits above
+        # CMP-016, making CMP-016's own message unreachable here too.
+        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-017"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -645,12 +655,24 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
     conn.close()
     require_cmp_test(test_engine)
 
+    # CMP-017 widened kind_allowed, deterministic_id, typed_source_shape,
+    # weight_envelope, and count_signed all to be kind-aware, branching on
+    # entry_kind IN ('packing_receipt', 'dispatch_issue') — 'future_kind'
+    # now satisfies none of those branches either, so all five must be
+    # dropped here (not just kind_allowed) to construct this state, and
+    # restored afterward in their exact CMP-017 (not CMP-016) bodies, since
+    # this test never actually leaves head.
     bypass_conn = test_engine.connect()
     trans = bypass_conn.begin()
     bypass_conn.execute(text("SET session_replication_role = replica"))
-    bypass_conn.execute(
-        text("ALTER TABLE finished_goods_ledger_entries DROP CONSTRAINT ck_finished_goods_ledger_entries_kind_allowed")
-    )
+    for name in [
+        "ck_finished_goods_ledger_entries_kind_allowed",
+        "ck_finished_goods_ledger_entries_deterministic_id",
+        "ck_finished_goods_ledger_entries_typed_source_shape",
+        "ck_finished_goods_ledger_entries_weight_envelope",
+        "ck_finished_goods_ledger_entries_count_signed",
+    ]:
+        bypass_conn.execute(text(f"ALTER TABLE finished_goods_ledger_entries DROP CONSTRAINT {name}"))
     bypass_conn.execute(
         text("UPDATE finished_goods_ledger_entries SET entry_kind = 'future_kind' WHERE finished_goods_lot_id = :lid"),
         {"lid": fg_lot_id},
@@ -660,12 +682,15 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="entry kind other than"):
+        # CMP-017's own downgrade guard checks for an unrecognized entry
+        # kind before CMP-016's own downgrade() ever runs, so its message
+        # fires first now that it sits above CMP-016 in the chain.
+        with pytest.raises(RuntimeError, match="entry kind this migration does not recognize"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
         # Restore order matters: delete the tenant's bad row *before*
-        # re-adding the CHECK, since Postgres validates all existing rows
+        # re-adding the CHECKs, since Postgres validates all existing rows
         # against a newly added CHECK unless declared NOT VALID.
         cleanup_scenario(test_engine, scenario["tenant_id"])
         restore_conn = test_engine.connect()
@@ -674,7 +699,44 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
-                    "ck_finished_goods_ledger_entries_kind_allowed CHECK (entry_kind IN ('packing_receipt'))"
+                    "ck_finished_goods_ledger_entries_kind_allowed "
+                    "CHECK (entry_kind IN ('packing_receipt', 'dispatch_issue'))"
+                )
+            )
+            restore_conn.execute(
+                text(
+                    "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
+                    "ck_finished_goods_ledger_entries_deterministic_id CHECK ("
+                    "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
+                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id))"
+                )
+            )
+            restore_conn.execute(
+                text(
+                    "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
+                    "ck_finished_goods_ledger_entries_typed_source_shape CHECK ("
+                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL) "
+                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL))"
+                )
+            )
+            restore_conn.execute(
+                text(
+                    "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
+                    "ck_finished_goods_ledger_entries_weight_envelope CHECK ("
+                    "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
+                    "  (entry_kind = 'packing_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
+                    "  OR (entry_kind = 'dispatch_issue' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+                    "))"
+                )
+            )
+            restore_conn.execute(
+                text(
+                    "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
+                    "ck_finished_goods_ledger_entries_count_signed CHECK ("
+                    "(entry_kind = 'packing_receipt' AND package_count_delta > 0 "
+                    "  AND package_count_delta <= 9223372036854775807)"
+                    "OR (entry_kind = 'dispatch_issue' AND package_count_delta < 0 "
+                    "  AND package_count_delta >= -9223372036854775807))"
                 )
             )
         except Exception:

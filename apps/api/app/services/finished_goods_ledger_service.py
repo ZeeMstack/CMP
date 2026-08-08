@@ -47,7 +47,8 @@ def get_ledger(
     return [
         FinishedGoodsLedgerEntryRead(
             id=e.id, entry_kind=e.entry_kind, finished_goods_lot_id=e.finished_goods_lot_id,
-            finished_goods_lot_code=lot.code, packing_event_id=e.packing_event_id, actor_user_id=e.actor_user_id,
+            finished_goods_lot_code=lot.code, packing_event_id=e.packing_event_id,
+            dispatch_line_id=e.dispatch_line_id, actor_user_id=e.actor_user_id,
             weight_delta_kg=e.weight_delta_kg, package_count_delta=e.package_count_delta,
             effective_time=e.effective_time, recorded_time=e.recorded_time, note=e.note,
         )

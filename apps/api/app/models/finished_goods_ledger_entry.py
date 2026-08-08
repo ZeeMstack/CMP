@@ -20,21 +20,16 @@ from app.core.db import Base
 
 
 class FinishedGoodsLedgerEntry(Base):
-    """Immutable, insert-only ledger entry against one finished-goods lot
-    (CMP-016), mirroring CMP-014's produce-lot ledger exactly one level up
-    the chain. CMP-016 permits exactly one `entry_kind`, `packing_receipt`
-    — the lot's original packed quantity, created automatically inside the
-    same transaction as the packing command. A `packing_receipt` row is a
-    deterministic, reconstructible projection of its lot and packing
-    event: `id`/`finished_goods_lot_id` both equal the lot's own id, and
-    every other field is copied exactly from the lot/event, including
-    `recorded_time` (from the lot's own `recorded_time`, not a fresh
-    server default) and `note` (always NULL). Since only one entry kind
-    exists today, the deterministic-ID, kind, and note-null rules are
-    unconditional same-row CHECK constraints rather than kind-guarded —
-    a future ticket introducing a second kind (e.g. dispatch) must widen
-    these CHECKs the same way CMP-015 widened CMP-014's own, and must not
-    assume every row obeys today's unconditional shape."""
+    """Immutable, insert-only ledger entry against one finished-goods lot.
+    CMP-016 permitted exactly one `entry_kind`, `packing_receipt`. CMP-017
+    adds the first typed negative kind, `dispatch_issue`, widening the
+    same-row CHECKs to be kind-guarded exactly as anticipated in CMP-016's
+    own model doc. Exactly one typed source is ever populated
+    (`packing_event_id` XOR `dispatch_line_id`) — never a generic source
+    type/UUID pair. Both kinds keep the same deterministic-projection
+    convention, one level removed: a `packing_receipt` row's `id` equals
+    its `finished_goods_lot_id`; a `dispatch_issue` row's `id` equals its
+    own `dispatch_line_id`."""
 
     __tablename__ = "finished_goods_ledger_entries"
 
@@ -44,7 +39,8 @@ class FinishedGoodsLedgerEntry(Base):
     finished_goods_lot_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("finished_goods_lots.id"), nullable=False
     )
-    packing_event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("packing_events.id"), nullable=False)
+    packing_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("packing_events.id"), nullable=True)
+    dispatch_line_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dispatch_lines.id"), nullable=True)
     entry_kind: Mapped[str] = mapped_column(String, nullable=False)
     weight_delta_kg: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     package_count_delta: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -54,24 +50,52 @@ class FinishedGoodsLedgerEntry(Base):
     note: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
-        CheckConstraint("entry_kind IN ('packing_receipt')", name="ck_finished_goods_ledger_entries_kind_allowed"),
-        # Deterministic-identity CHECK: unconditional today (only one kind
-        # exists), same-row, no join needed.
-        CheckConstraint("id = finished_goods_lot_id", name="ck_finished_goods_ledger_entries_deterministic_id"),
-        # NUMERIC deliberately unscoped, matching CMP-013/014/015's shared envelope.
         CheckConstraint(
-            "weight_delta_kg > 0 AND weight_delta_kg = trunc(weight_delta_kg, 3) "
-            "AND weight_delta_kg < 100000000000",
+            "entry_kind IN ('packing_receipt', 'dispatch_issue')",
+            name="ck_finished_goods_ledger_entries_kind_allowed",
+        ),
+        # Deterministic-identity CHECK, now kind-guarded: a packing_receipt
+        # row's id equals its own lot id; a dispatch_issue row's id equals
+        # its own dispatch line id.
+        CheckConstraint(
+            "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
+            "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id)",
+            name="ck_finished_goods_ledger_entries_deterministic_id",
+        ),
+        # Typed-source XOR, mirroring CMP-015's own
+        # ck_produce_lot_ledger_entries_typed_source_shape idiom exactly:
+        # no generic source-type/UUID pair.
+        CheckConstraint(
+            "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL) "
+            "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL)",
+            name="ck_finished_goods_ledger_entries_typed_source_shape",
+        ),
+        # Kind-signed envelope: receipts stay strictly positive, issues
+        # strictly negative -- zero is never valid for either. Uses
+        # explicit range comparisons rather than ABS() so the BIGINT
+        # minimum (-9223372036854775808) never needs to be negated; the
+        # issue lower bound is deliberately -9223372036854775807, one
+        # above the true BIGINT minimum.
+        CheckConstraint(
+            "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
+            "  (entry_kind = 'packing_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
+            "  OR (entry_kind = 'dispatch_issue' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+            ")",
             name="ck_finished_goods_ledger_entries_weight_envelope",
         ),
-        CheckConstraint("package_count_delta > 0", name="ck_finished_goods_ledger_entries_count_positive"),
+        CheckConstraint(
+            "(entry_kind = 'packing_receipt' AND package_count_delta > 0 "
+            "  AND package_count_delta <= 9223372036854775807)"
+            "OR (entry_kind = 'dispatch_issue' AND package_count_delta < 0 "
+            "  AND package_count_delta >= -9223372036854775807)",
+            name="ck_finished_goods_ledger_entries_count_signed",
+        ),
         CheckConstraint("note IS NULL", name="ck_finished_goods_ledger_entries_note_null"),
         UniqueConstraint(
             "tenant_id", "farm_id", "id", name="uq_finished_goods_ledger_entries_tenant_farm_id"
         ),
-        # Partial (kind-scoped), not table-wide: a future entry kind must
-        # be able to reference the same lot/event without being blocked
-        # by this ticket's one-receipt-per-lot rule.
+        # Partial (kind-scoped), not table-wide: each kind gets its own
+        # one-per-parent rule without blocking the other kind.
         Index(
             "ux_finished_goods_ledger_entries_lot_packing_receipt", "finished_goods_lot_id", unique=True,
             postgresql_where=text("entry_kind = 'packing_receipt'"),
@@ -80,11 +104,13 @@ class FinishedGoodsLedgerEntry(Base):
             "ux_finished_goods_ledger_entries_event_packing_receipt", "packing_event_id", unique=True,
             postgresql_where=text("entry_kind = 'packing_receipt'"),
         ),
-        # Both composite FKs are usable directly: unlike CMP-014's
-        # situation with harvested_produce_lots, both finished_goods_lots
-        # and packing_events already carry a (tenant_id, farm_id, id)
-        # unique constraint (uq_finished_goods_lots_tenant_farm_id,
-        # uq_packing_events_tenant_farm_id) — no new constraint needed.
+        Index(
+            "ux_finished_goods_ledger_entries_line_dispatch_issue", "dispatch_line_id", unique=True,
+            postgresql_where=text("entry_kind = 'dispatch_issue'"),
+        ),
+        # All three composite FKs are usable directly: finished_goods_lots,
+        # packing_events, and dispatch_lines each already carry their own
+        # (tenant_id, farm_id, id) unique constraint.
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "finished_goods_lot_id"],
             ["finished_goods_lots.tenant_id", "finished_goods_lots.farm_id", "finished_goods_lots.id"],
@@ -94,5 +120,10 @@ class FinishedGoodsLedgerEntry(Base):
             ["tenant_id", "farm_id", "packing_event_id"],
             ["packing_events.tenant_id", "packing_events.farm_id", "packing_events.id"],
             name="fk_finished_goods_ledger_entries_tenant_farm_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "dispatch_line_id"],
+            ["dispatch_lines.tenant_id", "dispatch_lines.farm_id", "dispatch_lines.id"],
+            name="fk_finished_goods_ledger_entries_tenant_farm_line",
         ),
     )

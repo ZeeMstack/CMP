@@ -119,6 +119,16 @@
 | Finished-Goods Available Weight | Derived `SUM(weight_delta_kg)` across a lot's ledger entries — never a stored/editable column; equals received weight until a future typed entry kind exists |
 | Available Package Count | Derived `SUM(package_count_delta)` across a lot's ledger entries — never a stored/editable column; distinct from a source produce lot's whole-unit count, never reconciled against it |
 
+## Typed finished-goods dispatch foundation (`CMP_MASTER_SPEC.md` §2, §7, §8, `docs/domain/DISPATCH_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Dispatch Event | Immutable, insert-only record of one dispatch command, reducing weight/count from one or more finished-goods lots; a successfully inserted row is a completed dispatch — there is no status or editable completion flag |
+| Dispatch Line | One immutable line of a dispatch event naming a finished-goods lot and the weight/package count dispatched from it; one lot appears at most once per event |
+| Dispatch Issue | The `entry_kind` of the one negative ledger entry each dispatch line creates automatically, inside the dispatch transaction; its id equals its dispatch line's own id |
+| Dispatched Weight | The weight, in kilograms, removed from a finished-goods lot by one dispatch line; always strictly positive on the line, always strictly negative on its ledger issue |
+| Dispatched Package Count | The number of packages removed from a finished-goods lot by one dispatch line; always strictly positive on the line, always strictly negative on its ledger issue; not the same semantic quantity as any source produce lot's whole-unit count |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

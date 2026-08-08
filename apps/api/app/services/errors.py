@@ -490,3 +490,31 @@ class DuplicateFinishedGoodsLotCodeError(DomainError):
 
 class FinishedGoodsLotNotFoundError(DomainError):
     pass
+
+
+class DispatchEventNotFoundError(DomainError):
+    pass
+
+
+class DispatchCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class DispatchValidationError(DomainError):
+    pass
+
+
+class InvalidDispatchEffectiveTimeError(DomainError):
+    pass
+
+
+class DispatchFinishedGoodsLotNotFoundError(DomainError):
+    pass
+
+
+class DuplicateDispatchCodeError(DomainError):
+    pass
+
+
+class InsufficientFinishedGoodsBalanceError(DomainError):
+    pass

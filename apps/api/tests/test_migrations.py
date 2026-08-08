@@ -1403,9 +1403,170 @@ def test_migration_downgrade_removes_finished_goods_ledger_triggers_functions_an
                 "AND NOT tgisinternal ORDER BY tgname"
             )
         ).scalars().all()
+        # CMP-017 sits above CMP-016 at "head", so re-upgrading here also
+        # reattaches its own sibling dispatch-reconciliation trigger on
+        # this same table -- see the CMP-017 section below for its own
+        # dedicated downgrade/re-upgrade proof.
         assert triggers == [
+            "finished_goods_ledger_entries_enforce_dispatch_reconciliation",
             "finished_goods_ledger_entries_enforce_insert_integrity",
             "finished_goods_ledger_entries_enforce_reconciliation",
             "finished_goods_ledger_entries_no_delete",
             "finished_goods_ledger_entries_no_update",
+        ]
+
+
+# --- CMP-017: typed finished-goods dispatch foundation ----------------------
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_restores_cmp016_shape(
+    test_engine,
+) -> None:
+    """CMP-017's own downgrade guard follows CMP-015's unconditional-block
+    model (not CMP-016's reconstructible-projection one): dispatch history
+    is independent operational data, never reconstructible, so downgrade
+    is blocked outright whenever any exists. This test only proves clean
+    schema removal/restoration with no dispatch history present; see
+    test_dispatch_downgrade_guard.py for the with-data and guard-
+    triggering cases."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "dd4e6fab718a")
+    try:
+        with test_engine.connect() as conn:
+            tables = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                    "('dispatch_events', 'dispatch_lines')"
+                )
+            ).scalars().all()
+            assert tables == [], "downgrade must drop both dispatch tables"
+
+            functions = conn.execute(
+                text(
+                    "SELECT proname FROM pg_proc WHERE proname IN ("
+                    "'enforce_finished_goods_ledger_entry_insert_integrity_v2', 'enforce_dispatch_reconciliation')"
+                )
+            ).all()
+            assert functions == [], "every CMP-017 function, including the v2 ledger function, must be dropped"
+
+            # CMP-016's own function must be untouched -- never modified, never dropped.
+            cmp016_function_intact = conn.execute(
+                text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_finished_goods_ledger_entry_insert_integrity'")
+            ).first()
+            assert cmp016_function_intact is not None
+
+            original_trigger = conn.execute(
+                text(
+                    "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                    "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity'"
+                )
+            ).first()
+            assert original_trigger is not None, "downgrade must restore the exact original CMP-016 trigger attachment"
+
+            dispatch_line_id_column = conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'finished_goods_ledger_entries' AND column_name = 'dispatch_line_id'"
+                )
+            ).first()
+            assert dispatch_line_id_column is None, "the dispatch_line_id column must be dropped on downgrade"
+
+            packing_event_id_nullable = conn.execute(
+                text(
+                    "SELECT is_nullable FROM information_schema.columns "
+                    "WHERE table_name = 'finished_goods_ledger_entries' AND column_name = 'packing_event_id'"
+                )
+            ).scalar_one()
+            assert packing_event_id_nullable == "NO", "packing_event_id must be restored to NOT NULL"
+
+            check_bodies = dict(
+                conn.execute(
+                    text(
+                        "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                        "WHERE conrelid = 'finished_goods_ledger_entries'::regclass AND contype = 'c' "
+                        "AND conname IN ('ck_finished_goods_ledger_entries_kind_allowed', "
+                        "'ck_finished_goods_ledger_entries_deterministic_id', "
+                        "'ck_finished_goods_ledger_entries_weight_envelope', "
+                        "'ck_finished_goods_ledger_entries_count_positive')"
+                    )
+                ).all()
+            )
+            assert check_bodies["ck_finished_goods_ledger_entries_kind_allowed"] == (
+                "CHECK (((entry_kind)::text = 'packing_receipt'::text))"
+            )
+            assert check_bodies["ck_finished_goods_ledger_entries_deterministic_id"] == (
+                "CHECK ((id = finished_goods_lot_id))"
+            )
+            assert "dispatch_issue" not in check_bodies["ck_finished_goods_ledger_entries_weight_envelope"]
+            assert "typed_source_shape" not in str(check_bodies)
+
+            # CMP-016's own packing schema and reconciliation must remain untouched.
+            packing_tables = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                    "('packing_events', 'packing_input_lines', 'finished_goods_lots')"
+                )
+            ).scalars().all()
+            assert sorted(packing_tables) == ["finished_goods_lots", "packing_events", "packing_input_lines"]
+            cmp016_reconciliation_intact = conn.execute(
+                text("SELECT 1 FROM pg_proc WHERE proname = 'enforce_finished_goods_ledger_reconciliation'")
+            ).first()
+            assert cmp016_reconciliation_intact is not None
+    finally:
+        command.upgrade(_cfg(), "head")
+
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN "
+                "('dispatch_events', 'dispatch_lines')"
+            )
+        ).scalars().all()
+        assert sorted(tables) == ["dispatch_events", "dispatch_lines"]
+
+        v2_trigger = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v2')"
+            )
+        ).first()
+        assert v2_trigger is not None, "re-upgrade must reattach the v2 trigger"
+
+        fgle_triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                "AND NOT tgisinternal ORDER BY tgname"
+            )
+        ).scalars().all()
+        assert fgle_triggers == [
+            "finished_goods_ledger_entries_enforce_dispatch_reconciliation",
+            "finished_goods_ledger_entries_enforce_insert_integrity",
+            "finished_goods_ledger_entries_enforce_reconciliation",
+            "finished_goods_ledger_entries_no_delete",
+            "finished_goods_ledger_entries_no_update",
+        ]
+
+        dispatch_events_triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'dispatch_events'::regclass "
+                "AND NOT tgisinternal ORDER BY tgname"
+            )
+        ).scalars().all()
+        assert dispatch_events_triggers == [
+            "dispatch_events_enforce_reconciliation", "dispatch_events_no_delete", "dispatch_events_no_update",
+        ]
+
+        dispatch_lines_triggers = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'dispatch_lines'::regclass "
+                "AND NOT tgisinternal ORDER BY tgname"
+            )
+        ).scalars().all()
+        assert dispatch_lines_triggers == [
+            "dispatch_lines_enforce_reconciliation", "dispatch_lines_no_delete", "dispatch_lines_no_update",
         ]

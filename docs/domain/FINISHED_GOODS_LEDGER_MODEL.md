@@ -8,7 +8,9 @@ Every CMP-015 finished-goods lot receives exactly one immutable ledger receipt r
 
 ## Ledger entry and the one permitted kind
 
-`finished_goods_ledger_entries` carries `tenant_id`, `farm_id`, `finished_goods_lot_id`, `packing_event_id`, `entry_kind`, `weight_delta_kg`, `package_count_delta`, `effective_time`, `recorded_time`, `actor_user_id`, `note`. CMP-016 permits exactly one `entry_kind`, `packing_receipt`. No balance, previous-balance, available-balance, status, location, cost, or valuation column exists — balance is always derived. Since only one kind exists today, the deterministic-ID, kind, and note-null rules are ordinary same-row `CHECK` constraints, not kind-guarded — a future ticket introducing a second kind (dispatch) must widen these the same way CMP-015 widened CMP-014's own weight/count CHECKs, and must not assume every row obeys today's unconditional shape.
+`finished_goods_ledger_entries` carries `tenant_id`, `farm_id`, `finished_goods_lot_id`, `packing_event_id`, `entry_kind`, `weight_delta_kg`, `package_count_delta`, `effective_time`, `recorded_time`, `actor_user_id`, `note`. CMP-016 permits exactly one `entry_kind`, `packing_receipt`. No balance, previous-balance, available-balance, status, location, cost, or valuation column exists — balance is always derived. Since only one kind exists as of CMP-016, the deterministic-ID, kind, and note-null rules are ordinary same-row `CHECK` constraints, not kind-guarded — a future ticket introducing a second kind (dispatch) must widen these the same way CMP-015 widened CMP-014's own weight/count CHECKs, and must not assume every row obeys today's unconditional shape.
+
+> **CMP-017 update**: a second `entry_kind`, `dispatch_issue`, now exists, with a new nullable `dispatch_line_id` column and `packing_event_id` widened to nullable. Every CHECK described in this document as unconditional (deterministic-ID, kind, weight-envelope, count) is now kind-aware; the shape below still describes `packing_receipt` rows exactly, which remain byte-for-byte unchanged. See `docs/domain/DISPATCH_MODEL.md` for the full typed-source XOR, the negative-issue envelope, and the versioned `..._v2` trigger this widening required.
 
 ## Deterministic receipt identity
 
@@ -44,4 +46,4 @@ The upgrade creates the table/constraints/triggers, backfills one deterministic 
 
 ## Deferred
 
-Dispatch, sales orders, allocation, reservation, consumption, adjustment, transfer, correction, reversal, void, cold-store storage/occupancy, palletization, cartons/package-carrier assets, repacking, unpacking, customer ownership, costing, valuation, editable balances, negative ledger entries, frontend, RLS, role-specific authorization. A future dispatch ticket will introduce the first typed negative entry kind.
+Sales orders, allocation, reservation, adjustment, transfer, correction, reversal, void, cold-store storage/occupancy, palletization, cartons/package-carrier assets, repacking, unpacking, customer ownership, costing, valuation, editable balances, frontend, RLS, role-specific authorization. CMP-017 introduced the first typed negative entry kind (`dispatch_issue`); a future ticket must introduce a separate typed compensating entry kind for correction/reversal rather than mutating or hard-deleting either kind.
