@@ -221,6 +221,7 @@ def test_two_concurrent_commands_consuming_exact_final_weight_both_succeed(test_
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
+    effective_time = now()
 
     def worker(name: str) -> None:
         conn = test_engine.connect()
@@ -229,7 +230,7 @@ def test_two_concurrent_commands_consuming_exact_final_weight_both_succeed(test_
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=now(),
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
                 finished_goods_lot_code=f"FG-{name}-{scenario['suffix']}", package_count=1,
                 packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                 rejected_weight_kg=Decimal("0"), note=None,
@@ -276,6 +277,7 @@ def test_overlapping_multi_lot_commands_reversed_order_no_deadlock(test_engine) 
     lot_a_id, lot_b_id = scenario["lot_a_id"], scenario["lot_b_id"]
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
+    effective_time = now()
 
     def worker(name: str, first_lot, second_lot) -> None:
         conn = test_engine.connect()
@@ -284,7 +286,7 @@ def test_overlapping_multi_lot_commands_reversed_order_no_deadlock(test_engine) 
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=now(),
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
                 finished_goods_lot_code=f"FG-{name}-{scenario['suffix']}", package_count=1,
                 packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
                 rejected_weight_kg=Decimal("0"), note=None,
@@ -302,7 +304,9 @@ def test_overlapping_multi_lot_commands_reversed_order_no_deadlock(test_engine) 
 
     # A lists (lot_a, lot_b); B lists the reverse (lot_b, lot_a) — the
     # service's own sorted-locking must make the lock-acquisition order
-    # identical for both regardless of this client-supplied order.
+    # identical for both regardless of this client-supplied order. Both
+    # commands share one explicit effective_time so the race under test is
+    # purely lock order, not an incidental per-thread wall-clock read.
     t_a = threading.Thread(target=worker, args=("a", lot_a_id, lot_b_id))
     t_b = threading.Thread(target=worker, args=("b", lot_b_id, lot_a_id))
     t_a.start()
