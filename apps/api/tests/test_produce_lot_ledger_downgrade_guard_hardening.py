@@ -747,10 +747,10 @@ def test_clean_downgrade_with_no_produce_lots(test_engine) -> None:
 @pytest.mark.integration
 def test_current_head_resolution_is_dynamic(test_engine) -> None:
     # NEW_REVISION ("dd4e6fab718a") is CMP-016A's own marker migration, not
-    # necessarily "head" — CMP-019 ("677fcd22cb3c") now sits above it, so
+    # necessarily "head" — CMP-020 ("68215f964ca9") now sits above it, so
     # this asserts against the true current head directly rather than
     # reusing that older, unrelated constant.
-    assert _resolve_head_revision(_cfg()) == "677fcd22cb3c"
+    assert _resolve_head_revision(_cfg()) == "68215f964ca9"
     assert _pre_cmp014_revision(_cfg()) == "c7f14b8e29a3"
 
 

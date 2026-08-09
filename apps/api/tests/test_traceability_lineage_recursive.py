@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.models.crop_batch import CropBatch
-from app.services import batch_derivation_service, traceability_service
+from app.services import batch_derivation_service, lineage_traversal, traceability_service
 from app.services.errors import TraceabilityIntegrityError
 from tests._packing_scenario import require_cmp_test
 from tests._traceability_scenario import (
@@ -231,12 +231,13 @@ def test_lineage_depth_guard_exceeded_fails_with_integrity_error(test_engine, mo
     chain deeper than the traversal's own defensive depth guard must also
     raise TraceabilityIntegrityError rather than silently truncate to a
     partial trace. `_MAX_LINEAGE_DEPTH` is a plain module-level constant
-    with no other role, so it is monkeypatched down to a small value here
-    -- the production default (500) is never changed -- and a real chain
-    of ordinary splits (each with two genuine outputs, never a
-    single-output no-op) is built one generation deeper than the patched
-    limit."""
-    monkeypatch.setattr(traceability_service, "_MAX_LINEAGE_DEPTH", 3)
+    (CMP-020 extraction: now lives in `app.services.lineage_traversal`,
+    imported by `traceability_service`) with no other role, so it is
+    monkeypatched down to a small value here -- the production default
+    (500) is never changed -- and a real chain of ordinary splits (each
+    with two genuine outputs, never a single-output no-op) is built one
+    generation deeper than the patched limit."""
+    monkeypatch.setattr(lineage_traversal, "_MAX_LINEAGE_DEPTH", 3)
     tenant_id = None
     try:
         with committed_connection(test_engine) as session:

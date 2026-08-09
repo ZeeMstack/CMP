@@ -51,3 +51,5 @@ Exactly three GET operations. No POST/PUT/PATCH/DELETE, no `/recalls`, no custom
 ## Deferred
 
 Seed-lot impact endpoint, recall case/status, customer/order/delivery tracking, notifications, regulatory submission workflow, snapshot/export persistence, proportional quantity attribution, hold/release commands, dispatch recipient/vehicle/invoice data.
+
+> **CMP-020 update**: recall case/status is now implemented as a separate, additive read-write layer — see `docs/domain/RECALL_CONTAINMENT_MODEL.md`. This module's own three public functions, response contracts, and read-only `REPEATABLE READ` semantics are unchanged; its internal set-based traversal helpers were extracted verbatim into `app/services/lineage_traversal.py` and are now shared with (never duplicated by) the recall service.

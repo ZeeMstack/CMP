@@ -55,3 +55,5 @@ CMP-019's recall traceability reads `packing_events`/`packing_input_lines` (a tr
 ## Deferred
 
 Grading, repacking, unpacking, correction, reversal, void, finished-goods inventory/storage/occupancy, dispatch, sales orders, invoicing, costing, valuation, multi-output packing, packaging-material inventory, frontend, RLS, role-specific authorization.
+
+> **CMP-020 update**: `enforce_packing_input_line_insert_integrity` is versioned to `_v2` (every CMP-015 rule reproduced byte-for-byte) and rejects a packing input whose source produce lot, or its crop batch, is contained by an open recall case -- one contained input rejects the whole command. `record_packing` gains the identical check at the service layer, independent of the quality-hold check above. See `docs/domain/RECALL_CONTAINMENT_MODEL.md`.

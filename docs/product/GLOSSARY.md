@@ -153,6 +153,16 @@
 | Source Input Quantity | The exact weight/count of an affected upstream input that entered one packing event — a known fact, distinct from (and never used to derive) the potentially affected output quantity |
 | Trace Completeness | The `trace_complete`/`limitations`/`capability_limitations` triad describing whether a trace fully resolved within CMP's modeled graph; a legitimately empty branch is complete, a missing optional historical edge is a limitation, and a genuine invariant violation (e.g. a lineage cycle) is a `TraceabilityIntegrityError`, never a silent partial result |
 
+## Recall case and containment (`CMP_MASTER_SPEC.md` §2, §7, §8, §10, `docs/domain/RECALL_CONTAINMENT_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Recall Case | Immutable, insert-only formal food-safety containment decision (CMP-020); the row itself is the "opened" fact — no separate opened-event row, no mutable status column; exactly one typed source (crop batch, harvested produce lot, or finished-goods lot) |
+| Recall Case Closure | Immutable, insert-only decision ending one recall case's active containment; at most one per case; never implies product recovery, customer notification, or quality-hold release |
+| Frozen Scope | The immutable set of crop-batch/harvested-produce-lot/finished-goods-lot IDs computed and locked at recall-case opening — entity identity only, never a balance or the recall's own open/closed state |
+| Containment | The derived, always-current fact that a specific entity is a member of an OPEN recall case's frozen scope; begins at open-commit, ends at close-commit, never based on effective-time arithmetic |
+| Live State | Current available/placed/unplaced/dispatch reads for a recall case's scoped finished-goods lots — always computed fresh, distinct from and never merged with frozen scope |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

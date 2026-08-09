@@ -20,7 +20,7 @@ from app.schemas.finished_goods_storage import (
     LotBalanceRead,
 )
 from app.schemas.harvest import canonical_decimal_str
-from app.services import farm_service
+from app.services import farm_service, recall_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     FarmNotFoundError,
@@ -30,6 +30,7 @@ from app.services.errors import (
     InsufficientStorageLocationBalanceError,
     InsufficientUnplacedQuantityError,
     InvalidStorageMovementEffectiveTimeError,
+    RecallContainmentOpenError,
     StorageCommandReusedWithDifferentPayloadError,
     StorageLocationNotFoundError,
     StorageMovementValidationError,
@@ -148,6 +149,15 @@ def record_movement(
     ).scalar_one_or_none()
     if lot is None:
         raise FinishedGoodsLotNotFoundError(str(finished_goods_lot_id))
+
+    # A recalled lot may still be placed or transferred -- an operator may
+    # need exactly that to physically segregate it into quarantine -- but
+    # release (which makes it unplaced and therefore dispatch-eligible) is
+    # blocked while the lot is contained by an open CMP-020 recall case.
+    if movement_kind == "release" and recall_service.has_open_finished_goods_recall(
+        db, tenant_id=tenant_id, farm_id=farm_id, finished_goods_lot_id=lot.id
+    ):
+        raise RecallContainmentOpenError(str(lot.id))
 
     # Referenced location rows, locked in sorted-UUID order (at most two:
     # source and destination) -- deterministic regardless of which role a

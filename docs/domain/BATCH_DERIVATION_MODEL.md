@@ -38,4 +38,6 @@ Composite foreign keys prove tenant/farm consistency structurally throughout. Th
 
 Partial carrier-content splitting, quantity adjustment, discard, cross-farm/cross-tenant derivation, carrier movement/occupancy changes, automatic stage progression, reversal, correction, reopening a superseded batch, a general transformation engine, harvest, packing, inventory deduction, costing, frontend, RLS, role-specific authorization.
 
+> **CMP-020 update**: a new trigger, `batch_derivation_sources_enforce_containment`, rejects a source batch contained by an open recall case, checked at the authoritative `batch_derivation_sources` insert -- independently of, and in addition to, this document's own quality-hold check. `split_batch`/`merge_batches` gain the identical check at the service layer. See `docs/domain/RECALL_CONTAINMENT_MODEL.md`.
+
 CMP-019's recall traceability recursively walks `batch_derivation_sources`/`batch_derivation_outputs` (never a snapshot column) for multi-generation ancestor/descendant lineage — see `docs/domain/TRACEABILITY_MODEL.md`. It is read-only and adds no new derivation behavior.

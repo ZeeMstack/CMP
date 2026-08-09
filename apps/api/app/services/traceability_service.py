@@ -16,13 +16,10 @@ proportional attribution is invented anywhere in this module -- every
 entire current quantity, never a fraction derived from an upstream input.
 """
 import uuid
-from contextlib import contextmanager
 from decimal import Decimal
-from typing import Iterator
 
 from sqlalchemy import Connection, Engine, text
 
-from app.core.db import engine as _default_engine
 from app.services.errors import (
     CropBatchNotFoundError,
     FarmNotFoundError,
@@ -30,23 +27,24 @@ from app.services.errors import (
     HarvestedProduceLotNotFoundError,
     TraceabilityIntegrityError,
 )
-
-# Defensive corruption guard only -- never a business lineage limit. Real
-# split/merge lineage is expected to be at most a handful of generations
-# deep; this exists solely to bound a genuinely corrupted (cyclic) graph.
-_MAX_LINEAGE_DEPTH = 500
-
-
-@contextmanager
-def _snapshot_connection(engine: Engine | None = None) -> Iterator[Connection]:
-    conn = (engine or _default_engine).connect().execution_options(
-        isolation_level="REPEATABLE READ", postgresql_readonly=True
-    )
-    try:
-        with conn.begin():
-            yield conn
-    finally:
-        conn.close()
+from app.services.lineage_traversal import (
+    _batch_lineage_closure,
+    _batch_lineage_edges,
+    _batch_lineage_nodes,
+    _bulk_available,
+    _bulk_dispatch_lines,
+    _bulk_location_balances,
+    _bulk_placed,
+    _bulk_storage_movements,
+    _finished_goods_lots_for_packing_events,
+    _harvest_events_for_batches,
+    _packing_events,
+    _packing_input_lines_for_produce_lots,
+    _produce_lots_for_harvest_events,
+    _quality_holds_for_batches,
+    _seed_origins_for_batches,
+    _snapshot_connection,
+)
 
 
 def _require_active_farm(conn: Connection, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> None:
@@ -95,365 +93,6 @@ def _resolve_harvested_produce_lot(conn: Connection, *, tenant_id, farm_id, harv
     if row is None:
         raise HarvestedProduceLotNotFoundError(str(harvested_produce_lot_id))
     return row
-
-
-# --- Recursive batch lineage --------------------------------------------------
-
-
-def _batch_lineage_closure(
-    conn: Connection, *, tenant_id, farm_id, start_batch_ids: list[uuid.UUID], direction: str
-) -> set[uuid.UUID]:
-    """Returns the closed set of batch IDs reachable from `start_batch_ids`
-    (inclusive) in the given direction ("ancestors" or "descendants"),
-    using a tenant/farm-constrained recursive CTE that carries a per-branch
-    visited path. Raises TraceabilityIntegrityError if a true cycle (a
-    batch reachable from itself along one branch) or the defensive depth
-    guard is detected -- ordinary re-convergent lineage (the same ancestor
-    reached via two independent branches, e.g. after a split followed by a
-    re-merge) is not a cycle and is handled correctly, since the cycle
-    check is per-branch, not across the whole result set."""
-    if not start_batch_ids:
-        return set()
-
-    if direction == "ancestors":
-        event_col = "created_by_batch_derivation_event_id"
-        bridge_table = "batch_derivation_sources"
-        bridge_col = "source_batch_id"
-    else:
-        event_col = "superseded_by_batch_derivation_event_id"
-        bridge_table = "batch_derivation_outputs"
-        bridge_col = "output_batch_id"
-
-    rows = conn.execute(
-        text(
-            f"""
-            WITH RECURSIVE lineage AS (
-                SELECT cb.id AS batch_id, cb.{event_col} AS next_event_id,
-                       ARRAY[cb.id] AS visited, 0 AS depth, false AS cycle_detected
-                FROM crop_batches cb
-                WHERE cb.id = ANY(:start_ids) AND cb.tenant_id = :tid AND cb.farm_id = :fid
-                UNION ALL
-                SELECT nxt.id, nxt.{event_col}, l.visited || nxt.id, l.depth + 1,
-                       (nxt.id = ANY(l.visited))
-                FROM lineage l
-                JOIN {bridge_table} bridge
-                    ON bridge.derivation_event_id = l.next_event_id
-                    AND bridge.tenant_id = :tid AND bridge.farm_id = :fid
-                JOIN crop_batches nxt
-                    ON nxt.id = bridge.{bridge_col}
-                    AND nxt.tenant_id = :tid AND nxt.farm_id = :fid
-                WHERE l.next_event_id IS NOT NULL AND l.depth < :max_depth AND NOT l.cycle_detected
-            )
-            SELECT batch_id, depth, cycle_detected FROM lineage
-            """
-        ),
-        {"start_ids": start_batch_ids, "tid": tenant_id, "fid": farm_id, "max_depth": _MAX_LINEAGE_DEPTH},
-    ).mappings().all()
-
-    if any(r["cycle_detected"] for r in rows):
-        raise TraceabilityIntegrityError(
-            "Detected a crop-batch lineage cycle: a batch is reachable from itself through "
-            "split/merge derivation history. This should be structurally impossible and indicates "
-            "corrupted derivation data."
-        )
-    if any(r["depth"] == _MAX_LINEAGE_DEPTH - 1 for r in rows):
-        raise TraceabilityIntegrityError(
-            f"Crop-batch lineage traversal reached its defensive depth guard ({_MAX_LINEAGE_DEPTH} "
-            "generations) without terminating naturally. This is not a normal business lineage depth "
-            "and indicates corrupted or pathological derivation data."
-        )
-    return {r["batch_id"] for r in rows}
-
-
-def _batch_lineage_edges(conn: Connection, *, tenant_id, farm_id, batch_ids: set[uuid.UUID]) -> list[dict]:
-    if not batch_ids:
-        return []
-    ids = list(batch_ids)
-    rows = conn.execute(
-        text(
-            """
-            SELECT bds.source_batch_id AS parent_batch_id, bdo.output_batch_id AS child_batch_id,
-                   bde.id AS derivation_event_id, bde.derivation_kind
-            FROM batch_derivation_events bde
-            JOIN batch_derivation_sources bds ON bds.derivation_event_id = bde.id
-            JOIN batch_derivation_outputs bdo ON bdo.derivation_event_id = bde.id
-            WHERE bde.tenant_id = :tid AND bde.farm_id = :fid
-              AND bds.source_batch_id = ANY(:ids) AND bdo.output_batch_id = ANY(:ids)
-            ORDER BY bde.effective_time, bde.id, parent_batch_id, child_batch_id
-            """
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _batch_lineage_nodes(conn: Connection, *, tenant_id, farm_id, batch_ids: set[uuid.UUID], edges: list[dict]) -> list[dict]:
-    if not batch_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS batch_id, code, state, created_effective_time, created_by_batch_derivation_event_id "
-            "FROM crop_batches WHERE id = ANY(:ids) AND tenant_id = :tid AND farm_id = :fid "
-            "ORDER BY created_effective_time, id"
-        ),
-        {"ids": list(batch_ids), "tid": tenant_id, "fid": farm_id},
-    ).mappings().all()
-    kind_by_child = {e["child_batch_id"]: e["derivation_kind"] for e in edges}
-    event_by_child = {e["child_batch_id"]: e["derivation_event_id"] for e in edges}
-    nodes = []
-    for r in rows:
-        transformation_type = kind_by_child.get(r["batch_id"], "sown")
-        nodes.append(
-            {
-                "batch_id": r["batch_id"], "code": r["code"], "state": r["state"],
-                "created_effective_time": r["created_effective_time"],
-                "transformation_type": transformation_type,
-                "derivation_event_id": event_by_child.get(r["batch_id"]),
-            }
-        )
-    return nodes
-
-
-# --- Seed provenance -----------------------------------------------------------
-
-
-def _seed_origins_for_batches(conn: Connection, *, tenant_id, farm_id, batch_ids: set[uuid.UUID]) -> list[dict]:
-    """Every provable seed origin for the given batch set: walks each
-    sowing-origin batch_carrier_assignment (opened directly by a sowing
-    event -- transplant- and derivation-opened assignments are not
-    themselves a seed origin, only a continuation of one) to its own
-    sowing_event_line and seed_lot. A merge may legitimately surface
-    several distinct origins; none is collapsed or guessed."""
-    if not batch_ids:
-        return []
-    rows = conn.execute(
-        text(
-            """
-            SELECT sl.id AS seed_lot_id, sl.code AS seed_lot_code, se.id AS sowing_event_id,
-                   sel.id AS sowing_event_line_id, bca.id AS batch_carrier_assignment_id,
-                   sel.carrier_id AS carrier_id, bca.batch_id AS originating_batch_id
-            FROM batch_carrier_assignments bca
-            JOIN sowing_event_lines sel ON sel.batch_carrier_assignment_id = bca.id
-                AND sel.tenant_id = :tid AND sel.farm_id = :fid
-            JOIN sowing_events se ON se.id = bca.opening_sowing_event_id
-                AND se.tenant_id = :tid AND se.farm_id = :fid
-            JOIN seed_lots sl ON sl.id = sel.seed_lot_id AND sl.tenant_id = :tid AND sl.farm_id = :fid
-            WHERE bca.tenant_id = :tid AND bca.farm_id = :fid
-              AND bca.opening_sowing_event_id IS NOT NULL
-              AND bca.batch_id = ANY(:ids)
-            ORDER BY sl.code, se.id, sel.id
-            """
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": list(batch_ids)},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-# --- Harvest / produce lots / packing --------------------------------------
-
-
-def _harvest_events_for_batches(conn: Connection, *, tenant_id, farm_id, batch_ids: set[uuid.UUID]) -> list[dict]:
-    if not batch_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS harvest_event_id, batch_id, effective_time, recorded_time FROM harvest_events "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND batch_id = ANY(:ids) "
-            "ORDER BY effective_time, recorded_time, id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": list(batch_ids)},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _produce_lots_for_harvest_events(conn: Connection, *, tenant_id, farm_id, harvest_event_ids: list[uuid.UUID]) -> list[dict]:
-    if not harvest_event_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS harvested_produce_lot_id, code, harvest_event_id, batch_id, "
-            "total_harvested_weight_kg, total_whole_unit_count, effective_time FROM harvested_produce_lots "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND harvest_event_id = ANY(:ids) "
-            "ORDER BY effective_time, id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": harvest_event_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _packing_input_lines_for_produce_lots(conn: Connection, *, tenant_id, farm_id, produce_lot_ids: list[uuid.UUID]) -> list[dict]:
-    if not produce_lot_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS packing_input_line_id, packing_event_id, harvested_produce_lot_id, "
-            "consumed_weight_kg, consumed_whole_unit_count FROM packing_input_lines "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND harvested_produce_lot_id = ANY(:ids) "
-            "ORDER BY packing_event_id, harvested_produce_lot_id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": produce_lot_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _packing_events(conn: Connection, *, tenant_id, farm_id, packing_event_ids: list[uuid.UUID]) -> list[dict]:
-    if not packing_event_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS packing_event_id, total_input_weight_kg, packed_output_weight_kg, "
-            "process_loss_weight_kg, rejected_weight_kg, effective_time, recorded_time FROM packing_events "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND id = ANY(:ids) ORDER BY effective_time, id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": packing_event_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _finished_goods_lots_for_packing_events(conn: Connection, *, tenant_id, farm_id, packing_event_ids: list[uuid.UUID]) -> list[dict]:
-    if not packing_event_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS finished_goods_lot_id, code, packing_event_id, net_packed_weight_kg, package_count, "
-            "effective_time FROM finished_goods_lots "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND packing_event_id = ANY(:ids) ORDER BY effective_time, id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": packing_event_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-# --- Balances (bulk, set-based; matches the canonical formulas exactly) ----
-# The service intentionally does not call finished_goods_ledger_service or
-# finished_goods_storage_service (both take a single lot and an ORM
-# Session bound to the request's own connection) -- doing so per lot would
-# be N+1 and would run outside this trace's own REPEATABLE READ snapshot.
-# These bulk helpers reproduce the identical canonical formulas -- plain
-# SUM(weight_delta_kg)/SUM(package_count_delta) for available, and
-# SUM(place)-SUM(release) for total placed -- against this trace's own
-# connection, for a whole set of lots in one query each.
-
-
-def _bulk_available(conn: Connection, *, tenant_id, farm_id, fg_lot_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[Decimal, int]]:
-    if not fg_lot_ids:
-        return {}
-    rows = conn.execute(
-        text(
-            "SELECT finished_goods_lot_id, COALESCE(SUM(weight_delta_kg), 0) AS weight, "
-            "COALESCE(SUM(package_count_delta), 0) AS count FROM finished_goods_ledger_entries "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND finished_goods_lot_id = ANY(:ids) "
-            "GROUP BY finished_goods_lot_id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": fg_lot_ids},
-    ).mappings().all()
-    # SUM(bigint) is promoted to NUMERIC by PostgreSQL -- cast back to a
-    # genuine Python int so downstream Pydantic validation and arithmetic
-    # never silently operates on Decimal counts.
-    return {r["finished_goods_lot_id"]: (r["weight"], int(r["count"])) for r in rows}
-
-
-def _bulk_placed(conn: Connection, *, tenant_id, farm_id, fg_lot_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[Decimal, int]]:
-    if not fg_lot_ids:
-        return {}
-    rows = conn.execute(
-        text(
-            "SELECT finished_goods_lot_id, "
-            "COALESCE(SUM(CASE WHEN movement_kind = 'place' THEN moved_weight_kg "
-            "  WHEN movement_kind = 'release' THEN -moved_weight_kg ELSE 0 END), 0) AS weight, "
-            "COALESCE(SUM(CASE WHEN movement_kind = 'place' THEN moved_package_count "
-            "  WHEN movement_kind = 'release' THEN -moved_package_count ELSE 0 END), 0) AS count "
-            "FROM finished_goods_storage_movements "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND finished_goods_lot_id = ANY(:ids) "
-            "GROUP BY finished_goods_lot_id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": fg_lot_ids},
-    ).mappings().all()
-    return {r["finished_goods_lot_id"]: (r["weight"], int(r["count"])) for r in rows}
-
-
-def _bulk_location_balances(conn: Connection, *, tenant_id, farm_id, fg_lot_ids: list[uuid.UUID]) -> list[dict]:
-    if not fg_lot_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT finished_goods_lot_id, loc_id AS location_id, "
-            "SUM(weight_in) - SUM(weight_out) AS weight_kg, SUM(count_in) - SUM(count_out) AS package_count FROM ("
-            "  SELECT finished_goods_lot_id, destination_location_id AS loc_id, moved_weight_kg AS weight_in, "
-            "         0 AS weight_out, moved_package_count AS count_in, 0 AS count_out "
-            "  FROM finished_goods_storage_movements "
-            "  WHERE tenant_id = :tid AND farm_id = :fid AND finished_goods_lot_id = ANY(:ids) "
-            "    AND destination_location_id IS NOT NULL "
-            "  UNION ALL "
-            "  SELECT finished_goods_lot_id, source_location_id, 0, moved_weight_kg, 0, moved_package_count "
-            "  FROM finished_goods_storage_movements "
-            "  WHERE tenant_id = :tid AND farm_id = :fid AND finished_goods_lot_id = ANY(:ids) "
-            "    AND source_location_id IS NOT NULL "
-            ") x GROUP BY finished_goods_lot_id, loc_id HAVING SUM(weight_in) - SUM(weight_out) > 0 "
-            "ORDER BY finished_goods_lot_id, loc_id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": fg_lot_ids},
-    ).mappings().all()
-    return [dict(r) | {"package_count": int(r["package_count"])} for r in rows]
-
-
-def _bulk_storage_movements(conn: Connection, *, tenant_id, farm_id, fg_lot_ids: list[uuid.UUID]) -> list[dict]:
-    if not fg_lot_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT id AS movement_id, finished_goods_lot_id, movement_kind, source_location_id, "
-            "destination_location_id, moved_weight_kg, moved_package_count, effective_time, recorded_time "
-            "FROM finished_goods_storage_movements "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND finished_goods_lot_id = ANY(:ids) "
-            "ORDER BY effective_time, recorded_time, id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": fg_lot_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _bulk_dispatch_lines(conn: Connection, *, tenant_id, farm_id, fg_lot_ids: list[uuid.UUID]) -> list[dict]:
-    if not fg_lot_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT de.id AS dispatch_event_id, de.code AS dispatch_event_code, dl.id AS dispatch_line_id, "
-            "dl.finished_goods_lot_id, dl.dispatched_weight_kg, dl.dispatched_package_count, "
-            "de.effective_time, de.recorded_time "
-            "FROM dispatch_lines dl JOIN dispatch_events de ON de.id = dl.dispatch_event_id "
-            "  AND de.tenant_id = dl.tenant_id AND de.farm_id = dl.farm_id "
-            "WHERE dl.tenant_id = :tid AND dl.farm_id = :fid AND dl.finished_goods_lot_id = ANY(:ids) "
-            "ORDER BY de.effective_time, de.recorded_time, dl.id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": fg_lot_ids},
-    ).mappings().all()
-    return [dict(r) for r in rows]
-
-
-def _quality_holds_for_batches(conn: Connection, *, tenant_id, farm_id, batch_ids: set[uuid.UUID]) -> list[dict]:
-    if not batch_ids:
-        return []
-    rows = conn.execute(
-        text(
-            "SELECT qh.id AS quality_hold_id, qh.batch_id, qh.reason_code, qh.reason_text, qh.effective_time, "
-            "qhr.effective_time AS released_effective_time "
-            "FROM quality_holds qh LEFT JOIN quality_hold_releases qhr ON qhr.quality_hold_id = qh.id "
-            "  AND qhr.tenant_id = qh.tenant_id "
-            "WHERE qh.tenant_id = :tid AND qh.farm_id = :fid AND qh.batch_id = ANY(:ids) "
-            "ORDER BY qh.effective_time, qh.id"
-        ),
-        {"tid": tenant_id, "fid": farm_id, "ids": list(batch_ids)},
-    ).mappings().all()
-    return [
-        {
-            "quality_hold_id": r["quality_hold_id"], "batch_id": r["batch_id"], "reason_code": r["reason_code"],
-            "reason_text": r["reason_text"], "effective_time": r["effective_time"],
-            "is_open": r["released_effective_time"] is None,
-            "released_effective_time": r["released_effective_time"],
-        }
-        for r in rows
-    ]
 
 
 def _finished_goods_lot_read(row: dict, available: tuple, placed: tuple) -> dict:

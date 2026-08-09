@@ -54,6 +54,8 @@ Adds `uq_dispatch_events_tenant_farm_id` and `uq_dispatch_lines_tenant_farm_id` 
 
 Customers, sales orders, reservations, allocations, pricing, invoicing, pallets, transport, delivery confirmation, returns, cancellation, correction, reversal, write-off, costing, valuation, frontend, RLS, role-specific authorization. A future correction ticket will introduce the first typed compensating entry kind.
 
+> **CMP-020 update**: the v3 finished-goods-ledger trigger is versioned to `_v4` and rejects a `dispatch_issue` for any finished-goods lot contained by an open recall case -- independently of, and in addition to, every existing balance/chronology/placement/quality-hold check. `record_dispatch` gains the identical check at the service layer. See `docs/domain/RECALL_CONTAINMENT_MODEL.md`.
+
 > **CMP-018 update**: storage locations are no longer deferred. `dispatch_service.record_dispatch` gains a release-before-dispatch rule — each line now additionally requires `dispatched ≤ unplaced` (weight and count independently), on top of the balance checks above — and a dispatch's `effective_time` may no longer precede the lot's latest storage movement. The v2 ledger trigger described above is itself superseded by `..._v3`. See `docs/domain/FINISHED_GOODS_STORAGE_MODEL.md`.
 
 > **CMP-019 update**: dispatch history is now also readable through recall traceability (`dispatch_event_id`/code, `dispatch_line_id`, dispatched weight/count, effective/recorded time) for any finished-goods lot reached by a backward trace or forward impact query — read-only, no new field, no recipient/customer data (still absent by design). See `docs/domain/TRACEABILITY_MODEL.md`.

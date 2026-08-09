@@ -24,7 +24,7 @@ from app.schemas.packing import (
     PackingEventRead,
     PackingInputLineRead,
 )
-from app.services import farm_service, quality_hold_service
+from app.services import farm_service, quality_hold_service, recall_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     DuplicateFinishedGoodsLotCodeError,
@@ -38,6 +38,7 @@ from app.services.errors import (
     PackingInputProduceLotNotFoundError,
     PackingValidationError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
     TooManyPackingInputLinesError,
 )
 
@@ -181,6 +182,19 @@ def record_packing(
         ).scalars()
     )
     locked_lots_by_id = {lot.id: lot for lot in locked_lots}
+
+    # A genuinely new packing command is blocked while ANY input's source
+    # produce lot, or its source crop batch, is contained by an open
+    # CMP-020 recall case -- no new finished-goods lot may be created
+    # outside a frozen recall scope. Checked once both lock tiers are
+    # held, so the containment read reflects the exact rows this command
+    # would otherwise commit against.
+    for batch in batches:
+        if recall_service.has_open_batch_recall(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id):
+            raise RecallContainmentOpenError(str(batch.id))
+    for lot in locked_lots:
+        if recall_service.has_open_produce_lot_recall(db, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=lot.id):
+            raise RecallContainmentOpenError(str(lot.id))
 
     balance_rows = db.execute(
         select(

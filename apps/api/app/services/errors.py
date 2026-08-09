@@ -560,3 +560,46 @@ class TraceabilityIntegrityError(DomainError):
     incomplete branch -- those are reported as limitations, not errors."""
 
     pass
+
+
+class RecallCaseNotFoundError(DomainError):
+    pass
+
+
+class RecallCaseCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class RecallCaseValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidRecallCaseEffectiveTimeError(DomainError):
+    pass
+
+
+class DuplicateRecallCaseCodeError(DomainError):
+    pass
+
+
+class RecallCaseAlreadyClosedError(DomainError):
+    pass
+
+
+class RecallScopeStabilizationError(DomainError):
+    """Raised when the recall-opening batch-descendant closure fails to
+    stabilize within the defensive round bound -- a corruption/pathological-
+    race guard only, never a normal business limit. Mirrors
+    `TraceabilityIntegrityError`'s own fail-loud-never-silent contract."""
+
+    pass
+
+
+class RecallContainmentOpenError(DomainError):
+    """Raised when a write operation (derivation, packing, storage release,
+    dispatch) targets a crop batch, harvested produce lot, or finished-goods
+    lot currently contained by an open recall case."""
+
+    pass

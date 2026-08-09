@@ -17,7 +17,7 @@ from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.packing_input_line import PackingInputLine
 from app.schemas.dispatch import DispatchEventRead, DispatchLineRead
 from app.schemas.harvest import canonical_decimal_str
-from app.services import farm_service, quality_hold_service
+from app.services import farm_service, quality_hold_service, recall_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     DispatchCommandReusedWithDifferentPayloadError,
@@ -30,6 +30,7 @@ from app.services.errors import (
     InsufficientUnplacedQuantityError,
     InvalidDispatchEffectiveTimeError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
 )
 
 
@@ -161,6 +162,17 @@ def record_dispatch(
         ).scalars()
     )
     locked_lots_by_id = {lot.id: lot for lot in locked_lots}
+
+    # Dispatch of any finished-goods lot contained by an open CMP-020
+    # recall case is blocked -- independently of, and in addition to,
+    # commercial balance, unplaced balance, chronology, and the
+    # batch-level quality-hold check above. Recall containment is an
+    # additional safety gate, never inferred from or replaced by a hold.
+    for lot in locked_lots:
+        if recall_service.has_open_finished_goods_recall(
+            db, tenant_id=tenant_id, farm_id=farm_id, finished_goods_lot_id=lot.id
+        ):
+            raise RecallContainmentOpenError(str(lot.id))
 
     existing = _find_existing_dispatch_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:

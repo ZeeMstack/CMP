@@ -30,7 +30,7 @@ from app.schemas.batch_derivation import (
     CarrierRefSummary,
 )
 from app.schemas.crop_batch import StageSummary, WorkflowSummary
-from app.services import farm_service, quality_hold_service
+from app.services import farm_service, quality_hold_service, recall_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchDerivationCommandReusedWithDifferentPayloadError,
@@ -43,6 +43,7 @@ from app.services.errors import (
     FarmNotFoundError,
     InvalidBatchDerivationEffectiveTimeError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
     SourceAssignmentAlreadyReleasedError,
     SourceAssignmentNotFoundError,
     TooManyBatchDerivationLinesError,
@@ -383,6 +384,8 @@ def split_batch(
 
     if quality_hold_service.has_open_quality_hold(db, batch_id=batch.id):
         raise QualityHoldOpenError(str(batch_id))
+    if recall_service.has_open_batch_recall(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id):
+        raise RecallContainmentOpenError(str(batch_id))
 
     active_run = db.execute(
         select(BatchStageRun)
@@ -521,6 +524,8 @@ def merge_batches(
             raise CropBatchClosedError(str(batch.id))
         if quality_hold_service.has_open_quality_hold(db, batch_id=batch.id):
             raise QualityHoldOpenError(str(batch.id))
+        if recall_service.has_open_batch_recall(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id):
+            raise RecallContainmentOpenError(str(batch.id))
 
     active_runs = list(
         db.execute(

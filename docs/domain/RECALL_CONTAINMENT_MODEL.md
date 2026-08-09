@@ -1,0 +1,87 @@
+# Recall Case & Containment Foundation
+
+Full detail: `CMP_MASTER_SPEC.md` §2, §7, §8, §10; `CLAUDE.md` rules 1, 3, 5, 7, 8, 10, 11, 12. This document summarizes the approved model as implemented in CMP-020; it does not restate the spec.
+
+## Traceability versus recall
+
+CMP-019 (`docs/domain/TRACEABILITY_MODEL.md`) answers *what material may be affected* — a read-only trace, recomputed fresh on every request, with no persisted state. CMP-020 answers a genuinely different question: *what formal containment decision has been made, what exact scope was frozen at that moment, and what does that freeze now prohibit*. It is a food-safety operational control, not read-only. CMP-019's response contracts are unchanged by this ticket; the two APIs remain fully separable. Recall case detail internally reuses CMP-019's own set-based traversal primitives (see "Traceability-helper reuse" below) rather than re-deriving lineage logic, but issues its own requests and owns its own read/write transactions.
+
+## Scope boundary
+
+This is a containment control, not: customer notification, regulatory submission, delivery recall, return processing, destruction/disposal, financial credit, CAPA, or an investigation workflow. CMP does not model customers or destinations, so a dispatched lot is reported only as immutable dispatch history — never as "recalled from a customer" or "recovered." Seed-lot recall is out of scope, for the same reason CMP-019 defers seed-lot forward impact: a merge can mix seed lots within one batch, making seed-lot-level attribution not always provable.
+
+## Immutable source, not a mutable flag
+
+`RecallCase` is never a boolean on `crop_batches`/`harvested_produce_lots`/`finished_goods_lots`/`dispatch_events`. It mirrors `QualityHold`'s own immutable-fact-plus-derived-state shape (`docs/domain/OBSERVATION_QUALITY_MODEL.md`): the `recall_cases` row *is* the "opened" fact — there is no separate opened-event row. Exactly one of `crop_batch_id` / `harvested_produce_lot_id` / `finished_goods_lot_id` is populated (`ck_recall_cases_typed_source_shape`), typed nullable composite FKs rather than a `source_type` + `source_uuid` pair. `RecallCaseClosure` is the one optional immutable fact that ends containment — at most one per case (`ux_recall_case_closures_case`, a global single-column unique index, the same idiom `batch_derivation_sources.source_batch_id` already uses). Open/closed state is always derived from closure-row absence/presence, never stored. Closing never deletes or mutates the case or its scope, never implies product recovery or customer notification, and never releases a quality hold. No reopen.
+
+## Frozen scope: entity IDs only, never balances
+
+`recall_scope_batches`, `recall_scope_produce_lots`, `recall_scope_finished_goods_lots` each record only `(recall_case_id, <entity>_id)` — no available/placed/unplaced/dispatched balance, no recall status. Balances remain live reads, always. Per source type:
+
+- **Crop-batch source**: the selected batch, its full descendant closure (split/merge, any generation), every harvested produce lot from that batch set, and every finished-goods lot reachable through packing from those produce lots.
+- **Harvested-produce-lot source**: the selected lot only (its crop batch is *never* promoted into batch scope) plus finished-goods lots that already contain material from it.
+- **Finished-goods-lot source**: the selected lot only. Upstream co-input batches/produce lots are never promoted into scope, even for a lot packed from multiple sources — backward provenance remains available informationally through CMP-019, never persisted as containment.
+
+**Ongoing batch containment versus the frozen produce-lot snapshot**: harvest is not blocked by an open batch-source recall (only derivation/packing/release/dispatch are gated — see below). A produce lot harvested from a still-open, batch-scoped crop batch *after* the case opened is therefore never retroactively inserted into the frozen produce-lot scope — but packing that later produce lot is still rejected, because its crop batch remains the containment authority independently of scope-table membership (`test_direct_sql_packing_consumption_from_recalled_batch_rejected` proves this explicitly). Frozen scope is never auto-mutated after opening.
+
+## Traceability-helper reuse
+
+The pure, set-based SQL primitives CMP-019 uses (`_batch_lineage_closure`, `_batch_lineage_edges`/`_batch_lineage_nodes`, `_harvest_events_for_batches`, `_produce_lots_for_harvest_events`, `_packing_input_lines_for_produce_lots`, `_packing_events`, `_finished_goods_lots_for_packing_events`, the `_bulk_*` balance helpers, and `_snapshot_connection`) were extracted verbatim, byte-for-byte, into a new shared module, `app/services/lineage_traversal.py`. `traceability_service.py` now imports them back; its own three public functions and every response contract are unchanged (proven by the full pre-existing CMP-019 suite passing unmodified). Every function takes a plain `Connection`, never an ORM `Session` — this is what lets `traceability_service` run them against its own dedicated read-only `REPEATABLE READ` connection, and lets `recall_service` run the *same* functions against an ordinary write-transaction connection (`Session.connection()`), so it can layer row locks around the discovered IDs. There is exactly one recursive-CTE lineage implementation in the codebase.
+
+## Race-safe scope freeze
+
+Opening a recall must serialize against every write that could let material escape a scope still being computed. The write path never uses `_snapshot_connection` (read-only, cannot take locks) — it is an ordinary `Session`/`with_for_update()` transaction, following the domain-wide lock order (crop batches → harvested produce lots → finished-goods lots, sorted by UUID) every other command in this codebase already uses.
+
+**Crop-batch source** — stable-closure algorithm in `recall_service._freeze_batch_source_scope`:
+1. Lock the selected batch.
+2. Compute the descendant closure (`lineage_traversal._batch_lineage_closure`, reused as-is — inherits its own cycle/depth-guard safety).
+3. Lock every newly-discovered batch, sorted by UUID.
+4. Recompute the closure; if new IDs appear, lock the delta and repeat.
+5. Bounded at `_MAX_SCOPE_STABILIZATION_ROUNDS = 500` (defensive corruption/pathological-race guard only, the same order of magnitude as `lineage_traversal._MAX_LINEAGE_DEPTH`, never a business limit) — exceeding it raises `RecallScopeStabilizationError`, never a silently-frozen partial scope.
+6. Derive produce lots for the now-stable batch set; lock them; re-derive and lock any delta (closes a same-transaction read-then-lock window, mirroring this codebase's universal lock-then-recheck idempotency discipline).
+7. Derive finished-goods lots from those produce lots via packing; lock them; re-derive and lock any delta.
+
+Holding every batch in the closure for the whole freeze is what actually prevents new descendants and new packing: `batch_derivation_service`/`packing_service` both lock their source batch(es) before anything else, so a concurrent derivation or packing attempt against any batch in the closure blocks until the recall's transaction ends.
+
+**Harvested-produce-lot source**: lock the selected lot only (step 1); no closure loop. This alone blocks packing's own tier-2 lock on that row.
+
+**Finished-goods-lot source**: lock the selected lot only. This alone blocks dispatch's tier-2 lock and storage's lot lock.
+
+## Structural versus semantic trust boundary
+
+The database independently proves only what a same-row `CHECK`/FK cannot: a deferred constraint function, `enforce_recall_case_reconciliation` (attached `AFTER INSERT ... DEFERRABLE INITIALLY DEFERRED` to `recall_cases` and all three scope tables, mirroring `enforce_batch_derivation_reconciliation`'s own one-shared-function idiom), proves the case's own selected typed source is itself represented in the matching scope table. It deliberately never re-derives the full recursive closure — doing so would duplicate CMP-019's own traversal for no additional safety, since the closure's *semantic* completeness is already guaranteed by the lock-protected freeze algorithm above. **The database guarantees the persisted rows are structurally well-formed; the service, under its own row locks, guarantees the persisted set is the semantically complete one.** A direct-SQL-constructed case with an intentionally incomplete semantic scope is outside CMP-020's supported command path — structural reconciliation still applies to it, but nothing rebuilds a missing semantic member for it.
+
+## Containment gates
+
+Checked at four write-path boundaries, each independently in both the service layer and a database trigger:
+
+1. **Batch derivation**: `split_batch`/`merge_batches` reject a source batch contained by an open batch-scope recall, checked alongside the existing quality-hold check. New trigger `batch_derivation_sources_enforce_containment` on `batch_derivation_sources` (the authoritative source-naming row — no prior trigger existed there to version).
+2. **Packing**: rejects if *any* input's produce lot, or its crop batch, is contained — one contained input rejects the whole command. Versioned trigger: CMP-015's `enforce_packing_input_line_insert_integrity` → `_v2` (every existing rule reproduced byte-for-byte; containment added last).
+3. **Finished-goods storage**: `place`/`transfer` remain fully permitted on a recalled lot (an operator may need exactly that to physically segregate it into quarantine); `release` is rejected. Versioned trigger: CMP-018's `enforce_finished_goods_storage_movement_insert_integrity` → `_v2`.
+4. **Dispatch**: rejected independently of, and in addition to, commercial balance, unplaced balance, chronology, and quality holds. Versioned trigger: CMP-018's `enforce_finished_goods_ledger_entry_insert_integrity_v3` → `_v4` (only the `dispatch_issue` branch gains the check; `packing_receipt` untouched).
+
+Every versioned trigger uses this codebase's established idiom: the old function is never modified; only the trigger *attachment* is dropped and replaced; downgrade reverses this exactly, re-pointing at the still-existing old function.
+
+## Quality-hold independence
+
+Recall containment never auto-creates a quality hold, and closing a recall never releases one (and vice versa) — proven directly (`test_quality_hold_and_recall_containment_are_independent`). Recall's own gates are already stricter than a hold's (holds never blocked storage release or dispatch; recall blocks both). Auto-creating a hold would duplicate the derivation/packing gate, entangle two independently-closeable lifecycles, and require a hold with no honest `source_observation_event_id`. Case detail may still *display* existing open holds on scoped batches as read-only context.
+
+## Idempotency and effective time
+
+`recall_cases`/`recall_case_closures` each own `client_command_id` + a SHA-256 fingerprint (tenant/farm/actor/normalized code/typed-source-discriminant+id/effective_time/normalized reason — **never** discovered scope IDs, which are a deterministic consequence of the source plus serialized database state, not caller-supplied intent). Pre-lock and post-lock replay checks, plus a unique-index `IntegrityError` fallback — the three-layer pattern used by every command in this codebase. Opening effective_time must not be future and must not precede the source entity's own creation/effective time (`crop_batches.created_effective_time`, `harvested_produce_lots.effective_time`, or `finished_goods_lots.effective_time`, as actually modeled — never invented). Closing effective_time must not be future and must not precede the case's own opening effective_time. **Active containment begins at open-commit and ends at close-commit** — gates check case existence/openness, never effective-time arithmetic, so nothing is ever retroactively blocked by a backdated historical timestamp.
+
+## Case read model
+
+`GET /farms/{farm_id}/recall-cases/{id}` runs every case/scope/live-state query on one dedicated `REPEATABLE READ` / `READ ONLY` snapshot (`lineage_traversal._snapshot_connection`, reused), so `frozen_scope` and `live_state` are never assembled from two different points in time. `frozen_scope` is the immutable ID lists; `live_state` is current available/placed/unplaced reads for scoped finished-goods lots plus existing dispatch/storage exposure — always live, never persisted. `GET /farms/{farm_id}/recall-cases` (list) is a simpler ordinary-session read with no per-case live summary.
+
+## API and audit
+
+Exactly four operations: `POST/GET /farms/{farm_id}/recall-cases`, `GET .../{id}`, `POST .../{id}/close`. No PATCH, DELETE, reopen, or customer/notification endpoint. Cross-tenant/farm access returns 404. One `recall_case.opened` audit event per open command (scope *counts*, not full ID arrays, in `event_data` — scope tables are already authoritative) and one `recall_case.closed` per close — never one per scope row.
+
+## Migration and downgrade
+
+`68215f964ca9` (`down_revision='677fcd22cb3c'`) adds the five tables, their append-only guards (`reject_append_only_mutation`/`reject_hard_delete`, reused, not redefined), the deferred structural-reconciliation triggers, the new batch-derivation containment trigger, and the three versioned containment-aware trigger swaps described above. No recall row is backfilled; no historical operational row is rewritten; existing data is unchanged after upgrade, and behavior is unchanged while zero recall cases are open. Downgrade blocks unconditionally whenever any row exists in any of the five tables (including a *closed* case — closing never makes history discardable), the same unconditional-block model CMP-015/017/018 use for their own genuinely-new operational history. A clean downgrade restores the exact CMP-015 (v1) packing trigger, the exact CMP-018 (v1) storage trigger, and the exact CMP-018 (v3) ledger trigger attachments — re-pointed at their still-existing prior functions, never dynamically reconstructed — drops only the five CMP-020 tables and the new batch-derivation trigger, and leaves CMP-019's traceability indexes and CMP-016A's `env.py` guard untouched.
+
+## Deferred
+
+Seed-lot recall source, customer/destination master data, regulatory submission, product return, destruction/disposal, CAPA, investigation workflow, financial credit, reopen, PATCH status, recall-recovery claims, automatic quarantine-location selection, a new location type.

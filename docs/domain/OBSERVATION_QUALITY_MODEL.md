@@ -34,4 +34,6 @@ Quality holds are not a global lock — each later ticket that gates on them ext
 
 Carrier release/reassignment, transplanting, transformations, automatic stage progression, automatic pass/fail rules, scoring/formula engines, approval workflows, role-specific hold authority, correction/void of observations or holds, seed inventory deduction, laboratory integrations, sensors/IoT ingestion, occupancy/movement changes, QR identities, labels, frontend, RLS.
 
+CMP-020's recall containment (`docs/domain/RECALL_CONTAINMENT_MODEL.md`) is deliberately independent of this net, not an extension of it: a recall case never auto-creates a quality hold, closing a recall never releases a hold, and releasing a hold never closes a recall. Recall containment blocks storage release and dispatch — two operations this document's own hold net never reached — as an additional, separately-checked gate.
+
 Split/merge (CMP-012), harvest (CMP-013), and packing (CMP-015) are implemented — see `docs/domain/BATCH_DERIVATION_MODEL.md`, `docs/domain/HARVEST_MODEL.md`, and `docs/domain/PACKING_MODEL.md`; all three extend the hold-blocking net described above without altering the stage-progression behavior documented here.

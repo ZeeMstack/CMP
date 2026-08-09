@@ -28,6 +28,13 @@ from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.production_system import ProductionSystem
 from app.models.quality_hold import QualityHold
 from app.models.quality_hold_release import QualityHoldRelease
+from app.models.recall import (
+    RecallCase,
+    RecallCaseClosure,
+    RecallScopeBatch,
+    RecallScopeFinishedGoodsLot,
+    RecallScopeProduceLot,
+)
 from app.models.seed_lot import SeedLot
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
@@ -73,6 +80,11 @@ __all__ = [
     "ProductionSystem",
     "QualityHold",
     "QualityHoldRelease",
+    "RecallCase",
+    "RecallCaseClosure",
+    "RecallScopeBatch",
+    "RecallScopeFinishedGoodsLot",
+    "RecallScopeProduceLot",
     "SeedLot",
     "SowingEvent",
     "SowingEventLine",

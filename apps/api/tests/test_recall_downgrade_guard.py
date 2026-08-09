@@ -1,0 +1,295 @@
+"""CMP-020 downgrade-guard proof tests.
+
+Recall history follows CMP-015/017/018's own unconditional-block model: a
+case, closure, or scope row is independent compliance data (nothing else
+in the schema can rebuild it), so downgrade past CMP-020 is blocked while
+ANY row exists in any of the five new tables. This file also proves a
+clean downgrade drops the recall tables/triggers/functions, restores the
+byte-exact CMP-015 (v1) packing_input_lines trigger, the byte-exact
+CMP-018 (v1) storage-movement trigger, and the byte-exact CMP-018 (v3)
+finished-goods-ledger trigger attachments, and that re-upgrade restores
+the v2/v2/v4 containment-aware attachments and working containment gates."""
+import uuid
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.settings import settings
+from app.services import batch_derivation_service, packing_service, recall_service
+from app.services.errors import RecallContainmentOpenError
+from tests._recall_scenario import (
+    build_batch_with_assignments,
+    build_committed_tenant_farm,
+    cleanup_recall_scenario,
+    committed_connection,
+    harvest_all,
+    now,
+    open_case,
+    pack_lot,
+)
+
+API_ROOT = Path(__file__).resolve().parent.parent
+_PRE_CMP020_REVISION = "677fcd22cb3c"
+
+
+def _cfg() -> Config:
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", settings.test_database_url)
+    return cfg
+
+
+def _resolve_head_revision(cfg: Config) -> str:
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+def _assert_at_head(test_engine) -> None:
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert current == _resolve_head_revision(_cfg()), "a blocked downgrade must leave the database at Alembic head"
+
+
+@pytest.mark.integration
+def test_downgrade_blocked_by_recall_case_history(test_engine) -> None:
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as session:
+            tenant, user, farm = build_committed_tenant_farm(session)
+            tenant_id = tenant.id
+            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+            session.commit()
+            open_case(session, tenant, farm, user, crop_batch_id=scaffold["batch"].id)
+            session.commit()
+
+        with pytest.raises(RuntimeError, match="recall case, closure, or scope history exists"):
+            command.downgrade(_cfg(), _PRE_CMP020_REVISION)
+        _assert_at_head(test_engine)
+    finally:
+        if tenant_id is not None:
+            cleanup_recall_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_downgrade_blocked_even_after_case_closed(test_engine) -> None:
+    """A closed case is still independent compliance history -- closing
+    never makes it discardable."""
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as session:
+            tenant, user, farm = build_committed_tenant_farm(session)
+            tenant_id = tenant.id
+            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+            session.commit()
+            case = open_case(session, tenant, farm, user, crop_batch_id=scaffold["batch"].id)
+            session.commit()
+            case_id = case.id
+            recall_service.close_recall_case(
+                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, recall_case_id=case_id,
+                client_command_id=uuid.uuid4(), effective_time=now(), close_reason="segregated",
+            )
+            session.commit()
+
+        with pytest.raises(RuntimeError, match="recall case, closure, or scope history exists"):
+            command.downgrade(_cfg(), _PRE_CMP020_REVISION)
+        _assert_at_head(test_engine)
+    finally:
+        if tenant_id is not None:
+            cleanup_recall_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_state(test_engine) -> None:
+    with test_engine.connect() as c:
+        packing_v2_before = c.execute(
+            text(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'packing_input_lines'::regclass "
+                "AND tgname = 'packing_input_lines_enforce_insert_integrity' "
+                "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v2'::regproc"
+            )
+        ).scalar_one()
+        storage_v2_before = c.execute(
+            text(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_storage_movements'::regclass "
+                "AND tgname = 'finished_goods_storage_movements_enforce_insert_integrity' "
+                "AND tgfoid = 'enforce_finished_goods_storage_movement_insert_integrity_v2'::regproc"
+            )
+        ).scalar_one()
+        ledger_v4_before = c.execute(
+            text(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v4'::regproc"
+            )
+        ).scalar_one()
+        derivation_gate_before = c.execute(
+            text(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'batch_derivation_sources'::regclass "
+                "AND tgname = 'batch_derivation_sources_enforce_containment'"
+            )
+        ).scalar_one()
+    assert packing_v2_before == 1
+    assert storage_v2_before == 1
+    assert ledger_v4_before == 1
+    assert derivation_gate_before == 1
+
+    try:
+        command.downgrade(_cfg(), _PRE_CMP020_REVISION)
+
+        with test_engine.connect() as c:
+            for table in (
+                "recall_cases", "recall_case_closures", "recall_scope_batches",
+                "recall_scope_produce_lots", "recall_scope_finished_goods_lots",
+            ):
+                exists = c.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar()
+                assert exists is None, f"{table} must be dropped by a clean downgrade"
+
+            packing_v1_after = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'packing_input_lines'::regclass "
+                    "AND tgname = 'packing_input_lines_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_packing_input_line_insert_integrity'::regproc"
+                )
+            ).scalar_one()
+            storage_v1_after = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_storage_movements'::regclass "
+                    "AND tgname = 'finished_goods_storage_movements_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_finished_goods_storage_movement_insert_integrity'::regproc"
+                )
+            ).scalar_one()
+            ledger_v3_after = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                    "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v3'::regproc"
+                )
+            ).scalar_one()
+            derivation_gate_after = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'batch_derivation_sources'::regclass "
+                    "AND tgname = 'batch_derivation_sources_enforce_containment'"
+                )
+            ).scalar_one()
+        assert packing_v1_after == 1, "the exact CMP-015 v1 attachment must be restored"
+        assert storage_v1_after == 1, "the exact CMP-018 v1 attachment must be restored"
+        assert ledger_v3_after == 1, "the exact CMP-018 v3 attachment must be restored"
+        assert derivation_gate_after == 0, "the CMP-020-only containment trigger must be gone"
+
+        # Behavior, not just catalog: a direct-SQL packing_input_line
+        # insert against the restored v1 trigger succeeds with no
+        # containment check at all -- the running application's own
+        # service layer is CMP-020-shaped code and is not exercised
+        # against a deliberately-downgraded schema (exactly as no other
+        # downgrade-guard test in this codebase re-runs post-ticket
+        # service code against a pre-ticket schema); the catalog-level
+        # restoration proven above, plus this direct-SQL insert succeeding
+        # without any recall table even existing, is the behavioral proof.
+        tenant_id = None
+        try:
+            with committed_connection(test_engine) as session:
+                tenant, user, farm = build_committed_tenant_farm(session)
+                tenant_id = tenant.id
+                scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+                _, produce_lot_id = harvest_all(session, tenant, user, farm, batch_id=scaffold["batch"].id, assignment_ids=scaffold["assignment_ids"])
+                session.commit()
+                farm_id, user_id = farm.id, user.id
+                tid = tenant.id
+
+            with test_engine.connect() as c:
+                trans = c.begin()
+                try:
+                    event_id = uuid.uuid4()
+                    crop_id, variety_id = c.execute(
+                        text("SELECT crop_id, variety_id FROM harvested_produce_lots WHERE id = :id"), {"id": produce_lot_id}
+                    ).one()
+                    # The trigger compares effective_time against its own
+                    # clock_timestamp() (never a frozen now()/transaction_
+                    # timestamp() -- see HARVEST_MODEL.md). Reading the
+                    # database's own current instant here (rather than the
+                    # Python host clock) avoids any host/server clock-skew
+                    # margin under load -- this connection's own prior
+                    # SELECT already establishes a safely-past instant.
+                    db_now = c.execute(text("SELECT clock_timestamp()")).scalar_one()
+                    c.execute(
+                        text(
+                            "INSERT INTO packing_events (id, tenant_id, farm_id, crop_id, variety_id, "
+                            "total_input_weight_kg, packed_output_weight_kg, process_loss_weight_kg, "
+                            "rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
+                            "request_fingerprint, note) "
+                            "VALUES (:id, :tid, :fid, :cid, :vid, 5.000, 5.000, 0, 0, :eff, :uid, :ccid, 'fp', NULL)"
+                        ),
+                        {"id": event_id, "tid": tid, "fid": farm_id, "cid": crop_id, "vid": variety_id, "eff": db_now, "uid": user_id, "ccid": uuid.uuid4()},
+                    )
+                    # This INSERT alone proves the restored v1 trigger has
+                    # no recall-table reference left -- it must not raise
+                    # "relation ... does not exist" even though no recall
+                    # table exists anymore. Rolled back before commit so
+                    # the (unrelated) deferred packing-reconciliation
+                    # trigger -- which would object to a packing event
+                    # with no finished-goods lot -- never fires.
+                    c.execute(
+                        text(
+                            "INSERT INTO packing_input_lines (id, tenant_id, farm_id, packing_event_id, "
+                            "harvested_produce_lot_id, consumed_weight_kg, consumed_whole_unit_count, note) "
+                            "VALUES (:id, :tid, :fid, :eid, :lid, 5.000, NULL, NULL)"
+                        ),
+                        {"id": uuid.uuid4(), "tid": tid, "fid": farm_id, "eid": event_id, "lid": produce_lot_id},
+                    )
+                finally:
+                    trans.rollback()
+        finally:
+            if tenant_id is not None:
+                from tests._traceability_scenario import cleanup_traceability_scenario
+                cleanup_traceability_scenario(test_engine, tenant_id)
+
+        command.upgrade(_cfg(), "head")
+        with test_engine.connect() as c:
+            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == _resolve_head_revision(_cfg())
+            packing_v2_restored = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'packing_input_lines'::regclass "
+                    "AND tgname = 'packing_input_lines_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v2'::regproc"
+                )
+            ).scalar_one()
+            ledger_v4_restored = c.execute(
+                text(
+                    "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
+                    "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
+                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v4'::regproc"
+                )
+            ).scalar_one()
+        assert packing_v2_restored == 1
+        assert ledger_v4_restored == 1
+
+        # Re-upgraded containment gate genuinely works again.
+        tenant_id2 = None
+        try:
+            with committed_connection(test_engine) as session:
+                tenant, user, farm = build_committed_tenant_farm(session)
+                tenant_id2 = tenant.id
+                scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=2)
+                session.commit()
+                batch_id = scaffold["batch"].id
+                open_case(session, tenant, farm, user, crop_batch_id=batch_id)
+                session.commit()
+                with pytest.raises(RecallContainmentOpenError):
+                    batch_derivation_service.split_batch(
+                        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
+                        client_command_id=uuid.uuid4(), effective_time=now(), note=None,
+                        outputs=[
+                            {"output_batch_code": "POST-A", "source_assignment_ids": scaffold["assignment_ids"][:1]},
+                            {"output_batch_code": "POST-B", "source_assignment_ids": scaffold["assignment_ids"][1:]},
+                        ],
+                    )
+        finally:
+            if tenant_id2 is not None:
+                cleanup_recall_scenario(test_engine, tenant_id2)
+    finally:
+        command.upgrade(_cfg(), "head")

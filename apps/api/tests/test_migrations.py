@@ -1528,18 +1528,18 @@ def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_rest
         ).scalars().all()
         assert sorted(tables) == ["dispatch_events", "dispatch_lines"]
 
-        # CMP-018 sits above CMP-017 at "head", so re-upgrading here also
-        # reattaches its own v3 trigger (which supersedes, rather than
-        # coexists with, v2's attachment) -- see the CMP-018 section below
-        # for its own dedicated downgrade/re-upgrade proof.
-        v3_trigger = conn.execute(
+        # CMP-020 sits above CMP-017 at "head", so re-upgrading here also
+        # reattaches its own v4 trigger (which supersedes, rather than
+        # coexists with, v2's/v3's attachment) -- see the CMP-018/CMP-020
+        # sections for their own dedicated downgrade/re-upgrade proofs.
+        v4_trigger = conn.execute(
             text(
                 "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                 "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v3')"
+                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v4')"
             )
         ).first()
-        assert v3_trigger is not None, "re-upgrade must reattach the v3 trigger"
+        assert v4_trigger is not None, "re-upgrade must reattach the v4 trigger"
 
         fgle_triggers = conn.execute(
             text(
@@ -1666,14 +1666,18 @@ def test_migration_downgrade_removes_storage_triggers_functions_table_and_restor
         ).first()
         assert table_exists is not None
 
-        v3_trigger = conn.execute(
+        # CMP-020 sits above CMP-018 at "head", so re-upgrading here also
+        # reattaches its own v4 ledger trigger and v2 storage-movement
+        # trigger -- see the CMP-020 section for its own dedicated
+        # downgrade/re-upgrade proof.
+        v4_trigger = conn.execute(
             text(
                 "SELECT 1 FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                 "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v3')"
+                "AND tgfoid = to_regproc('enforce_finished_goods_ledger_entry_insert_integrity_v4')"
             )
         ).first()
-        assert v3_trigger is not None, "re-upgrade must reattach the v3 trigger"
+        assert v4_trigger is not None, "re-upgrade must reattach the v4 trigger"
 
         locations_unique_constraint = conn.execute(
             text(
@@ -1750,3 +1754,102 @@ def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_sh
             "ix_finished_goods_storage_movements_tenant_farm_lot",
             "ix_packing_input_lines_tenant_farm_produce_lot",
         ]
+
+
+# --- CMP-020: recall case containment foundation -----------------------------
+#
+# See test_recall_downgrade_guard.py for the full with-data guard,
+# unconditional-block, and exact prior-trigger-restoration proofs; this
+# section only adds the standard per-ticket smoke check.
+
+
+@pytest.mark.integration
+def test_migration_downgrade_removes_recall_tables_triggers_and_restores_cmp019_shape(test_engine) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), "677fcd22cb3c")
+    try:
+        with test_engine.connect() as conn:
+            tables = conn.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                    "'recall_cases', 'recall_case_closures', 'recall_scope_batches', "
+                    "'recall_scope_produce_lots', 'recall_scope_finished_goods_lots')"
+                )
+            ).scalars().all()
+            assert tables == [], "downgrade must drop all five CMP-020 tables"
+
+            functions = conn.execute(
+                text(
+                    "SELECT proname FROM pg_proc WHERE proname IN ("
+                    "'enforce_recall_case_reconciliation', 'enforce_batch_derivation_source_containment', "
+                    "'enforce_packing_input_line_insert_integrity_v2', "
+                    "'enforce_finished_goods_storage_movement_insert_integrity_v2', "
+                    "'enforce_finished_goods_ledger_entry_insert_integrity_v4')"
+                )
+            ).all()
+            assert functions == [], "every CMP-020 function, including the v2/v2/v4 versioned ones, must be dropped"
+
+            # CMP-015/018's own prior functions must be untouched -- never
+            # modified, never dropped.
+            for proname in (
+                "enforce_packing_input_line_insert_integrity",
+                "enforce_finished_goods_storage_movement_insert_integrity",
+                "enforce_finished_goods_ledger_entry_insert_integrity_v3",
+            ):
+                intact = conn.execute(text("SELECT 1 FROM pg_proc WHERE proname = :p"), {"p": proname}).first()
+                assert intact is not None, f"{proname} must remain untouched"
+
+            # CMP-019's own traceability indexes are unaffected.
+            indexes = conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE indexname IN ("
+                    "'ix_packing_input_lines_tenant_farm_produce_lot', "
+                    "'ix_dispatch_lines_tenant_farm_finished_goods_lot', "
+                    "'ix_finished_goods_storage_movements_tenant_farm_lot')"
+                )
+            ).scalars().all()
+            assert sorted(indexes) == [
+                "ix_dispatch_lines_tenant_farm_finished_goods_lot",
+                "ix_finished_goods_storage_movements_tenant_farm_lot",
+                "ix_packing_input_lines_tenant_farm_produce_lot",
+            ]
+    finally:
+        command.upgrade(_cfg(), "head")
+
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+
+        tables = conn.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ("
+                "'recall_cases', 'recall_case_closures', 'recall_scope_batches', "
+                "'recall_scope_produce_lots', 'recall_scope_finished_goods_lots')"
+            )
+        ).scalars().all()
+        assert sorted(tables) == [
+            "recall_case_closures", "recall_cases", "recall_scope_batches",
+            "recall_scope_finished_goods_lots", "recall_scope_produce_lots",
+        ]
+
+        for tgrelid, tgname, proname in (
+            ("packing_input_lines", "packing_input_lines_enforce_insert_integrity", "enforce_packing_input_line_insert_integrity_v2"),
+            ("finished_goods_storage_movements", "finished_goods_storage_movements_enforce_insert_integrity", "enforce_finished_goods_storage_movement_insert_integrity_v2"),
+            ("finished_goods_ledger_entries", "finished_goods_ledger_entries_enforce_insert_integrity", "enforce_finished_goods_ledger_entry_insert_integrity_v4"),
+        ):
+            reattached = conn.execute(
+                text(
+                    f"SELECT 1 FROM pg_trigger WHERE tgrelid = '{tgrelid}'::regclass "
+                    "AND tgname = :tgname AND tgfoid = to_regproc(:proname)"
+                ),
+                {"tgname": tgname, "proname": proname},
+            ).first()
+            assert reattached is not None, f"re-upgrade must reattach {proname} on {tgrelid}"
+
+        derivation_gate = conn.execute(
+            text(
+                "SELECT 1 FROM pg_trigger WHERE tgrelid = 'batch_derivation_sources'::regclass "
+                "AND tgname = 'batch_derivation_sources_enforce_containment'"
+            )
+        ).first()
+        assert derivation_gate is not None, "re-upgrade must recreate the batch-derivation containment trigger"

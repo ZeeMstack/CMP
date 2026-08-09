@@ -185,14 +185,14 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
     conn.close()
 
     with test_engine.connect() as c:
-        v3_before = c.execute(
+        v4_before = c.execute(
             text(
                 "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                 "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v3'::regproc"
+                "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v4'::regproc"
             )
         ).scalar_one()
-        assert v3_before == 1, "the v3 trigger must be attached at head"
+        assert v4_before == 1, "the v4 trigger must be attached at head (CMP-020 sits above CMP-018)"
         locations_unique_before = c.execute(
             text(
                 "SELECT count(*) FROM pg_constraint WHERE conname = 'uq_locations_tenant_farm_id' "
@@ -295,14 +295,18 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
             current = c.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
             assert current == _resolve_head_revision(_cfg())
 
-            v3_after_reupgrade = c.execute(
+            # CMP-020 sits above CMP-018 at "head", so re-upgrading here also
+            # reattaches its own v4 trigger (superseding v3's attachment) --
+            # see test_recall_downgrade_guard.py for CMP-020's own dedicated
+            # downgrade/re-upgrade proof.
+            v4_after_reupgrade = c.execute(
                 text(
                     "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'finished_goods_ledger_entries'::regclass "
                     "AND tgname = 'finished_goods_ledger_entries_enforce_insert_integrity' "
-                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v3'::regproc"
+                    "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v4'::regproc"
                 )
             ).scalar_one()
-            assert v3_after_reupgrade == 1, "re-upgrade must reattach the v3 trigger"
+            assert v4_after_reupgrade == 1, "re-upgrade must reattach the v4 trigger"
 
             locations_unique_after_reupgrade = c.execute(
                 text(

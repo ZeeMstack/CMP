@@ -76,3 +76,5 @@ CMP-019's recall traceability reads storage movement/placement data (full moveme
 ## Deferred
 
 Sales orders, customers, reservations, allocations, FIFO/FEFO, pallets, cartons, storage capacity, pricing, invoicing, transport, delivery confirmation, corrections, reversals, adjustments, valuation, frontend, RLS, role-specific authorization, automatic storage-location selection, auto-release.
+
+> **CMP-020 update**: the storage-movement trigger is versioned to `_v2` and rejects `release` (only) for a finished-goods lot contained by an open recall case; `place`/`transfer` are unaffected, so recalled stock can still be physically segregated into quarantine. `record_movement` gains the identical check at the service layer. See `docs/domain/RECALL_CONTAINMENT_MODEL.md`.
