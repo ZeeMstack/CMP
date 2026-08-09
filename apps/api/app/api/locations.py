@@ -1,9 +1,10 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
+from app.core.db import get_db, get_engine
 from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
 from app.schemas.location import (
     LocationBulkChildrenCreate,
@@ -15,7 +16,8 @@ from app.schemas.location import (
 )
 from app.schemas.movement import TargetRef
 from app.schemas.occupancy import OccupancyRead, TargetOccupantRead
-from app.services import location_service, movement_service
+from app.schemas.operational_read import SubtreeOccupancyRead
+from app.services import location_service, movement_service, operational_read_service
 from app.services.errors import (
     DuplicateLocationCodeError,
     FarmNotFoundError,
@@ -24,6 +26,7 @@ from app.services.errors import (
     LocationNotFoundError,
     LocationTypeNotFoundError,
 )
+from app.services.lineage_traversal import _snapshot_connection
 
 router = APIRouter(tags=["locations"])
 
@@ -219,3 +222,27 @@ def get_location_occupant(
         target=TargetRef(kind="location", id=location_id),
         active_occupancy=OccupancyRead.from_model(occupancy) if occupancy is not None else None,
     )
+
+
+@router.get(
+    "/farms/{farm_id}/locations/{location_id}/subtree-occupancy", response_model=SubtreeOccupancyRead
+)
+def get_location_subtree_occupancy(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    db_engine: Engine = Depends(get_engine),
+) -> SubtreeOccupancyRead:
+    """CMP-FE-002A: bounded-by-root occupancy for one location subtree
+    (the given root plus all its descendants, never farm-wide). Returns
+    aggregate occupiable/occupied counts per structural node plus only the
+    currently occupied locations -- never resends the structural tree
+    itself (already available from `.../locations/tree`), and never one
+    row per empty location."""
+    try:
+        with _snapshot_connection(db_engine) as conn:
+            return operational_read_service.get_location_subtree_occupancy(
+                conn, tenant_id=ctx.tenant_id, farm_id=farm_id, root_location_id=location_id
+            )
+    except (FarmNotFoundError, LocationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc

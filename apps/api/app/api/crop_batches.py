@@ -1,9 +1,11 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
+from app.core.db import get_db, get_engine
 from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
 from app.schemas.batch_stage_transition import BatchStageTransitionCreate, BatchStageTransitionRead
 from app.schemas.crop_batch import (
@@ -13,7 +15,8 @@ from app.schemas.crop_batch import (
     CurrentStageRead,
     StageSummary,
 )
-from app.services import crop_batch_service
+from app.schemas.operational_read import BatchOperationalContext
+from app.services import crop_batch_service, operational_read_service
 from app.services.errors import (
     BatchCommandReusedWithDifferentPayloadError,
     BatchCreationValidationError,
@@ -29,6 +32,7 @@ from app.services.errors import (
     WorkflowInactiveError,
     WorkflowNotFoundError,
 )
+from app.services.lineage_traversal import _snapshot_connection
 
 router = APIRouter(tags=["crop-batches"])
 
@@ -74,6 +78,57 @@ def list_crop_batches(
         return crop_batch_service.list_batches(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
     except FarmNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/crop-batches/operational-summary", response_model=list[BatchOperationalContext]
+)
+def get_crop_batches_operational_summary(
+    farm_id: uuid.UUID,
+    state: Literal["active", "all"] = "active",
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    db_engine: Engine = Depends(get_engine),
+) -> list[BatchOperationalContext]:
+    """CMP-FE-002A: bounded, farm-wide operational read model -- one
+    coherent snapshot covering sowing origin, current placement, and open
+    quality-hold count per batch, powering both Home (`state` omitted,
+    active-only) and the Batch Register (`state=all`, every legitimate
+    `crop_batches.state`: active, closed, superseded)."""
+    try:
+        with _snapshot_connection(db_engine) as conn:
+            batch_ids = operational_read_service.resolve_batch_ids_by_state(
+                conn, tenant_id=ctx.tenant_id, farm_id=farm_id, state_filter=state
+            )
+            return operational_read_service.get_batch_operational_contexts(
+                conn, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_ids=batch_ids
+            )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/crop-batches/{batch_id}/operational-context", response_model=BatchOperationalContext
+)
+def get_crop_batch_operational_context(
+    farm_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    db_engine: Engine = Depends(get_engine),
+) -> BatchOperationalContext:
+    """Single-batch counterpart of the operational-summary list -- same
+    shared service function, `{batch_id}` only, so Batch Detail never has
+    to download the whole farm's payload for one batch's operational
+    context. Resolves regardless of state (active/closed/superseded)."""
+    try:
+        with _snapshot_connection(db_engine) as conn:
+            results = operational_read_service.get_batch_operational_contexts(
+                conn, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_ids=[batch_id]
+            )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    if not results:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return results[0]
 
 
 @router.get("/farms/{farm_id}/crop-batches/{batch_id}", response_model=CropBatchRead)

@@ -264,10 +264,30 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM quality_hold_releases WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM quality_holds WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # CMP-FE-002A: transplant_* tables are new to this shared cleanup --
+        # earlier CMP-019 scenarios never called transplant_service. Without
+        # these deletes, transplant_events/lines/allocations survive the
+        # (session_replication_role=replica, FK-checks-disabled)
+        # batch_carrier_assignments delete below as orphaned rows, which
+        # then fail test_migrations.py's CMP-011 downgrade guard (it counts
+        # live transplant rows, oblivious to orphaning). Allocations must
+        # precede source/destination lines; both must precede events; all
+        # three must precede batch_carrier_assignments.
+        conn.execute(text("DELETE FROM transplant_allocations WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM transplant_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM transplant_destination_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM transplant_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_assignment_transfers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # CMP-FE-002A: occupancies/movements are new to this shared cleanup --
+        # earlier CMP-019 scenarios never created crop-batch-carrier
+        # occupancy (only finished_goods_storage_movements, already handled
+        # above). occupancies must precede movements (opened_by_movement_id
+        # FK); both must precede carriers/locations.
+        conn.execute(text("DELETE FROM occupancies WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM movements WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
