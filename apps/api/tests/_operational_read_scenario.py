@@ -150,6 +150,74 @@ def build_direct_placement_workflow_scaffold(db: Session, tenant, user, farm, *,
     return {"crop": crop, "variety": variety, "workflow": workflow, "version": version}
 
 
+def build_harvest_ready_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
+    """CMP-FE-002A.1: SEEDING -> GROWING -> `Q7`/"Zulu Phase" (stage_category
+    `harvest_ready`) -> COMPLETE. The harvest_ready-category stage is
+    deliberately given a code/name with no hint of "harvest" in it, so a
+    test built on this scaffold proves `stage_category` is read from the
+    authoritative `workflow_stages.stage_category` column, never inferred
+    from stage name/code string-matching."""
+    suffix = suffix or uuid.uuid4().hex[:8]
+    crop = crop_service.register_crop(
+        db, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
+        common_name="Iceberg", scientific_name=None, crop_category="leafy_green",
+    )
+    variety = crop_service.register_variety(
+        db, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"MAM-{suffix}",
+        name="Mamutik", supplier_reference=None,
+    )
+    ps = production_system_service.register_production_system(
+        db, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-{suffix}", name="Plate System", description=None,
+    )
+    workflow = workflow_service.register_workflow(
+        db, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
+        production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
+    )
+    version = workflow_service.create_draft_version(db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id)
+    seeding = workflow_service.add_stage(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
+        expected_duration_minutes=None, permitted_location_type_code=None,
+        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    )
+    growing = workflow_service.add_stage(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="GROWING", name="Growing", display_order=1, stage_category="production",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=False,
+    )
+    ready = workflow_service.add_stage(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="Q7", name="Zulu Phase", display_order=2, stage_category="harvest_ready",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=False,
+    )
+    complete = workflow_service.add_stage(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="COMPLETE", name="Complete", display_order=3, stage_category="completed",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=True,
+    )
+    t_seed_to_growing = workflow_service.add_transition(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=seeding.id, to_stage_id=growing.id, code="ADV-1", name="Advance 1",
+    )
+    t_growing_to_ready = workflow_service.add_transition(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=growing.id, to_stage_id=ready.id, code="ADV-2", name="Advance 2",
+    )
+    t_ready_to_complete = workflow_service.add_transition(
+        db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=ready.id, to_stage_id=complete.id, code="ADV-3", name="Advance 3",
+    )
+    workflow_service.publish_version(db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id)
+    return {
+        "crop": crop, "variety": variety, "workflow": workflow, "version": version,
+        "t_seed_to_growing": t_seed_to_growing, "t_growing_to_ready": t_growing_to_ready,
+        "t_ready_to_complete": t_ready_to_complete,
+    }
+
+
 def sow_batch(db: Session, tenant, user, farm, scaffold: dict, *, effective_time, code_suffix=None, site_count=10, carrier_type_code="seed_tray"):
     code_suffix = code_suffix or uuid.uuid4().hex[:8]
     batch = crop_batch_service.create_batch(

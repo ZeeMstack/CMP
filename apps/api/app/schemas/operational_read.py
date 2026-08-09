@@ -9,13 +9,31 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.schemas.crop_batch import CropSummary, StageSummary, VarietySummary
+from app.schemas.crop_batch import CropSummary, VarietySummary
 
 
 class LocationPathSegment(BaseModel):
     id: uuid.UUID
     code: str
     name: str
+
+
+class OperationalStageSummary(BaseModel):
+    """CMP-FE-002A.1: `StageSummary` (crop_batch.py) is shared across many
+    unrelated response contracts (sowing/harvest/transplant events, quality
+    holds, observation events, batch derivation, core crop-batch reads) --
+    adding `stage_category` there would widen every one of those contracts
+    for a need specific to the three operational-read endpoints. This type
+    exists only for that operational-read family (`BatchOperationalContext`,
+    `OccupantBatchContext`) and adds the one authoritative field FE-002B
+    needs to classify a batch's readiness (e.g. `stage_category ==
+    "harvest_ready"`) without inferring it from stage name/code."""
+
+    id: uuid.UUID
+    code: str
+    name: str
+    is_terminal: bool
+    stage_category: str
 
 
 class SowingOrigin(BaseModel):
@@ -64,7 +82,7 @@ class BatchOperationalContext(BaseModel):
     crop: CropSummary
     variety: VarietySummary | None
     state: str
-    current_stage: StageSummary
+    current_stage: OperationalStageSummary
     sowing_origins: list[SowingOrigin]
     sown_effective_time: datetime | None
     placement: PlacementFacts
@@ -75,7 +93,7 @@ class OccupantBatchContext(BaseModel):
     batch_id: uuid.UUID
     batch_code: str
     crop: CropSummary
-    current_stage: StageSummary
+    current_stage: OperationalStageSummary
 
 
 class LocationOccupant(BaseModel):

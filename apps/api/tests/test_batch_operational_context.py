@@ -21,6 +21,7 @@ from tests._operational_read_scenario import (
     batch_id_by_code,
     build_committed_tenant_farm,
     build_direct_placement_workflow_scaffold,
+    build_harvest_ready_workflow_scaffold,
     build_transplant_workflow_scaffold,
     committed_connection,
     merge,
@@ -58,6 +59,8 @@ def test_direct_sown_batch_resolves_single_sowing_origin(test_engine) -> None:
         assert len(ctx.sowing_origins) == 1
         assert ctx.sowing_origins[0].source_batch_id == batch_id
         assert ctx.sown_effective_time == t0
+        assert ctx.current_stage.code == "SEEDING"
+        assert ctx.current_stage.stage_category == "seeding"
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
@@ -628,6 +631,14 @@ def test_all_state_filter_includes_active_closed_and_superseded(test_engine) -> 
         assert states_by_id[active_batch_id] == "active"
         assert states_by_id[closing_batch_id] == "closed"
         assert states_by_id[superseding_parent_id] == "superseded"
+
+        # CMP-FE-002A.1: stage_category must be present and authoritative
+        # (from workflow_stages, not inferred) for every state, including
+        # `state=all`'s closed and superseded rows.
+        categories_by_id = {c.id: c.current_stage.stage_category for c in contexts}
+        assert categories_by_id[active_batch_id] == "seeding"
+        assert categories_by_id[closing_batch_id] == "completed"
+        assert categories_by_id[superseding_parent_id] == "seeding"
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
@@ -662,6 +673,10 @@ def test_superseded_batch_resolves_via_single_batch_lookup(test_engine) -> None:
             )
         assert len(results) == 1
         assert results[0].state == "superseded"
+        # CMP-FE-002A.1: a superseded batch's single-batch operational
+        # context must still expose its (frozen, no-longer-advancing)
+        # current stage's authoritative category.
+        assert results[0].current_stage.stage_category == "seeding"
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
@@ -744,6 +759,55 @@ def test_missing_batch_id_is_simply_absent(test_engine) -> None:
                 conn, tenant_id=tenant_id, farm_id=farm_id, batch_ids=[uuid.uuid4()]
             )
         assert results == []
+    finally:
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_harvest_ready_stage_category_is_authoritative_not_inferred_from_name(test_engine) -> None:
+    """CMP-FE-002A.1: proves `stage_category` comes from the authoritative
+    `workflow_stages.stage_category` column, not from string-matching stage
+    name/code -- the harvest_ready-category stage here is deliberately
+    coded `Q7` / named "Zulu Phase", giving no textual hint of "harvest".
+    Checked via both the operational-summary list (`state=active`) and the
+    single-batch operational-context route."""
+    tenant_id = None
+    try:
+        t0 = now() - timedelta(minutes=30)
+        with committed_connection(test_engine) as session:
+            tenant, user, farm = build_committed_tenant_farm(session)
+            tenant_id = tenant.id
+            scaffold = build_harvest_ready_workflow_scaffold(session, tenant, user, farm)
+            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0)
+            transition(
+                session, tenant, user, farm, batch_id=sown["batch"].id,
+                configured_transition_id=scaffold["t_seed_to_growing"].id, effective_time=minutes_after(t0, 1),
+            )
+            transition(
+                session, tenant, user, farm, batch_id=sown["batch"].id,
+                configured_transition_id=scaffold["t_growing_to_ready"].id, effective_time=minutes_after(t0, 2),
+            )
+            session.commit()
+            batch_id, farm_id = sown["batch"].id, farm.id
+
+        with _snapshot_connection(test_engine) as conn:
+            active_ids = operational_read_service.resolve_batch_ids_by_state(
+                conn, tenant_id=tenant_id, farm_id=farm_id, state_filter="active"
+            )
+            summary_contexts = operational_read_service.get_batch_operational_contexts(
+                conn, tenant_id=tenant_id, farm_id=farm_id, batch_ids=active_ids
+            )
+            [single_ctx] = operational_read_service.get_batch_operational_contexts(
+                conn, tenant_id=tenant_id, farm_id=farm_id, batch_ids=[batch_id]
+            )
+
+        [summary_ctx] = [c for c in summary_contexts if c.id == batch_id]
+        for ctx in (summary_ctx, single_ctx):
+            assert ctx.current_stage.code == "Q7"
+            assert ctx.current_stage.name == "Zulu Phase"
+            assert ctx.current_stage.stage_category == "harvest_ready"
+            assert ctx.current_stage.is_terminal is False
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)

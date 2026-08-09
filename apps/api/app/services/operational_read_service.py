@@ -18,7 +18,7 @@ from collections import defaultdict
 
 from sqlalchemy import Connection, text
 
-from app.schemas.crop_batch import CropSummary, StageSummary, VarietySummary
+from app.schemas.crop_batch import CropSummary, VarietySummary
 from app.schemas.operational_read import (
     BatchOperationalContext,
     BatchPlacement,
@@ -27,6 +27,7 @@ from app.schemas.operational_read import (
     LocationPathSegment,
     OccupantBatchContext,
     OccupiedLocation,
+    OperationalStageSummary,
     PlacementFacts,
     SowingOrigin,
     SubtreeOccupancyRead,
@@ -74,7 +75,8 @@ def _core_facts(conn: Connection, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, b
             SELECT cb.id AS batch_id, cb.code, cb.state,
                    cr.id AS crop_id, cr.code AS crop_code, cr.common_name AS crop_common_name,
                    v.id AS variety_id, v.code AS variety_code, v.name AS variety_name,
-                   ws.id AS stage_id, ws.code AS stage_code, ws.name AS stage_name, ws.is_terminal AS stage_is_terminal
+                   ws.id AS stage_id, ws.code AS stage_code, ws.name AS stage_name, ws.is_terminal AS stage_is_terminal,
+                   ws.stage_category AS stage_category
             FROM crop_batches cb
             JOIN workflows w ON w.id = cb.workflow_id
             JOIN crops cr ON cr.id = w.crop_id
@@ -330,8 +332,9 @@ def get_batch_operational_contexts(
                     if c["variety_id"] is not None else None
                 ),
                 state=c["state"],
-                current_stage=StageSummary(
-                    id=c["stage_id"], code=c["stage_code"], name=c["stage_name"], is_terminal=c["stage_is_terminal"]
+                current_stage=OperationalStageSummary(
+                    id=c["stage_id"], code=c["stage_code"], name=c["stage_name"], is_terminal=c["stage_is_terminal"],
+                    stage_category=c["stage_category"],
                 ),
                 sowing_origins=batch_origins,
                 sown_effective_time=_sown_effective_time(batch_origins),
@@ -409,7 +412,8 @@ def get_location_subtree_occupancy(
                 """
                 SELECT bca.carrier_id, cb.id AS batch_id, cb.code AS batch_code,
                        cr.id AS crop_id, cr.code AS crop_code, cr.common_name AS crop_common_name,
-                       ws.id AS stage_id, ws.code AS stage_code, ws.name AS stage_name, ws.is_terminal AS stage_is_terminal
+                       ws.id AS stage_id, ws.code AS stage_code, ws.name AS stage_name, ws.is_terminal AS stage_is_terminal,
+                       ws.stage_category AS stage_category
                 FROM batch_carrier_assignments bca
                 JOIN crop_batches cb ON cb.id = bca.batch_id AND cb.tenant_id = :tid AND cb.farm_id = :fid
                 JOIN workflows w ON w.id = cb.workflow_id
@@ -456,8 +460,9 @@ def get_location_subtree_occupancy(
             batch_ctx = OccupantBatchContext(
                 batch_id=b["batch_id"], batch_code=b["batch_code"],
                 crop=CropSummary(id=b["crop_id"], code=b["crop_code"], common_name=b["crop_common_name"]),
-                current_stage=StageSummary(
-                    id=b["stage_id"], code=b["stage_code"], name=b["stage_name"], is_terminal=b["stage_is_terminal"]
+                current_stage=OperationalStageSummary(
+                    id=b["stage_id"], code=b["stage_code"], name=b["stage_name"], is_terminal=b["stage_is_terminal"],
+                    stage_category=b["stage_category"],
                 ),
             )
         occupied_locations.append(OccupiedLocation(

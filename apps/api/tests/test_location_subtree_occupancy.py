@@ -180,6 +180,10 @@ def test_occupied_leaf_resolves_batch_context(test_engine) -> None:
         assert occ.occupant.batch is not None
         assert occ.occupant.batch.batch_id == batch_id
         assert occ.occupant.batch.batch_code == batch_code
+        # CMP-FE-002A.1: subtree occupancy's occupant batch-context uses the
+        # same operational stage schema, so it must expose the
+        # authoritative stage_category too.
+        assert occ.occupant.batch.current_stage.stage_category == "seeding"
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
