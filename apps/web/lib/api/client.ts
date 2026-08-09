@@ -4,7 +4,6 @@ import type { components } from "@/lib/api/schema.gen";
 export type FarmRead = components["schemas"]["FarmRead"];
 export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
-export type TargetOccupantRead = components["schemas"]["TargetOccupantRead"];
 export type CropBatchRead = components["schemas"]["CropBatchRead"];
 export type BatchStageRunRead = components["schemas"]["BatchStageRunRead"];
 export type BatchLineageRead = components["schemas"]["BatchLineageRead"];
@@ -12,6 +11,21 @@ export type BatchLineageRead = components["schemas"]["BatchLineageRead"];
 // quality holds vs. a traceability-context representation) disambiguated
 // by FastAPI's OpenAPI generation using their module path.
 export type QualityHoldRead = components["schemas"]["app__schemas__quality_hold__QualityHoldRead"];
+export type BatchOperationalContext = components["schemas"]["BatchOperationalContext"];
+export type PlacementFacts = components["schemas"]["PlacementFacts"];
+export type BatchPlacement = components["schemas"]["BatchPlacement"];
+export type SowingOrigin = components["schemas"]["SowingOrigin"];
+export type OperationalStageSummary = components["schemas"]["OperationalStageSummary"];
+export type SubtreeOccupancyRead = components["schemas"]["SubtreeOccupancyRead"];
+export type LocationAggregateCount = components["schemas"]["LocationAggregateCount"];
+export type OccupiedLocation = components["schemas"]["OccupiedLocation"];
+export type LocationOccupant = components["schemas"]["LocationOccupant"];
+export type LocationPathSegment = components["schemas"]["LocationPathSegment"];
+
+/** `state` filter for the operational-summary list: `active` (Home) vs
+ * `all` (Batch Register) -- kept as a literal union so callers/cache keys
+ * can't drift from what the backend actually accepts. */
+export type OperationalSummaryState = "active" | "all";
 
 /**
  * One canonical, typed access layer over the read-only /api proxy (see
@@ -51,16 +65,37 @@ export function getLocationsTree(farmId: string, signal?: AbortSignal): Promise<
   return getJson<LocationTreeNode[]>(`/farms/${farmId}/locations/tree`, signal);
 }
 
-export function getLocationOccupant(
+export function getOperationalSummary(
+  farmId: string,
+  state: OperationalSummaryState,
+  signal?: AbortSignal,
+): Promise<BatchOperationalContext[]> {
+  return getJson<BatchOperationalContext[]>(
+    `/farms/${farmId}/crop-batches/operational-summary?state=${state}`,
+    signal,
+  );
+}
+
+export function getBatchOperationalContext(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<BatchOperationalContext> {
+  return getJson<BatchOperationalContext>(
+    `/farms/${farmId}/crop-batches/${batchId}/operational-context`,
+    signal,
+  );
+}
+
+export function getLocationSubtreeOccupancy(
   farmId: string,
   locationId: string,
   signal?: AbortSignal,
-): Promise<TargetOccupantRead> {
-  return getJson<TargetOccupantRead>(`/farms/${farmId}/locations/${locationId}/occupant`, signal);
-}
-
-export function listCropBatches(farmId: string, signal?: AbortSignal): Promise<CropBatchRead[]> {
-  return getJson<CropBatchRead[]>(`/farms/${farmId}/crop-batches`, signal);
+): Promise<SubtreeOccupancyRead> {
+  return getJson<SubtreeOccupancyRead>(
+    `/farms/${farmId}/locations/${locationId}/subtree-occupancy`,
+    signal,
+  );
 }
 
 export function getCropBatch(farmId: string, batchId: string, signal?: AbortSignal): Promise<CropBatchRead> {

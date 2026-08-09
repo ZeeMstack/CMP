@@ -5,9 +5,8 @@ export const queryKeys = {
   farms: () => ["farms"] as const,
   farm: (farmId: string) => ["farms", farmId] as const,
   locationsTree: (farmId: string) => ["farms", farmId, "locations", "tree"] as const,
-  locationOccupant: (farmId: string, locationId: string) =>
-    ["farms", farmId, "locations", locationId, "occupant"] as const,
-  cropBatches: (farmId: string) => ["farms", farmId, "crop-batches"] as const,
+  locationSubtreeOccupancy: (farmId: string, locationId: string) =>
+    ["farms", farmId, "locations", locationId, "subtree-occupancy"] as const,
   cropBatch: (farmId: string, batchId: string) => ["farms", farmId, "crop-batches", batchId] as const,
   stageHistory: (farmId: string, batchId: string) =>
     ["farms", farmId, "crop-batches", batchId, "stage-history"] as const,
@@ -15,4 +14,9 @@ export const queryKeys = {
     ["farms", farmId, "crop-batches", batchId, "lineage"] as const,
   qualityHolds: (farmId: string, batchId: string) =>
     ["farms", farmId, "crop-batches", batchId, "quality-holds"] as const,
+  // `state` is part of the key so `active` and `all` never collide in cache.
+  operationalSummary: (farmId: string, state: "active" | "all") =>
+    ["farms", farmId, "crop-batches", "operational-summary", state] as const,
+  batchOperationalContext: (farmId: string, batchId: string) =>
+    ["farms", farmId, "crop-batches", batchId, "operational-context"] as const,
 };

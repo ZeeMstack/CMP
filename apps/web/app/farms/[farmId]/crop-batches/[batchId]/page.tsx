@@ -3,26 +3,38 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
-import { BatchLineagePanel } from "@/components/BatchLineagePanel";
+import { OriginAndSplitsPanel } from "@/components/OriginAndSplitsPanel";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { PlacementSummary } from "@/components/PlacementSummary";
+import { QualityHoldBanner } from "@/components/QualityHoldBanner";
 import { StatusBadge } from "@/components/StatusBadge";
+import { describeSowingAndAge } from "@/lib/format/age";
 import { formatDateTimeWithZoneLabel } from "@/lib/format/datetime";
+import { humanizeEnumCode } from "@/lib/format/humanize";
 import {
   useBatchLineage,
+  useBatchOperationalContext,
   useCropBatch,
   useFarm,
   useQualityHolds,
   useStageHistory,
 } from "@/lib/query/hooks";
 
-const TABS = ["overview", "history", "lineage", "quality"] as const;
+const TABS = ["overview", "history", "origin", "quality"] as const;
 type Tab = (typeof TABS)[number];
 
-function TabLink({ farmId, batchId, tab, active, children }: { farmId: string; batchId: string; tab: Tab; active: boolean; children: React.ReactNode }) {
+const TAB_LABELS: Record<Tab, string> = {
+  overview: "Overview",
+  history: "History",
+  origin: "Origin & Splits",
+  quality: "Quality",
+};
+
+function TabLink({ farmId, batchId, tab, active }: { farmId: string; batchId: string; tab: Tab; active: boolean }) {
   return (
     <Link
       href={`/farms/${farmId}/crop-batches/${batchId}?tab=${tab}`}
@@ -31,7 +43,7 @@ function TabLink({ farmId, batchId, tab, active, children }: { farmId: string; b
         active ? "border-brand-600 text-brand-700" : "border-transparent text-ink-muted hover:text-ink"
       }`}
     >
-      {children}
+      {TAB_LABELS[tab]}
     </Link>
   );
 }
@@ -44,12 +56,14 @@ export default function CropBatchDetailPage() {
     : "overview";
 
   const { data: farm } = useFarm(farmId);
-  // All four sections are requested concurrently on load, regardless of the
-  // active tab, so switching tabs never triggers a fresh request waterfall.
+  // Fixed 6-request budget, all concurrent regardless of the active tab so
+  // switching tabs never triggers a fresh request waterfall: farm, batch,
+  // stage-history, lineage, quality-holds, operational-context.
   const batchQuery = useCropBatch(farmId, batchId);
   const historyQuery = useStageHistory(farmId, batchId);
   const lineageQuery = useBatchLineage(farmId, batchId);
   const qualityQuery = useQualityHolds(farmId, batchId);
+  const operationalQuery = useBatchOperationalContext(farmId, batchId);
 
   if (batchQuery.isLoading) return <LoadingSkeleton rows={6} label="Loading batch" />;
   if (batchQuery.error) return <ErrorState error={batchQuery.error} onRetry={() => batchQuery.refetch()} />;
@@ -57,9 +71,13 @@ export default function CropBatchDetailPage() {
   if (!batch) return null;
 
   const timezone = farm?.timezone;
-  const origin = batch.created_by_batch_derivation_event_id
-    ? "Created from a batch split/merge — see Lineage."
-    : "Created directly (not derived from another batch).";
+  const operational = operationalQuery.data;
+  const holdCount = operational?.open_quality_hold_count ?? 0;
+  const sowingAge =
+    operational && timezone
+      ? describeSowingAndAge(operational.sowing_origins.length, operational.sown_effective_time, timezone)
+      : null;
+  const hasLineage = (lineageQuery.data?.parents.length ?? 0) > 0 || (lineageQuery.data?.children.length ?? 0) > 0;
 
   return (
     <div>
@@ -77,68 +95,125 @@ export default function CropBatchDetailPage() {
       />
 
       <nav aria-label="Batch detail sections" className="mb-6 flex gap-2 border-b border-border-subtle">
-        <TabLink farmId={farmId} batchId={batchId} tab="overview" active={activeTab === "overview"}>
-          Overview
-        </TabLink>
-        <TabLink farmId={farmId} batchId={batchId} tab="history" active={activeTab === "history"}>
-          History
-        </TabLink>
-        <TabLink farmId={farmId} batchId={batchId} tab="lineage" active={activeTab === "lineage"}>
-          Lineage
-        </TabLink>
-        <TabLink farmId={farmId} batchId={batchId} tab="quality" active={activeTab === "quality"}>
-          Quality
-        </TabLink>
+        {TABS.map((tab) => (
+          <TabLink key={tab} farmId={farmId} batchId={batchId} tab={tab} active={activeTab === tab} />
+        ))}
       </nav>
 
       {activeTab === "overview" && (
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Crop</dt>
-            <dd className="text-sm text-ink">
-              {batch.crop.common_name}
-              {batch.variety ? ` — ${batch.variety.name}` : ""}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Workflow</dt>
-            <dd className="text-sm text-ink">
-              {batch.workflow.name} (v{batch.version_number})
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current stage</dt>
-            <dd className="text-sm text-ink">
-              <StatusBadge label={batch.current_stage.name} tone="active" />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">State</dt>
-            <dd className="text-sm text-ink">
-              <StatusBadge label={batch.state} tone={batch.state === "active" ? "active" : "closed"} />
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Batch created</dt>
-            <dd className="text-sm text-ink">{formatDateTimeWithZoneLabel(batch.created_effective_time, timezone)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Origin</dt>
-            <dd className="text-sm text-ink">{origin}</dd>
-          </div>
-          {batch.closed_effective_time && (
+        <div>
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Closed</dt>
-              <dd className="text-sm text-ink">{formatDateTimeWithZoneLabel(batch.closed_effective_time, timezone)}</dd>
+              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Crop</dt>
+              <dd className="text-sm text-ink">
+                {batch.crop.common_name}
+                {batch.variety ? ` — ${batch.variety.name}` : ""}
+              </dd>
             </div>
-          )}
-          {batch.superseded_effective_time && (
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Superseded</dt>
-              <dd className="text-sm text-ink">{formatDateTimeWithZoneLabel(batch.superseded_effective_time, timezone)}</dd>
+              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current stage</dt>
+              <dd className="text-sm text-ink">
+                <StatusBadge label={batch.current_stage.name} tone="active" />
+              </dd>
             </div>
+            {batch.state !== "active" && (
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">State</dt>
+                <dd className="text-sm text-ink">
+                  <StatusBadge label={batch.state} tone="closed" />
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          <div className="mt-4">
+            {operationalQuery.isLoading && <LoadingSkeleton rows={2} label="Loading operational context" />}
+            {operationalQuery.error && (
+              <ErrorState error={operationalQuery.error} onRetry={() => operationalQuery.refetch()} />
+            )}
+            {operational && (
+              <>
+                <QualityHoldBanner count={holdCount} href={`/farms/${farmId}/crop-batches/${batchId}?tab=quality`} />
+
+                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current placement</dt>
+                    <dd className="text-sm text-ink">
+                      <PlacementSummary placement={operational.placement} />
+                    </dd>
+                  </div>
+                  {sowingAge && sowingAge.kind === "known" && (
+                    <>
+                      <div>
+                        <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
+                        <dd className="text-sm text-ink">{sowingAge.sownDateLabel}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Age</dt>
+                        <dd className="text-sm text-ink">
+                          {sowingAge.ageDays} {sowingAge.ageDays === 1 ? "day" : "days"}
+                        </dd>
+                      </div>
+                    </>
+                  )}
+                  {sowingAge && sowingAge.kind === "multiple_origins" && (
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
+                      <dd className="text-sm text-ink-muted">Multiple sowing origins</dd>
+                    </div>
+                  )}
+                  {sowingAge && sowingAge.kind === "unknown" && (
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
+                      <dd className="text-sm text-ink-muted">Unknown</dd>
+                    </div>
+                  )}
+                </dl>
+              </>
+            )}
+          </div>
+
+          {hasLineage && (
+            <p className="mt-4 text-sm text-ink-muted">
+              This batch has recorded origin/split history —{" "}
+              <Link
+                href={`/farms/${farmId}/crop-batches/${batchId}?tab=origin`}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                see Origin & Splits
+              </Link>
+              .
+            </p>
           )}
-        </dl>
+
+          <div className="mt-8 border-t border-border-subtle pt-4">
+            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">Workflow details</h2>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-ink-muted">Workflow</dt>
+                <dd className="text-sm text-ink-muted">
+                  {batch.workflow.name} (v{batch.version_number})
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ink-muted">Batch created</dt>
+                <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.created_effective_time, timezone)}</dd>
+              </div>
+              {batch.closed_effective_time && (
+                <div>
+                  <dt className="text-xs text-ink-muted">Closed</dt>
+                  <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.closed_effective_time, timezone)}</dd>
+                </div>
+              )}
+              {batch.superseded_effective_time && (
+                <div>
+                  <dt className="text-xs text-ink-muted">Superseded</dt>
+                  <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.superseded_effective_time, timezone)}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        </div>
       )}
 
       {activeTab === "history" && (
@@ -166,13 +241,11 @@ export default function CropBatchDetailPage() {
         </>
       )}
 
-      {activeTab === "lineage" && (
+      {activeTab === "origin" && (
         <>
-          {lineageQuery.isLoading && <LoadingSkeleton rows={4} label="Loading lineage" />}
+          {lineageQuery.isLoading && <LoadingSkeleton rows={4} label="Loading origin and splits" />}
           {lineageQuery.error && <ErrorState error={lineageQuery.error} onRetry={() => lineageQuery.refetch()} />}
-          {lineageQuery.data && (
-            <BatchLineagePanel lineage={lineageQuery.data} farmId={farmId} farmTimezone={timezone} />
-          )}
+          {lineageQuery.data && <OriginAndSplitsPanel lineage={lineageQuery.data} farmId={farmId} />}
         </>
       )}
 
@@ -190,7 +263,7 @@ export default function CropBatchDetailPage() {
                 .map((hold) => (
                   <li key={hold.id} className="rounded-md border border-border-subtle p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-ink">{hold.reason_code}</span>
+                      <span className="font-medium text-ink">{humanizeEnumCode(hold.reason_code)}</span>
                       <StatusBadge label={hold.is_open ? "Open" : "Released"} tone={hold.is_open ? "attention" : "closed"} />
                     </div>
                     <p className="mt-0.5 text-ink-muted">{hold.reason_text}</p>

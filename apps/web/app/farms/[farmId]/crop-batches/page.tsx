@@ -9,12 +9,17 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { ResponsiveBatchList } from "@/components/ResponsiveBatchList";
-import { useCropBatches, useFarm } from "@/lib/query/hooks";
+import { useFarm, useOperationalSummary } from "@/lib/query/hooks";
 
 export default function CropBatchesPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const { data: farm } = useFarm(farmId);
-  const { data, isLoading, error, refetch } = useCropBatches(farmId);
+  // Batch Register needs every legitimate state (active/closed/superseded),
+  // not just active -- `state=all` is a distinct cache entry from Home's
+  // `state=active` call. Filtering/search below stays client-side (pilot
+  // scale); server-side filtering/pagination is a documented future
+  // scalability gap, not addressed in this ticket.
+  const { data, isLoading, error, refetch } = useOperationalSummary(farmId, "all");
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("");
   const [state, setState] = useState("");

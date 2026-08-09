@@ -7,27 +7,17 @@ import { useMemo } from "react";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
-import type { LocationTreeNode } from "@/lib/api/client";
-import { useCropBatches, useFarm, useLocationsTree } from "@/lib/query/hooks";
+import { computeHomeKpis } from "@/lib/format/homeKpis";
+import { humanizeEnumCode } from "@/lib/format/humanize";
+import { groupBatchesByStage } from "@/lib/format/stageOrder";
+import { useFarm, useOperationalSummary } from "@/lib/query/hooks";
 
-function countLocations(nodes: LocationTreeNode[]): number {
-  return nodes.reduce((sum, node) => sum + 1 + countLocations(node.children), 0);
-}
-
-function groupCounts<T>(items: T[], keyOf: (item: T) => string): [string, number][] {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const key = keyOf(item);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-}
-
-function SummaryCard({ label, value, href }: { label: string; value: string | number; href?: string }) {
+function SummaryCard({ label, value, href, caption }: { label: string; value: string | number; href?: string; caption?: string }) {
   const content = (
     <div className="rounded-lg border border-border-subtle bg-surface p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-ink">{value}</p>
+      {caption && <p className="mt-0.5 text-xs text-ink-muted">{caption}</p>}
     </div>
   );
   return href ? (
@@ -42,50 +32,77 @@ function SummaryCard({ label, value, href }: { label: string; value: string | nu
 export default function FarmHomePage() {
   const { farmId } = useParams<{ farmId: string }>();
   const { data: farm } = useFarm(farmId);
-  const batchesQuery = useCropBatches(farmId);
-  const locationsQuery = useLocationsTree(farmId);
+  // Home's first-load request budget is exactly 2: farm + active
+  // operational summary. No other network call belongs on this page.
+  const summaryQuery = useOperationalSummary(farmId, "active");
 
+  // Grouped by (stage_category, stage name) -- not stage ID (which would
+  // fragment equivalent configured workflows into separate rows for no
+  // reason) and not name alone (which would silently merge two genuinely
+  // different stages, e.g. a nursery "Growing" step and a production
+  // "Growing" step, that only happen to share a display name).
   const stageBreakdown = useMemo(
-    () => (batchesQuery.data ? groupCounts(batchesQuery.data, (b) => b.current_stage.name) : []),
-    [batchesQuery.data],
+    () => (summaryQuery.data ? groupBatchesByStage(summaryQuery.data) : []),
+    [summaryQuery.data],
   );
+  // If two groups share a visible name but differ by category, disambiguate
+  // with a minimal, humanized category suffix -- never raw category codes.
+  const nameOccurrences = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const group of stageBreakdown) counts.set(group.name, (counts.get(group.name) ?? 0) + 1);
+    return counts;
+  }, [stageBreakdown]);
 
-  if (batchesQuery.isLoading || locationsQuery.isLoading) {
+  if (summaryQuery.isLoading) {
     return <LoadingSkeleton rows={4} label="Loading farm overview" />;
   }
 
-  if (batchesQuery.error) {
-    return <ErrorState error={batchesQuery.error} onRetry={() => batchesQuery.refetch()} />;
-  }
-  if (locationsQuery.error) {
-    return <ErrorState error={locationsQuery.error} onRetry={() => locationsQuery.refetch()} />;
+  if (summaryQuery.error) {
+    // Never silently fall back to a misleading FE-001-style calculation --
+    // if the operational summary fails, say so plainly.
+    return <ErrorState error={summaryQuery.error} onRetry={() => summaryQuery.refetch()} />;
   }
 
-  const batches = batchesQuery.data ?? [];
-  const locationCount = countLocations(locationsQuery.data ?? []);
-  const activeCount = batches.filter((b) => b.state === "active").length;
+  const activeBatches = summaryQuery.data ?? [];
+  const { activeCount, harvestReadyCount, openHoldBatchCount } = computeHomeKpis(activeBatches);
 
   return (
     <div>
       <PageHeader title={farm ? farm.name : "Farm overview"} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <SummaryCard label="Active batches" value={activeCount} href={`/farms/${farmId}/crop-batches`} />
-        <SummaryCard label="Total batches" value={batches.length} href={`/farms/${farmId}/crop-batches`} />
-        <SummaryCard label="Locations" value={locationCount} href={`/farms/${farmId}/locations`} />
+        <SummaryCard label="Harvest ready" value={harvestReadyCount} href={`/farms/${farmId}/crop-batches`} />
+        <SummaryCard
+          label="Batches with open quality holds"
+          value={openHoldBatchCount}
+          href={`/farms/${farmId}/crop-batches`}
+          caption={openHoldBatchCount === 1 ? "1 batch affected" : `${openHoldBatchCount} batches affected`}
+        />
       </div>
 
       <section className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Batches by stage</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink">Active production by stage</h2>
         {stageBreakdown.length === 0 ? (
-          <p className="text-sm text-ink-muted">No batches yet.</p>
+          <p className="text-sm text-ink-muted">No active batches yet.</p>
         ) : (
           <ul className="divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface">
-            {stageBreakdown.map(([stage, count]) => (
-              <li key={stage} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-ink">{stage}</span>
-                <span className="font-medium text-ink-muted">{count}</span>
-              </li>
-            ))}
+            {stageBreakdown.map((stage) => {
+              const needsDisambiguation = (nameOccurrences.get(stage.name) ?? 0) > 1;
+              return (
+                <li
+                  key={`${stage.category}-${stage.name}`}
+                  className="flex items-center justify-between px-4 py-2 text-sm"
+                >
+                  <span className="text-ink">
+                    {stage.name}
+                    {needsDisambiguation && (
+                      <span className="text-ink-muted"> · {humanizeEnumCode(stage.category)}</span>
+                    )}
+                  </span>
+                  <span className="font-medium text-ink-muted">{stage.count}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

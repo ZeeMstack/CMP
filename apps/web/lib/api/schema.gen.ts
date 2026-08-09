@@ -207,6 +207,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/locations/{location_id}/subtree-occupancy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Location Subtree Occupancy
+         * @description CMP-FE-002A: bounded-by-root occupancy for one location subtree
+         *     (the given root plus all its descendants, never farm-wide). Returns
+         *     aggregate occupiable/occupied counts per structural node plus only the
+         *     currently occupied locations -- never resends the structural tree
+         *     itself (already available from `.../locations/tree`), and never one
+         *     row per empty location.
+         */
+        get: operations["get_location_subtree_occupancy_farms__farm_id__locations__location_id__subtree_occupancy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/assets": {
         parameters: {
             query?: never;
@@ -684,6 +709,53 @@ export interface paths {
         put?: never;
         /** Create Crop Batch */
         post: operations["create_crop_batch_farms__farm_id__crop_batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/operational-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Crop Batches Operational Summary
+         * @description CMP-FE-002A: bounded, farm-wide operational read model -- one
+         *     coherent snapshot covering sowing origin, current placement, and open
+         *     quality-hold count per batch, powering both Home (`state` omitted,
+         *     active-only) and the Batch Register (`state=all`, every legitimate
+         *     `crop_batches.state`: active, closed, superseded).
+         */
+        get: operations["get_crop_batches_operational_summary_farms__farm_id__crop_batches_operational_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/operational-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Crop Batch Operational Context
+         * @description Single-batch counterpart of the operational-summary list -- same
+         *     shared service function, `{batch_id}` only, so Batch Detail never has
+         *     to download the whole farm's payload for one batch's operational
+         *     context. Resolves regardless of state (active/closed/superseded).
+         */
+        get: operations["get_crop_batch_operational_context_farms__farm_id__crop_batches__batch_id__operational_context_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1890,6 +1962,55 @@ export interface components {
             /** Output Batch Code */
             output_batch_code: string;
         };
+        /**
+         * BatchOperationalContext
+         * @description One batch's full operational read model -- shared shape returned by
+         *     both the farm-wide summary list and the single-batch context route.
+         *     Never includes a UI string; every field is a fact, ID, code, name,
+         *     count, or timestamp.
+         */
+        BatchOperationalContext: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /** State */
+            state: string;
+            current_stage: components["schemas"]["OperationalStageSummary"];
+            /** Sowing Origins */
+            sowing_origins: components["schemas"]["SowingOrigin"][];
+            /** Sown Effective Time */
+            sown_effective_time: string | null;
+            placement: components["schemas"]["PlacementFacts"];
+            /** Open Quality Hold Count */
+            open_quality_hold_count: number;
+        };
+        /** BatchPlacement */
+        BatchPlacement: {
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /** Carrier Code */
+            carrier_code: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Location Code */
+            location_code: string;
+            /** Location Name */
+            location_name: string;
+            /** Path */
+            path: components["schemas"]["LocationPathSegment"][];
+        };
         /** BatchSplitCreate */
         BatchSplitCreate: {
             /**
@@ -2925,6 +3046,18 @@ export interface components {
             /** Dispatches */
             dispatches: components["schemas"]["RecallDispatchLineRead"][];
         };
+        /** LocationAggregateCount */
+        LocationAggregateCount: {
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Occupiable Location Count */
+            occupiable_location_count: number;
+            /** Occupied Location Count */
+            occupied_location_count: number;
+        };
         /** LocationBulkChildrenCreate */
         LocationBulkChildrenCreate: {
             /** Location Type Code */
@@ -2965,6 +3098,19 @@ export interface components {
             /** Lots */
             lots: components["schemas"]["LotBalanceRead"][];
         };
+        /** LocationOccupant */
+        LocationOccupant: {
+            /** Kind */
+            kind: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Carrier Code */
+            carrier_code: string | null;
+            batch: components["schemas"]["OccupantBatchContext"] | null;
+        };
         /** LocationPathEntry */
         LocationPathEntry: {
             /**
@@ -2988,6 +3134,18 @@ export interface components {
             path: components["schemas"]["LocationPathEntry"][];
             /** Path String */
             path_string: string;
+        };
+        /** LocationPathSegment */
+        LocationPathSegment: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
         };
         /** LocationRead */
         LocationRead: {
@@ -3395,6 +3553,18 @@ export interface components {
              */
             created_at: string;
         };
+        /** OccupantBatchContext */
+        OccupantBatchContext: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            crop: components["schemas"]["CropSummary"];
+            current_stage: components["schemas"]["OperationalStageSummary"];
+        };
         /** OccupantRef */
         OccupantRef: {
             /**
@@ -3407,6 +3577,42 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** OccupiedLocation */
+        OccupiedLocation: {
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            occupant: components["schemas"]["LocationOccupant"];
+        };
+        /**
+         * OperationalStageSummary
+         * @description CMP-FE-002A.1: `StageSummary` (crop_batch.py) is shared across many
+         *     unrelated response contracts (sowing/harvest/transplant events, quality
+         *     holds, observation events, batch derivation, core crop-batch reads) --
+         *     adding `stage_category` there would widen every one of those contracts
+         *     for a need specific to the three operational-read endpoints. This type
+         *     exists only for that operational-read family (`BatchOperationalContext`,
+         *     `OccupantBatchContext`) and adds the one authoritative field FE-002B
+         *     needs to classify a batch's readiness (e.g. `stage_category ==
+         *     "harvest_ready"`) without inferring it from stage name/code.
+         */
+        OperationalStageSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Is Terminal */
+            is_terminal: boolean;
+            /** Stage Category */
+            stage_category: string;
         };
         /** PackingEventCreate */
         PackingEventCreate: {
@@ -3460,6 +3666,25 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /**
+         * PlacementFacts
+         * @description Structured current-placement truth for one batch. `active_*_count`
+         *     always partitions exactly (`active = placed + unplaced`) -- proven by
+         *     the database's own partial-unique constraint that a carrier has at
+         *     most one active occupancy at a time (`ux_occupancies_active_occupant_carrier`).
+         */
+        PlacementFacts: {
+            /** Active Carrier Count */
+            active_carrier_count: number;
+            /** Placed Carrier Count */
+            placed_carrier_count: number;
+            /** Unplaced Carrier Count */
+            unplaced_carrier_count: number;
+            /** Placements */
+            placements: components["schemas"]["BatchPlacement"][];
+            /** Common Ancestor Path */
+            common_ancestor_path: components["schemas"]["LocationPathSegment"][] | null;
         };
         /** ProduceLotBalanceRead */
         ProduceLotBalanceRead: {
@@ -4108,6 +4333,38 @@ export interface components {
             /** Lines */
             lines: components["schemas"]["SowingEventLineRead"][];
         };
+        /**
+         * SowingOrigin
+         * @description One provable seed/sowing origin reachable from a batch's own
+         *     derivation ancestry. A batch may have more than one (a future merge of
+         *     batches sown on different dates) -- never collapsed to a guess.
+         */
+        SowingOrigin: {
+            /**
+             * Source Batch Id
+             * Format: uuid
+             */
+            source_batch_id: string;
+            /** Source Batch Code */
+            source_batch_code: string;
+            /**
+             * Sowing Event Id
+             * Format: uuid
+             */
+            sowing_event_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Seed Lot Id
+             * Format: uuid
+             */
+            seed_lot_id: string;
+            /** Seed Lot Code */
+            seed_lot_code: string;
+        };
         /** SplitOutputIn */
         SplitOutputIn: {
             /** Output Batch Code */
@@ -4161,6 +4418,18 @@ export interface components {
              * Format: date-time
              */
             recorded_time: string;
+        };
+        /** SubtreeOccupancyRead */
+        SubtreeOccupancyRead: {
+            /**
+             * Root Location Id
+             * Format: uuid
+             */
+            root_location_id: string;
+            /** Aggregate Counts */
+            aggregate_counts: components["schemas"]["LocationAggregateCount"][];
+            /** Occupied Locations */
+            occupied_locations: components["schemas"]["OccupiedLocation"][];
         };
         /** TargetOccupantRead */
         TargetOccupantRead: {
@@ -5715,6 +5984,41 @@ export interface operations {
             };
         };
     };
+    get_location_subtree_occupancy_farms__farm_id__locations__location_id__subtree_occupancy_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Dev-Tenant-Id": string;
+                "X-Dev-User-Id": string;
+            };
+            path: {
+                farm_id: string;
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtreeOccupancyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_assets_farms__farm_id__assets_get: {
         parameters: {
             query?: {
@@ -6949,6 +7253,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CropBatchRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_crop_batches_operational_summary_farms__farm_id__crop_batches_operational_summary_get: {
+        parameters: {
+            query?: {
+                state?: "active" | "all";
+            };
+            header: {
+                "X-Dev-Tenant-Id": string;
+                "X-Dev-User-Id": string;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOperationalContext"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_crop_batch_operational_context_farms__farm_id__crop_batches__batch_id__operational_context_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Dev-Tenant-Id": string;
+                "X-Dev-User-Id": string;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchOperationalContext"];
                 };
             };
             /** @description Validation Error */

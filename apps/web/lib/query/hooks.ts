@@ -36,22 +36,32 @@ export function useLocationsTree(farmId: string) {
   });
 }
 
-/** On-demand only -- callers must pass `enabled: false` until the operator
- * actually selects a location. Never fetched eagerly for a whole tree. */
-export function useLocationOccupant(farmId: string, locationId: string, enabled: boolean) {
+/** On-demand only -- callers pass `enabled: false` until a structural
+ * branch is actually expanded. One request per independently-expanded
+ * root; React Query's cache (keyed on `locationId`) prevents re-fetching
+ * the same root twice. */
+export function useLocationSubtreeOccupancy(farmId: string, locationId: string, enabled: boolean) {
   return useQuery({
-    queryKey: queryKeys.locationOccupant(farmId, locationId),
-    queryFn: ({ signal }) => api.getLocationOccupant(farmId, locationId, signal),
+    queryKey: queryKeys.locationSubtreeOccupancy(farmId, locationId),
+    queryFn: ({ signal }) => api.getLocationSubtreeOccupancy(farmId, locationId, signal),
     staleTime: STALE_DETAIL_MS,
     enabled,
   });
 }
 
-export function useCropBatches(farmId: string) {
+export function useOperationalSummary(farmId: string, state: "active" | "all") {
   return useQuery({
-    queryKey: queryKeys.cropBatches(farmId),
-    queryFn: ({ signal }) => api.listCropBatches(farmId, signal),
+    queryKey: queryKeys.operationalSummary(farmId, state),
+    queryFn: ({ signal }) => api.getOperationalSummary(farmId, state, signal),
     staleTime: STALE_LIST_MS,
+  });
+}
+
+export function useBatchOperationalContext(farmId: string, batchId: string) {
+  return useQuery({
+    queryKey: queryKeys.batchOperationalContext(farmId, batchId),
+    queryFn: ({ signal }) => api.getBatchOperationalContext(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
   });
 }
 
