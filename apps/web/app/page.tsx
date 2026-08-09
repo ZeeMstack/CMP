@@ -1,8 +1,5 @@
-export default function Home() {
-  return (
-    <main>
-      <h1>CMP</h1>
-      <p>Crop Management Platform — application scaffold.</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+
+export default function RootPage() {
+  redirect("/farms");
 }

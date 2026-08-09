@@ -1,0 +1,16 @@
+{
+  "name": "CMP — Crop Management Platform",
+  "short_name": "CMP",
+  "description": "CMP — Crop Management Platform pilot",
+  "start_url": "/farms",
+  "display": "standalone",
+  "background_color": "#f7f8f7",
+  "theme_color": "#2f8f60",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
