@@ -6,6 +6,7 @@
  * dataset's PILOT-LOT-006/007/007A/007B scenario (open hold + placement,
  * split parent + inherited-origin children) without depending on it. */
 import type { BatchOperationalContext } from "@/lib/api/client";
+import type { AuthBootstrap } from "@/lib/auth/types";
 
 export const farm = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -16,6 +17,17 @@ export const farm = {
   city_region: "Dubai",
   timezone: "Asia/Dubai",
   status: "active",
+};
+
+/** A single-tenant, already-selected bootstrap -- AUTH-001B2's central
+ * /api/auth/bootstrap must be mocked in every spec that renders anything
+ * past the shell, since tenant-scoped hooks are `enabled: false` until a
+ * tenant is selected (see lib/query/hooks.ts). */
+export const authBootstrap: AuthBootstrap = {
+  status: "authenticated",
+  user: { id: "33333333-3333-3333-3333-333333333333", email: "pilot@example.com", displayName: "Pilot User" },
+  memberships: [{ tenantId: farm.tenant_id, tenantCode: "PILOT", tenantName: "Pilot Tenant", roleCode: "tenant_admin" }],
+  selectedTenantId: farm.tenant_id,
 };
 
 const crop = { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" };

@@ -11,6 +11,7 @@ import * as fixtures from "./fixtures";
  * development `cmp` database.
  */
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/bootstrap", (route) => route.fulfill({ json: fixtures.authBootstrap }));
   await page.route("**/api/farms", (route) => route.fulfill({ json: [fixtures.farm] }));
   await page.route(`**/api/farms/${fixtures.farm.id}`, (route) => route.fulfill({ json: fixtures.farm }));
   await page.route(`**/api/farms/${fixtures.farm.id}/locations/tree`, (route) =>

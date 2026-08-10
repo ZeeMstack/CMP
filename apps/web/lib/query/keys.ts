@@ -1,22 +1,32 @@
-/** Farm-scoped query key factory -- keeps every hook's key shape consistent
- * and gives future mutation tickets a clear, farm-scoped prefix to
- * invalidate against. */
+/** Query key factory (AUTH-001B2: every tenant-scoped key is prefixed
+ * with the active tenant id, so cached data from one tenant can never be
+ * returned for a `useQuery` call made under a different tenant -- this is
+ * a structural property of the key space, not an accident of farm/batch/
+ * location UUIDs happening not to collide across tenants. `authBootstrap`
+ * is the one deliberate exception: it is genuinely tenant-independent
+ * (it's what *tells* the app which tenants exist), so it is never
+ * tenant-prefixed and must never be cleared by anything except an
+ * explicit auth-state change. */
 export const queryKeys = {
-  farms: () => ["farms"] as const,
-  farm: (farmId: string) => ["farms", farmId] as const,
-  locationsTree: (farmId: string) => ["farms", farmId, "locations", "tree"] as const,
-  locationSubtreeOccupancy: (farmId: string, locationId: string) =>
-    ["farms", farmId, "locations", locationId, "subtree-occupancy"] as const,
-  cropBatch: (farmId: string, batchId: string) => ["farms", farmId, "crop-batches", batchId] as const,
-  stageHistory: (farmId: string, batchId: string) =>
-    ["farms", farmId, "crop-batches", batchId, "stage-history"] as const,
-  batchLineage: (farmId: string, batchId: string) =>
-    ["farms", farmId, "crop-batches", batchId, "lineage"] as const,
-  qualityHolds: (farmId: string, batchId: string) =>
-    ["farms", farmId, "crop-batches", batchId, "quality-holds"] as const,
+  authBootstrap: () => ["auth", "bootstrap"] as const,
+
+  farms: (tenantId: string) => ["tenant", tenantId, "farms"] as const,
+  farm: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId] as const,
+  locationsTree: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "locations", "tree"] as const,
+  locationSubtreeOccupancy: (tenantId: string, farmId: string, locationId: string) =>
+    ["tenant", tenantId, "farms", farmId, "locations", locationId, "subtree-occupancy"] as const,
+  cropBatch: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId] as const,
+  stageHistory: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "stage-history"] as const,
+  batchLineage: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "lineage"] as const,
+  qualityHolds: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "quality-holds"] as const,
   // `state` is part of the key so `active` and `all` never collide in cache.
-  operationalSummary: (farmId: string, state: "active" | "all") =>
-    ["farms", farmId, "crop-batches", "operational-summary", state] as const,
-  batchOperationalContext: (farmId: string, batchId: string) =>
-    ["farms", farmId, "crop-batches", batchId, "operational-context"] as const,
+  operationalSummary: (tenantId: string, farmId: string, state: "active" | "all") =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", "operational-summary", state] as const,
+  batchOperationalContext: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "operational-context"] as const,
 };

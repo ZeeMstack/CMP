@@ -2,12 +2,14 @@
 
 import { Boxes, LayoutGrid, Map, Menu, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { FarmSelector } from "@/components/FarmSelector";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
+import { TenantSelector } from "@/components/TenantSelector";
+import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { useFarms } from "@/lib/query/hooks";
 
 function navItems(farmId: string) {
@@ -25,8 +27,21 @@ function isActive(pathname: string, href: string, exact: boolean) {
 export function AppShell({ farmId, children }: { farmId: string; children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
   const { data: farms } = useFarms();
   const items = navItems(farmId);
+
+  // Switching tenant always returns to /farms -- a farm id from the
+  // previous tenant must never survive into the new tenant's URL (it may
+  // not exist there at all, or worse, could coincidentally resolve to an
+  // unrelated farm).
+  async function handleTenantSelect(tenantId: string) {
+    const result = await selectTenant(tenantId);
+    if (result.ok) {
+      router.push("/farms");
+    }
+  }
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -74,7 +89,17 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
           <span className="sr-only">Toggle navigation</span>
         </button>
         <span className="text-base font-semibold text-brand-700">CMP</span>
-        {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
+        <div className="flex min-w-0 items-center gap-2">
+          {bootstrap && (
+            <TenantSelector
+              memberships={bootstrap.memberships}
+              selectedTenantId={bootstrap.selectedTenantId}
+              onSelect={handleTenantSelect}
+              disabled={isSwitchingTenant}
+            />
+          )}
+          {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
+        </div>
       </header>
       {mobileNavOpen && (
         <nav id="mobile-nav" aria-label="Primary" className="border-b border-border-subtle bg-surface px-2 py-2 md:hidden">
@@ -98,7 +123,17 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Desktop top bar: farm context + network status */}
         <header className="hidden items-center justify-between border-b border-border-subtle bg-surface px-6 py-3 md:flex">
-          {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
+          <div className="flex items-center gap-3">
+            {bootstrap && (
+              <TenantSelector
+                memberships={bootstrap.memberships}
+                selectedTenantId={bootstrap.selectedTenantId}
+                onSelect={handleTenantSelect}
+                disabled={isSwitchingTenant}
+              />
+            )}
+            {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
+          </div>
           <NetworkStatusIndicator />
         </header>
         <div className="flex justify-end px-3 py-2 md:hidden">

@@ -34,10 +34,14 @@ function clearAuthEnv() {
   for (const key of ENV_KEYS) delete process.env[key];
 }
 
-function callProxy(path: string[]) {
-  const request = new NextRequest(`http://localhost/api/${path.join("/")}`);
+function callProxy(path: string[], cookieHeader?: string) {
+  const request = new NextRequest(`http://localhost/api/${path.join("/")}`, {
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+  });
   return route.GET(request, { params: Promise.resolve({ path }) });
 }
+
+const SELECTED_TENANT_COOKIE = "cmp_tenant_id=selected-tenant-abc";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -206,28 +210,68 @@ describe("real mode", () => {
 });
 
 describe("dev bypass mode", () => {
-  it("forwards only X-Dev-Tenant-Id / X-Dev-User-Id, and no Authorization header", async () => {
+  it("forwards only X-Dev-Tenant-Id / X-Dev-User-Id for a selected-tenant call, and no Authorization header", async () => {
     vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
     vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant-1");
     vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
     fetchMock.mockResolvedValue(jsonResponse([]));
 
-    await callProxy(["farms"]);
+    await callProxy(["farms"], SELECTED_TENANT_COOKIE);
 
     expect(mockGetAuthenticatedSession).not.toHaveBeenCalled();
     expect(mockGetCmpApiAccessToken).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     const headers = init.headers as Record<string, string>;
-    expect(headers["X-Dev-Tenant-Id"]).toBe("dev-tenant-1");
     expect(headers["X-Dev-User-Id"]).toBe("dev-user-1");
     expect(headers.Authorization).toBeUndefined();
   });
 
-  it("fails closed (500) when CMP_DEV_TENANT_ID/CMP_DEV_USER_ID are not both set", async () => {
+  it("uses the SELECTED tenant (cookie), not the configured bootstrap tenant, as X-Dev-Tenant-Id", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-bootstrap-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await callProxy(["farms"], SELECTED_TENANT_COOKIE);
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Dev-Tenant-Id"]).toBe("selected-tenant-abc");
+    expect(headers["X-Dev-Tenant-Id"]).not.toBe("dev-bootstrap-tenant");
+  });
+
+  it("returns a stable 400 tenant_selection_required when no tenant is selected, without ever calling the backend", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant-1");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
+
+    const response = await callProxy(["farms"]); // no cookie
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "tenant_selection_required" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("GET /auth/me still works with no tenant selected -- unscoped", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant-1");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
+    fetchMock.mockResolvedValue(jsonResponse({ user: {}, memberships: [] }));
+
+    const response = await callProxy(["auth", "me"]); // no cookie
+
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Dev-User-Id"]).toBe("dev-user-1");
+    expect(headers["X-Dev-Tenant-Id"]).toBeUndefined();
+  });
+
+  it("fails closed (500) when CMP_DEV_TENANT_ID/CMP_DEV_USER_ID are not both set, even for the unscoped /auth/me call", async () => {
     vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
     // Deliberately missing CMP_DEV_TENANT_ID / CMP_DEV_USER_ID.
 
-    const response = await callProxy(["farms"]);
+    const response = await callProxy(["auth", "me"]);
 
     expect(response.status).toBe(500);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -250,21 +294,34 @@ describe("dev bypass mode", () => {
 });
 
 describe("test bypass mode", () => {
-  it("forwards only X-Dev-Tenant-Id / X-Dev-User-Id sourced from CMP_TEST_* under production NODE_ENV", async () => {
+  it("forwards X-Dev-User-Id from CMP_TEST_USER_ID and the SELECTED tenant as X-Dev-Tenant-Id, under production NODE_ENV", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("CMP_TEST_AUTH_BYPASS", "playwright-e2e-only");
-    vi.stubEnv("CMP_TEST_TENANT_ID", "test-tenant-1");
+    vi.stubEnv("CMP_TEST_TENANT_ID", "test-bootstrap-tenant");
     vi.stubEnv("CMP_TEST_USER_ID", "test-user-1");
     fetchMock.mockResolvedValue(jsonResponse([]));
 
-    const response = await callProxy(["farms"]);
+    const response = await callProxy(["farms"], SELECTED_TENANT_COOKIE);
 
     expect(response.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     const headers = init.headers as Record<string, string>;
-    expect(headers["X-Dev-Tenant-Id"]).toBe("test-tenant-1");
+    expect(headers["X-Dev-Tenant-Id"]).toBe("selected-tenant-abc");
     expect(headers["X-Dev-User-Id"]).toBe("test-user-1");
     expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("returns 400 tenant_selection_required with no selected tenant, never falling back to CMP_TEST_TENANT_ID", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("CMP_TEST_AUTH_BYPASS", "playwright-e2e-only");
+    vi.stubEnv("CMP_TEST_TENANT_ID", "test-bootstrap-tenant");
+    vi.stubEnv("CMP_TEST_USER_ID", "test-user-1");
+
+    const response = await callProxy(["farms"]); // no cookie
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "tenant_selection_required" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not activate merely because NODE_ENV=production and CMP_DEV_AUTH_BYPASS is unset -- requires the exact sentinel", async () => {
