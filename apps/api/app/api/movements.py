@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.movement import MovementCreate, MovementRead
 from app.services import movement_service
 from app.services.errors import (
@@ -34,7 +34,7 @@ def create_movement(
     farm_id: uuid.UUID,
     payload: MovementCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> MovementRead:
     try:
         movement = movement_service.execute_movement(

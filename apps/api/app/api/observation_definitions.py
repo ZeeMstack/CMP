@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.observation_definition import ObservationDefinitionCreate, ObservationDefinitionRead
 from app.services import observation_service
 from app.services.errors import DuplicateObservationDefinitionCodeError, ObservationDefinitionNotFoundError
@@ -18,7 +18,7 @@ router = APIRouter(tags=["observation-definitions"])
 def create_observation_definition(
     payload: ObservationDefinitionCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ObservationDefinitionRead:
     try:
         definition = observation_service.register_observation_definition(
@@ -44,7 +44,7 @@ def create_observation_definition(
 @router.get("/observation-definitions", response_model=list[ObservationDefinitionRead])
 def list_observation_definitions(
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[ObservationDefinitionRead]:
     return observation_service.list_observation_definitions(db, tenant_id=ctx.tenant_id)
 
@@ -53,7 +53,7 @@ def list_observation_definitions(
 def get_observation_definition(
     definition_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ObservationDefinitionRead:
     try:
         return observation_service.get_observation_definition(

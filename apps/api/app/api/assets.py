@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.asset import AssetCreate, AssetRead
 from app.schemas.asset_position import AssetPositionRead, AssetPositionsGenerate, AssetPositionTreeNode
 from app.schemas.movement import MovementRead, TargetRef
@@ -28,7 +28,7 @@ def register_asset(
     farm_id: uuid.UUID,
     payload: AssetCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> AssetRead:
     try:
         asset = asset_service.register_asset(
@@ -57,7 +57,7 @@ def get_asset(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> AssetRead:
     try:
         asset = asset_service.get_asset(db, tenant_id=ctx.tenant_id, farm_id=farm_id, asset_id=asset_id)
@@ -71,7 +71,7 @@ def list_assets(
     farm_id: uuid.UUID,
     asset_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[AssetRead]:
     try:
         assets = asset_service.list_assets(
@@ -94,7 +94,7 @@ def generate_positions(
     asset_id: uuid.UUID,
     payload: AssetPositionsGenerate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[AssetPositionRead]:
     try:
         created = asset_service.generate_positions(
@@ -131,7 +131,7 @@ def get_positions_tree(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[AssetPositionTreeNode]:
     try:
         flat = asset_service.get_positions_tree(
@@ -161,7 +161,7 @@ def get_asset_occupancy(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> OccupancyRead | None:
     try:
         occupancy = movement_service.get_occupancy(
@@ -177,7 +177,7 @@ def get_asset_movement_history(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[MovementRead]:
     try:
         movements = movement_service.get_movement_history(
@@ -193,7 +193,7 @@ def get_asset_resolved_location(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ResolvedLocationRead:
     try:
         resolved = movement_service.get_resolved_location(
@@ -212,7 +212,7 @@ def get_position_occupant(
     asset_id: uuid.UUID,
     position_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> TargetOccupantRead:
     try:
         occupancy = movement_service.get_target_occupant(

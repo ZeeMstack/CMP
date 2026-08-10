@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.workflow import (
     WorkflowCreate,
     WorkflowRead,
@@ -39,7 +39,7 @@ router = APIRouter(tags=["workflows"])
 def create_workflow(
     payload: WorkflowCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowRead:
     try:
         workflow = workflow_service.register_workflow(
@@ -72,7 +72,7 @@ def create_workflow(
 @router.get("/workflows", response_model=list[WorkflowRead])
 def list_workflows(
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[WorkflowRead]:
     workflows = workflow_service.list_workflows(db, tenant_id=ctx.tenant_id)
     return [WorkflowRead.model_validate(workflow) for workflow in workflows]
@@ -86,7 +86,7 @@ def list_workflows(
 def create_draft_version(
     workflow_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowVersionRead:
     try:
         version = workflow_service.create_draft_version(
@@ -104,7 +104,7 @@ def get_workflow_version(
     workflow_id: uuid.UUID,
     version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowVersionDetailRead:
     try:
         version = workflow_service.get_workflow_version(
@@ -138,7 +138,7 @@ def add_stage(
     version_id: uuid.UUID,
     payload: WorkflowStageCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowStageRead:
     try:
         stage = workflow_service.add_stage(
@@ -188,7 +188,7 @@ def add_transition(
     version_id: uuid.UUID,
     payload: WorkflowTransitionCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowTransitionRead:
     try:
         transition = workflow_service.add_transition(
@@ -231,7 +231,7 @@ def publish_workflow_version(
     workflow_id: uuid.UUID,
     version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> WorkflowVersionRead:
     try:
         version = workflow_service.publish_version(

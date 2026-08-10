@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.finished_goods_storage import (
     FinishedGoodsPlacementRead,
     FinishedGoodsStorageMovementCreate,
@@ -37,7 +37,7 @@ def record_movement(
     farm_id: uuid.UUID,
     payload: FinishedGoodsStorageMovementCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> FinishedGoodsStorageMovementRead:
     try:
         movement = finished_goods_storage_service.record_movement(
@@ -81,7 +81,7 @@ def get_storage_movements(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[FinishedGoodsStorageMovementRead]:
     try:
         return finished_goods_storage_service.get_movement_history(
@@ -99,7 +99,7 @@ def get_placement(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> FinishedGoodsPlacementRead:
     try:
         return finished_goods_storage_service.get_placement(
@@ -117,7 +117,7 @@ def get_location_inventory(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> LocationInventoryRead:
     try:
         return finished_goods_storage_service.get_location_inventory(

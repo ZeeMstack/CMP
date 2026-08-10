@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.farm import FarmCreate, FarmRead
 from app.services import farm_service
 from app.services.errors import DuplicateFarmCodeError, FarmNotFoundError
@@ -16,7 +16,7 @@ router = APIRouter(tags=["farms"])
 def create_farm(
     payload: FarmCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> FarmRead:
     try:
         farm = farm_service.create_farm(
@@ -40,7 +40,7 @@ def create_farm(
 def get_farm(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> FarmRead:
     try:
         farm = farm_service.get_farm(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -52,7 +52,7 @@ def get_farm(
 @router.get("/farms", response_model=list[FarmRead])
 def list_farms(
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[FarmRead]:
     farms = farm_service.list_farms(db, tenant_id=ctx.tenant_id)
     return [FarmRead.model_validate(farm) for farm in farms]

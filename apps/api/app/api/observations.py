@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.observation_event import ObservationEventCreate, ObservationEventRead
 from app.services import observation_service
 from app.services.errors import (
@@ -33,7 +33,7 @@ def record_observation(
     batch_id: uuid.UUID,
     payload: ObservationEventCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ObservationEventRead:
     values = [
         {
@@ -98,7 +98,7 @@ def list_observations(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[ObservationEventRead]:
     try:
         return observation_service.list_observation_events(
@@ -117,7 +117,7 @@ def get_observation(
     batch_id: uuid.UUID,
     observation_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ObservationEventRead:
     try:
         return observation_service.get_observation_event(

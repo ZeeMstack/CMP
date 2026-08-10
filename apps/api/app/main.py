@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.assets import router as assets_router
+from app.api.auth import router as auth_router
 from app.api.batch_derivations import router as batch_derivations_router
 from app.api.carriers import router as carriers_router
 from app.api.crop_batches import router as crop_batches_router
@@ -26,15 +27,17 @@ from app.api.sowings import router as sowings_router
 from app.api.transplants import router as transplants_router
 from app.api.workflows import router as workflows_router
 from app.core.dev_auth import check_dev_auth_startup_invariant
-from app.core.settings import Settings, settings
+from app.core.settings import Settings, check_oidc_startup_invariant, settings
 
 
 def create_app(cfg: Settings) -> FastAPI:
     check_dev_auth_startup_invariant(cfg)
+    check_oidc_startup_invariant(cfg)
 
     api = FastAPI(title="CMP API", version="0.1.0")
     api.include_router(health_router)
     api.include_router(ready_router)
+    api.include_router(auth_router)
     api.include_router(memberships_router)
     api.include_router(farms_router)
     api.include_router(locations_router)

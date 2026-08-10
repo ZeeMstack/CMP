@@ -7,7 +7,7 @@ tenant/farm and subject-existence validation -- runs on that one
 connection/snapshot. This guarantees a trace response is never a mix of
 pre- and post-commit state relative to a concurrent dispatch or storage
 movement. The router's own injected `Session` is used only to authenticate
-the tenant/user context (`require_dev_tenant_context`); it never touches
+the tenant/user context (`require_tenant_context`); it never touches
 trace data.
 
 No table here is written to. No audit event is appended for a read. No

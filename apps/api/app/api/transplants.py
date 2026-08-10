@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.transplant_event import TransplantEventCreate, TransplantEventRead
 from app.services import transplant_service
 from app.services.errors import (
@@ -35,7 +35,7 @@ def record_transplant(
     batch_id: uuid.UUID,
     payload: TransplantEventCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> TransplantEventRead:
     source_lines = [
         {
@@ -108,7 +108,7 @@ def list_transplants(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[TransplantEventRead]:
     try:
         return transplant_service.list_transplant_events(
@@ -127,7 +127,7 @@ def get_transplant(
     batch_id: uuid.UUID,
     transplant_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> TransplantEventRead:
     try:
         return transplant_service.get_transplant_event(

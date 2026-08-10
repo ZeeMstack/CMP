@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.crop import CropCreate, CropRead, VarietyCreate, VarietyRead
 from app.services import crop_service
 from app.services.errors import (
@@ -21,7 +21,7 @@ router = APIRouter(tags=["crops"])
 def create_crop(
     payload: CropCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> CropRead:
     try:
         crop = crop_service.register_crop(
@@ -43,7 +43,7 @@ def create_crop(
 @router.get("/crops", response_model=list[CropRead])
 def list_crops(
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[CropRead]:
     crops = crop_service.list_crops(db, tenant_id=ctx.tenant_id)
     return [CropRead.model_validate(crop) for crop in crops]
@@ -53,7 +53,7 @@ def list_crops(
 def get_crop(
     crop_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> CropRead:
     try:
         crop = crop_service.get_crop(db, tenant_id=ctx.tenant_id, crop_id=crop_id)
@@ -69,7 +69,7 @@ def create_variety(
     crop_id: uuid.UUID,
     payload: VarietyCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> VarietyRead:
     try:
         variety = crop_service.register_variety(
@@ -94,7 +94,7 @@ def create_variety(
 def list_varieties(
     crop_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[VarietyRead]:
     try:
         varieties = crop_service.list_varieties(db, tenant_id=ctx.tenant_id, crop_id=crop_id)
@@ -108,7 +108,7 @@ def get_variety(
     crop_id: uuid.UUID,
     variety_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> VarietyRead:
     try:
         variety = crop_service.get_variety(db, tenant_id=ctx.tenant_id, crop_id=crop_id, variety_id=variety_id)

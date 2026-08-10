@@ -5,7 +5,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.recall import (
     RecallCaseClose,
     RecallCaseCreate,
@@ -40,7 +40,7 @@ def open_recall_case(
     payload: RecallCaseCreate,
     db: Session = Depends(get_db),
     db_engine: Engine = Depends(get_engine),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> RecallCaseDetailRead:
     try:
         case = recall_service.open_recall_case(
@@ -76,7 +76,7 @@ def open_recall_case(
 def list_recall_cases(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[RecallCaseSummaryRead]:
     try:
         rows = recall_service.list_recall_cases(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -89,7 +89,7 @@ def list_recall_cases(
 def get_recall_case(
     farm_id: uuid.UUID,
     recall_case_id: uuid.UUID,
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
     db_engine: Engine = Depends(get_engine),
 ) -> RecallCaseDetailRead:
     try:
@@ -108,7 +108,7 @@ def close_recall_case(
     payload: RecallCaseClose,
     db: Session = Depends(get_db),
     db_engine: Engine = Depends(get_engine),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> RecallCaseDetailRead:
     try:
         recall_service.close_recall_case(

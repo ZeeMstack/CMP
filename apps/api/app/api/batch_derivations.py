@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.batch_derivation import BatchDerivationEventRead, BatchLineageRead, BatchMergeCreate, BatchSplitCreate
 from app.services import batch_derivation_service
 from app.services.errors import (
@@ -36,7 +36,7 @@ def split_crop_batch(
     batch_id: uuid.UUID,
     payload: BatchSplitCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> BatchDerivationEventRead:
     outputs = [
         {"output_batch_code": o.output_batch_code, "source_assignment_ids": o.source_assignment_ids}
@@ -84,7 +84,7 @@ def merge_crop_batches(
     farm_id: uuid.UUID,
     payload: BatchMergeCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> BatchDerivationEventRead:
     try:
         event = batch_derivation_service.merge_batches(
@@ -125,7 +125,7 @@ def get_batch_derivation(
     farm_id: uuid.UUID,
     derivation_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> BatchDerivationEventRead:
     try:
         return batch_derivation_service.get_derivation_event(
@@ -140,7 +140,7 @@ def get_crop_batch_lineage(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> BatchLineageRead:
     try:
         return batch_derivation_service.get_batch_lineage(

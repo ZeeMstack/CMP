@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.membership import MembershipCreate, MembershipRead
 from app.services import membership_service
 from app.services.errors import DuplicateMembershipError
@@ -14,7 +14,7 @@ router = APIRouter(tags=["memberships"])
 def create_membership(
     payload: MembershipCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> MembershipRead:
     try:
         membership = membership_service.add_membership(

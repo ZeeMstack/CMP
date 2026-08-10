@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
 from app.schemas.movement import MovementRead
 from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead
@@ -24,7 +24,7 @@ def register_carrier(
     farm_id: uuid.UUID,
     payload: CarrierCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> CarrierRead:
     try:
         carrier = carrier_service.register_carrier(
@@ -54,7 +54,7 @@ def bulk_register_carriers(
     farm_id: uuid.UUID,
     payload: CarrierBulkCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[CarrierRead]:
     try:
         created = carrier_service.bulk_register_carriers(
@@ -84,7 +84,7 @@ def get_carrier(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> CarrierRead:
     try:
         carrier = carrier_service.get_carrier(
@@ -100,7 +100,7 @@ def list_carriers(
     farm_id: uuid.UUID,
     carrier_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[CarrierRead]:
     try:
         carriers = carrier_service.list_carriers(
@@ -118,7 +118,7 @@ def get_carrier_occupancy(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> OccupancyRead | None:
     try:
         occupancy = movement_service.get_occupancy(
@@ -134,7 +134,7 @@ def get_carrier_movement_history(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[MovementRead]:
     try:
         movements = movement_service.get_movement_history(
@@ -150,7 +150,7 @@ def get_carrier_resolved_location(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ResolvedLocationRead:
     try:
         resolved = movement_service.get_resolved_location(

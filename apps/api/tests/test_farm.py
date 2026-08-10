@@ -99,8 +99,13 @@ def test_cross_tenant_farm_lookup_rejected_at_service_layer(db_session) -> None:
 
 @pytest.mark.integration
 def test_farm_endpoints_require_tenant_context(client) -> None:
+    # No bearer token, no dev headers, no X-CMP-Tenant-Id at all -- a
+    # deliberate 401 ("Authentication required"), not a generic validation
+    # error: require_tenant_context's headers are optional with real
+    # internal resolution logic, unlike the old defaultless dev-only
+    # dependency this route used to depend on.
     response = client.get("/farms")
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 @pytest.mark.integration

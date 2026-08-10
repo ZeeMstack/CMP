@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.production_system import ProductionSystemCreate, ProductionSystemRead
 from app.services import production_system_service
 from app.services.errors import DuplicateProductionSystemCodeError, ProductionSystemNotFoundError
@@ -16,7 +16,7 @@ router = APIRouter(tags=["production-systems"])
 def create_production_system(
     payload: ProductionSystemCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ProductionSystemRead:
     try:
         production_system = production_system_service.register_production_system(
@@ -37,7 +37,7 @@ def create_production_system(
 @router.get("/production-systems", response_model=list[ProductionSystemRead])
 def list_production_systems(
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[ProductionSystemRead]:
     production_systems = production_system_service.list_production_systems(db, tenant_id=ctx.tenant_id)
     return [ProductionSystemRead.model_validate(ps) for ps in production_systems]
@@ -47,7 +47,7 @@ def list_production_systems(
 def get_production_system(
     production_system_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ProductionSystemRead:
     try:
         production_system = production_system_service.get_production_system(

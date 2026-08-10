@@ -5,7 +5,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.location import (
     LocationBulkChildrenCreate,
     LocationCreate,
@@ -38,7 +38,7 @@ def create_location(
     farm_id: uuid.UUID,
     payload: LocationCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> LocationRead:
     try:
         location = location_service.create_location(
@@ -83,7 +83,7 @@ def bulk_create_children(
     parent_id: uuid.UUID,
     payload: LocationBulkChildrenCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[LocationRead]:
     try:
         created = location_service.bulk_generate_children(
@@ -123,7 +123,7 @@ def bulk_create_children(
 def get_farm_tree(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[LocationTreeNode]:
     try:
         flat = location_service.get_farm_tree(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -159,7 +159,7 @@ def get_location(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> LocationRead:
     try:
         location = location_service.get_location(
@@ -175,7 +175,7 @@ def list_children(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[LocationRead]:
     try:
         children = location_service.list_children(
@@ -191,7 +191,7 @@ def get_path(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> LocationPathRead:
     try:
         rows = location_service.get_path(
@@ -210,7 +210,7 @@ def get_location_occupant(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> TargetOccupantRead:
     try:
         occupancy = movement_service.get_target_occupant(
@@ -230,7 +230,7 @@ def get_location_occupant(
 def get_location_subtree_occupancy(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
     db_engine: Engine = Depends(get_engine),
 ) -> SubtreeOccupancyRead:
     """CMP-FE-002A: bounded-by-root occupancy for one location subtree

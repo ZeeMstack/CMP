@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.harvest import HarvestedProduceLotRead, HarvestEventCreate, HarvestEventRead
 from app.schemas.produce_lot_ledger import ProduceLotBalanceRead, ProduceLotLedgerEntryRead
 from app.services import harvest_service, produce_lot_ledger_service
@@ -37,7 +37,7 @@ def record_harvest(
     batch_id: uuid.UUID,
     payload: HarvestEventCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> HarvestEventRead:
     source_lines = [
         {
@@ -91,7 +91,7 @@ def list_harvests(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[HarvestEventRead]:
     try:
         return harvest_service.list_harvest_events(db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id)
@@ -107,7 +107,7 @@ def get_harvest(
     batch_id: uuid.UUID,
     harvest_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> HarvestEventRead:
     try:
         return harvest_service.get_harvest_event(
@@ -121,7 +121,7 @@ def get_harvest(
 def list_harvested_produce_lots(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[HarvestedProduceLotRead]:
     try:
         return harvest_service.list_produce_lots(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -136,7 +136,7 @@ def get_harvested_produce_lot(
     farm_id: uuid.UUID,
     produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> HarvestedProduceLotRead:
     try:
         return harvest_service.get_produce_lot(
@@ -154,7 +154,7 @@ def get_produce_lot_ledger(
     farm_id: uuid.UUID,
     produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[ProduceLotLedgerEntryRead]:
     try:
         return produce_lot_ledger_service.get_ledger(
@@ -172,7 +172,7 @@ def get_produce_lot_balance(
     farm_id: uuid.UUID,
     produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> ProduceLotBalanceRead:
     try:
         return produce_lot_ledger_service.get_balance(

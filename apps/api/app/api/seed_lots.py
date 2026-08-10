@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.dev_auth import DevTenantContext, require_dev_tenant_context
+from app.core.auth import TenantContext, require_tenant_context
 from app.schemas.seed_lot import SeedLotCreate, SeedLotRead
 from app.services import sowing_service
 from app.services.errors import (
@@ -24,7 +24,7 @@ def register_seed_lot(
     farm_id: uuid.UUID,
     payload: SeedLotCreate,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> SeedLotRead:
     try:
         seed_lot = sowing_service.register_seed_lot(
@@ -53,7 +53,7 @@ def register_seed_lot(
 def list_seed_lots(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> list[SeedLotRead]:
     try:
         return sowing_service.list_seed_lots(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -66,7 +66,7 @@ def get_seed_lot(
     farm_id: uuid.UUID,
     seed_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: DevTenantContext = Depends(require_dev_tenant_context),
+    ctx: TenantContext = Depends(require_tenant_context),
 ) -> SeedLotRead:
     try:
         return sowing_service.get_seed_lot(db, tenant_id=ctx.tenant_id, farm_id=farm_id, seed_lot_id=seed_lot_id)
