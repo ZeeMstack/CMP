@@ -14,6 +14,7 @@
     "api:types": "node scripts/generate-api-types.mjs"
   },
   "dependencies": {
+    "@auth0/nextjs-auth0": "^4.26.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@tanstack/react-query": "^5.101.4",
     "lucide-react": "^1.30.0",

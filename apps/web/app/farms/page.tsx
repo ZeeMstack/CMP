@@ -40,7 +40,7 @@ export default function FarmsPage() {
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyState
           title="No farms available"
-          description="This pilot identity has no accessible farms. Contact an administrator."
+          description="Your account has no accessible farms. Contact an administrator."
         />
       </div>
     );

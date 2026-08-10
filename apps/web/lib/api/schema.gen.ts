@@ -36,6 +36,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Me
+         * @description Deliberately does not require X-CMP-Tenant-Id -- its whole purpose
+         *     is letting a client discover which tenants it may select next.
+         *     `require_authenticated_principal` has already proven the caller is a
+         *     known, active CMP user (unknown/inactive identities never reach this
+         *     body -- 403 before this point). Zero accessible memberships is a
+         *     perfectly valid, successful response (`memberships: []`), not an
+         *     error -- that's how a frontend knows to show "access not
+         *     provisioned".
+         */
+        get: operations["get_auth_me_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/memberships": {
         parameters: {
             query?: never;
@@ -1764,6 +1791,44 @@ export interface components {
             commissioned_date: string | null;
             /** Retired Date */
             retired_date: string | null;
+        };
+        /** AuthMeMembership */
+        AuthMeMembership: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Tenant Code */
+            tenant_code: string;
+            /** Tenant Name */
+            tenant_name: string;
+            /** Role Code */
+            role_code: string;
+        };
+        /**
+         * AuthMeRead
+         * @description GET /auth/me's contract. Deliberately excludes oidc_subject, the raw
+         *     oidc_issuer, any raw token claims, and the token itself -- only CMP/
+         *     application facts a frontend needs to decide what to show next
+         *     (login-complete-no-access vs. auto-select vs. tenant picker).
+         */
+        AuthMeRead: {
+            user: components["schemas"]["AuthMeUser"];
+            /** Memberships */
+            memberships: components["schemas"]["AuthMeMembership"][];
+        };
+        /** AuthMeUser */
+        AuthMeUser: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
         };
         /** BatchAssignmentTransferRead */
         BatchAssignmentTransferRead: {
@@ -5595,12 +5660,47 @@ export interface operations {
             };
         };
     };
+    get_auth_me_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Dev-User-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthMeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_membership_memberships_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5634,9 +5734,11 @@ export interface operations {
     list_farms_farms_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5666,9 +5768,11 @@ export interface operations {
     create_farm_farms_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -5702,9 +5806,11 @@ export interface operations {
     get_farm_farms__farm_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5736,9 +5842,11 @@ export interface operations {
     create_location_farms__farm_id__locations_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5774,9 +5882,11 @@ export interface operations {
     bulk_create_children_farms__farm_id__locations__parent_id__bulk_children_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5813,9 +5923,11 @@ export interface operations {
     get_farm_tree_farms__farm_id__locations_tree_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5847,9 +5959,11 @@ export interface operations {
     get_location_farms__farm_id__locations__location_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5882,9 +5996,11 @@ export interface operations {
     list_children_farms__farm_id__locations__location_id__children_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5917,9 +6033,11 @@ export interface operations {
     get_path_farms__farm_id__locations__location_id__path_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5952,9 +6070,11 @@ export interface operations {
     get_location_occupant_farms__farm_id__locations__location_id__occupant_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -5987,9 +6107,11 @@ export interface operations {
     get_location_subtree_occupancy_farms__farm_id__locations__location_id__subtree_occupancy_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6024,9 +6146,11 @@ export interface operations {
             query?: {
                 asset_type?: string | null;
             };
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6058,9 +6182,11 @@ export interface operations {
     register_asset_farms__farm_id__assets_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6096,9 +6222,11 @@ export interface operations {
     get_asset_farms__farm_id__assets__asset_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6131,9 +6259,11 @@ export interface operations {
     generate_positions_farms__farm_id__assets__asset_id__positions_generate_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6170,9 +6300,11 @@ export interface operations {
     get_positions_tree_farms__farm_id__assets__asset_id__positions_tree_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6205,9 +6337,11 @@ export interface operations {
     get_asset_occupancy_farms__farm_id__assets__asset_id__occupancy_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6240,9 +6374,11 @@ export interface operations {
     get_asset_movement_history_farms__farm_id__assets__asset_id__movement_history_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6275,9 +6411,11 @@ export interface operations {
     get_asset_resolved_location_farms__farm_id__assets__asset_id__resolved_location_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6310,9 +6448,11 @@ export interface operations {
     get_position_occupant_farms__farm_id__assets__asset_id__positions__position_id__occupant_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6348,9 +6488,11 @@ export interface operations {
             query?: {
                 carrier_type?: string | null;
             };
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6382,9 +6524,11 @@ export interface operations {
     register_carrier_farms__farm_id__carriers_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6420,9 +6564,11 @@ export interface operations {
     bulk_register_carriers_farms__farm_id__carriers_bulk_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6458,9 +6604,11 @@ export interface operations {
     get_carrier_farms__farm_id__carriers__carrier_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6493,9 +6641,11 @@ export interface operations {
     get_carrier_occupancy_farms__farm_id__carriers__carrier_id__occupancy_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6528,9 +6678,11 @@ export interface operations {
     get_carrier_movement_history_farms__farm_id__carriers__carrier_id__movement_history_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6563,9 +6715,11 @@ export interface operations {
     get_carrier_resolved_location_farms__farm_id__carriers__carrier_id__resolved_location_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6598,9 +6752,11 @@ export interface operations {
     create_movement_farms__farm_id__movements_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -6636,9 +6792,11 @@ export interface operations {
     list_crops_crops_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6668,9 +6826,11 @@ export interface operations {
     create_crop_crops_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6704,9 +6864,11 @@ export interface operations {
     get_crop_crops__crop_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 crop_id: string;
@@ -6738,9 +6900,11 @@ export interface operations {
     list_varieties_crops__crop_id__varieties_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 crop_id: string;
@@ -6772,9 +6936,11 @@ export interface operations {
     create_variety_crops__crop_id__varieties_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 crop_id: string;
@@ -6810,9 +6976,11 @@ export interface operations {
     get_variety_crops__crop_id__varieties__variety_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 crop_id: string;
@@ -6845,9 +7013,11 @@ export interface operations {
     list_production_systems_production_systems_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6877,9 +7047,11 @@ export interface operations {
     create_production_system_production_systems_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6913,9 +7085,11 @@ export interface operations {
     get_production_system_production_systems__production_system_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 production_system_id: string;
@@ -6947,9 +7121,11 @@ export interface operations {
     list_workflows_workflows_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -6979,9 +7155,11 @@ export interface operations {
     create_workflow_workflows_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -7015,9 +7193,11 @@ export interface operations {
     create_draft_version_workflows__workflow_id__versions_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 workflow_id: string;
@@ -7049,9 +7229,11 @@ export interface operations {
     get_workflow_version_workflows__workflow_id__versions__version_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 workflow_id: string;
@@ -7084,9 +7266,11 @@ export interface operations {
     add_stage_workflows__workflow_id__versions__version_id__stages_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 workflow_id: string;
@@ -7123,9 +7307,11 @@ export interface operations {
     add_transition_workflows__workflow_id__versions__version_id__transitions_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 workflow_id: string;
@@ -7162,9 +7348,11 @@ export interface operations {
     publish_workflow_version_workflows__workflow_id__versions__version_id__publish_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 workflow_id: string;
@@ -7197,9 +7385,11 @@ export interface operations {
     list_crop_batches_farms__farm_id__crop_batches_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7231,9 +7421,11 @@ export interface operations {
     create_crop_batch_farms__farm_id__crop_batches_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7271,9 +7463,11 @@ export interface operations {
             query?: {
                 state?: "active" | "all";
             };
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7305,9 +7499,11 @@ export interface operations {
     get_crop_batch_operational_context_farms__farm_id__crop_batches__batch_id__operational_context_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7340,9 +7536,11 @@ export interface operations {
     get_crop_batch_farms__farm_id__crop_batches__batch_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7375,9 +7573,11 @@ export interface operations {
     create_stage_transition_farms__farm_id__crop_batches__batch_id__stage_transitions_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7414,9 +7614,11 @@ export interface operations {
     get_current_stage_farms__farm_id__crop_batches__batch_id__current_stage_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7449,9 +7651,11 @@ export interface operations {
     get_stage_history_farms__farm_id__crop_batches__batch_id__stage_history_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7484,9 +7688,11 @@ export interface operations {
     get_stage_transition_farms__farm_id__crop_batches__batch_id__stage_transitions__transition_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7520,9 +7726,11 @@ export interface operations {
     split_crop_batch_farms__farm_id__crop_batches__batch_id__split_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7559,9 +7767,11 @@ export interface operations {
     merge_crop_batches_farms__farm_id__crop_batch_merges_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7597,9 +7807,11 @@ export interface operations {
     get_batch_derivation_farms__farm_id__batch_derivations__derivation_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7632,9 +7844,11 @@ export interface operations {
     get_crop_batch_lineage_farms__farm_id__crop_batches__batch_id__lineage_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7667,9 +7881,11 @@ export interface operations {
     list_seed_lots_farms__farm_id__seed_lots_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7701,9 +7917,11 @@ export interface operations {
     register_seed_lot_farms__farm_id__seed_lots_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7739,9 +7957,11 @@ export interface operations {
     get_seed_lot_farms__farm_id__seed_lots__seed_lot_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7774,9 +7994,11 @@ export interface operations {
     list_sowings_farms__farm_id__crop_batches__batch_id__sowings_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7809,9 +8031,11 @@ export interface operations {
     sow_batch_farms__farm_id__crop_batches__batch_id__sowings_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7848,9 +8072,11 @@ export interface operations {
     get_sowing_farms__farm_id__crop_batches__batch_id__sowings__sowing_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7884,9 +8110,11 @@ export interface operations {
     list_batch_carriers_farms__farm_id__crop_batches__batch_id__carriers_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7919,9 +8147,11 @@ export interface operations {
     get_carrier_batch_assignment_farms__farm_id__carriers__carrier_id__batch_assignment_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -7954,9 +8184,11 @@ export interface operations {
     list_observation_definitions_observation_definitions_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -7986,9 +8218,11 @@ export interface operations {
     create_observation_definition_observation_definitions_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -8022,9 +8256,11 @@ export interface operations {
     get_observation_definition_observation_definitions__definition_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 definition_id: string;
@@ -8056,9 +8292,11 @@ export interface operations {
     list_observations_farms__farm_id__crop_batches__batch_id__observations_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8091,9 +8329,11 @@ export interface operations {
     record_observation_farms__farm_id__crop_batches__batch_id__observations_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8130,9 +8370,11 @@ export interface operations {
     get_observation_farms__farm_id__crop_batches__batch_id__observations__observation_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8166,9 +8408,11 @@ export interface operations {
     list_quality_holds_farms__farm_id__crop_batches__batch_id__quality_holds_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8201,9 +8445,11 @@ export interface operations {
     place_quality_hold_farms__farm_id__crop_batches__batch_id__quality_holds_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8240,9 +8486,11 @@ export interface operations {
     get_quality_hold_farms__farm_id__crop_batches__batch_id__quality_holds__hold_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8276,9 +8524,11 @@ export interface operations {
     release_quality_hold_farms__farm_id__crop_batches__batch_id__quality_holds__hold_id__release_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8316,9 +8566,11 @@ export interface operations {
     list_transplants_farms__farm_id__crop_batches__batch_id__transplants_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8351,9 +8603,11 @@ export interface operations {
     record_transplant_farms__farm_id__crop_batches__batch_id__transplants_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8390,9 +8644,11 @@ export interface operations {
     get_transplant_farms__farm_id__crop_batches__batch_id__transplants__transplant_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8426,9 +8682,11 @@ export interface operations {
     list_harvests_farms__farm_id__crop_batches__batch_id__harvests_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8461,9 +8719,11 @@ export interface operations {
     record_harvest_farms__farm_id__crop_batches__batch_id__harvests_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8500,9 +8760,11 @@ export interface operations {
     get_harvest_farms__farm_id__crop_batches__batch_id__harvests__harvest_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8536,9 +8798,11 @@ export interface operations {
     list_harvested_produce_lots_farms__farm_id__harvested_produce_lots_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8570,9 +8834,11 @@ export interface operations {
     get_harvested_produce_lot_farms__farm_id__harvested_produce_lots__produce_lot_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8605,9 +8871,11 @@ export interface operations {
     get_produce_lot_ledger_farms__farm_id__harvested_produce_lots__produce_lot_id__ledger_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8640,9 +8908,11 @@ export interface operations {
     get_produce_lot_balance_farms__farm_id__harvested_produce_lots__produce_lot_id__balance_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8675,9 +8945,11 @@ export interface operations {
     list_packing_events_farms__farm_id__packing_events_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8709,9 +8981,11 @@ export interface operations {
     record_packing_farms__farm_id__packing_events_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8747,9 +9021,11 @@ export interface operations {
     get_packing_event_farms__farm_id__packing_events__packing_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8782,9 +9058,11 @@ export interface operations {
     list_finished_goods_lots_farms__farm_id__finished_goods_lots_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8816,9 +9094,11 @@ export interface operations {
     get_finished_goods_lot_farms__farm_id__finished_goods_lots__finished_goods_lot_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8851,9 +9131,11 @@ export interface operations {
     get_finished_goods_ledger_farms__farm_id__finished_goods_lots__finished_goods_lot_id__ledger_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8886,9 +9168,11 @@ export interface operations {
     get_finished_goods_balance_farms__farm_id__finished_goods_lots__finished_goods_lot_id__balance_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8921,9 +9205,11 @@ export interface operations {
     list_dispatch_events_farms__farm_id__dispatches_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8955,9 +9241,11 @@ export interface operations {
     record_dispatch_farms__farm_id__dispatches_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -8993,9 +9281,11 @@ export interface operations {
     get_dispatch_event_farms__farm_id__dispatches__dispatch_event_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9028,9 +9318,11 @@ export interface operations {
     record_movement_farms__farm_id__finished_goods_storage_movements_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9066,9 +9358,11 @@ export interface operations {
     get_storage_movements_farms__farm_id__finished_goods_lots__finished_goods_lot_id__storage_movements_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9101,9 +9395,11 @@ export interface operations {
     get_placement_farms__farm_id__finished_goods_lots__finished_goods_lot_id__placements_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9136,9 +9432,11 @@ export interface operations {
     get_location_inventory_farms__farm_id__locations__location_id__finished_goods_inventory_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9171,9 +9469,11 @@ export interface operations {
     get_finished_goods_lot_trace_farms__farm_id__traceability_finished_goods_lots__finished_goods_lot_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9206,9 +9506,11 @@ export interface operations {
     get_crop_batch_impact_farms__farm_id__traceability_crop_batches__crop_batch_id__impact_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9241,9 +9543,11 @@ export interface operations {
     get_harvested_produce_lot_impact_farms__farm_id__traceability_harvested_produce_lots__produce_lot_id__impact_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9276,9 +9580,11 @@ export interface operations {
     list_recall_cases_farms__farm_id__recall_cases_get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9310,9 +9616,11 @@ export interface operations {
     open_recall_case_farms__farm_id__recall_cases_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9348,9 +9656,11 @@ export interface operations {
     get_recall_case_farms__farm_id__recall_cases__recall_case_id__get: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;
@@ -9383,9 +9693,11 @@ export interface operations {
     close_recall_case_farms__farm_id__recall_cases__recall_case_id__close_post: {
         parameters: {
             query?: never;
-            header: {
-                "X-Dev-Tenant-Id": string;
-                "X-Dev-User-Id": string;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
             };
             path: {
                 farm_id: string;

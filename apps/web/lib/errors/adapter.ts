@@ -26,11 +26,7 @@ export class AppError extends Error {
 export function errorFromResponse(status: number, detail?: string): AppError {
   switch (status) {
     case 401:
-      return new AppError(
-        "identity_error",
-        detail ?? "The pilot identity configured for this deployment is invalid or inactive.",
-        status,
-      );
+      return new AppError("identity_error", detail ?? "You are not signed in, or your session has expired.", status);
     case 404:
       return new AppError("not_found", detail ?? "That item could not be found.", status);
     case 400:
@@ -61,7 +57,7 @@ export const ERROR_KIND_COPY: Record<AppErrorKind, { title: string; action: stri
   server_error: { title: "Server error", action: "Retry, or contact an administrator if this continues." },
   network_error: { title: "Connection problem", action: "Check your connection and retry." },
   identity_error: {
-    title: "Pilot configuration problem",
-    action: "Contact an administrator about this pilot deployment's configuration.",
+    title: "Not signed in",
+    action: "Sign in to continue.",
   },
 };
