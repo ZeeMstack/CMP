@@ -10,7 +10,8 @@ export type AppErrorKind =
   | "conflict"
   | "server_error"
   | "network_error"
-  | "identity_error";
+  | "identity_error"
+  | "permission_error";
 
 export class AppError extends Error {
   readonly kind: AppErrorKind;
@@ -27,6 +28,16 @@ export function errorFromResponse(status: number, detail?: string): AppError {
   switch (status) {
     case 401:
       return new AppError("identity_error", detail ?? "You are not signed in, or your session has expired.", status);
+    case 403:
+      // A 403 is never an authentication failure -- the caller is still
+      // signed in. Never worded like a session/network problem, and
+      // never distinguished further (which resource, why) -- that would
+      // reveal hidden resources or internal authorization detail.
+      return new AppError(
+        "permission_error",
+        detail ?? "You don't have access to this operation or workspace context.",
+        status,
+      );
     case 404:
       return new AppError("not_found", detail ?? "That item could not be found.", status);
     case 400:
@@ -59,5 +70,9 @@ export const ERROR_KIND_COPY: Record<AppErrorKind, { title: string; action: stri
   identity_error: {
     title: "Not signed in",
     action: "Sign in to continue.",
+  },
+  permission_error: {
+    title: "Access denied",
+    action: "Contact an administrator if you believe this is a mistake.",
   },
 };

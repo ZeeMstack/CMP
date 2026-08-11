@@ -1,3 +1,4 @@
+import { triggerSessionRecovery } from "@/lib/auth/sessionRecovery";
 import { errorFromNetworkFailure, errorFromResponse } from "@/lib/errors/adapter";
 import type { components } from "@/lib/api/schema.gen";
 
@@ -40,6 +41,16 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   } catch (cause) {
     throw errorFromNetworkFailure(cause);
   }
+  if (response.status === 401) {
+    // Centralized session recovery (AUTH-001B3) -- a bare upstream
+    // FastAPI 401 and the BFF's own {"error":"session_expired"} are
+    // handled identically here, no provider-specific body parsing.
+    // Never triggered for /api/auth/bootstrap itself (that request goes
+    // through fetchAuthBootstrap(), not this function) -- bootstrap's
+    // own 401 is resolved by AuthBootstrapProvider/AuthGate instead, so
+    // this never fights with that path.
+    triggerSessionRecovery(currentReturnToPath());
+  }
   if (!response.ok) {
     let detail: string | undefined;
     try {
@@ -51,6 +62,11 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     throw errorFromResponse(response.status, detail);
   }
   return (await response.json()) as T;
+}
+
+function currentReturnToPath(): string {
+  if (typeof window === "undefined") return "/farms";
+  return `${window.location.pathname}${window.location.search}`;
 }
 
 export function listFarms(signal?: AbortSignal): Promise<FarmRead[]> {

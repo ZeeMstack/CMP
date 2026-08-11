@@ -1,6 +1,7 @@
 "use client";
 
-import { Boxes, LayoutGrid, Map, Menu, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Boxes, LayoutGrid, LogOut, Map, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,6 +11,7 @@ import { FarmSelector } from "@/components/FarmSelector";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 import { TenantSelector } from "@/components/TenantSelector";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
+import { performSignOut } from "@/lib/auth/logout";
 import { useFarms } from "@/lib/query/hooks";
 
 function navItems(farmId: string) {
@@ -28,6 +30,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
   const { data: farms } = useFarms();
   const items = navItems(farmId);
@@ -41,6 +44,10 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
     if (result.ok) {
       router.push("/farms");
     }
+  }
+
+  async function handleSignOut() {
+    await performSignOut(queryClient);
   }
 
   return (
@@ -117,6 +124,14 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
               {label}
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-ink-muted hover:bg-surface-subtle"
+          >
+            <LogOut aria-hidden="true" className="h-4 w-4" />
+            Sign out
+          </button>
         </nav>
       )}
 
@@ -134,7 +149,17 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
             )}
             {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
           </div>
-          <NetworkStatusIndicator />
+          <div className="flex items-center gap-3">
+            <NetworkStatusIndicator />
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-ink-muted hover:bg-surface-subtle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <LogOut aria-hidden="true" className="h-4 w-4" />
+              Sign out
+            </button>
+          </div>
         </header>
         <div className="flex justify-end px-3 py-2 md:hidden">
           <NetworkStatusIndicator />

@@ -20,6 +20,11 @@ interface AuthBootstrapContextValue {
    * select-tenant page) -- this function only owns auth/cache state. */
   selectTenant: (tenantId: string) => Promise<{ ok: boolean }>;
   isSwitchingTenant: boolean;
+  /** Explicit, on-demand bootstrap refresh (AUTH-001B3) -- used by
+   * /access-denied's "Check again" action and the bootstrap-error retry
+   * action. Never polled/called automatically; AuthGate reacts to
+   * whatever the resulting bootstrap.status turns out to be. */
+  refetchBootstrap: () => Promise<void>;
 }
 
 const AuthBootstrapContext = createContext<AuthBootstrapContextValue | null>(null);
@@ -68,12 +73,17 @@ export function AuthBootstrapProvider({ children }: { children: ReactNode }) {
     return bootstrap.memberships.find((m) => m.tenantId === bootstrap.selectedTenantId) ?? null;
   }, [bootstrap]);
 
+  const refetchBootstrap = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
+
   const value: AuthBootstrapContextValue = {
     bootstrap,
     isLoading: query.isLoading,
     selectedTenant,
     selectTenant,
     isSwitchingTenant,
+    refetchBootstrap,
   };
 
   return <AuthBootstrapContext.Provider value={value}>{children}</AuthBootstrapContext.Provider>;
