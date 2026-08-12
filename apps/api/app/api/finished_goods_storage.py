@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.finished_goods_storage import (
     FinishedGoodsPlacementRead,
     FinishedGoodsStorageMovementCreate,
@@ -81,7 +82,7 @@ def get_storage_movements(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FINISHED_GOODS_STORAGE_READ)),
 ) -> list[FinishedGoodsStorageMovementRead]:
     try:
         return finished_goods_storage_service.get_movement_history(
@@ -99,7 +100,7 @@ def get_placement(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FINISHED_GOODS_STORAGE_READ)),
 ) -> FinishedGoodsPlacementRead:
     try:
         return finished_goods_storage_service.get_placement(
@@ -117,7 +118,7 @@ def get_location_inventory(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FINISHED_GOODS_STORAGE_READ)),
 ) -> LocationInventoryRead:
     try:
         return finished_goods_storage_service.get_location_inventory(

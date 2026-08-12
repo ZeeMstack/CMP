@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.finished_goods_ledger import FinishedGoodsBalanceRead, FinishedGoodsLedgerEntryRead
 from app.schemas.packing import FinishedGoodsLotRead, PackingEventCreate, PackingEventRead
 from app.services import finished_goods_ledger_service, packing_service
@@ -87,7 +88,7 @@ def record_packing(
 def list_packing_events(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> list[PackingEventRead]:
     try:
         return packing_service.list_packing_events(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -100,7 +101,7 @@ def get_packing_event(
     farm_id: uuid.UUID,
     packing_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> PackingEventRead:
     try:
         return packing_service.get_packing_event(
@@ -114,7 +115,7 @@ def get_packing_event(
 def list_finished_goods_lots(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> list[FinishedGoodsLotRead]:
     try:
         return packing_service.list_finished_goods_lots(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -127,7 +128,7 @@ def get_finished_goods_lot(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> FinishedGoodsLotRead:
     try:
         return packing_service.get_finished_goods_lot(
@@ -145,7 +146,7 @@ def get_finished_goods_ledger(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> list[FinishedGoodsLedgerEntryRead]:
     try:
         return finished_goods_ledger_service.get_ledger(
@@ -163,7 +164,7 @@ def get_finished_goods_balance(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
 ) -> FinishedGoodsBalanceRead:
     try:
         return finished_goods_ledger_service.get_balance(

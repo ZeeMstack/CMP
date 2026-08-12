@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.observation_event import ObservationEventCreate, ObservationEventRead
 from app.services import observation_service
 from app.services.errors import (
@@ -98,7 +99,7 @@ def list_observations(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_READ)),
 ) -> list[ObservationEventRead]:
     try:
         return observation_service.list_observation_events(
@@ -117,7 +118,7 @@ def get_observation(
     batch_id: uuid.UUID,
     observation_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_READ)),
 ) -> ObservationEventRead:
     try:
         return observation_service.get_observation_event(

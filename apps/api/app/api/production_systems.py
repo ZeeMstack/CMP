@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.production_system import ProductionSystemCreate, ProductionSystemRead
 from app.services import production_system_service
 from app.services.errors import DuplicateProductionSystemCodeError, ProductionSystemNotFoundError
@@ -37,7 +38,7 @@ def create_production_system(
 @router.get("/production-systems", response_model=list[ProductionSystemRead])
 def list_production_systems(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PRODUCTION_SYSTEM_READ)),
 ) -> list[ProductionSystemRead]:
     production_systems = production_system_service.list_production_systems(db, tenant_id=ctx.tenant_id)
     return [ProductionSystemRead.model_validate(ps) for ps in production_systems]
@@ -47,7 +48,7 @@ def list_production_systems(
 def get_production_system(
     production_system_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PRODUCTION_SYSTEM_READ)),
 ) -> ProductionSystemRead:
     try:
         production_system = production_system_service.get_production_system(

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.location import (
     LocationBulkChildrenCreate,
     LocationCreate,
@@ -123,7 +124,7 @@ def bulk_create_children(
 def get_farm_tree(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> list[LocationTreeNode]:
     try:
         flat = location_service.get_farm_tree(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -159,7 +160,7 @@ def get_location(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> LocationRead:
     try:
         location = location_service.get_location(
@@ -175,7 +176,7 @@ def list_children(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> list[LocationRead]:
     try:
         children = location_service.list_children(
@@ -191,7 +192,7 @@ def get_path(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> LocationPathRead:
     try:
         rows = location_service.get_path(
@@ -210,7 +211,7 @@ def get_location_occupant(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> TargetOccupantRead:
     try:
         occupancy = movement_service.get_target_occupant(
@@ -230,7 +231,7 @@ def get_location_occupant(
 def get_location_subtree_occupancy(
     farm_id: uuid.UUID,
     location_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> SubtreeOccupancyRead:
     """CMP-FE-002A: bounded-by-root occupancy for one location subtree

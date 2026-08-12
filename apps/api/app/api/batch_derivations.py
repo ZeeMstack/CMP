@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.batch_derivation import BatchDerivationEventRead, BatchLineageRead, BatchMergeCreate, BatchSplitCreate
 from app.services import batch_derivation_service
 from app.services.errors import (
@@ -125,7 +126,7 @@ def get_batch_derivation(
     farm_id: uuid.UUID,
     derivation_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.BATCH_DERIVATION_READ)),
 ) -> BatchDerivationEventRead:
     try:
         return batch_derivation_service.get_derivation_event(
@@ -140,7 +141,7 @@ def get_crop_batch_lineage(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.BATCH_DERIVATION_READ)),
 ) -> BatchLineageRead:
     try:
         return batch_derivation_service.get_batch_lineage(

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
 from app.schemas.movement import MovementRead
 from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead
@@ -84,7 +85,7 @@ def get_carrier(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
 ) -> CarrierRead:
     try:
         carrier = carrier_service.get_carrier(
@@ -100,7 +101,7 @@ def list_carriers(
     farm_id: uuid.UUID,
     carrier_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
 ) -> list[CarrierRead]:
     try:
         carriers = carrier_service.list_carriers(
@@ -118,7 +119,7 @@ def get_carrier_occupancy(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
 ) -> OccupancyRead | None:
     try:
         occupancy = movement_service.get_occupancy(
@@ -134,7 +135,7 @@ def get_carrier_movement_history(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
 ) -> list[MovementRead]:
     try:
         movements = movement_service.get_movement_history(
@@ -150,7 +151,7 @@ def get_carrier_resolved_location(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
 ) -> ResolvedLocationRead:
     try:
         resolved = movement_service.get_resolved_location(

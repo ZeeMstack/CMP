@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.sowing_event import BatchCarrierAssignmentRead, SowingEventCreate, SowingEventRead
 from app.services import sowing_service
 from app.services.errors import (
@@ -78,7 +79,7 @@ def list_sowings(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SOWING_READ)),
 ) -> list[SowingEventRead]:
     try:
         return sowing_service.list_sowing_events(db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id)
@@ -94,7 +95,7 @@ def get_sowing(
     batch_id: uuid.UUID,
     sowing_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SOWING_READ)),
 ) -> SowingEventRead:
     try:
         return sowing_service.get_sowing_event(
@@ -111,7 +112,7 @@ def list_batch_carriers(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SOWING_READ)),
 ) -> list[BatchCarrierAssignmentRead]:
     try:
         return sowing_service.list_batch_carriers(db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id)
@@ -127,7 +128,7 @@ def get_carrier_batch_assignment(
     farm_id: uuid.UUID,
     carrier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SOWING_READ)),
 ) -> BatchCarrierAssignmentRead | None:
     try:
         return sowing_service.get_carrier_batch_assignment(
