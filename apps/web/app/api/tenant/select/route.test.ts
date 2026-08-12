@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server/session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/server/session")>("@/lib/server/session");
-  return { ...actual, getAuthenticatedSession: vi.fn(), getCmpApiAccessToken: vi.fn() };
+  return { ...actual, getCmpApiAccessToken: vi.fn() };
 });
 
-import { getAuthenticatedSession, getCmpApiAccessToken } from "@/lib/server/session";
+import { getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
 import { POST } from "./route";
 
-const mockGetAuthenticatedSession = vi.mocked(getAuthenticatedSession);
 const mockGetCmpApiAccessToken = vi.mocked(getCmpApiAccessToken);
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -23,7 +22,6 @@ beforeEach(() => {
   vi.stubEnv("CMP_API_BASE_URL", "http://backend.internal:8000");
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
-  mockGetAuthenticatedSession.mockReset();
   mockGetCmpApiAccessToken.mockReset();
 });
 
@@ -59,7 +57,7 @@ describe("POST /api/tenant/select", () => {
   it("cross-origin request is rejected (403), before any auth/backend work happens", async () => {
     const response = await callSelect({ tenant_id: TENANT_A }, { origin: "https://evil.example" });
     expect(response.status).toBe(403);
-    expect(mockGetAuthenticatedSession).not.toHaveBeenCalled();
+    expect(mockGetCmpApiAccessToken).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -79,15 +77,14 @@ describe("POST /api/tenant/select", () => {
     expect(response.status).toBe(400);
   });
 
-  it("unauthenticated -> 401, no backend call", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+  it("token retrieval fails (covers 'no session at all' and 'session present but unusable' alike) -> 401, no backend call", async () => {
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
     const response = await callSelect({ tenant_id: TENANT_A });
     expect(response.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("target tenant absent from a FRESH /auth/me membership list -> 403, cookie untouched", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(
       jsonResponse(authMeBody([{ tenant_id: TENANT_B, tenant_code: "B", tenant_name: "Tenant B", role_code: "tenant_admin" }])),
@@ -100,7 +97,6 @@ describe("POST /api/tenant/select", () => {
   });
 
   it("a tenant present only in stale client state (not in the fresh /auth/me) is rejected -- fresh verification is mandatory", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     // Fresh /auth/me no longer contains TENANT_A (e.g. membership revoked
     // since the client last saw it) -- must reject even though the client
@@ -114,7 +110,6 @@ describe("POST /api/tenant/select", () => {
   });
 
   it("valid membership -> 200 and cookie set to the requested tenant", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(
       jsonResponse(
@@ -142,7 +137,6 @@ describe("POST /api/tenant/select", () => {
   });
 
   it("backend /auth/me failure does not mutate the cookie", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockRejectedValue(new Error("ECONNREFUSED"));
 
@@ -153,7 +147,6 @@ describe("POST /api/tenant/select", () => {
   });
 
   it("does not leak whether an inaccessible tenant exists at all (generic 403 body)", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(jsonResponse(authMeBody([])));
 

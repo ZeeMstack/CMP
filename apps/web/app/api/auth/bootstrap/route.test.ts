@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server/session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/server/session")>("@/lib/server/session");
-  return { ...actual, getAuthenticatedSession: vi.fn(), getCmpApiAccessToken: vi.fn() };
+  return { ...actual, getCmpApiAccessToken: vi.fn() };
 });
 
-import { getAuthenticatedSession, getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
+import { getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
 import { GET } from "./route";
 
-const mockGetAuthenticatedSession = vi.mocked(getAuthenticatedSession);
 const mockGetCmpApiAccessToken = vi.mocked(getCmpApiAccessToken);
 
 const ENV_KEYS = [
@@ -30,7 +29,6 @@ beforeEach(() => {
   vi.stubEnv("CMP_API_BASE_URL", "http://backend.internal:8000");
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
-  mockGetAuthenticatedSession.mockReset();
   mockGetCmpApiAccessToken.mockReset();
 });
 
@@ -56,8 +54,8 @@ const authMeBody = (memberships: Array<{ tenant_id: string; tenant_code: string;
 });
 
 describe("GET /api/auth/bootstrap", () => {
-  it("real mode, no session -> 401 { status: 'unauthenticated' }", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+  it("real mode, token retrieval fails (covers 'no session at all' and 'session present but unusable' alike, since getCmpApiAccessToken() is the sole real-auth check) -> 401 { status: 'unauthenticated' }, no backend call", async () => {
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
     const response = await callBootstrap();
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
@@ -69,16 +67,15 @@ describe("GET /api/auth/bootstrap", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("real mode, token retrieval fails -> 401 unauthenticated, no backend call", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
-    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
-    const response = await callBootstrap();
-    expect(response.status).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("real mode: attempts getCmpApiAccessToken() directly, with no separate session precheck beforehand", async () => {
+    mockGetCmpApiAccessToken.mockResolvedValue("tok");
+    fetchMock.mockResolvedValue(jsonResponse(authMeBody([])));
+    await callBootstrap();
+    expect(mockGetCmpApiAccessToken).toHaveBeenCalledWith();
+    expect(mockGetCmpApiAccessToken).toHaveBeenCalledTimes(1);
   });
 
   it("backend /auth/me returns 401 -> 401 unauthenticated", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(jsonResponse({ detail: "no" }, 401));
     const response = await callBootstrap();
@@ -87,7 +84,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("backend /auth/me returns 403 -> 403 { status: 'not_provisioned' }", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(jsonResponse({ detail: "no" }, 403));
     const response = await callBootstrap();
@@ -101,7 +97,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("backend unreachable -> 502 { status: 'error' }", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockRejectedValue(new Error("ECONNREFUSED"));
     const response = await callBootstrap();
@@ -110,7 +105,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("0 memberships -> authenticated, empty memberships, selectedTenantId null", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(jsonResponse(authMeBody([])));
     const response = await callBootstrap();
@@ -124,7 +118,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("1 membership -> auto-selected and cookie set", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(
       jsonResponse(authMeBody([{ tenant_id: "tenant-a", tenant_code: "A", tenant_name: "Tenant A", role_code: "tenant_admin" }])),
@@ -136,7 +129,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("multiple memberships, cookie matches one -> preserved, no cookie rewrite needed", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(
       jsonResponse(
@@ -152,7 +144,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("multiple memberships, stale cookie names a revoked tenant -> selectedTenantId null, cookie cleared", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(
       jsonResponse(
@@ -168,7 +159,7 @@ describe("GET /api/auth/bootstrap", () => {
     expect(response.headers.get("set-cookie") ?? "").toMatch(/Max-Age=0/i);
   });
 
-  it("dev mode: resolves via X-Dev-User-Id, no session mocks touched", async () => {
+  it("dev mode: resolves via X-Dev-User-Id, Auth0 token acquisition never called", async () => {
     vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
     vi.stubEnv("CMP_DEV_TENANT_ID", "dev-bootstrap-tenant");
     vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
@@ -177,7 +168,7 @@ describe("GET /api/auth/bootstrap", () => {
     const response = await callBootstrap();
 
     expect(response.status).toBe(200);
-    expect(mockGetAuthenticatedSession).not.toHaveBeenCalled();
+    expect(mockGetCmpApiAccessToken).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     const headers = init.headers as Record<string, string>;
     expect(headers["X-Dev-User-Id"]).toBe("dev-user-1");
@@ -185,7 +176,6 @@ describe("GET /api/auth/bootstrap", () => {
   });
 
   it("never exposes Auth0-shaped fields (sub, tokenSet, etc.) in the response body", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({} as never);
     mockGetCmpApiAccessToken.mockResolvedValue("tok");
     fetchMock.mockResolvedValue(jsonResponse(authMeBody([])));
     const response = await callBootstrap();

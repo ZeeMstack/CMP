@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireEnv } from "@/lib/server/env";
-import { propagateCookies } from "@/lib/server/propagate-cookies";
 import { readSelectedTenantId } from "@/lib/server/tenant-selection";
 import { resolveAuthMode } from "@/lib/server/auth-mode";
 import { resolveIdentityForAuthMe, resolveIdentityForTenantScopedCall } from "@/lib/server/upstream-identity";
@@ -55,17 +54,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  const cookieCarrier = new NextResponse();
   const isAuthMe = path.length === 2 && path[0] === "auth" && path[1] === "me";
 
   const identity = isAuthMe
-    ? await resolveIdentityForAuthMe(request, cookieCarrier, mode)
-    : await resolveIdentityForTenantScopedCall(request, cookieCarrier, mode, readSelectedTenantId(request));
+    ? await resolveIdentityForAuthMe(mode)
+    : await resolveIdentityForTenantScopedCall(mode, readSelectedTenantId(request));
 
   if (!identity.ok) {
-    const response = NextResponse.json(identity.error.body, { status: identity.error.status });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json(identity.error.body, { status: identity.error.status });
   }
 
   const upstreamUrl = new URL(`/${path.join("/")}`, apiBaseUrl);
@@ -83,10 +79,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const body = await upstreamResponse.text();
-  const response = new NextResponse(body, {
+  return new NextResponse(body, {
     status: upstreamResponse.status,
     headers: { "Content-Type": upstreamResponse.headers.get("Content-Type") ?? "application/json" },
   });
-  propagateCookies(cookieCarrier, response);
-  return response;
 }

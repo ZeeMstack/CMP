@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AuthBootstrap } from "@/lib/auth/types";
 import { resolveAuthMode } from "@/lib/server/auth-mode";
 import { fetchAuthMe } from "@/lib/server/fetch-auth-me";
-import { propagateCookies } from "@/lib/server/propagate-cookies";
 import { isSameOriginRequest } from "@/lib/server/same-origin";
 import { applyTenantCookieAction } from "@/lib/server/tenant-selection";
 import { resolveIdentityForAuthMe } from "@/lib/server/upstream-identity";
@@ -46,30 +45,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_request", detail: "tenant_id must be a valid UUID" }, { status: 400 });
   }
 
-  const cookieCarrier = new NextResponse();
-  const identity = await resolveIdentityForAuthMe(request, cookieCarrier, mode);
+  const identity = await resolveIdentityForAuthMe(mode);
   if (!identity.ok) {
-    const response = NextResponse.json(identity.error.body, { status: identity.error.status });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json(identity.error.body, { status: identity.error.status });
   }
 
   const authMe = await fetchAuthMe(identity.headers);
 
   if (authMe.kind === "unauthenticated") {
-    const response = NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
   if (authMe.kind === "not_provisioned") {
-    const response = NextResponse.json({ error: "not_provisioned" }, { status: 403 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ error: "not_provisioned" }, { status: 403 });
   }
   if (authMe.kind === "error") {
-    const response = NextResponse.json({ error: "backend_error" }, { status: 502 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ error: "backend_error" }, { status: 502 });
   }
 
   const match = authMe.memberships.find((m) => m.tenantId === tenantId);
@@ -78,9 +68,7 @@ export async function POST(request: NextRequest) {
     // (doesn't exist, isn't active, or simply isn't one of this user's
     // current memberships) -- never confirm or deny another tenant's
     // existence to the caller.
-    const response = NextResponse.json({ error: "tenant_not_accessible" }, { status: 403 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ error: "tenant_not_accessible" }, { status: 403 });
   }
 
   const body: AuthBootstrap = {
@@ -91,6 +79,5 @@ export async function POST(request: NextRequest) {
   };
   const response = NextResponse.json(body);
   applyTenantCookieAction(response, { kind: "set", tenantId }, mode);
-  propagateCookies(cookieCarrier, response);
   return response;
 }

@@ -16,11 +16,9 @@
  * semantics instead of drifting independently.
  */
 
-import type { NextRequest, NextResponse } from "next/server";
-
 import type { AuthMode, BypassIdentity } from "@/lib/server/auth-mode";
 import { devIdentity, testIdentity } from "@/lib/server/auth-mode";
-import { getAuthenticatedSession, getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
+import { getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
 
 export type UpstreamIdentityError = { status: number; body: Record<string, unknown> };
 
@@ -52,24 +50,25 @@ function resolveBypassIdentityOrError(
  * omitting it here keeps the "bootstrap identity tenant" configuration
  * value from ever looking like an operational tenant selection (see
  * resolveIdentityForTenantScopedCall's doc comment).
+ *
+ * Real mode (AUTH-001C.2): `getCmpApiAccessToken()` is the sole,
+ * authoritative real-auth check -- there is no separate `getSession()`
+ * precheck. The SDK's `getAccessToken()` already resolves the current
+ * Auth0-managed session internally and throws when no usable session
+ * exists (see session.ts), so a precheck would only duplicate that work
+ * and risk drifting out of sync with it. Any failure -- no session, an
+ * unrefreshable/revoked session, or any other SDK failure -- surfaces
+ * uniformly as `SessionExpiredError` and maps to the same stable 401.
  */
-export async function resolveIdentityForAuthMe(
-  request: NextRequest,
-  cookieCarrier: NextResponse,
-  mode: AuthMode,
-): Promise<UpstreamIdentityResult> {
+export async function resolveIdentityForAuthMe(mode: AuthMode): Promise<UpstreamIdentityResult> {
   if (mode === "dev" || mode === "test") {
     const identity = resolveBypassIdentityOrError(mode);
     if (!identity.ok) return identity;
     return { ok: true, headers: { "X-Dev-User-Id": identity.identity.userId } };
   }
 
-  const session = await getAuthenticatedSession(request);
-  if (!session) {
-    return { ok: false, error: { status: 401, body: { error: "unauthenticated" } } };
-  }
   try {
-    const token = await getCmpApiAccessToken(request, cookieCarrier);
+    const token = await getCmpApiAccessToken();
     return { ok: true, headers: { Authorization: `Bearer ${token}` } };
   } catch (err) {
     if (err instanceof SessionExpiredError) {
@@ -100,8 +99,6 @@ export async function resolveIdentityForAuthMe(
  * tenant switching against the backend's dev-auth mechanism.
  */
 export async function resolveIdentityForTenantScopedCall(
-  request: NextRequest,
-  cookieCarrier: NextResponse,
   mode: AuthMode,
   selectedTenantId: string | null,
 ): Promise<UpstreamIdentityResult> {
@@ -117,12 +114,8 @@ export async function resolveIdentityForTenantScopedCall(
     };
   }
 
-  const session = await getAuthenticatedSession(request);
-  if (!session) {
-    return { ok: false, error: { status: 401, body: { error: "unauthenticated" } } };
-  }
   try {
-    const token = await getCmpApiAccessToken(request, cookieCarrier);
+    const token = await getCmpApiAccessToken();
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (selectedTenantId) {
       headers["X-CMP-Tenant-Id"] = selectedTenantId;

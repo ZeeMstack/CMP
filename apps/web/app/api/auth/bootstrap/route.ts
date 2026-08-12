@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AuthBootstrap } from "@/lib/auth/types";
 import { resolveAuthMode } from "@/lib/server/auth-mode";
 import { fetchAuthMe } from "@/lib/server/fetch-auth-me";
-import { propagateCookies } from "@/lib/server/propagate-cookies";
 import { applyTenantCookieAction, readSelectedTenantId } from "@/lib/server/tenant-selection";
 import { reconcileSelectedTenant } from "@/lib/server/tenant-reconciliation";
 import { resolveIdentityForAuthMe } from "@/lib/server/upstream-identity";
@@ -34,31 +33,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const cookieCarrier = new NextResponse();
-  const identity = await resolveIdentityForAuthMe(request, cookieCarrier, mode);
+  const identity = await resolveIdentityForAuthMe(mode);
   if (!identity.ok) {
     const status: AuthBootstrap["status"] = identity.error.status === 401 ? "unauthenticated" : "error";
-    const response = NextResponse.json({ status, ...EMPTY_BOOTSTRAP }, { status: identity.error.status });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ status, ...EMPTY_BOOTSTRAP }, { status: identity.error.status });
   }
 
   const authMe = await fetchAuthMe(identity.headers);
 
   if (authMe.kind === "unauthenticated") {
-    const response = NextResponse.json({ status: "unauthenticated", ...EMPTY_BOOTSTRAP }, { status: 401 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ status: "unauthenticated", ...EMPTY_BOOTSTRAP }, { status: 401 });
   }
   if (authMe.kind === "not_provisioned") {
-    const response = NextResponse.json({ status: "not_provisioned", ...EMPTY_BOOTSTRAP }, { status: 403 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ status: "not_provisioned", ...EMPTY_BOOTSTRAP }, { status: 403 });
   }
   if (authMe.kind === "error") {
-    const response = NextResponse.json({ status: "error", ...EMPTY_BOOTSTRAP }, { status: 502 });
-    propagateCookies(cookieCarrier, response);
-    return response;
+    return NextResponse.json({ status: "error", ...EMPTY_BOOTSTRAP }, { status: 502 });
   }
 
   const existingCookieTenantId = readSelectedTenantId(request);
@@ -72,6 +62,5 @@ export async function GET(request: NextRequest) {
   };
   const response = NextResponse.json(body);
   applyTenantCookieAction(response, cookieAction, mode);
-  propagateCookies(cookieCarrier, response);
   return response;
 }
