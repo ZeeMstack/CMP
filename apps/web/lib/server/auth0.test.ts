@@ -7,6 +7,19 @@
  * Not a test of Auth0's library itself (its encryption/OIDC correctness
  * is the SDK's own responsibility) -- only that CMP's wrapper drives it
  * the way we assume. No network call, no live Auth0 tenant.
+ *
+ * AUTH-001C.1: CMP's own wrapper (`lib/server/session.ts`) calls the SDK's
+ * zero-argument App Router overloads (`getSession()`, `getAccessToken()`),
+ * never the `(request, response)` overloads below. Those overloads are
+ * still exercised directly against the real SDK in this file -- not
+ * because CMP uses them, but because they are the only practical way to
+ * prove the shared session-cookie encrypt/decrypt machinery is wired
+ * correctly without a live Next.js request-rendering pipeline: the
+ * zero-arg overload reads via `next/headers`'s `cookies()`, which only
+ * resolves inside a real Next.js request/work-unit async-storage
+ * context (a Route Handler actually invoked by the Next.js server), and
+ * throws outside of one -- see the "App Router (zero-argument) contract"
+ * suite below, which proves exactly that delegation and its boundary.
  */
 import { Auth0Client } from "@auth0/nextjs-auth0/server";
 import { generateSessionCookie } from "@auth0/nextjs-auth0/testing";
@@ -51,7 +64,7 @@ async function requestWithSessionCookie(sessionOverrides: Record<string, unknown
 }
 
 describe("Auth0Client wiring (real SDK, no network)", () => {
-  it("getSession(request) decrypts a real SDK-generated session cookie", async () => {
+  it("getSession(request) decrypts a real SDK-generated session cookie -- test-practicality only, CMP's own wrapper never calls this overload (see session.ts)", async () => {
     const client = buildTestClient();
     const request = await requestWithSessionCookie();
 
@@ -94,5 +107,34 @@ describe("Auth0Client wiring (real SDK, no network)", () => {
     });
 
     await expect(client.getSession(request)).resolves.toBeNull();
+  });
+});
+
+describe("App Router (zero-argument) contract -- what session.ts actually calls", () => {
+  it("getSession() with zero arguments delegates to next/headers (headers()/cookies()), not to any request object CMP could pass", async () => {
+    const client = buildTestClient();
+
+    // Outside a real Next.js request/work-unit async-storage context
+    // (i.e. this Vitest process, which is not a running Next.js server),
+    // `next/headers`'s `headers()`/`cookies()` throw E251 "called outside
+    // a request scope" (confirmed by reading the installed SDK's
+    // `resolveRequestContext`/`getSession`: the zero-arg path calls
+    // `next/headers`'s `headers()` first, then `cookies()`). A plain
+    // Vitest environment cannot fabricate that async-storage context, so
+    // this is the strongest practical proof available without a live
+    // Next.js server: it demonstrates the zero-arg overload genuinely
+    // takes the `next/headers` code path (distinct from the
+    // `getSession(request)` overload proven above, which does not
+    // depend on that context at all) -- exactly the App Router contract
+    // AUTH-001C.1's fix relies on. If the SDK ever silently fell back to
+    // some other mechanism for the zero-arg form, this assertion would
+    // fail (no throw, or a different error).
+    await expect(client.getSession()).rejects.toThrow(/called outside a request scope/);
+  });
+
+  it("getAccessToken() with zero arguments also delegates to next/headers for both read and (would-be) refresh-persist", async () => {
+    const client = buildTestClient();
+
+    await expect(client.getAccessToken()).rejects.toThrow(/called outside a request scope/);
   });
 });

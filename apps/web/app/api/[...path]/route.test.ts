@@ -6,15 +6,13 @@ vi.mock("@/lib/server/session", async () => {
   const actual = await vi.importActual<typeof import("@/lib/server/session")>("@/lib/server/session");
   return {
     ...actual,
-    getAuthenticatedSession: vi.fn(),
     getCmpApiAccessToken: vi.fn(),
   };
 });
 
-import { getAuthenticatedSession, getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
+import { getCmpApiAccessToken, SessionExpiredError } from "@/lib/server/session";
 import * as route from "./route";
 
-const mockGetAuthenticatedSession = vi.mocked(getAuthenticatedSession);
 const mockGetCmpApiAccessToken = vi.mocked(getCmpApiAccessToken);
 
 const ENV_KEYS = [
@@ -51,7 +49,6 @@ beforeEach(() => {
   vi.stubEnv("CMP_API_BASE_URL", "http://backend.internal:8000");
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
-  mockGetAuthenticatedSession.mockReset();
   mockGetCmpApiAccessToken.mockReset();
 });
 
@@ -75,18 +72,27 @@ describe("generic proxy is GET-only", () => {
 });
 
 describe("real mode", () => {
-  it("returns 401 { error: 'unauthenticated' } when there is no session, and never calls the backend", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+  it("token retrieval fails (covers 'no session at all' and 'session present but unusable' alike, since getCmpApiAccessToken() is the sole real-auth check) -> 401 { error: 'session_expired' }, and never calls the backend", async () => {
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
 
     const response = await callProxy(["farms"]);
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "unauthenticated" });
+    await expect(response.json()).resolves.toEqual({ error: "session_expired" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("on a valid session, forwards Authorization: Bearer <token> to the backend", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
+  it("attempts getCmpApiAccessToken() directly, with no separate getSession precheck beforehand", async () => {
+    mockGetCmpApiAccessToken.mockResolvedValue("t");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await callProxy(["farms"]);
+
+    expect(mockGetCmpApiAccessToken).toHaveBeenCalledWith();
+    expect(mockGetCmpApiAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("on a valid token, forwards Authorization: Bearer <token> to the backend", async () => {
     mockGetCmpApiAccessToken.mockResolvedValue("real-access-token-value");
     fetchMock.mockResolvedValue(jsonResponse([{ id: "farm-1" }]));
 
@@ -99,7 +105,6 @@ describe("real mode", () => {
   });
 
   it("never sends X-Dev-Tenant-Id / X-Dev-User-Id headers", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockResolvedValue("t");
     fetchMock.mockResolvedValue(jsonResponse([]));
 
@@ -112,7 +117,6 @@ describe("real mode", () => {
   });
 
   it("never sends X-CMP-Tenant-Id -- GET /auth/me (unscoped)", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockResolvedValue("t");
     fetchMock.mockResolvedValue(jsonResponse({ user: {}, memberships: [] }));
 
@@ -125,7 +129,6 @@ describe("real mode", () => {
   });
 
   it("never fabricates X-CMP-Tenant-Id for a tenant-scoped path either -- B2 has not shipped yet", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockResolvedValue("t");
     // Simulates FastAPI's real, expected 400 for a tenant-scoped route
     // called without X-CMP-Tenant-Id -- this proxy must not work around
@@ -141,7 +144,6 @@ describe("real mode", () => {
   });
 
   it("maps a SessionExpiredError from token retrieval to a stable 401 { error: 'session_expired' }", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("refresh token revoked")));
 
     const response = await callProxy(["farms"]);
@@ -152,7 +154,6 @@ describe("real mode", () => {
   });
 
   it("does not leak the underlying SDK error message into the response body", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockRejectedValue(
       new SessionExpiredError(new Error("super-secret-vendor-diagnostic-detail")),
     );
@@ -166,7 +167,7 @@ describe("real mode", () => {
   it("never includes a client secret / Auth0 secret value in any response", async () => {
     vi.stubEnv("AUTH0_CLIENT_SECRET", "sekrit-client-secret-value");
     vi.stubEnv("AUTH0_SECRET", "sekrit-session-secret-value");
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
 
     const response = await callProxy(["farms"]);
     const text = await response.text();
@@ -176,7 +177,6 @@ describe("real mode", () => {
   });
 
   it("preserves the backend's status code and body verbatim", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockResolvedValue("t");
     fetchMock.mockResolvedValue(jsonResponse({ detail: "Farm not found" }, 404));
 
@@ -187,7 +187,6 @@ describe("real mode", () => {
   });
 
   it("returns 502 network_error when the backend is unreachable, without leaking the low-level error", async () => {
-    mockGetAuthenticatedSession.mockResolvedValue({ user: { sub: "auth0|x" } } as never);
     mockGetCmpApiAccessToken.mockResolvedValue("t");
     fetchMock.mockRejectedValue(new Error("ECONNREFUSED"));
 
@@ -200,7 +199,7 @@ describe("real mode", () => {
   it("ignores the removed CMP_PILOT_* variables entirely -- they have no effect on the outcome", async () => {
     vi.stubEnv("CMP_PILOT_TENANT_ID", "some-old-pilot-tenant");
     vi.stubEnv("CMP_PILOT_USER_ID", "some-old-pilot-user");
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
 
     const response = await callProxy(["farms"]);
 
@@ -218,7 +217,6 @@ describe("dev bypass mode", () => {
 
     await callProxy(["farms"], SELECTED_TENANT_COOKIE);
 
-    expect(mockGetAuthenticatedSession).not.toHaveBeenCalled();
     expect(mockGetCmpApiAccessToken).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
     const headers = init.headers as Record<string, string>;
@@ -289,7 +287,7 @@ describe("dev bypass mode", () => {
     const body = await response.json();
     expect(body.error).toBe("auth_configuration_error");
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(mockGetAuthenticatedSession).not.toHaveBeenCalled();
+    expect(mockGetCmpApiAccessToken).not.toHaveBeenCalled();
   });
 });
 
@@ -327,12 +325,12 @@ describe("test bypass mode", () => {
   it("does not activate merely because NODE_ENV=production and CMP_DEV_AUTH_BYPASS is unset -- requires the exact sentinel", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("CMP_TEST_AUTH_BYPASS", "not-the-real-sentinel");
-    mockGetAuthenticatedSession.mockResolvedValue(null);
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
 
     const response = await callProxy(["farms"]);
 
-    // Falls through to real mode, which correctly 401s with no session --
-    // proving an arbitrary truthy value cannot enable the bypass.
+    // Falls through to real mode, which correctly 401s with no usable
+    // token -- proving an arbitrary truthy value cannot enable the bypass.
     expect(response.status).toBe(401);
   });
 });
