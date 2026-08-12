@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.farm import FarmCreate, FarmRead
 from app.services import farm_service
@@ -53,7 +53,7 @@ def get_farm(
 @router.get("/farms", response_model=list[FarmRead])
 def list_farms(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FARM_READ)),
 ) -> list[FarmRead]:
     farms = farm_service.list_farms(db, tenant_id=ctx.tenant_id)
     return [FarmRead.model_validate(farm) for farm in farms]

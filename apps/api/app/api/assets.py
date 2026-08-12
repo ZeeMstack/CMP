@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.asset import AssetCreate, AssetRead
 from app.schemas.asset_position import AssetPositionRead, AssetPositionsGenerate, AssetPositionTreeNode
 from app.schemas.movement import MovementRead, TargetRef
@@ -57,7 +58,7 @@ def get_asset(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> AssetRead:
     try:
         asset = asset_service.get_asset(db, tenant_id=ctx.tenant_id, farm_id=farm_id, asset_id=asset_id)
@@ -71,7 +72,7 @@ def list_assets(
     farm_id: uuid.UUID,
     asset_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> list[AssetRead]:
     try:
         assets = asset_service.list_assets(
@@ -131,7 +132,7 @@ def get_positions_tree(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> list[AssetPositionTreeNode]:
     try:
         flat = asset_service.get_positions_tree(
@@ -161,7 +162,7 @@ def get_asset_occupancy(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> OccupancyRead | None:
     try:
         occupancy = movement_service.get_occupancy(
@@ -177,7 +178,7 @@ def get_asset_movement_history(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> list[MovementRead]:
     try:
         movements = movement_service.get_movement_history(
@@ -193,7 +194,7 @@ def get_asset_resolved_location(
     farm_id: uuid.UUID,
     asset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> ResolvedLocationRead:
     try:
         resolved = movement_service.get_resolved_location(
@@ -212,7 +213,7 @@ def get_position_occupant(
     asset_id: uuid.UUID,
     position_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> TargetOccupantRead:
     try:
         occupancy = movement_service.get_target_occupant(

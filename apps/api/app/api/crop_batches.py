@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.batch_stage_transition import BatchStageTransitionCreate, BatchStageTransitionRead
 from app.schemas.crop_batch import (
     BatchStageRunRead,
@@ -72,7 +73,7 @@ def create_crop_batch(
 def list_crop_batches(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
 ) -> list[CropBatchRead]:
     try:
         return crop_batch_service.list_batches(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -86,7 +87,7 @@ def list_crop_batches(
 def get_crop_batches_operational_summary(
     farm_id: uuid.UUID,
     state: Literal["active", "all"] = "active",
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> list[BatchOperationalContext]:
     """CMP-FE-002A: bounded, farm-wide operational read model -- one
@@ -112,7 +113,7 @@ def get_crop_batches_operational_summary(
 def get_crop_batch_operational_context(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> BatchOperationalContext:
     """Single-batch counterpart of the operational-summary list -- same
@@ -136,7 +137,7 @@ def get_crop_batch(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
 ) -> CropBatchRead:
     try:
         return crop_batch_service.get_batch(db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id)
@@ -187,7 +188,7 @@ def get_current_stage(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
 ) -> CurrentStageRead:
     try:
         _batch, run, stage = crop_batch_service.get_current_stage(
@@ -209,7 +210,7 @@ def get_stage_history(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
 ) -> list[BatchStageRunRead]:
     try:
         rows = crop_batch_service.get_stage_history(
@@ -237,7 +238,7 @@ def get_stage_transition(
     batch_id: uuid.UUID,
     transition_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_READ)),
 ) -> BatchStageTransitionRead:
     try:
         transition = crop_batch_service.get_stage_transition(

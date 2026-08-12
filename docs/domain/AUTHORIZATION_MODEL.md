@@ -21,55 +21,58 @@ Stable, dotted `<domain>.read` / `<domain>.manage` strings (`app.core.permission
 
 Unknown permission values cannot silently succeed: `Permission` is a closed `StrEnum`, and `require_permission` only ever accepts a member of it — there is no free-text permission string anywhere in a route.
 
-| Domain permission | Primary endpoint(s) | AUTHZ-001A status |
+| Domain permission | Primary endpoint(s) | Status |
 |---|---|---|
-| `farm.read` | `GET /farms/{farm_id}` | **Enforced** (technical proof) |
-| `farm.manage` | `POST /farms` | **Enforced** (technical proof) |
-| `location.read` | `GET /farms/{farm_id}/locations*` (tree, by id, children, path, occupant, subtree-occupancy) | Planned (AUTHZ-001B) |
-| `location.manage` | `POST /farms/{farm_id}/locations`, `.../bulk-children` | Planned |
-| `asset.read` | `GET /farms/{farm_id}/assets*` | Planned |
-| `asset.manage` | `POST /farms/{farm_id}/assets`, `.../positions/generate` | Planned |
-| `carrier.read` | `GET /farms/{farm_id}/carriers*` | Planned |
-| `carrier.manage` | `POST /farms/{farm_id}/carriers`, `.../bulk` | Planned |
-| `movement.manage` | `POST /farms/{farm_id}/movements` (occupant relocation command) | Planned |
-| `crop.read` | `GET /crops`, `GET /crops/{id}`, `GET /crops/{id}/varieties*` | Planned |
-| `crop.manage` | `POST /crops`, `POST /crops/{id}/varieties` | Planned |
-| `production_system.read` | `GET /production-systems*` | Planned |
-| `production_system.manage` | `POST /production-systems` | Planned |
-| `workflow.read` | `GET /workflows*`, `.../versions/{id}` | Planned |
-| `workflow.manage` | `POST /workflows`, `.../versions`, `.../stages`, `.../transitions`, `.../publish` | Planned |
-| `crop_batch.read` | `GET /farms/{farm_id}/crop-batches*` (list, by id, operational-summary/context, current-stage, stage-history, stage-transitions/{id}) | Planned |
-| `crop_batch.manage` | `POST /farms/{farm_id}/crop-batches`, `.../stage-transitions` | Planned |
-| `batch_derivation.read` | `GET /farms/{farm_id}/batch-derivations/{id}`, `.../crop-batches/{id}/lineage` | Planned |
-| `batch_derivation.manage` | `POST .../crop-batches/{id}/split`, `POST /farms/{farm_id}/crop-batch-merges` | Planned |
-| `seed_lot.read` | `GET /farms/{farm_id}/seed-lots*` | Planned |
-| `seed_lot.manage` | `POST /farms/{farm_id}/seed-lots` | Planned |
-| `sowing.read` | `GET .../crop-batches/{id}/sowings*`, `.../carriers*`, `GET /farms/{farm_id}/carriers/{id}/batch-assignment` | Planned |
-| `sowing.manage` | `POST .../crop-batches/{id}/sowings` | Planned |
-| `transplant.read` | `GET .../crop-batches/{id}/transplants*` | Planned |
-| `transplant.manage` | `POST .../crop-batches/{id}/transplants` | Planned |
-| `observation.read` | `GET .../crop-batches/{id}/observations*`, `GET /observation-definitions*` | Planned |
-| `observation.manage` | `POST .../crop-batches/{id}/observations`, `POST /observation-definitions` | Planned |
-| `quality_hold.read` | `GET .../crop-batches/{id}/quality-holds*` | Planned |
-| `quality_hold.manage` | `POST .../quality-holds`, `.../quality-holds/{id}/release` | Planned |
-| `harvest.read` | `GET .../crop-batches/{id}/harvests*`, `GET /farms/{farm_id}/harvested-produce-lots*` (incl. ledger, balance) | Planned |
-| `harvest.manage` | `POST .../crop-batches/{id}/harvests` | Planned |
-| `packing.read` | `GET /farms/{farm_id}/packing-events*`, `GET .../finished-goods-lots*` (incl. ledger, balance) | Planned |
-| `packing.manage` | `POST /farms/{farm_id}/packing-events` | Planned |
-| `finished_goods_storage.read` | `GET .../finished-goods-lots/{id}/storage-movements`, `.../placements`, `GET .../locations/{id}/finished-goods-inventory` | Planned |
-| `finished_goods_storage.manage` | `POST /farms/{farm_id}/finished-goods-storage-movements` | Planned |
-| `dispatch.read` | `GET /farms/{farm_id}/dispatches*` | Planned |
-| `dispatch.manage` | `POST /farms/{farm_id}/dispatches` | Planned |
-| `recall.read` | `GET /farms/{farm_id}/recall-cases*` | Planned |
-| `recall.manage` | `POST /farms/{farm_id}/recall-cases`, `.../recall-cases/{id}/close` | Planned |
-| `traceability.read` | `GET /farms/{farm_id}/traceability/*` (finished-goods-lot trace, crop-batch/produce-lot impact) | Planned |
-| `tenant.members.manage` | `POST /memberships` | Planned |
+| `farm.read` | `GET /farms/{farm_id}`, `GET /farms` | **Enforced** (AUTHZ-001A technical proof; `GET /farms` added in AUTHZ-001B1) |
+| `farm.manage` | `POST /farms` | **Enforced** (AUTHZ-001A technical proof) |
+| `location.read` | `GET /farms/{farm_id}/locations*` (tree, by id, children, path, occupant, subtree-occupancy) | **Enforced** (AUTHZ-001B1) |
+| `location.manage` | `POST /farms/{farm_id}/locations`, `.../bulk-children` | Planned (AUTHZ-001B2) |
+| `asset.read` | `GET /farms/{farm_id}/assets*` | **Enforced** (AUTHZ-001B1) |
+| `asset.manage` | `POST /farms/{farm_id}/assets`, `.../positions/generate` | Planned (AUTHZ-001B2) |
+| `carrier.read` | `GET /farms/{farm_id}/carriers*` | **Enforced** (AUTHZ-001B1) |
+| `carrier.manage` | `POST /farms/{farm_id}/carriers`, `.../bulk` | Planned (AUTHZ-001B2) |
+| `movement.manage` | `POST /farms/{farm_id}/movements` (occupant relocation command) | Planned (AUTHZ-001B2) |
+| `crop.read` | `GET /crops`, `GET /crops/{id}`, `GET /crops/{id}/varieties*` | **Enforced** (AUTHZ-001B1) |
+| `crop.manage` | `POST /crops`, `POST /crops/{id}/varieties` | Planned (AUTHZ-001B2) |
+| `production_system.read` | `GET /production-systems*` | **Enforced** (AUTHZ-001B1) |
+| `production_system.manage` | `POST /production-systems` | Planned (AUTHZ-001B2) |
+| `workflow.read` | `GET /workflows*`, `.../versions/{id}` | **Enforced** (AUTHZ-001B1) |
+| `workflow.manage` | `POST /workflows`, `.../versions`, `.../stages`, `.../transitions`, `.../publish` | Planned (AUTHZ-001B2) |
+| `crop_batch.read` | `GET /farms/{farm_id}/crop-batches*` (list, by id, operational-summary/context, current-stage, stage-history, stage-transitions/{id}) | **Enforced** (AUTHZ-001B1) |
+| `crop_batch.manage` | `POST /farms/{farm_id}/crop-batches`, `.../stage-transitions` | Planned (AUTHZ-001B2) |
+| `batch_derivation.read` | `GET /farms/{farm_id}/batch-derivations/{id}`, `.../crop-batches/{id}/lineage` | **Enforced** (AUTHZ-001B1) |
+| `batch_derivation.manage` | `POST .../crop-batches/{id}/split`, `POST /farms/{farm_id}/crop-batch-merges` | Planned (AUTHZ-001B2) |
+| `seed_lot.read` | `GET /farms/{farm_id}/seed-lots*` | **Enforced** (AUTHZ-001B1) |
+| `seed_lot.manage` | `POST /farms/{farm_id}/seed-lots` | Planned (AUTHZ-001B2) |
+| `sowing.read` | `GET .../crop-batches/{id}/sowings*`, `.../carriers*`, `GET /farms/{farm_id}/carriers/{id}/batch-assignment` | **Enforced** (AUTHZ-001B1) |
+| `sowing.manage` | `POST .../crop-batches/{id}/sowings` | Planned (AUTHZ-001B2) |
+| `transplant.read` | `GET .../crop-batches/{id}/transplants*` | **Enforced** (AUTHZ-001B1) |
+| `transplant.manage` | `POST .../crop-batches/{id}/transplants` | Planned (AUTHZ-001B2) |
+| `observation.read` | `GET .../crop-batches/{id}/observations*`, `GET /observation-definitions*` | **Enforced** (AUTHZ-001B1) |
+| `observation.manage` | `POST .../crop-batches/{id}/observations`, `POST /observation-definitions` | Planned (AUTHZ-001B2) |
+| `quality_hold.read` | `GET .../crop-batches/{id}/quality-holds*` | **Enforced** (AUTHZ-001B1) |
+| `quality_hold.manage` | `POST .../quality-holds`, `.../quality-holds/{id}/release` | Planned (AUTHZ-001B2) |
+| `harvest.read` | `GET .../crop-batches/{id}/harvests*`, `GET /farms/{farm_id}/harvested-produce-lots*` (incl. ledger, balance) | **Enforced** (AUTHZ-001B1) |
+| `harvest.manage` | `POST .../crop-batches/{id}/harvests` | Planned (AUTHZ-001B2) |
+| `packing.read` | `GET /farms/{farm_id}/packing-events*`, `GET .../finished-goods-lots*` (incl. ledger, balance) | **Enforced** (AUTHZ-001B1) |
+| `packing.manage` | `POST /farms/{farm_id}/packing-events` | Planned (AUTHZ-001B2) |
+| `finished_goods_storage.read` | `GET .../finished-goods-lots/{id}/storage-movements`, `.../placements`, `GET .../locations/{id}/finished-goods-inventory` | **Enforced** (AUTHZ-001B1) |
+| `finished_goods_storage.manage` | `POST /farms/{farm_id}/finished-goods-storage-movements` | Planned (AUTHZ-001B2) |
+| `dispatch.read` | `GET /farms/{farm_id}/dispatches*` | **Enforced** (AUTHZ-001B1) |
+| `dispatch.manage` | `POST /farms/{farm_id}/dispatches` | Planned (AUTHZ-001B2) |
+| `recall.read` | `GET /farms/{farm_id}/recall-cases*` | **Enforced** (AUTHZ-001B1) |
+| `recall.manage` | `POST /farms/{farm_id}/recall-cases`, `.../recall-cases/{id}/close` | Planned (AUTHZ-001B2) |
+| `traceability.read` | `GET /farms/{farm_id}/traceability/*` (finished-goods-lot trace, crop-batch/produce-lot impact) | **Enforced** (AUTHZ-001B1) |
+| `tenant.members.manage` | `POST /memberships` | Planned (AUTHZ-001B2) |
 
-Not permission-gated by design, unaffected by this ticket:
+Not permission-gated by design, unaffected by this ticket or AUTHZ-001B1:
 
+- `GET /` — inline service-info endpoint (`app.main.root`), no auth at all.
 - `GET /auth/me` — tenant-**un**scoped by definition (its purpose is letting a caller discover which tenants it may select before any tenant context exists); uses `require_authenticated_principal`, not `require_tenant_context`, so no `role_code`/`TenantContext` exists yet at that point.
 - `GET /health`, `GET /ready` — infrastructure probes, no auth at all.
-- `POST /dev/bootstrap/*` — development-only, mounted only when `ENABLE_DEV_AUTH=true` (itself forbidden outside `ENV=development`, see `app.core.dev_auth.check_dev_auth_startup_invariant`); exists specifically to create a tenant's *first* membership before any membership can exist.
+- `POST /dev/bootstrap/*` — development-only, mounted only when `ENABLE_DEV_AUTH=true` (itself forbidden outside `ENV=development`, see `app.core.dev_auth.check_dev_auth_startup_invariant`); exists specifically to create a tenant's *first* membership before any membership can exist. Has no `GET` endpoint at all today.
+
+This exemption list is itself enforced, not just documented: `tests/test_authz_read_enforcement_architecture.py::test_exemption_list_is_exact_not_a_superset` asserts every entry still corresponds to a real mounted route, so a stale entry can't silently mask a future gap.
 
 ## Role policy
 
@@ -100,18 +103,28 @@ Real bearer and dev-auth now agree on every row above: authentication answers "i
 
 ## Technical proof (AUTHZ-001A)
 
-`require_permission` is wired into exactly two endpoints, chosen for having the simplest possible behavior and the strongest existing test coverage:
+`require_permission` was first wired into exactly two endpoints, chosen for having the simplest possible behavior and the strongest existing test coverage:
 
 - `GET /farms/{farm_id}` → `Permission.FARM_READ`
 - `POST /farms` → `Permission.FARM_MANAGE`
 
-`GET /farms` (list) intentionally remains on the plain `require_tenant_context` dependency — the proof is deliberately not expanded beyond the two endpoints above. See `tests/test_authz_farm_proof.py` for the full behavioral matrix (tenant_admin allowed; a known, DB-approved role with no granted permissions is `403`; an unrecognized role_code is `403`; a cross-tenant farm is still `404`; unauthenticated is still `401`; an inactive membership is still `401`, never reaching the permission check; the dev-auth identity path is subject to the exact same permission check as real bearer auth, never bypassing it).
+See `tests/test_authz_farm_proof.py` for the full behavioral matrix established here (tenant_admin allowed; a known, DB-approved role with no granted permissions is `403`; an unrecognized role_code is `403`; a cross-tenant farm is still `404`; unauthenticated is still `401`; a caller with no active tenant access is `403`, never reaching the permission check; the dev-auth identity path is subject to the exact same permission check as real bearer auth, never bypassing it). This matrix is what every subsequent rollout ticket (AUTHZ-001B1, and mutation/action enforcement in AUTHZ-001B2) is checked against.
 
-## What AUTHZ-001A deliberately does not do
+## Read enforcement (AUTHZ-001B1)
 
-- Does not retrofit permission checks onto any endpoint outside the two-endpoint technical proof.
+Every tenant-scoped `GET` business endpoint is now gated by `require_permission(Permission.<domain>_READ)` — `GET /farms` (previously the one deliberate exception, left on plain `require_tenant_context` to keep the AUTHZ-001A proof minimal) is included. 73 endpoints across every domain in the permission catalog; see the catalog table above for the per-domain endpoint list, all now marked **Enforced**.
+
+Every route continues to compose `require_permission` exactly as `app.core.permissions.require_permission`'s own contract describes — no route inspects `role_code`, email, or any Auth0 claim; no route performs its own membership lookup; no service-layer permission check was introduced. `require_permission` itself is unchanged from AUTHZ-001A/A.1 (`Permission`, `ROLE_PERMISSIONS`, `has_permission` are all untouched by AUTHZ-001B1).
+
+Structural proof, not a hand-maintained checklist: `tests/test_authz_read_enforcement_architecture.py` walks the live, mounted FastAPI route table (`app.routes[*].dependant`) and fails immediately if any current or future tenant-scoped `GET` endpoint is missing `require_permission`, is gated by a non-`.read` permission, or still depends on bare `require_tenant_context` — there is no endpoint-name list to keep in sync by hand. `tests/test_authz_read_enforcement_http.py` adds representative HTTP-level behavioral coverage (zero-permission-role denial, same-user-different-tenant-role independence, cross-tenant `404`) across a cross-section of domains beyond the original farms proof slice.
+
+**Mutation/action endpoints (create, update-via-command, domain actions) are unaffected by AUTHZ-001B1** — every `POST` endpoint outside the original `POST /farms` proof still uses plain `require_tenant_context`, deferred to **AUTHZ-001B2**.
+
+## What AUTHZ-001A / AUTHZ-001B1 deliberately do not do
+
+- Does not enforce any permission on a mutation/action (`POST`) endpoint beyond the original `POST /farms` technical proof — deferred to AUTHZ-001B2.
 - Does not assign any permission to any role other than `tenant_admin`.
 - Does not add a database permission/role table, a role editor, or any setup/role-management UI.
 - Does not use Auth0 Organizations or Auth0 RBAC for CMP business authorization.
-- Does not change the database schema (no migration in this ticket).
+- Does not change the database schema (no migration in either ticket).
 - Does not change frontend behavior (`apps/web` untouched).

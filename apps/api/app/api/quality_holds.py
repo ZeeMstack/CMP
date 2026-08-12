@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.quality_hold import QualityHoldCreate, QualityHoldRead, QualityHoldReleaseCreate
 from app.services import quality_hold_service
 from app.services.errors import (
@@ -63,7 +64,7 @@ def list_quality_holds(
     farm_id: uuid.UUID,
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.QUALITY_HOLD_READ)),
 ) -> list[QualityHoldRead]:
     try:
         return quality_hold_service.list_quality_holds(
@@ -81,7 +82,7 @@ def get_quality_hold(
     batch_id: uuid.UUID,
     hold_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.QUALITY_HOLD_READ)),
 ) -> QualityHoldRead:
     try:
         return quality_hold_service.get_quality_hold(

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.workflow import (
     WorkflowCreate,
     WorkflowRead,
@@ -72,7 +73,7 @@ def create_workflow(
 @router.get("/workflows", response_model=list[WorkflowRead])
 def list_workflows(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_READ)),
 ) -> list[WorkflowRead]:
     workflows = workflow_service.list_workflows(db, tenant_id=ctx.tenant_id)
     return [WorkflowRead.model_validate(workflow) for workflow in workflows]
@@ -104,7 +105,7 @@ def get_workflow_version(
     workflow_id: uuid.UUID,
     version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_READ)),
 ) -> WorkflowVersionDetailRead:
     try:
         version = workflow_service.get_workflow_version(

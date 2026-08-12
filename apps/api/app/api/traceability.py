@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Engine
 
 from app.core.db import get_engine
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
+from app.core.permissions import Permission, require_permission
 from app.schemas.traceability import (
     CropBatchImpactRead,
     FinishedGoodsLotTraceRead,
@@ -29,7 +30,7 @@ router = APIRouter(tags=["traceability"])
 def get_finished_goods_lot_trace(
     farm_id: uuid.UUID,
     finished_goods_lot_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.TRACEABILITY_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> FinishedGoodsLotTraceRead:
     try:
@@ -50,7 +51,7 @@ def get_finished_goods_lot_trace(
 def get_crop_batch_impact(
     farm_id: uuid.UUID,
     crop_batch_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.TRACEABILITY_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> CropBatchImpactRead:
     try:
@@ -71,7 +72,7 @@ def get_crop_batch_impact(
 def get_harvested_produce_lot_impact(
     farm_id: uuid.UUID,
     produce_lot_id: uuid.UUID,
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.TRACEABILITY_READ)),
     db_engine: Engine = Depends(get_engine),
 ) -> HarvestedProduceLotImpactRead:
     try:

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.dispatch import DispatchEventCreate, DispatchEventRead
 from app.services import dispatch_service
 from app.services.errors import (
@@ -79,7 +80,7 @@ def record_dispatch(
 def list_dispatch_events(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.DISPATCH_READ)),
 ) -> list[DispatchEventRead]:
     try:
         return dispatch_service.list_dispatch_events(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
@@ -92,7 +93,7 @@ def get_dispatch_event(
     farm_id: uuid.UUID,
     dispatch_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.DISPATCH_READ)),
 ) -> DispatchEventRead:
     try:
         return dispatch_service.get_dispatch_event(

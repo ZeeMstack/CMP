@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.crop import CropCreate, CropRead, VarietyCreate, VarietyRead
 from app.services import crop_service
 from app.services.errors import (
@@ -43,7 +44,7 @@ def create_crop(
 @router.get("/crops", response_model=list[CropRead])
 def list_crops(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_READ)),
 ) -> list[CropRead]:
     crops = crop_service.list_crops(db, tenant_id=ctx.tenant_id)
     return [CropRead.model_validate(crop) for crop in crops]
@@ -53,7 +54,7 @@ def list_crops(
 def get_crop(
     crop_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_READ)),
 ) -> CropRead:
     try:
         crop = crop_service.get_crop(db, tenant_id=ctx.tenant_id, crop_id=crop_id)
@@ -94,7 +95,7 @@ def create_variety(
 def list_varieties(
     crop_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_READ)),
 ) -> list[VarietyRead]:
     try:
         varieties = crop_service.list_varieties(db, tenant_id=ctx.tenant_id, crop_id=crop_id)
@@ -108,7 +109,7 @@ def get_variety(
     crop_id: uuid.UUID,
     variety_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_READ)),
 ) -> VarietyRead:
     try:
         variety = crop_service.get_variety(db, tenant_id=ctx.tenant_id, crop_id=crop_id, variety_id=variety_id)

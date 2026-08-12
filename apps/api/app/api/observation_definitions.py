@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.observation_definition import ObservationDefinitionCreate, ObservationDefinitionRead
 from app.services import observation_service
 from app.services.errors import DuplicateObservationDefinitionCodeError, ObservationDefinitionNotFoundError
@@ -44,7 +45,7 @@ def create_observation_definition(
 @router.get("/observation-definitions", response_model=list[ObservationDefinitionRead])
 def list_observation_definitions(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_READ)),
 ) -> list[ObservationDefinitionRead]:
     return observation_service.list_observation_definitions(db, tenant_id=ctx.tenant_id)
 
@@ -53,7 +54,7 @@ def list_observation_definitions(
 def get_observation_definition(
     definition_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_READ)),
 ) -> ObservationDefinitionRead:
     try:
         return observation_service.get_observation_definition(
