@@ -137,7 +137,9 @@ def test_required_active_membership_for_asset_routes(client, db_session) -> None
         f"/farms/{farm.id}/assets",
         headers={"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)},
     )
-    assert response.status_code == 401
+    # AUTH-001D: valid dev identity, no active membership -- a tenant-access
+    # failure, 403 (previously 401; aligned with the real bearer path).
+    assert response.status_code == 403
 
 
 @pytest.mark.integration

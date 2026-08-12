@@ -66,14 +66,25 @@ def resolve_dev_tenant_context(
     an active membership linking them -- not merely well-formed header
     values. Returns (tenant_id, user_id, role_code); role_code is
     guaranteed non-null by `ck_tenant_memberships_active_requires_role`
-    for any row this query can return."""
+    for any row this query can return.
+
+    AUTH-001D: the tenant-accessibility and membership checks below raise
+    403, not 401 -- matching `app.core.auth.require_tenant_context`'s own
+    equivalent real-bearer-path checks exactly. Both are "identity is
+    valid, but this identity has no access to the selected tenant"
+    conditions, not authentication failures -- X-Dev-User-Id has already
+    been established as well-formed at this point (parsed above); whether
+    *that* user id itself resolves to a real, active CMP user is a
+    genuinely separate, still-401 question (see the user check just below,
+    deliberately unchanged -- an invalid/unusable claimed identity, not a
+    tenant-access decision)."""
     require_dev_auth_enabled()
     tenant_id = parse_uuid_header(x_dev_tenant_id, "X-Dev-Tenant-Id")
     user_id = parse_uuid_header(x_dev_user_id, "X-Dev-User-Id")
 
     tenant = db.get(Tenant, tenant_id)
     if tenant is None or tenant.status != "active":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or inactive tenant context")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or inactive tenant context")
 
     user = db.get(User, user_id)
     if user is None or user.status != "active":
@@ -87,6 +98,6 @@ def resolve_dev_tenant_context(
         )
     ).scalar_one_or_none()
     if membership is None or not membership.role_code:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No active membership for this tenant")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No active membership for this tenant")
 
     return tenant_id, user_id, membership.role_code

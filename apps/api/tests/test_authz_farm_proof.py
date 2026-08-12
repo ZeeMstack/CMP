@@ -246,26 +246,13 @@ def test_real_bearer_inactive_membership_is_403_not_401(client, db_session, conf
 
 
 @pytest.mark.integration
-def test_dev_auth_inactive_membership_is_401_a_known_preexisting_dev_auth_only_inconsistency(client, db_session) -> None:
-    """AUTHZ-001A.2 finding: `app.core.dev_auth.resolve_dev_tenant_context`
-    raises 401 ("No active membership for this tenant") for this exact
-    condition, while the real bearer path
-    (`app.core.auth.require_tenant_context`'s own inline check, see
-    `test_real_bearer_inactive_membership_is_403_not_401` above) raises
-    403 for the identical logical condition. This 401/403 mismatch
-    between the two identity paths pre-dates AUTHZ-001A entirely --
-    `dev_auth.py` is untouched by AUTHZ-001A/A.1/A.2 (confirmed via
-    `git diff 3d3f5ac -- apps/api/app/core/dev_auth.py`, which is empty)
-    -- and is deliberately NOT changed here: this ticket's scope is
-    tracing and documenting the discrepancy, not silently altering
-    dev-only authentication behavior. This test exists to pin the
-    CURRENT, ACTUAL dev-auth behavior (401) precisely so it cannot be
-    mistaken for the general contract (which is 403, per the real-bearer
-    test above) -- see docs/domain/AUTHORIZATION_MODEL.md for the
-    recommended follow-up.
-
-    Either way, this proves permission evaluation never runs for this
-    caller: 401, never 403 (permission denied) or 200."""
+def test_dev_auth_inactive_membership_is_403_matching_real_bearer_contract(client, db_session) -> None:
+    """AUTH-001D: fixes the AUTHZ-001A.2 finding. `app.core.dev_auth.
+    resolve_dev_tenant_context` now raises 403 ("No active membership for
+    this tenant") for this exact condition, matching
+    `app.core.auth.require_tenant_context`'s own inline real-bearer check
+    (see `test_real_bearer_inactive_membership_is_403_not_401` above) --
+    the two identity paths no longer disagree on this status code."""
     tenant = tenant_service.create_tenant(db_session, code="t-authz-inactive-dev", name="Inactive Membership Tenant")
     user = user_service.create_user(
         db_session,
@@ -281,6 +268,62 @@ def test_dev_auth_inactive_membership_is_401_a_known_preexisting_dev_auth_only_i
     db_session.commit()
 
     headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+    response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
+    assert response.status_code == 403
+
+
+@pytest.mark.integration
+def test_dev_auth_missing_membership_entirely_is_403(client, db_session) -> None:
+    """Same contract, no membership row at all (as opposed to a removed
+    one) -- a valid dev identity, a valid active tenant, but the user has
+    never been a member of it."""
+    tenant = tenant_service.create_tenant(db_session, code="t-authz-no-membership-dev", name="No Membership Tenant")
+    user = user_service.create_user(
+        db_session,
+        oidc_issuer="https://issuer.example",
+        oidc_subject=f"authz-no-membership-{uuid.uuid4().hex}",
+        email=f"{uuid.uuid4().hex}@example.com",
+        display_name="No Membership Dev User",
+    )
+    headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+    response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
+    assert response.status_code == 403
+
+
+@pytest.mark.integration
+def test_dev_auth_inactive_tenant_is_403(client, db_session) -> None:
+    """A valid dev identity with an otherwise-valid membership, but the
+    tenant itself is inactive -- matches the real bearer path's
+    equivalent (`tests/test_auth_context.py::test_inactive_tenant_is_403`)."""
+    tenant = tenant_service.create_tenant(db_session, code="t-authz-inactive-tenant-dev", name="Inactive Tenant")
+    user = user_service.create_user(
+        db_session,
+        oidc_issuer="https://issuer.example",
+        oidc_subject=f"authz-inactive-tenant-{uuid.uuid4().hex}",
+        email=f"{uuid.uuid4().hex}@example.com",
+        display_name="Inactive Tenant Dev User",
+    )
+    membership_service.add_membership(
+        db_session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None
+    )
+    tenant.status = "inactive"
+    db_session.commit()
+
+    headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+    response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
+    assert response.status_code == 403
+
+
+@pytest.mark.integration
+def test_dev_auth_unknown_user_id_remains_401_unaffected_by_auth_001d(client, db_session) -> None:
+    """AUTH-001D deliberately does not touch dev user lookup semantics --
+    a dev identity that doesn't resolve to any real CMP user at all is an
+    authentication failure (is this a usable identity?), not a
+    tenant-access failure (does this identity have access to this
+    tenant?), and must remain 401. Uses an otherwise-valid, active tenant
+    so the only failing condition is the unknown user id."""
+    tenant = tenant_service.create_tenant(db_session, code="t-authz-unknown-user-dev", name="Unknown User Tenant")
+    headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(uuid.uuid4())}
     response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
     assert response.status_code == 401
 
