@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.auth import TenantContext, require_tenant_context
+from app.core.permissions import Permission, require_permission
 from app.schemas.farm import FarmCreate, FarmRead
 from app.services import farm_service
 from app.services.errors import DuplicateFarmCodeError, FarmNotFoundError
@@ -16,7 +17,7 @@ router = APIRouter(tags=["farms"])
 def create_farm(
     payload: FarmCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FARM_MANAGE)),
 ) -> FarmRead:
     try:
         farm = farm_service.create_farm(
@@ -40,7 +41,7 @@ def create_farm(
 def get_farm(
     farm_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FARM_READ)),
 ) -> FarmRead:
     try:
         farm = farm_service.get_farm(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
