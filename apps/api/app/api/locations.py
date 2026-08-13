@@ -5,7 +5,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.location import (
     LocationBulkChildrenCreate,
@@ -39,7 +39,7 @@ def create_location(
     farm_id: uuid.UUID,
     payload: LocationCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_MANAGE)),
 ) -> LocationRead:
     try:
         location = location_service.create_location(
@@ -84,7 +84,7 @@ def bulk_create_children(
     parent_id: uuid.UUID,
     payload: LocationBulkChildrenCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_MANAGE)),
 ) -> list[LocationRead]:
     try:
         created = location_service.bulk_generate_children(

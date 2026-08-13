@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
 from app.schemas.movement import MovementRead
@@ -25,7 +25,7 @@ def register_carrier(
     farm_id: uuid.UUID,
     payload: CarrierCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_MANAGE)),
 ) -> CarrierRead:
     try:
         carrier = carrier_service.register_carrier(
@@ -55,7 +55,7 @@ def bulk_register_carriers(
     farm_id: uuid.UUID,
     payload: CarrierBulkCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_MANAGE)),
 ) -> list[CarrierRead]:
     try:
         created = carrier_service.bulk_register_carriers(

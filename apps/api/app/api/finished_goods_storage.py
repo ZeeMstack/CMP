@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.finished_goods_storage import (
     FinishedGoodsPlacementRead,
@@ -38,7 +38,7 @@ def record_movement(
     farm_id: uuid.UUID,
     payload: FinishedGoodsStorageMovementCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.FINISHED_GOODS_STORAGE_MANAGE)),
 ) -> FinishedGoodsStorageMovementRead:
     try:
         movement = finished_goods_storage_service.record_movement(

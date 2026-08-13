@@ -6,7 +6,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.batch_stage_transition import BatchStageTransitionCreate, BatchStageTransitionRead
 from app.schemas.crop_batch import (
@@ -45,7 +45,7 @@ def create_crop_batch(
     farm_id: uuid.UUID,
     payload: CropBatchCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_MANAGE)),
 ) -> CropBatchRead:
     try:
         batch = crop_batch_service.create_batch(
@@ -155,7 +155,7 @@ def create_stage_transition(
     batch_id: uuid.UUID,
     payload: BatchStageTransitionCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_BATCH_MANAGE)),
 ) -> BatchStageTransitionRead:
     try:
         transition = crop_batch_service.transition_stage(

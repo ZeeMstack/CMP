@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.dispatch import DispatchEventCreate, DispatchEventRead
 from app.services import dispatch_service
@@ -33,7 +33,7 @@ def record_dispatch(
     farm_id: uuid.UUID,
     payload: DispatchEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.DISPATCH_MANAGE)),
 ) -> DispatchEventRead:
     lines = [
         {

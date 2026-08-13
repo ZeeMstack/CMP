@@ -5,7 +5,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.recall import (
     RecallCaseClose,
@@ -41,7 +41,7 @@ def open_recall_case(
     payload: RecallCaseCreate,
     db: Session = Depends(get_db),
     db_engine: Engine = Depends(get_engine),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.RECALL_MANAGE)),
 ) -> RecallCaseDetailRead:
     try:
         case = recall_service.open_recall_case(
@@ -109,7 +109,7 @@ def close_recall_case(
     payload: RecallCaseClose,
     db: Session = Depends(get_db),
     db_engine: Engine = Depends(get_engine),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.RECALL_MANAGE)),
 ) -> RecallCaseDetailRead:
     try:
         recall_service.close_recall_case(

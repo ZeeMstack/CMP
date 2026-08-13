@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.crop import CropCreate, CropRead, VarietyCreate, VarietyRead
 from app.services import crop_service
@@ -22,7 +22,7 @@ router = APIRouter(tags=["crops"])
 def create_crop(
     payload: CropCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_MANAGE)),
 ) -> CropRead:
     try:
         crop = crop_service.register_crop(
@@ -70,7 +70,7 @@ def create_variety(
     crop_id: uuid.UUID,
     payload: VarietyCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.CROP_MANAGE)),
 ) -> VarietyRead:
     try:
         variety = crop_service.register_variety(

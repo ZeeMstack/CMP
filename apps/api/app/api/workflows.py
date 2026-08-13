@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.workflow import (
     WorkflowCreate,
@@ -40,7 +40,7 @@ router = APIRouter(tags=["workflows"])
 def create_workflow(
     payload: WorkflowCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
 ) -> WorkflowRead:
     try:
         workflow = workflow_service.register_workflow(
@@ -87,7 +87,7 @@ def list_workflows(
 def create_draft_version(
     workflow_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
 ) -> WorkflowVersionRead:
     try:
         version = workflow_service.create_draft_version(
@@ -139,7 +139,7 @@ def add_stage(
     version_id: uuid.UUID,
     payload: WorkflowStageCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
 ) -> WorkflowStageRead:
     try:
         stage = workflow_service.add_stage(
@@ -189,7 +189,7 @@ def add_transition(
     version_id: uuid.UUID,
     payload: WorkflowTransitionCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
 ) -> WorkflowTransitionRead:
     try:
         transition = workflow_service.add_transition(
@@ -232,7 +232,7 @@ def publish_workflow_version(
     workflow_id: uuid.UUID,
     version_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_MANAGE)),
 ) -> WorkflowVersionRead:
     try:
         version = workflow_service.publish_version(
