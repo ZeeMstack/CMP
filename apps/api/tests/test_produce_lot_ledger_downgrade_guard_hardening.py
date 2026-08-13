@@ -530,7 +530,7 @@ def _new_scenario(test_engine):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("apply_fn, restore_fn, match", _DEDICATED_STATES)
-def test_one_shot_downgrade_blocked(test_engine, apply_fn, restore_fn, match) -> None:
+def test_one_shot_downgrade_blocked(test_engine, apply_fn, restore_fn, match, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     info = apply_fn(test_engine, scenario)
@@ -545,7 +545,7 @@ def test_one_shot_downgrade_blocked(test_engine, apply_fn, restore_fn, match) ->
 
 @pytest.mark.integration
 @pytest.mark.parametrize("column, mutate, needs_event_index_drop", _FIELD_MISMATCH_CASES)
-def test_one_shot_downgrade_blocked_field_mismatch(test_engine, column, mutate, needs_event_index_drop) -> None:
+def test_one_shot_downgrade_blocked_field_mismatch(test_engine, column, mutate, needs_event_index_drop, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     apply_fn, restore_fn = _mk_field_mismatch(column, mutate, needs_event_index_drop=needs_event_index_drop)
@@ -561,7 +561,7 @@ def test_one_shot_downgrade_blocked_field_mismatch(test_engine, column, mutate, 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("apply_fn, restore_fn, match", _DEDICATED_STATES)
-def test_staged_downgrade_blocked(test_engine, apply_fn, restore_fn, match) -> None:
+def test_staged_downgrade_blocked(test_engine, apply_fn, restore_fn, match, alembic_head_restore) -> None:
     """Stage 1 (head -> CMP-016A's own down_revision) always succeeds on
     clean data; corruption is introduced only after CMP-016A's own marker
     is no longer present in the database's history; stage 2 (a separate,
@@ -586,7 +586,7 @@ def test_staged_downgrade_blocked(test_engine, apply_fn, restore_fn, match) -> N
 
 @pytest.mark.integration
 @pytest.mark.parametrize("column, mutate, needs_event_index_drop", _FIELD_MISMATCH_CASES)
-def test_staged_downgrade_blocked_field_mismatch(test_engine, column, mutate, needs_event_index_drop) -> None:
+def test_staged_downgrade_blocked_field_mismatch(test_engine, column, mutate, needs_event_index_drop, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     apply_fn, restore_fn = _mk_field_mismatch(column, mutate, needs_event_index_drop=needs_event_index_drop)
@@ -609,7 +609,7 @@ def test_staged_downgrade_blocked_field_mismatch(test_engine, column, mutate, ne
 # --- state 11: legitimate packing_consumption at the crossing boundary ------
 
 @pytest.mark.integration
-def test_packing_consumption_does_not_block_cmp016a_upgrade_or_downgrade(test_engine) -> None:
+def test_packing_consumption_does_not_block_cmp016a_upgrade_or_downgrade(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     conn = test_engine.connect()
@@ -629,7 +629,7 @@ def test_packing_consumption_does_not_block_cmp016a_upgrade_or_downgrade(test_en
 
 
 @pytest.mark.integration
-def test_packing_consumption_blocks_crossing_below_cmp014_one_shot(test_engine) -> None:
+def test_packing_consumption_blocks_crossing_below_cmp014_one_shot(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     conn = test_engine.connect()
@@ -647,7 +647,7 @@ def test_packing_consumption_blocks_crossing_below_cmp014_one_shot(test_engine) 
 
 
 @pytest.mark.integration
-def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine) -> None:
+def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     conn = test_engine.connect()
@@ -679,7 +679,7 @@ def _walk_down_revisions(cfg: Config, steps: int) -> list[str]:
 
 
 @pytest.mark.integration
-def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine) -> None:
+def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine, alembic_head_restore) -> None:
     """CMP-017 verification pass: an explicit, single-step-at-a-time walk
     head (CMP-017) -> CMP-016A -> CMP-016 -> CMP-015 -> CMP-014, with no
     dispatch or packing history at all, proving every individual leg is
@@ -708,7 +708,7 @@ def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine) -> Non
 # --- clean paths, ambiguity, upgrades, boundaries ----------------------------
 
 @pytest.mark.integration
-def test_clean_receipts_allow_one_shot_downgrade(test_engine) -> None:
+def test_clean_receipts_allow_one_shot_downgrade(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     try:
@@ -721,7 +721,7 @@ def test_clean_receipts_allow_one_shot_downgrade(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_clean_receipts_allow_staged_downgrade(test_engine) -> None:
+def test_clean_receipts_allow_staged_downgrade(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     try:
@@ -736,7 +736,7 @@ def test_clean_receipts_allow_staged_downgrade(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_clean_downgrade_with_no_produce_lots(test_engine) -> None:
+def test_clean_downgrade_with_no_produce_lots(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     command.downgrade(_cfg(), _pre_cmp014_revision(_cfg()))
     _assert_at(test_engine, _pre_cmp014_revision(_cfg()))
@@ -755,7 +755,7 @@ def test_current_head_resolution_is_dynamic(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_upgrade_is_unaffected_by_the_guard(test_engine) -> None:
+def test_upgrade_is_unaffected_by_the_guard(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     command.downgrade(_cfg(), "a91f4c7b2e58")
     command.upgrade(_cfg(), "head")
@@ -763,7 +763,7 @@ def test_upgrade_is_unaffected_by_the_guard(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_remaining_above_cmp014_is_unaffected(test_engine) -> None:
+def test_downgrade_remaining_above_cmp014_is_unaffected(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     try:
@@ -781,7 +781,7 @@ def test_downgrade_remaining_above_cmp014_is_unaffected(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_cmp015_and_cmp016_downgrade_behavior_unchanged(test_engine) -> None:
+def test_cmp015_and_cmp016_downgrade_behavior_unchanged(test_engine, alembic_head_restore) -> None:
     """CMP-015's own unconditional-block guard and CMP-016's own
     reconstructible-projection guard are untouched by this ticket."""
     require_cmp_test(test_engine)
@@ -801,7 +801,7 @@ def test_cmp015_and_cmp016_downgrade_behavior_unchanged(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_offline_downgrade_crossing_cmp014_fails_closed(test_engine) -> None:
+def test_offline_downgrade_crossing_cmp014_fails_closed(test_engine, alembic_head_restore) -> None:
     """Offline (--sql) mode has no live connection to validate against, so
     a downgrade path that crosses CMP-014 must fail closed rather than
     emit unvalidated destructive SQL."""
@@ -810,7 +810,7 @@ def test_offline_downgrade_crossing_cmp014_fails_closed(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_offline_downgrade_above_cmp014_is_unaffected_by_the_guard(test_engine) -> None:
+def test_offline_downgrade_above_cmp014_is_unaffected_by_the_guard(test_engine, alembic_head_restore) -> None:
     """The guard itself must not intervene for a path that never reaches
     CMP-014. (Whether SQL generation completes end-to-end for these
     revisions is a separate, pre-existing characteristic of this
@@ -828,7 +828,7 @@ def test_offline_downgrade_above_cmp014_is_unaffected_by_the_guard(test_engine) 
 
 
 @pytest.mark.integration
-def test_ambiguous_script_heads_fail_safely(test_engine) -> None:
+def test_ambiguous_script_heads_fail_safely(test_engine, alembic_head_restore) -> None:
     """Two script-directory heads (a temporary branch, constructed only in
     a throwaway tmp copy of migrations/ -- the real migrations/versions/
     is never touched) must refuse to evaluate the crossing guard rather
@@ -870,7 +870,7 @@ def test_ambiguous_script_heads_fail_safely(test_engine) -> None:
 # --- lock behavior --------------------------------------------------------
 
 @pytest.mark.integration
-def test_concurrent_writer_first_guard_waits_then_validates_committed_state(test_engine) -> None:
+def test_concurrent_writer_first_guard_waits_then_validates_committed_state(test_engine, alembic_head_restore) -> None:
     """Writer opens a transaction and writes relevant ledger state first;
     the crossing downgrade starts only after the writer's write is
     visible (though still uncommitted); the guard's own LOCK TABLE call
@@ -944,7 +944,7 @@ def test_concurrent_writer_first_guard_waits_then_validates_committed_state(test
 
 
 @pytest.mark.integration
-def test_lock_holder_blocks_concurrent_writer_until_released(test_engine) -> None:
+def test_lock_holder_blocks_concurrent_writer_until_released(test_engine, alembic_head_restore) -> None:
     """The guard acquires locks first; a writer then attempts a relevant
     INSERT and must block until the lock-holding transaction completes —
     proving no write can slip between validation and migration execution.
@@ -1024,7 +1024,7 @@ def test_lock_holder_blocks_concurrent_writer_until_released(test_engine) -> Non
 
 
 @pytest.mark.integration
-def test_rejection_releases_locks_and_preserves_malformed_data(test_engine) -> None:
+def test_rejection_releases_locks_and_preserves_malformed_data(test_engine, alembic_head_restore) -> None:
     """When validation rejects a malformed state: the migration
     transaction rolls back; every table lock it held is released; a fresh
     connection can immediately read and write the test-owned rows; the

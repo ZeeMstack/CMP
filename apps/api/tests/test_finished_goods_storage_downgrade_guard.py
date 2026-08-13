@@ -77,7 +77,7 @@ def _build_placed_scenario(test_engine):
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_storage_movement_history(test_engine) -> None:
+def test_downgrade_blocked_by_storage_movement_history(test_engine, alembic_head_restore) -> None:
     s = _build_placed_scenario(test_engine)
     try:
         with pytest.raises(RuntimeError, match="finished_goods_storage_movements contains history"):
@@ -88,7 +88,7 @@ def test_downgrade_blocked_by_storage_movement_history(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_even_when_net_placed_balance_is_zero(test_engine) -> None:
+def test_downgrade_blocked_even_when_net_placed_balance_is_zero(test_engine, alembic_head_restore) -> None:
     """A place immediately followed by a matching release nets to a zero
     balance at that position, but both rows still exist as independent
     operational history -- the guard counts rows, not net balance, so
@@ -128,7 +128,7 @@ def test_downgrade_blocked_even_when_net_placed_balance_is_zero(test_engine) -> 
 
 
 @pytest.mark.integration
-def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017_state(test_engine) -> None:
+def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017_state(test_engine, alembic_head_restore) -> None:
     """No storage movement history at all: downgrade must succeed, drop
     the storage table/triggers/function, restore the byte-exact CMP-017
     (v2) ledger trigger attachment, remove only the CMP-018-added

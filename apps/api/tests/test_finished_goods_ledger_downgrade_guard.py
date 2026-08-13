@@ -133,7 +133,7 @@ def _replica_update(test_engine, fg_lot_id, column: str, value) -> None:
 
 
 @pytest.mark.integration
-def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_receipt(test_engine) -> None:
+def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_receipt(test_engine, alembic_head_restore) -> None:
     """Downgrade succeeds even while finished_goods_lots/packing_events
     data exists, as long as the receipt is well-formed — the CMP-014
     reconstructible-projection model, not CMP-015's unconditional block.
@@ -188,7 +188,7 @@ def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_
 # --- state 1: finished-goods lot missing its receipt ------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_missing_receipt(test_engine) -> None:
+def test_downgrade_blocked_by_missing_receipt(test_engine, alembic_head_restore) -> None:
     """A finished-goods lot whose receipt was hard-deleted (bypassing the
     append-only trigger via `replica`) must block downgrade — the lot ->
     receipt LEFT JOIN finds no matching row (`r.id IS NULL`)."""
@@ -222,7 +222,7 @@ def test_downgrade_blocked_by_missing_receipt(test_engine) -> None:
 # --- state 2: extra receipt not corresponding to a valid lot ----------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_extra_receipt_without_valid_lot(test_engine) -> None:
+def test_downgrade_blocked_by_extra_receipt_without_valid_lot(test_engine, alembic_head_restore) -> None:
     """A receipt-shaped row whose `finished_goods_lot_id` matches no real
     finished-goods lot at all is invisible to the lot-driven LEFT JOIN
     (there is no lot row to walk it from) and can only be caught by the
@@ -281,7 +281,7 @@ def test_downgrade_blocked_by_extra_receipt_without_valid_lot(test_engine) -> No
 # --- state 3: orphan receipt referencing a missing packing event ------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_orphan_receipt_missing_packing_event(test_engine) -> None:
+def test_downgrade_blocked_by_orphan_receipt_missing_packing_event(test_engine, alembic_head_restore) -> None:
     """A receipt whose `finished_goods_lot_id` names a real lot but whose
     `packing_event_id` does not match that lot's own event is an orphan on
     the event side. It is still visible to the lot-driven LEFT JOIN (its
@@ -313,7 +313,7 @@ def test_downgrade_blocked_by_orphan_receipt_missing_packing_event(test_engine) 
 # --- state 4: duplicate receipt for one lot ----------------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_duplicate_receipt_for_lot(test_engine) -> None:
+def test_downgrade_blocked_by_duplicate_receipt_for_lot(test_engine, alembic_head_restore) -> None:
     """Two receipt rows for the same finished-goods lot is unreachable
     through normal operation: the deterministic-id CHECK ties a receipt's
     id to its lot's id, so a genuine duplicate collides with the primary
@@ -408,7 +408,7 @@ def test_downgrade_blocked_by_duplicate_receipt_for_lot(test_engine) -> None:
 # --- state 5: duplicate receipt for one packing event ------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_duplicate_receipt_for_packing_event(test_engine) -> None:
+def test_downgrade_blocked_by_duplicate_receipt_for_packing_event(test_engine, alembic_head_restore) -> None:
     """Two distinct lots' receipts sharing one packing_event_id (after
     dropping the event-scoped partial unique index) is inherently also a
     packing-event field mismatch for whichever lot does not really own
@@ -469,7 +469,7 @@ def test_downgrade_blocked_by_duplicate_receipt_for_packing_event(test_engine) -
 # --- state 6: deterministic ID mismatch --------------------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine) -> None:
+def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine, alembic_head_restore) -> None:
     """`id` diverging from `finished_goods_lot_id` is unreachable without
     dropping the deterministic-id CHECK first — the same "drop CHECK,
     mutate, restore" discipline the unknown-entry-kind test below uses."""
@@ -550,7 +550,7 @@ _SIMPLE_MISMATCH_CASES = [
 
 @pytest.mark.integration
 @pytest.mark.parametrize("column, mutate", _SIMPLE_MISMATCH_CASES)
-def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate) -> None:
+def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate, alembic_head_restore) -> None:
     """States 7-14: tenant, farm, packing-event, weight, package-count,
     effective-time, recorded-time, and actor mismatches, each proven as an
     independently-run, independently-reported case (not one generic test)
@@ -583,7 +583,7 @@ def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate) -> Non
 # --- state 15: non-null note -------------------------------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_non_null_note(test_engine) -> None:
+def test_downgrade_blocked_by_non_null_note(test_engine, alembic_head_restore) -> None:
     """`note` diverging from NULL is unreachable without dropping the
     note-null CHECK first."""
     scenario = build_committed_scenario(test_engine, lot_a_count=None)
@@ -645,7 +645,7 @@ def test_downgrade_blocked_by_non_null_note(test_engine) -> None:
 # --- state 16: unknown entry kind --------------------------------------------
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
+def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_restore) -> None:
     scenario = build_committed_scenario(test_engine, lot_a_count=None)
     conn = test_engine.connect()
     session = Session(bind=conn)

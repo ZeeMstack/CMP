@@ -83,7 +83,7 @@ def _build_dispatched_scenario(test_engine):
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_dispatch_event(test_engine) -> None:
+def test_downgrade_blocked_by_dispatch_event(test_engine, alembic_head_restore) -> None:
     s = _build_dispatched_scenario(test_engine)
     try:
         with pytest.raises(RuntimeError, match="dispatch_events contains history"):
@@ -94,7 +94,7 @@ def test_downgrade_blocked_by_dispatch_event(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_dispatch_line_only(test_engine) -> None:
+def test_downgrade_blocked_by_dispatch_line_only(test_engine, alembic_head_restore) -> None:
     """The event alone is bypass-deleted (its own line remains, orphaned
     by FK enforcement bypass) — proving the guard's second clause fires
     independently once the first (event) count is zero."""
@@ -117,7 +117,7 @@ def test_downgrade_blocked_by_dispatch_line_only(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_dispatch_issue_only(test_engine) -> None:
+def test_downgrade_blocked_by_dispatch_issue_only(test_engine, alembic_head_restore) -> None:
     """Both the event and its line are bypass-deleted, leaving only the
     orphaned dispatch_issue ledger row — proving the guard's third clause
     fires independently once both the event and line counts are zero."""
@@ -141,7 +141,7 @@ def test_downgrade_blocked_by_dispatch_issue_only(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_unknown_future_kind(test_engine) -> None:
+def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_restore) -> None:
     """An entry_kind this migration does not recognize (neither
     packing_receipt nor dispatch_issue) must block downgrade even though
     no dispatch_events/dispatch_lines/dispatch_issue rows exist at all —
@@ -241,7 +241,7 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(test_engine) -> None:
+def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(test_engine, alembic_head_restore) -> None:
     """A row with entry_kind manipulated back to 'packing_receipt' but a
     still-non-null dispatch_line_id (an internally-inconsistent state,
     unreachable through normal operation) must independently block
@@ -349,7 +349,7 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
 
 
 @pytest.mark.integration
-def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp016_state(test_engine) -> None:
+def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp016_state(test_engine, alembic_head_restore) -> None:
     """No dispatch history at all: downgrade must succeed, drop the
     dispatch tables/triggers, restore the byte-exact original CMP-016
     CHECK bodies and trigger attachment, preserve every existing packing

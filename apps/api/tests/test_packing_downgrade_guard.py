@@ -64,7 +64,7 @@ def _pack_one(scenario, db) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_when_packing_history_exists(test_engine) -> None:
+def test_downgrade_blocked_when_packing_history_exists(test_engine, alembic_head_restore) -> None:
     scenario = build_committed_scenario(test_engine, lot_a_count=None)
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -85,7 +85,7 @@ def test_downgrade_blocked_when_packing_history_exists(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_clean_downgrade_and_reupgrade_restores_original_cmp014_trigger(test_engine) -> None:
+def test_clean_downgrade_and_reupgrade_restores_original_cmp014_trigger(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
 
     with test_engine.connect() as conn:
@@ -144,7 +144,7 @@ def test_clean_downgrade_and_reupgrade_restores_original_cmp014_trigger(test_eng
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_engine) -> None:
+def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_engine, alembic_head_restore) -> None:
     """Direct-SQL defense: even a partially-torn-down packing history (input
     lines and the finished-goods lot removed, leaving only the event and its
     ledger debit — the debit's own composite FK to packing_events means the
