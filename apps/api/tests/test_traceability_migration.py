@@ -36,7 +36,7 @@ def _resolve_head_revision(cfg: Config) -> str:
 
 
 @pytest.mark.integration
-def test_migration_creates_exactly_three_indexes_downgrade_removes_them_reupgrade_restores(test_engine) -> None:
+def test_migration_creates_exactly_three_indexes_downgrade_removes_them_reupgrade_restores(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = build_committed_scenario(test_engine, lot_a_count=None)
     from sqlalchemy.orm import Session

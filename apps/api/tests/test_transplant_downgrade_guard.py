@@ -158,7 +158,7 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
 
 
 @pytest.mark.integration
-def test_migration_downgrade_blocked_when_transplanting_stage_exists_without_transplant_event(test_engine) -> None:
+def test_migration_downgrade_blocked_when_transplanting_stage_exists_without_transplant_event(test_engine, alembic_head_restore) -> None:
     from app.services import crop_service, production_system_service, workflow_service
 
     conn = test_engine.connect()
@@ -221,7 +221,7 @@ def test_migration_downgrade_blocked_when_transplanting_stage_exists_without_tra
 
 
 @pytest.mark.integration
-def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine) -> None:
+def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine, alembic_head_restore) -> None:
     from app.services import (
         carrier_service,
         crop_batch_service,

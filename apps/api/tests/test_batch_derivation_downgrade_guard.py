@@ -105,7 +105,7 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
 
 
 @pytest.mark.integration
-def test_migration_downgrade_blocked_when_split_history_exists(test_engine) -> None:
+def test_migration_downgrade_blocked_when_split_history_exists(test_engine, alembic_head_restore) -> None:
     from app.services import (
         carrier_service,
         crop_service,

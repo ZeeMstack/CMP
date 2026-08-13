@@ -222,7 +222,7 @@ _CMP014_ENTRY_KIND_DEPENDENT_CHECKS = (
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
+def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_restore) -> None:
     """`entry_kind` is protected by a CHECK constraint (plus, since CMP-015,
     two more CHECKs that are kind-conditional), so this branch of CMP-014's
     own downgrade guard is unreachable through any ordinary INSERT/UPDATE
@@ -311,7 +311,7 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_malformed_receipt(test_engine) -> None:
+def test_downgrade_blocked_by_malformed_receipt(test_engine, alembic_head_restore) -> None:
     suffix = uuid.uuid4().hex[:8]
     scenario = _build_harvest(test_engine, suffix=suffix)
     _require_cmp_test(test_engine)

@@ -41,7 +41,7 @@ def _assert_operating_on_cmp_test_database(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_migration_downgrade_then_upgrade_on_test_database(test_engine) -> None:
+def test_migration_downgrade_then_upgrade_on_test_database(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "base")
     command.upgrade(_cfg(), "head")
 
@@ -72,7 +72,7 @@ def test_migration_upgrade_head_matches_dynamically_resolved_alembic_head(test_e
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_classification_trigger_and_function(test_engine) -> None:
+def test_migration_downgrade_removes_classification_trigger_and_function(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "471bdd408a33")
     with test_engine.connect() as conn:
         trigger_exists = conn.execute(
@@ -97,7 +97,7 @@ def test_migration_downgrade_removes_classification_trigger_and_function(test_en
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_engine) -> None:
+def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "3cbaeceee9dc")
     with test_engine.connect() as conn:
         triggers = conn.execute(
@@ -125,7 +125,7 @@ def test_migration_downgrade_removes_asset_carrier_triggers_and_functions(test_e
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_crop_workflow_triggers_and_functions(test_engine) -> None:
+def test_migration_downgrade_removes_crop_workflow_triggers_and_functions(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "8a2c6f1e9d33")
     with test_engine.connect() as conn:
         triggers = conn.execute(
@@ -165,7 +165,7 @@ def test_migration_downgrade_removes_crop_workflow_triggers_and_functions(test_e
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_crop_batch_triggers_functions_and_additive_constraints(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     command.downgrade(_cfg(), "b2f6c9d3e178")
     with test_engine.connect() as conn:
@@ -227,7 +227,7 @@ def test_migration_downgrade_removes_crop_batch_triggers_functions_and_additive_
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_seed_sowing_triggers_functions_and_additive_constraints(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     command.downgrade(_cfg(), "c48f21a6b3d9")
     with test_engine.connect() as conn:
@@ -288,7 +288,7 @@ def test_migration_downgrade_removes_seed_sowing_triggers_functions_and_additive
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_observation_quality_triggers_functions_and_tables(test_engine) -> None:
+def test_migration_downgrade_removes_observation_quality_triggers_functions_and_tables(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "d17a4e2f9c86")
     with test_engine.connect() as conn:
         triggers = conn.execute(
@@ -353,7 +353,7 @@ def test_migration_downgrade_removes_observation_quality_triggers_functions_and_
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine) -> None:
+def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functions(test_engine, alembic_head_restore) -> None:
     command.downgrade(_cfg(), "5f3a9c2d1b44")
     with test_engine.connect() as conn:
         triggers = conn.execute(
@@ -407,7 +407,7 @@ def test_migration_downgrade_removes_occupancy_and_movement_triggers_and_functio
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_transplant_triggers_functions_tables_and_restores_cmp009_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "e29b5c1a7d43")
@@ -540,7 +540,7 @@ def _assert_upgraded_transplant_schema_restored(test_engine) -> None:
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_derivation_triggers_functions_tables_and_restores_cmp011_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "f3a8c2e1b975")
@@ -694,7 +694,7 @@ def _assert_upgraded_derivation_schema_restored(test_engine) -> None:
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_harvest_triggers_functions_tables_and_restores_cmp012_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "a4d92f7c1e6b")
@@ -783,7 +783,7 @@ def _assert_upgraded_harvest_schema_restored(test_engine) -> None:
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_ledger_triggers_functions_table_and_restores_cmp013_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "c7f14b8e29a3")
@@ -902,7 +902,7 @@ def _cleanup_ledger_migration_scenario(test_engine, tenant_id) -> None:
 
 
 @pytest.mark.integration
-def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reupgrade(test_engine) -> None:
+def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reupgrade(test_engine, alembic_head_restore) -> None:
     """Simulates data that already existed under CMP-013 before CMP-014
     ever ran: a harvest event/lot/source-line triple is built directly via
     SQL (mirroring exactly what `harvest_service.record_harvest` produced
@@ -1128,7 +1128,7 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_packing_triggers_functions_tables_and_restores_cmp014_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     """CMP-015's clean downgrade (no packing history) must remove every new
     table/trigger/function it introduced and restore produce_lot_ledger_entries
@@ -1257,7 +1257,7 @@ def _assert_upgraded_packing_schema_restored(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event_reference(test_engine) -> None:
+def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event_reference(test_engine, alembic_head_restore) -> None:
     """Proves CMP-016's upgrade-time backfill validation is a real,
     reachable safety net, not dead code. The backfill's INSERT ... SELECT
     computes every receipt field directly from its lot/event in one pass,
@@ -1351,7 +1351,7 @@ def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_finished_goods_ledger_triggers_functions_and_table(test_engine) -> None:
+def test_migration_downgrade_removes_finished_goods_ledger_triggers_functions_and_table(test_engine, alembic_head_restore) -> None:
     """CMP-016's own downgrade guard follows CMP-014's reconstructible-
     projection model (not CMP-015's unconditional-block model): downgrade
     succeeds even while finished_goods_lots/packing_events data exists,
@@ -1421,7 +1421,7 @@ def test_migration_downgrade_removes_finished_goods_ledger_triggers_functions_an
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_restores_cmp016_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     """CMP-017's own downgrade guard follows CMP-015's unconditional-block
     model (not CMP-016's reconstructible-projection one): dispatch history
@@ -1592,7 +1592,7 @@ def test_migration_downgrade_removes_dispatch_triggers_functions_tables_and_rest
 
 @pytest.mark.integration
 def test_migration_downgrade_removes_storage_triggers_functions_table_and_restores_cmp017_shape(
-    test_engine,
+    test_engine, alembic_head_restore,
 ) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "63d4d7e184e2")
@@ -1708,7 +1708,7 @@ def test_migration_downgrade_removes_storage_triggers_functions_table_and_restor
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_shape(test_engine) -> None:
+def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_shape(test_engine, alembic_head_restore) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "dd8b86a52acf")
     try:
@@ -1764,7 +1764,7 @@ def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_sh
 
 
 @pytest.mark.integration
-def test_migration_downgrade_removes_recall_tables_triggers_and_restores_cmp019_shape(test_engine) -> None:
+def test_migration_downgrade_removes_recall_tables_triggers_and_restores_cmp019_shape(test_engine, alembic_head_restore) -> None:
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), "677fcd22cb3c")
     try:

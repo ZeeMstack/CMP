@@ -56,7 +56,7 @@ def _assert_at_head(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_by_recall_case_history(test_engine) -> None:
+def test_downgrade_blocked_by_recall_case_history(test_engine, alembic_head_restore) -> None:
     tenant_id = None
     try:
         with committed_connection(test_engine) as session:
@@ -76,7 +76,7 @@ def test_downgrade_blocked_by_recall_case_history(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_downgrade_blocked_even_after_case_closed(test_engine) -> None:
+def test_downgrade_blocked_even_after_case_closed(test_engine, alembic_head_restore) -> None:
     """A closed case is still independent compliance history -- closing
     never makes it discardable."""
     tenant_id = None
@@ -104,7 +104,7 @@ def test_downgrade_blocked_even_after_case_closed(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_state(test_engine) -> None:
+def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_state(test_engine, alembic_head_restore) -> None:
     with test_engine.connect() as c:
         packing_v2_before = c.execute(
             text(

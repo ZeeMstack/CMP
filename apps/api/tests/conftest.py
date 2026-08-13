@@ -3,8 +3,9 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db, get_engine
@@ -24,6 +25,46 @@ def _require_test_database_url() -> str:
     return settings.test_database_url
 
 
+def migrations_alembic_config() -> Config:
+    """The one place every test in this suite builds an Alembic `Config`
+    aimed at `cmp_test` -- reused by `alembic_head_restore` and by
+    `scripts/reset_test_database.py`. Individual migration/downgrade-guard
+    test files keep their own local `_cfg()` (needed for other, unrelated
+    per-file constants) -- this is not a forced replacement for those, only
+    the version the shared recovery machinery itself depends on."""
+    cfg = Config(str(API_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", _require_test_database_url())
+    return cfg
+
+
+def resolve_dynamic_alembic_head(cfg: Config | None = None) -> str:
+    """Never hardcode "current head" anywhere in the test suite's recovery
+    machinery -- resolve it from the live Alembic script graph so recovery
+    stays correct as later tickets add revisions on top of whichever one is
+    head today."""
+    return ScriptDirectory.from_config(cfg or migrations_alembic_config()).get_current_head()
+
+
+def assert_cmp_test_database(engine) -> None:
+    """Hard safety guard for any destructive migration/schema operation
+    anywhere in the test suite (downgrade, upgrade, or a full schema
+    reset). Positively verifies the actual connected database's identity
+    by name -- via `SELECT current_database()`, not by trusting
+    TEST_DATABASE_URL's mere textual distinctness from DATABASE_URL (that
+    check lives in `_require_test_database_url` and only guards against
+    misconfiguration, not against a stale/wrong live connection). Refuses
+    to operate against `cmp` or anything else. Every migration-mutating
+    test and helper in this suite must call this — or depend on
+    `alembic_head_restore`, which calls it — before touching schema."""
+    with engine.connect() as conn:
+        current_db = conn.execute(text("SELECT current_database()")).scalar_one()
+    assert current_db == "cmp_test", (
+        f"refusing destructive migration operation against database {current_db!r} -- "
+        "expected exactly 'cmp_test'"
+    )
+
+
 @pytest.fixture(scope="session")
 def test_engine():
     url = _require_test_database_url()
@@ -41,11 +82,78 @@ def test_engine():
 
 @pytest.fixture(scope="session", autouse=True)
 def apply_test_migrations(test_engine):
-    cfg = Config(str(API_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(API_ROOT / "migrations"))
-    cfg.set_main_option("sqlalchemy.url", _require_test_database_url())
+    """Runs once per test session, before any test. Brings cmp_test to
+    head from wherever it currently is -- including a prior session's
+    interrupted migration test that left it at some older-but-structurally-
+    valid revision, which `alembic upgrade head` resolves for free by
+    applying only the missing migrations. This is deliberately NOT a
+    destructive reset: it cannot and does not attempt to repair a
+    genuinely corrupted/partially-applied schema (e.g. a process killed
+    mid-DDL-statement) -- that is a different failure class (see
+    docs/testing/TEST_DATABASE_RELIABILITY.md), and this fixture fails
+    loudly rather than silently limping forward on a schema it can't
+    positively verify."""
+    assert_cmp_test_database(test_engine)
+    cfg = migrations_alembic_config()
     command.upgrade(cfg, "head")
+    expected_head = resolve_dynamic_alembic_head(cfg)
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert current == expected_head, (
+        f"cmp_test is not at Alembic head after startup upgrade: alembic_version is {current!r}, expected "
+        f"{expected_head!r}. cmp_test's schema is likely corrupted (not merely downgraded) and needs manual "
+        "recovery -- see docs/testing/TEST_DATABASE_RELIABILITY.md and scripts/reset_test_database.py."
+    )
     yield
+
+
+def restore_cmp_test_to_head(engine) -> None:
+    """The teardown half of `alembic_head_restore`, factored out as a
+    plain function so it can be exercised directly by
+    `test_migration_test_isolation.py`'s regression proofs without relying
+    on pytest fixture-generator internals. Unconditionally re-upgrades
+    cmp_test to the dynamically-resolved head and verifies the result;
+    raises clearly (never silently) if restoration itself fails."""
+    cfg = migrations_alembic_config()
+    expected_head = resolve_dynamic_alembic_head(cfg)
+    command.upgrade(cfg, "head")
+    with engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+    assert current == expected_head, (
+        f"cmp_test restoration failed: alembic_version is {current!r}, expected dynamically-resolved head "
+        f"{expected_head!r} -- cmp_test may need manual recovery, see "
+        "docs/testing/TEST_DATABASE_RELIABILITY.md and scripts/reset_test_database.py."
+    )
+
+
+@pytest.fixture
+def alembic_head_restore(test_engine):
+    """Depend on this fixture (in addition to `test_engine`) from any test
+    that calls `alembic.command.downgrade` against cmp_test.
+
+    Guarantees cmp_test ends the test at the dynamically-resolved Alembic
+    head, regardless of how the test body is structured internally: test
+    passes, test fails an assertion, the downgrade call itself only
+    partially completes, or an unexpected exception is raised anywhere in
+    the test. Restoration runs during pytest fixture teardown, which pytest
+    always executes even when the test raised -- unlike a per-test
+    try/finally, it does not depend on the test body wrapping its
+    downgrade call in one, so it also covers a downgrade that raises
+    before ever reaching a try block.
+
+    Never suppresses or converts the test's own failure: this fixture does
+    not catch anything the test raises. If restoration itself also fails,
+    that failure is raised separately during teardown and pytest reports
+    it alongside (never instead of) the original test failure.
+
+    Limitation: this only protects against a normal pytest test failure or
+    exception. It cannot run, and therefore cannot help, if the whole
+    process is killed (crash, Ctrl+C, machine sleep) mid-downgrade -- see
+    docs/testing/TEST_DATABASE_RELIABILITY.md for that case and the manual
+    recovery procedure (`scripts/reset_test_database.py`)."""
+    assert_cmp_test_database(test_engine)
+    yield
+    restore_cmp_test_to_head(test_engine)
 
 
 @pytest.fixture
