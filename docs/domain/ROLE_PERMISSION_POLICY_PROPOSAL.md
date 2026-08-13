@@ -6,6 +6,8 @@
 
 **Revision note (AUTHZ-002A.2):** AUTHZ-002A.1 correctly identified `observation.manage` as a P0 granularity problem for `operator`, but inconsistently still showed it granted to `production_supervisor` and `qc_officer` in the *current implementable* matrix. This revision applies the same "does this role need entry, definition, or both?" test to **every** role that touched `observation.manage`, not just `operator`. Result: under the current, unsplit permission, only `head_grower` (and `tenant_admin`) can safely receive it — `production_supervisor` and `qc_officer` are now also marked **BLOCKED** in the current-implementable matrix (§5A, §12). A separate **POST-P0-SPLIT DESIRED** table/matrix is added showing the intended per-role authority once entry and definition are split, which must not be conflated with what can be granted today. See §5A for the full reconciliation.
 
+**Revision note (AUTHZ-002B1) — the permission split described below is now IMPLEMENTED at the code level.** `Permission.OBSERVATION_MANAGE` no longer exists; it has been replaced by `Permission.OBSERVATION_ENTRY_MANAGE` (`observation_entry.manage`) and `Permission.OBSERVATION_DEFINITION_MANAGE` (`observation_definition.manage`) in `app/core/permissions.py`, wired to the correct routes (`POST .../observations` and `POST /observation-definitions` respectively). The catalog is now **42** permissions (was 41), **22** `.manage` permissions (was 21). Every `BLOCKED` marker below that referred specifically to the *software-authority impossibility* of granting `production_supervisor`/`operator`/`qc_officer` entry-only authority is now resolved — that impossibility no longer exists. **This does not mean those roles can use the feature.** `ROLE_PERMISSIONS` was deliberately left untouched by AUTHZ-002B1: every non-admin role, including all five roles this document's approved design would eventually grant an observation permission to, still resolves to the empty set. Activating the approved grants is AUTHZ-002B2's job. Sections below are updated to show the **proposed** policy (now technically grantable) while explicitly marking it **not yet active**; do not read a `GRANT` cell for `production_supervisor`/`operator`/`qc_officer`'s observation permissions as something a real user can do today. See the fully updated §5/§5A and Matrix A/B (§12) for the reconciled detail; the former standalone "POST-P0-SPLIT DESIRED" table has been folded into the main matrices now that the split it described actually exists.
+
 Full architecture/enforcement background: `docs/domain/AUTHORIZATION_MODEL.md`.
 
 ---
@@ -62,8 +64,9 @@ No test anywhere asserts a *behavioral* expectation for any non-admin role beyon
 | `sowing.manage` | Execute a sowing event |
 | `transplant.read` | View transplant events |
 | `transplant.manage` | Execute a transplant (carrier release + reassignment) |
-| `observation.read` | View recorded observations and observation definitions |
-| `observation.manage` | Record an observation **or** create a new observation definition (bundled — see §5A) |
+| `observation.read` | View recorded observations and observation definitions (unified — see AUTHZ-002B1 note below; no security reason found to split this) |
+| `observation_entry.manage` | Record a routine observation (**AUTHZ-002B1**: split from the former unified `observation.manage`) |
+| `observation_definition.manage` | Create/configure an observation definition — master data (**AUTHZ-002B1**: split from the former unified `observation.manage`) |
 | `quality_hold.read` | View quality holds on a batch |
 | `quality_hold.manage` | Place **or** release a quality hold (bundled — current unified policy, see §6) |
 | `harvest.read` | View harvest events / harvested produce lots (incl. ledger/balance) |
@@ -85,7 +88,7 @@ No test anywhere asserts a *behavioral* expectation for any non-admin role beyon
 - **farm_manager** — Site general manager: owns physical/infrastructure setup (farm, location, asset, carrier), full read visibility everywhere, and the senior escalation action (`recall.manage`) plus (in the broader-pilot tier only) dispatch backup authority. Does **not** routinely execute specialist harvest/packing/storage work, does **not** hold agronomic master-data authority, and does **not** administer tenant membership.
 - **head_grower** — Agronomic planning and crop-batch-of-record authority: crop/production-system/workflow master data, observation-definition configuration, crop batch lifecycle (creation, stage transitions, splits/merges), and harvest as the conclusion of the batches they own. Not finance/admin/dispatch/QC-independent authority.
 - **production_supervisor** — Execution oversight of the production floor: the same transactional actions operators perform, plus supervisory-level actions operators should not have unilaterally (crop batch creation/stage transitions, splits/merges). Not master-data configuration (including observation definitions — see §5A), not QC, not post-harvest chain.
-- **operator** — Restricted transactional execution: sowing, transplant, movement, harvest recording — routine, single-purpose commands only. No planning, no configuration, no quality/compliance authority. Observation recording is currently **blocked** — see §5/§5A.
+- **operator** — Restricted transactional execution: sowing, transplant, movement, harvest recording — routine, single-purpose commands only. No planning, no configuration, no quality/compliance authority. Observation recording (`observation_entry.manage`) is proposed for this role and technically grantable as of AUTHZ-002B1, but **not active** until AUTHZ-002B2 — see §5/§5A.
 - **storekeeper** — Input/equipment receiving: currently limited to seed lots (its one genuine function) plus passive context visibility. Not asset/carrier registration (that remains `farm_manager`'s infrastructure authority — see §7).
 - **qc_officer** — Quality authority: observation entry (not definition — see §5A), quality holds (place and release, under the current unified policy), and cross-chain read visibility (production, harvest, packing, storage, dispatch, recall) for root-cause investigation. Not production execution, not master-data configuration, not final recall authority.
 - **packing_supervisor** — Packing execution: `packing.manage`, upstream `harvest.read`, downstream `finished_goods_storage.read`, plus hold/recall/traceability visibility. Not storage or dispatch manage.
@@ -98,11 +101,11 @@ No test anywhere asserts a *behavioral* expectation for any non-admin role beyon
 
 - **tenant_admin (41)** — all.
 - **farm_manager (25 minimum / 26 broader-pilot)** — farm.read/manage, location.read/manage, asset.read/manage, carrier.read/manage, crop.read, production_system.read, workflow.read, crop_batch.read, batch_derivation.read, seed_lot.read, sowing.read, transplant.read, observation.read, quality_hold.read, harvest.read, packing.read, finished_goods_storage.read, dispatch.read, recall.read/manage, traceability.read + `dispatch.manage` (broader-pilot tier only).
-- **head_grower (24)** — farm.read, location.read, asset.read, carrier.read, crop.read/manage, production_system.read/manage, workflow.read/manage, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read, transplant.read, observation.read/manage, quality_hold.read, harvest.read/manage, recall.read, traceability.read.
-- **production_supervisor (23)** — farm.read, location.read, asset.read, carrier.read, crop.read, production_system.read, workflow.read, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read/manage, transplant.read/manage, movement.manage, observation.read (**not** manage — BLOCKED, §5A), quality_hold.read, harvest.read/manage, recall.read, traceability.read.
-- **operator (15)** — farm.read, location.read, asset.read, carrier.read, crop_batch.read, seed_lot.read, sowing.read/manage, transplant.read/manage, movement.manage, observation.read (**not** manage — BLOCKED), quality_hold.read, harvest.read/manage.
+- **head_grower (25 proposed, NOT yet active — see AUTHZ-002B1 note)** — farm.read, location.read, asset.read, carrier.read, crop.read/manage, production_system.read/manage, workflow.read/manage, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read, transplant.read, observation.read, **observation_entry.manage, observation_definition.manage** (both — the split, proposed under AUTHZ-002B2), quality_hold.read, harvest.read/manage, recall.read, traceability.read.
+- **production_supervisor (24 proposed, NOT yet active)** — farm.read, location.read, asset.read, carrier.read, crop.read, production_system.read, workflow.read, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read/manage, transplant.read/manage, movement.manage, observation.read, **observation_entry.manage** (proposed under AUTHZ-002B2 — technically grantable since AUTHZ-002B1, **not** `observation_definition.manage`), quality_hold.read, harvest.read/manage, recall.read, traceability.read.
+- **operator (16 proposed, NOT yet active)** — farm.read, location.read, asset.read, carrier.read, crop_batch.read, seed_lot.read, sowing.read/manage, transplant.read/manage, movement.manage, observation.read, **observation_entry.manage** (proposed under AUTHZ-002B2 — technically grantable since AUTHZ-002B1, **not** `observation_definition.manage`), quality_hold.read, harvest.read/manage.
 - **storekeeper (6)** — farm.read, location.read, asset.read, carrier.read, seed_lot.read/manage.
-- **qc_officer (18)** — farm.read, location.read, asset.read, carrier.read, crop.read, crop_batch.read, seed_lot.read, sowing.read, transplant.read, observation.read (**not** manage — BLOCKED, §5A), quality_hold.read/manage, harvest.read, packing.read, finished_goods_storage.read, dispatch.read, recall.read, traceability.read.
+- **qc_officer (19 proposed, NOT yet active)** — farm.read, location.read, asset.read, carrier.read, crop.read, crop_batch.read, seed_lot.read, sowing.read, transplant.read, observation.read, **observation_entry.manage** (proposed under AUTHZ-002B2 — technically grantable since AUTHZ-002B1, **not** `observation_definition.manage`; see §5A/§4 — a definition grant still can't be safely scoped to "QC-specific" vs. "agronomic"), quality_hold.read/manage, harvest.read, packing.read, finished_goods_storage.read, dispatch.read, recall.read, traceability.read.
 - **packing_supervisor (12)** — farm.read, location.read, asset.read, carrier.read, crop_batch.read, harvest.read, packing.read/manage, finished_goods_storage.read, quality_hold.read, recall.read, traceability.read.
 - **cold_store_supervisor (11)** — farm.read, location.read, asset.read, carrier.read, packing.read, finished_goods_storage.read/manage, dispatch.read, quality_hold.read, recall.read, traceability.read.
 - **dispatch_officer (11)** — farm.read, location.read, asset.read, carrier.read, packing.read, finished_goods_storage.read, dispatch.read/manage, quality_hold.read, recall.read, traceability.read.
@@ -136,7 +139,7 @@ No test anywhere asserts a *behavioral* expectation for any non-admin role beyon
 
 ## 2. All non-admin `*.manage` grants (compact review surface)
 
-All 21 `.manage` permissions × 11 non-admin roles. Only `G` cells shown with justification; every blank cell is a deliberate deny. Reflects the **revised** (post-challenge) grants — see §3 and §7 for what changed and why.
+All 22 `.manage` permissions (21 pre-AUTHZ-002B1; `observation.manage` split into two — see §5A) × 11 non-admin roles. Only `G` cells shown with justification; every blank cell is a deliberate deny. Every `G` in this table is **proposed policy**, not necessarily an active `ROLE_PERMISSIONS` grant — see §0.D and the AUTHZ-002B1 revision note at the top for which roles have zero active permissions today. Reflects the **revised** (post-challenge) grants — see §3 and §7 for what changed and why.
 
 | Permission | FM | HG | PS | OP | SK | QC | AU | PK | CS | DO | RO |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -153,7 +156,8 @@ All 21 `.manage` permissions × 11 non-admin roles. Only `G` cells shown with ju
 | seed_lot.manage | | | | | G — the one genuine input-receiving function this role exists for | | | | | | |
 | sowing.manage | | | G — supervises/executes | G — routine execution of an assigned sowing | | | | | | | |
 | transplant.manage | | | G — supervises/executes | G — routine execution of an assigned transplant | | | | | | | |
-| observation.manage | | G — genuinely needs both entry and definition authority; safe to grant the unsplit permission (see §5A) | **BLOCKED — see §5A** (needs entry only; unsplit grant would over-grant definition authority) | **BLOCKED — see §5** | | **BLOCKED — see §5A** (needs entry only; definitions can't be safely scoped to "QC-specific," see §5A/§4) | | | | | |
+| observation_entry.manage *(AUTHZ-002B1)* | | G — proposed; genuinely needs entry authority (see §5A) | G — proposed; routine floor-level recording (see §5A) | G — proposed; routine execution, now technically grantable since the split (see §5) | | G — proposed; QC's core recording function (see §5A/§6) | | | | | |
+| observation_definition.manage *(AUTHZ-002B1)* | | G — proposed; genuinely needs definition authority (see §5A) | | | | | | | | | |
 | quality_hold.manage | | | | | | G — QC's core function; place/release kept unified per current policy (see §6) | | | | | |
 | harvest.manage | | G — natural conclusion of the batch lifecycle they own | G — supervises/executes | G — routine recording of an assigned harvest | | | | | | | |
 | packing.manage | | | | | | | | G — owns packing execution for their stage | | | |
@@ -183,7 +187,7 @@ Applying "does a normal farm manager need to execute this directly, or merely se
 | workflow.manage | Already DENY | Head Grower's agronomic-configuration domain (unchanged) |
 | crop.manage | Already DENY | Head Grower's domain (unchanged) |
 | production_system.manage | Already DENY | Head Grower's domain (unchanged) |
-| observation.manage | Already DENY | Delegated to Head Grower only (revised, §5A) — Production Supervisor and QC are themselves BLOCKED from it pending the entry/definition split |
+| observation_entry.manage / observation_definition.manage *(split by AUTHZ-002B1)* | Already DENY | Definition delegated to Head Grower only (§5A). Entry is proposed for Production Supervisor and QC too (unlike farm_manager) — but none of it is active for any role until AUTHZ-002B2 |
 | harvest.manage | **REMOVE** | Execution belongs to Head Grower/Production Supervisor/Operator, who are the people physically harvesting |
 | farm.manage / location.manage / asset.manage / carrier.manage | **KEEP** | Not on the ticket's "especially strict" list; infrastructure/site setup is the one area where "farm manager" as a job title clearly implies direct configuration authority |
 
@@ -197,17 +201,17 @@ Minimum viable (25) + `dispatch.manage` (backup/escalation authority for a small
 
 ---
 
-## 4. Challenge: head_grower (24) vs. production_supervisor (23)
+## 4. Challenge: head_grower (25 proposed) vs. production_supervisor (24 proposed)
 
-**AUTHZ-002A.3 mechanical-reconciliation correction**: prior revisions of this section undercounted `head_grower` at 23 and misclassified `recall.read` as production-supervisor-only. Both counts and the shared/unique breakdown below are corrected against Matrix A (§12), the authoritative grid, verified by direct parsing rather than manual counting.
+**AUTHZ-002B1 update**: counts below reflect the *proposed* policy now that the observation permission split (§5A) exists at the code level — neither role's grant is actually active yet (pending AUTHZ-002B2), but both counts shift by the same mechanism: the old single `observation.manage` (counted once, head_grower-only) is replaced by `observation_entry.manage` (now proposed for **both** roles) and `observation_definition.manage` (still head_grower-only). Both roles gain one permission each relative to the AUTHZ-002A.3 figures (24→25 and 23→24) because `production_supervisor` newly gains a proposed `observation_entry.manage` grant that did not previously exist at all (it was BLOCKED, not merely absent).
 
-The raw count is a **misleading proxy for seniority** — permission count ≠ authority weight regardless of the exact numbers. Diffing the two sets (updated per §5A: `production_supervisor` no longer receives `observation.manage`):
+The raw count is a **misleading proxy for seniority** — permission count ≠ authority weight regardless of the exact numbers. Diffing the two proposed sets:
 
-- **Only head_grower has (4)**: `crop.manage`, `production_system.manage`, `workflow.manage`, `observation.manage` — foundational, tenant/farm-wide **master-data/configuration** authority: head_grower literally defines the crop catalog, the stage/transition graph (`workflow.manage`) that `production_supervisor`'s own `crop_batch.manage` (stage transitions) must operate within, and — since AUTHZ-002A.2 (§5A) — what observation types can be recorded at all.
-- **Only production_supervisor has (3)**: `movement.manage`, `sowing.manage`, `transplant.manage` — routine, high-frequency, narrowly-scoped floor-execution commands. (`recall.read` is **not** unique to production_supervisor — corrected below; both roles have it.)
-- **Shared (20)**: farm.read, location.read, asset.read, carrier.read, crop.read, production_system.read, workflow.read, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read, transplant.read, observation.read, quality_hold.read, harvest.read/manage, **recall.read**, traceability.read.
+- **Only head_grower has (4)**: `crop.manage`, `production_system.manage`, `workflow.manage`, `observation_definition.manage` — foundational, tenant/farm-wide **master-data/configuration** authority: head_grower literally defines the crop catalog, the stage/transition graph (`workflow.manage`) that `production_supervisor`'s own `crop_batch.manage` (stage transitions) must operate within, and — uniquely among all roles — what observation types can be recorded at all.
+- **Only production_supervisor has (3)**: `movement.manage`, `sowing.manage`, `transplant.manage` — routine, high-frequency, narrowly-scoped floor-execution commands.
+- **Shared (21)**: farm.read, location.read, asset.read, carrier.read, crop.read, production_system.read, workflow.read, crop_batch.read/manage, batch_derivation.read/manage, seed_lot.read, sowing.read, transplant.read, observation.read, **observation_entry.manage** (newly shared as of AUTHZ-002B1's split — both roles' proposed policy includes it), quality_hold.read, harvest.read/manage, recall.read, traceability.read.
 
-**Net: head_grower = 4(only) + 20(shared) = 24. production_supervisor = 3(only) + 20(shared) = 23.** Head Grower now leads Production Supervisor by exactly one permission — not tied, not inverted, and consistent with (rather than merely not contradicting) the intended seniority ordering. The qualitative hierarchy argument below holds independently of the exact count and would hold regardless of which way this correction landed — permission count was never the right lens, but it's worth getting right regardless.
+**Net: head_grower = 4(only) + 21(shared) = 25. production_supervisor = 3(only) + 21(shared) = 24.** Head Grower still leads Production Supervisor by exactly one permission, unchanged from the AUTHZ-002A.3 conclusion — the split added one permission to each role's proposed set symmetrically, so the gap and the underlying hierarchy argument are both unaffected. The qualitative hierarchy argument below holds independently of the exact count.
 
 **Pilot-team practicality note**: `TenantMembership` enforces exactly one active role per `(tenant_id, user_id)` (`ux_tenant_memberships_active_tenant_user`, a partial unique index on `status='active'`) — a single person **cannot** simultaneously hold both `head_grower` and `production_supervisor` in the same tenant. For a very small pilot team where one person covers both functions, assign whichever role that person's day-to-day work more closely matches (likely `production_supervisor`, since it's execution-heavy) rather than attempting to force premature separation; this is a staffing/assignment choice, not a permission-model defect.
 
@@ -215,11 +219,11 @@ No inversion requires fixing — the hierarchy is real, just not count-shaped.
 
 ---
 
-## 5. Challenge: operator (15 grants)
+## 5. Challenge: operator (16 grants proposed — the split unblocked one, see §5A)
 
 **READ (11)**: farm.read, location.read, asset.read, carrier.read, crop_batch.read, seed_lot.read, sowing.read, transplant.read, observation.read, quality_hold.read, harvest.read.
 
-**MANAGE (4)**: sowing.manage, transplant.manage, movement.manage, harvest.manage.
+**MANAGE (5, proposed — 4 active today)**: sowing.manage, transplant.manage, movement.manage, harvest.manage (all active-eligible, unaffected by this section), **observation_entry.manage (proposed only — not yet active, pending AUTHZ-002B2)**.
 
 Per-permission check — "routine execution only, or does it also expose configuration/master-data authority?" — traced against the actual router endpoints each permission gates:
 
@@ -229,67 +233,70 @@ Per-permission check — "routine execution only, or does it also expose configu
 | transplant.manage | `POST .../transplants` only | No — single execution action | **SAFE, GRANT** |
 | movement.manage | `POST /farms/{farm_id}/movements` only | No — single execution action | **SAFE, GRANT** |
 | harvest.manage | `POST .../harvests` only | No — single execution action | **SAFE, GRANT** |
-| observation.manage *(not currently granted)* | `POST .../observations` **and** `POST /observation-definitions` | **Yes** — the same permission that lets an operator record a routine germination check also lets them create a new observation *definition* (configuration/master data) | **UNSAFE — see below** |
+| observation_entry.manage *(AUTHZ-002B1 — proposed, not yet active)* | `POST .../observations` only | No — split from the former unified `observation.manage`; this permission alone no longer reaches `POST /observation-definitions` | **SAFE, GRANT (proposed)** |
+| observation_definition.manage *(AUTHZ-002B1)* | `POST /observation-definitions` only | n/a — operator was never proposed to receive this | **Correctly DENY — not this role's domain (§4/§11)** |
 
-**`observation.manage` is explicitly marked BLOCKED for `operator` in both proposed matrices (§12), not merely denied.** Per instruction, this is not compensated with SOP alone — SOP is an acceptable *interim* stopgap only for low-frequency, low-blast-radius risks (see §6's treatment of `quality_hold.manage`); denying an operator the ability to record any observation at all is a **P0 software-authority problem**, not a policy choice, because the underlying permission cannot be granted safely at any scope smaller than "also let this operator define new observation types." The fix is a permission split (`observation.manage` → routine recording + `observation_definition.manage` → configuration), not a workaround. Until that split ships, `operator`'s observation-recording function is **BLOCKED**, and this should be communicated to pilot operations as a known limitation, not silently absorbed into "someone else does it."
+**AUTHZ-002B1 resolved the software-authority impossibility this section originally found.** `observation.manage`'s bundling of routine recording with observation-*definition* creation made it impossible to safely grant `operator` any part of it — that impossibility no longer exists: `observation_entry.manage` reaches only the recording endpoint. **This is a permission-model resolution, not an active grant.** `ROLE_PERMISSIONS` still maps `operator` to the empty set (AUTHZ-002B1 deliberately does not activate any non-admin grant — that is AUTHZ-002B2's job); until then, `operator` still cannot record an observation in practice, for a purely sequencing reason now, not a security-impossibility reason. Do not conflate "technically resolved" with "usable today."
 
 The other 4 manage grants remain confirmed safe and unchanged.
 
 ---
 
-## 5A. observation.manage reconciliation (AUTHZ-002A.2)
+## 5A. Observation entry/definition split — reconciliation (AUTHZ-002A.2 design; AUTHZ-002B1 implemented the permission model)
 
-AUTHZ-002A.1 blocked `operator` correctly but stopped short of applying the same test to every other role that touched `observation.manage`. Reconciled here consistently.
+AUTHZ-002A.1 blocked `operator` correctly but stopped short of applying the same test to every other role that touched `observation.manage`; AUTHZ-002A.2 reconciled that inconsistently-applied test across every role. **AUTHZ-002B1 has now implemented the permission split this section always described as the fix** — `Permission.OBSERVATION_MANAGE` no longer exists in `app/core/permissions.py`; `Permission.OBSERVATION_ENTRY_MANAGE` and `Permission.OBSERVATION_DEFINITION_MANAGE` exist in its place, wired to the correct routes. The analysis and target policy below are unchanged in substance from AUTHZ-002A.2 — only their status changes, from "design intent, not yet implementable" to "implemented at the permission-model level, proposed but not yet active as a real grant."
 
 ### A. Every role previously receiving observation.manage, and the entry/definition test
 
-| Role | 1. Needs routine ENTRY? | 2. Needs DEFINITION/configuration authority? | 3/4. Verdict on current (unsplit) `observation.manage` |
+| Role | 1. Needs routine ENTRY? | 2. Needs DEFINITION/configuration authority? | 3/4. Verdict — proposed grant now that the split exists (AUTHZ-002B1); **not yet active**, pending AUTHZ-002B2 |
 |---|---|---|---|
-| `head_grower` | Yes — occasional expert-level agronomic assessments | **Yes** — head_grower is the agronomic protocol owner; deciding what gets measured for a crop/production system (e.g. adding an EC/pH check, defining a new leaf-color score) is core planning authority, not an accident of the permission model | **Needs both — current unsplit permission remains justified.** Not over-granting; this is the one role for which the bundle reflects genuine, deliberate authority. |
-| `production_supervisor` | Yes — routine floor-level observation recording is core to execution oversight | **No** — PS was already established (§4) as execution-oversight, explicitly *not* master-data configuration; defining new observation types is head_grower's domain | **Needs entry only. Current unsplit permission must NOT be granted before the split — BLOCKED**, same reasoning as `operator`. This corrects an inconsistency in AUTHZ-002A.1. |
-| `qc_officer` | Yes — QC's core function | **No, and cannot be safely granted even if desired** — see §4 below: CMP's `ObservationDefinition` model has no field distinguishing an "agronomic" definition from a "QC-specific" one, so granting QC definition authority would let QC redefine *any* observation type tenant-wide, including agronomic ones outside QC's mandate | **Needs entry only. Current unsplit permission must NOT be granted before the split — BLOCKED.** This corrects the second inconsistency in AUTHZ-002A.1 (QC was previously granted the unsplit permission on the reasoning that "QC should define what gets observed" — too broad; QC needs to *use* definitions, not *own* the tenant-wide definition catalog). |
-| `operator` | Yes — routine floor execution | No | **Needs entry only. BLOCKED** (unchanged from AUTHZ-002A.1). |
-| `farm_manager` | No — oversight via `observation.read` is sufficient | No | Already correctly denied in every prior revision — see §7 below. |
-| `tenant_admin`, all other roles | n/a | n/a | `tenant_admin` unaffected (superuser). No other role was ever proposed to receive `observation.manage`. |
+| `head_grower` | Yes — occasional expert-level agronomic assessments | **Yes** — head_grower is the agronomic protocol owner; deciding what gets measured for a crop/production system (e.g. adding an EC/pH check, defining a new leaf-color score) is core planning authority, not an accident of the permission model | **Proposed: both `observation_entry.manage` and `observation_definition.manage`.** Not over-granting; this is the one role for which holding both reflects genuine, deliberate authority. |
+| `production_supervisor` | Yes — routine floor-level observation recording is core to execution oversight | **No** — PS was already established (§4) as execution-oversight, explicitly *not* master-data configuration; defining new observation types is head_grower's domain | **Proposed: `observation_entry.manage` only.** The split resolves the AUTHZ-002A.1 inconsistency that had granted this role the old unified permission — PS was never meant to hold definition authority. |
+| `qc_officer` | Yes — QC's core function | **No, and cannot be safely scoped even if desired** — see §4 below: CMP's `ObservationDefinition` model has no field distinguishing an "agronomic" definition from a "QC-specific" one, so granting QC definition authority would let QC redefine *any* observation type tenant-wide, including agronomic ones outside QC's mandate | **Proposed: `observation_entry.manage` only.** The unresolved scoping limitation (§B below) means QC does not get `observation_definition.manage` even now that a split exists — the split fixed the entry/definition *bundling* problem, not the separate "can't scope a definition to QC's purpose" problem. |
+| `operator` | Yes — routine floor execution | No | **Proposed: `observation_entry.manage` only.** |
+| `farm_manager` | No — oversight via `observation.read` is sufficient | No | Correctly denied both, unchanged across every revision — see §7 below. |
+| `tenant_admin`, all other roles | n/a | n/a | `tenant_admin` unaffected (superuser, automatically holds both new permissions). No other role was ever proposed to receive either. |
 
-**Consequence**: under the *current, unsplit* permission, `observation.manage` can only safely go to `head_grower` and `tenant_admin`. `production_supervisor`, `operator`, and `qc_officer` — three of the roles that most need to record observations day-to-day — are all **BLOCKED**. This is a materially more severe finding than AUTHZ-002A.1 reported (which only blocked `operator`), and is reflected in the revised Matrix A (§12) and the P0 list (§8/§13).
+**Consequence**: the split is real and correctly wired (AUTHZ-002B1), but `ROLE_PERMISSIONS` grants nothing to any non-admin role yet. `production_supervisor`, `operator`, and `qc_officer` are no longer *blocked by the permission model* from recording observations — they are simply *not yet granted* the now-existing `observation_entry.manage`, pending AUTHZ-002B2's implementation of this section's proposed policy. This is the P0 finding's technical resolution (§15/§13); staff cannot use the capability until B2 activates it.
 
-### B. Target post-split authority (design intent only — no `Permission` enum names chosen)
+### B. Proposed post-split authority (AUTHZ-002B1: these are real `Permission` values now — see §0.B)
 
-Conceptually distinguish **OBSERVATION ENTRY** (recording a value against an existing definition) from **OBSERVATION DEFINITION** (creating/configuring what can be recorded):
+Conceptually distinguish **OBSERVATION ENTRY** (recording a value against an existing definition — `Permission.OBSERVATION_ENTRY_MANAGE`) from **OBSERVATION DEFINITION** (creating/configuring what can be recorded — `Permission.OBSERVATION_DEFINITION_MANAGE`):
 
 | Role | ENTRY | DEFINITION | Notes |
 |---|---|---|---|
-| tenant_admin | GRANT | GRANT | Superuser, unaffected |
+| tenant_admin | GRANT (active) | GRANT (active) | Superuser, automatic — already true today |
 | farm_manager | DENY | DENY | Oversight via `observation.read` only — see §7; not granted configuration authority merely for seniority |
-| head_grower | GRANT | GRANT | Genuine dual need — see §6 below |
-| production_supervisor | GRANT | DENY | Execution oversight, not configuration — see §5 above |
-| operator | GRANT | DENY | Routine execution only |
+| head_grower | GRANT (proposed) | GRANT (proposed) | Genuine dual need — see §6 below |
+| production_supervisor | GRANT (proposed) | DENY | Execution oversight, not configuration — see §5 above |
+| operator | GRANT (proposed) | DENY | Routine execution only |
 | storekeeper | DENY | DENY | Outside this role's domain entirely |
-| qc_officer | GRANT | **DENY** | See §4 below — the ambiguous case; DENY is the recommended resolution, not a straightforward yes/no |
+| qc_officer | GRANT (proposed) | **DENY** | See §4 below — the ambiguous case; DENY is the recommended resolution, not a straightforward yes/no |
 | auditor | DENY | DENY | Read-only role (`observation.read` unaffected) |
 | packing_supervisor | DENY | DENY | Outside this role's domain |
 | cold_store_supervisor | DENY | DENY | Outside this role's domain |
 | dispatch_officer | DENY | DENY | Outside this role's domain |
 | read_only | DENY | DENY | Read-only role (`observation.read` unaffected) |
 
-**Ambiguous case — qc_officer's DEFINITION authority**: QC plausibly wants to define QC-specific inspection criteria (e.g. a defect-scoring checklist). The current data model cannot express "QC may define QC-purpose observation types but not agronomic ones" — `ObservationDefinition` has no category/purpose field (fields are `code`, `name`, `description`, `value_type`, `unit`, `target_scope`, `min_value`/`max_value`, `status` only; confirmed by reading `app/models/observation_definition.py` directly). Two honest options, neither implemented here: (a) deny QC definition authority entirely and route QC's definition *requests* through `head_grower`/`tenant_admin` (recommended default — keeps a single, coherent owner of the definition catalog and avoids QC silently gaining reach over agronomic metrics), or (b) add a category/purpose field to `ObservationDefinition` first, enabling a genuinely scoped `observation_definition.manage` split later. This document does not resolve which; it flags the limitation rather than pretending the authority is cleanly separable today.
+Every "(proposed)" cell above requires AUTHZ-002B2 to become an active grant in `ROLE_PERMISSIONS`; only the two "(active)" `tenant_admin` cells reflect real, current behavior.
 
-### C. Section-by-section decisions requested by the ticket
+**Ambiguous case — qc_officer's DEFINITION authority**: QC plausibly wants to define QC-specific inspection criteria (e.g. a defect-scoring checklist). The current data model cannot express "QC may define QC-purpose observation types but not agronomic ones" — `ObservationDefinition` has no category/purpose field (fields are `code`, `name`, `description`, `value_type`, `unit`, `target_scope`, `min_value`/`max_value`, `status` only; confirmed by reading `app/models/observation_definition.py` directly). Two honest options, neither implemented here: (a) deny QC definition authority entirely and route QC's definition *requests* through `head_grower`/`tenant_admin` (recommended default — keeps a single, coherent owner of the definition catalog and avoids QC silently gaining reach over agronomic metrics), or (b) add a category/purpose field to `ObservationDefinition` first, enabling a genuinely scoped, separately-permissioned QC-definition capability later. This document does not resolve which; it flags the limitation rather than pretending the authority is cleanly separable today. **This is unaffected by AUTHZ-002B1** — the entry/definition split does not by itself solve the QC-vs-agronomic scoping problem, which is a different, still-open limitation.
 
-**§4 — QC**: QC should **not** manage observation definitions. QC needs ENTRY only. The system cannot distinguish QC-purpose from agronomic definitions, so granting QC definition authority is not "QC configuring its own inspection criteria" in isolation — it's QC gaining reach over the *entire* tenant-wide definition catalog, including agronomic metrics that are head_grower's domain. Flagged as a genuine current-model limitation (§B above), not solved by over-granting.
+### C. Section-by-section decisions requested by the original challenge ticket
 
-**§5 — production_supervisor**: Does not need definition authority — confirmed via the same "execution oversight, not master-data configuration" principle already established for this role in §4 (the earlier, role-hierarchy section) and §11 (master-data table). Current `observation.manage` must be **BLOCKED** pending the split, consistent with `operator`.
+**§4 — QC**: QC should **not** manage observation definitions. QC needs ENTRY only. The system cannot distinguish QC-purpose from agronomic definitions, so granting QC definition authority is not "QC configuring its own inspection criteria" in isolation — it's QC gaining reach over the *entire* tenant-wide definition catalog, including agronomic metrics that are head_grower's domain. Flagged as a genuine current-model limitation (§B above), not solved by over-granting, and not resolved by AUTHZ-002B1's split (which fixed a different problem — see §B).
 
-**§6 — head_grower**: Legitimately needs both. Head_grower is the sole role in this design whose planning mandate genuinely spans deciding *what* gets measured (definition) and personally recording expert-level agronomic assessments (entry). Because head_grower is also the role this document already concentrates all other agronomic master-data authority in (`crop.manage`, `production_system.manage`, `workflow.manage` — §4, §11), keeping definition authority with the same role avoids fragmenting "who owns the agronomic rulebook" across multiple people. Current unsplit `observation.manage` **remains safe and justified for head_grower**, and is the one role where this document does not recommend blocking it.
+**§5 — production_supervisor**: Does not need definition authority — confirmed via the same "execution oversight, not master-data configuration" principle already established for this role in §4 (the earlier, role-hierarchy section) and §11 (master-data table). Proposed grant: `observation_entry.manage` only, once AUTHZ-002B2 activates it.
 
-**§7 — farm_manager**: Farm Manager needs `observation.read` only, not `observation.manage` in any form (neither half). This was already the design in every prior revision (farm_manager was never granted `observation.manage`) — reaffirmed here explicitly rather than assumed: a farm manager's oversight need is fully satisfied by visibility into what's been observed; deciding what gets measured is head_grower's agronomic authority, and recording routine observations is production_supervisor's/operator's/QC's execution-level work. Seniority alone is not a reason to grant configuration authority — consistent with the same reasoning already applied to `workflow.manage`/`crop.manage`/`production_system.manage` in §3.
+**§6 — head_grower**: Legitimately needs both. Head_grower is the sole role in this design whose planning mandate genuinely spans deciding *what* gets measured (definition) and personally recording expert-level agronomic assessments (entry). Because head_grower is also the role this document already concentrates all other agronomic master-data authority in (`crop.manage`, `production_system.manage`, `workflow.manage` — §4, §11), keeping definition authority with the same role avoids fragmenting "who owns the agronomic rulebook" across multiple people. Proposed grant: both `observation_entry.manage` and `observation_definition.manage`, once AUTHZ-002B2 activates them — the one role for which this document does not recommend withholding either half.
+
+**§7 — farm_manager**: Farm Manager needs `observation.read` only, not either new `.manage` permission. This was already the design in every prior revision (farm_manager was never granted `observation.manage`, and gains neither of its replacements) — reaffirmed here explicitly rather than assumed: a farm manager's oversight need is fully satisfied by visibility into what's been observed; deciding what gets measured is head_grower's agronomic authority, and recording routine observations is production_supervisor's/operator's/QC's execution-level work. Seniority alone is not a reason to grant configuration authority — consistent with the same reasoning already applied to `workflow.manage`/`crop.manage`/`production_system.manage` in §3.
 
 ---
 
 ## 6. Challenge: qc_officer
 
-Full grant list (19, unchanged from AUTHZ-002A): farm.read, location.read, asset.read, carrier.read, crop.read, crop_batch.read, seed_lot.read, sowing.read, transplant.read, observation.read/manage, quality_hold.read/manage, harvest.read, packing.read, finished_goods_storage.read, dispatch.read, recall.read, traceability.read.
+Full proposed grant list (19 — see §5A/§0.D; not yet active pending AUTHZ-002B2): farm.read, location.read, asset.read, carrier.read, crop.read, crop_batch.read, seed_lot.read, sowing.read, transplant.read, observation.read, **observation_entry.manage** (proposed, AUTHZ-002B1), quality_hold.read/manage, harvest.read, packing.read, finished_goods_storage.read, dispatch.read, recall.read, traceability.read.
 
 Explicit answers:
 
@@ -301,7 +308,7 @@ Explicit answers:
 | harvest.manage | **DENY** | QC gets `harvest.read` only |
 | dispatch.manage | **DENY** | QC gets `dispatch.read` only |
 
-Confirms the stated principle ("QC may inspect broadly, but should not automatically execute unrelated production/logistics work") holds throughout — QC's only `.manage` grant in the **current, implementable** matrix is `quality_hold.manage`. **Correction from AUTHZ-002A.1**: that revision also granted QC the current, unsplit `observation.manage` on the reasoning that QC should both record and define quality-relevant observations. Re-examined in §5A: QC genuinely needs observation *entry*, but not tenant-wide observation *definition* authority — CMP's `ObservationDefinition` model cannot scope a definition to "QC-specific" versus "agronomic," so granting QC the unsplit permission would let QC redefine any observation type in the system, not just its own. QC's `observation.manage` is now **BLOCKED** in the current-implementable matrix, same as `operator` and `production_supervisor` — see §5A for the full reconciliation.
+Confirms the stated principle ("QC may inspect broadly, but should not automatically execute unrelated production/logistics work") holds throughout — QC's proposed `.manage` grants are `quality_hold.manage` and, as of AUTHZ-002B1, `observation_entry.manage` only. **History**: AUTHZ-002A.1 granted QC the then-current, unsplit `observation.manage` on the reasoning that QC should both record and define quality-relevant observations. AUTHZ-002A.2 re-examined this: QC genuinely needs observation *entry*, but not tenant-wide observation *definition* authority — CMP's `ObservationDefinition` model cannot scope a definition to "QC-specific" versus "agronomic," so granting QC definition authority would let QC redefine any observation type in the system, not just its own (unchanged limitation — see §5A.B). AUTHZ-002B1 has since implemented the entry/definition split QC's case originally motivated: QC's proposed grant is now precisely `observation_entry.manage`, with `observation_definition.manage` correctly withheld — not "BLOCKED" any more (that was a software-authority impossibility that no longer exists), simply "not proposed" for the definition half, and "proposed but not yet active" for the entry half pending AUTHZ-002B2.
 
 **Is pilot SOP enough for `quality_hold.manage`'s place/release bundling?** **Yes, for Pilot V1 specifically**, for a qualitatively different reason than `operator`/`observation.manage`: a quality hold is internally-scoped and fully reversible (it never leaves the farm, never reaches a customer), and the truly catastrophic action (`recall.manage`) is *not* delegated to QC at all — containing the worst case to a single lot/batch-level hold. This is a low-frequency, low-blast-radius, reversible risk, unlike the operator/observation gap (a high-frequency, zero-risk, purely usability-blocking gap). SOP (a documented peer/supervisor conversation before the same officer both places and releases) is an acceptable *interim* mitigation here. Still flagged **P1** — required before an external paid customer.
 
@@ -379,18 +386,52 @@ The 9 permissions warranting the closest scrutiny (farm/location/asset/carrier/c
 | production_system.manage | | G | | | | | | |
 | workflow.manage | | G | | | | | | |
 | seed_lot.manage | | | | | G | | | |
-| observation.manage | | G | **BLOCKED** | **BLOCKED** | | **BLOCKED** | | |
+| observation_definition.manage | | G (proposed) | | | | | | |
+| observation_entry.manage *(see note)* | | | | | | | | |
 
-**Confirmed, revised per §5A**: no routine floor role (`operator`, `packing_supervisor`, `cold_store_supervisor`, `dispatch_officer`) and no pure-visibility role (`auditor`, `read_only`) touches *any* of these nine permissions. Master-data/configuration authority under the *current, implementable* permission set is concentrated in exactly three roles (`farm_manager` for infrastructure, `head_grower` for agronomic catalog/workflow/observation-definition, `storekeeper` for seed-lot intake). `production_supervisor` and `qc_officer` do **not** get `observation.manage` today — both are BLOCKED pending the entry/definition split (§5A), since neither genuinely needs definition authority and the current permission cannot be granted for entry alone. Routine operational personnel cannot casually change farm configuration under this design, and — as of this revision — no role gains configuration authority merely to work around the coarse permission either.
+`observation_entry.manage` is **not** in this table's scope (it is OPERATIONAL, not master data — see the full classification below) and is listed only to make explicit that it was formerly part of the same row as `observation_definition.manage` before AUTHZ-002B1's split; it does not belong in a "master data" scrutiny list at all now that the split has separated it out.
+
+**Confirmed, revised per AUTHZ-002B1**: no routine floor role (`operator`, `packing_supervisor`, `cold_store_supervisor`, `dispatch_officer`) and no pure-visibility role (`auditor`, `read_only`) touches *any* of these master-data permissions. Master-data/configuration authority is concentrated in exactly three roles (`farm_manager` for infrastructure, `head_grower` for agronomic catalog/workflow/observation-definition, `storekeeper` for seed-lot intake) — all proposed grants, none active yet outside `farm_manager`'s and `head_grower`'s permissions already covered elsewhere. `production_supervisor` and `qc_officer` get `observation_entry.manage` (proposed) but correctly never get `observation_definition.manage` — the split (§5A) resolved the prior all-or-nothing bundling without changing who should hold configuration authority. Routine operational personnel cannot casually change farm configuration under this design, and no role gains configuration authority merely to work around a coarse permission — the split exists specifically so that stops being necessary.
+
+### Full manage-permission classification (all 22, post-split)
+
+Requested by AUTHZ-002B1 §14: classify every `.manage` permission as MASTER DATA, OPERATIONAL, CONTROL/QUALITY, or ADMINISTRATION. This supersedes the single, internally-mixed `observation.manage` classification that existed before the split.
+
+| Permission | Classification |
+|---|---|
+| farm.manage | MASTER DATA |
+| location.manage | MASTER DATA |
+| asset.manage | MASTER DATA |
+| carrier.manage | OPERATIONAL (input) |
+| movement.manage | OPERATIONAL |
+| crop.manage | MASTER DATA |
+| production_system.manage | MASTER DATA |
+| workflow.manage | MASTER DATA |
+| crop_batch.manage | OPERATIONAL (mixed — creation is planning-adjacent, transition is routine execution) |
+| batch_derivation.manage | OPERATIONAL |
+| seed_lot.manage | OPERATIONAL (input) |
+| sowing.manage | OPERATIONAL |
+| transplant.manage | OPERATIONAL |
+| **observation_entry.manage** | **OPERATIONAL / QUALITY ENTRY** (AUTHZ-002B1 — routine data capture, no configuration authority) |
+| **observation_definition.manage** | **MASTER DATA** (AUTHZ-002B1 — defines what can be recorded tenant-wide; immutable-once-created semantic fields, enforced by a DB trigger, reinforce that this is master data, not a transaction) |
+| quality_hold.manage | CONTROL/QUALITY |
+| harvest.manage | OPERATIONAL |
+| packing.manage | OPERATIONAL |
+| finished_goods_storage.manage | OPERATIONAL |
+| dispatch.manage | OPERATIONAL, elevated CONTROL characteristics |
+| recall.manage | CONTROL/QUALITY |
+| tenant.members.manage | ADMINISTRATION |
+
+The former single `observation.manage` row was necessarily classified as an internally-mixed OPERATIONAL/CONTROL hybrid (it was the sharpest example of that problem in the whole catalog — see the pre-AUTHZ-002B1 revisions of this document). That classification is now retired: the two successor permissions each have one clean, unambiguous classification, matching the goal stated in the ticket that motivated this split.
 
 ---
 
-## 12. Matrices (proposal only — not implemented)
+## 12. Matrices (proposal only — NOT active as real `ROLE_PERMISSIONS` grants)
 
-Two distinctions matter here, not one: (a) Imperial Pilot vs. External Commercial V1, and (b) **CURRENT IMPLEMENTABLE** (what can actually be granted using today's unsplit permissions) vs. **POST-P0-SPLIT DESIRED** (the target authority once entry/definition are split — §5A.B). Matrix A and Matrix B below are both CURRENT IMPLEMENTABLE. The POST-P0-SPLIT DESIRED table follows separately and must not be read as grantable today.
+Two distinctions matter here, not one: (a) Imperial Pilot vs. External Commercial V1, and (b) **PROPOSED** (this document's recommended policy — every `G` in the matrices below) vs. **ACTIVE** (what `ROLE_PERMISSIONS` actually grants today, in code, right now). As of AUTHZ-002B1, the entire permission catalog needed to implement this proposal exists (including the observation entry/definition split), but **zero non-admin role has any active grant** — `tenant_admin` is the only role with anything active. The former separate "CURRENT IMPLEMENTABLE" vs. "POST-P0-SPLIT DESIRED" distinction from AUTHZ-002A.2 is retired: it existed only because the observation split didn't exist yet as real permissions, forcing a separate, explicitly-not-grantable table. That's no longer true — the split is implemented, so its proposed grants now live directly in Matrix A/B below like every other permission's proposed grants, with the standard caveat that *no* non-admin proposed grant in this document is active until its own implementation ticket runs (AUTHZ-002B2 for the observation permissions specifically).
 
-### MATRIX A — Imperial Pilot (CURRENT IMPLEMENTABLE)
-One active farm, small trusted team, SOP compensation acceptable where explicitly justified (§6 only, for `quality_hold.manage` — never for the `observation.manage` gap, per §5/§5A).
+### MATRIX A — Imperial Pilot (proposed policy; only `tenant_admin` is active today)
+One active farm, small trusted team, SOP compensation acceptable where explicitly justified (§6 only, for `quality_hold.manage`).
 
 | Permission | TA | FM | HG | PS | OP | SK | QC | PK | CS | DO | AU | RO |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -420,7 +461,8 @@ One active farm, small trusted team, SOP compensation acceptable where explicitl
 | transplant.read | G | G | G | G | G | – | G | – | – | – | G | G |
 | transplant.manage | G | – | – | G | G | – | – | – | – | – | – | – |
 | observation.read | G | G | G | G | G | – | G | – | – | – | G | G |
-| observation.manage | G | – | G | **BLOCKED** | **BLOCKED** | – | **BLOCKED** | – | – | – | – | – |
+| observation_entry.manage | G | – | G | G | G | – | G | – | – | – | – | – |
+| observation_definition.manage | G | – | G | – | – | – | – | – | – | – | – | – |
 | quality_hold.read | G | G | G | G | G | – | G | G | G | G | G | G |
 | quality_hold.manage | G | – | – | – | – | – | G | – | – | – | – | – |
 | harvest.read | G | G | G | G | G | – | G | G | – | – | G | G |
@@ -436,9 +478,9 @@ One active farm, small trusted team, SOP compensation acceptable where explicitl
 | traceability.read | G | G | G | G | – | – | G | G | G | G | G | G |
 | tenant.members.manage | G | – | – | – | – | – | – | – | – | – | – | – |
 
-`*` = `farm_manager`'s `dispatch.manage` is the "broader pilot" tier grant (§3.B); use the "minimum viable" tier (§3.A, remove this one cell) for a more conservative pilot posture. `production_supervisor`/`operator`/`qc_officer`'s `observation.manage` cells are marked **BLOCKED**, not denied — see §5/§5A; these are known, communicated software-authority gaps, not policy choices. Only `head_grower` and `tenant_admin` can safely record observations under the current unsplit permission.
+`*` = `farm_manager`'s `dispatch.manage` is the "broader pilot" tier grant (§3.B); use the "minimum viable" tier (§3.A, remove this one cell) for a more conservative pilot posture. `production_supervisor`/`operator`/`qc_officer`'s `observation_entry.manage` cells are real proposed `G`s as of AUTHZ-002B1 (no longer BLOCKED — that was a software-authority impossibility that no longer exists) but are **not active** in `ROLE_PERMISSIONS` until AUTHZ-002B2 implements this proposal, exactly like every other non-`tenant_admin` `G` in this matrix.
 
-Grant totals (mechanically verified against this matrix, AUTHZ-002A.3): TA 41, FM 26 (broader tier) / 25 (minimum tier), **HG 24** (corrected — see §4), PS 23, OP 15, SK 6, QC 18, PK 12, CS 11, DO 11, AU 20, RO 20.
+Grant totals (mechanically verified against this matrix, AUTHZ-002B1): TA **42**, FM 26 (broader tier) / 25 (minimum tier), **HG 25** (was 24 — gains `observation_definition.manage` in addition to the renamed entry permission), **PS 24** (was 23 — no longer BLOCKED from `observation_entry.manage`), **OP 16** (was 15 — no longer BLOCKED), SK 6, **QC 19** (was 18 — no longer BLOCKED), PK 12, CS 11, DO 11, AU 20, RO 20.
 
 ### MATRIX B — External Commercial V1
 Multi-user, potentially multi-farm customer; stronger segregation; fewer manual controls accepted.
@@ -447,35 +489,12 @@ Identical to Matrix A **except**:
 - `farm_manager` uses the **minimum viable** tier (25) — `dispatch.manage` removed; an external farm_manager does not get open-ended backup authority over the highest-stakes non-recall action by default.
 - `farm_manager`'s `recall.manage` is retained but **conditionally flagged**: do not onboard with this grant live until the recall open/close split (§13, P1) has shipped, or restrict to `tenant_admin`-only for that customer in the meantime (§10.B).
 - `qc_officer`'s `quality_hold.manage` is retained but **flagged P1**: the place/release split should ship at or shortly after external launch — SOP alone (acceptable for the pilot's trusted small team, §6) is a weaker control for an external customer.
-- `operator` role is **not recommended for external commercial rollout** until the `observation.manage` split ships — for the pilot, blocking one function is tolerable; for a customer paying for the product, a role that cannot perform a core, obvious floor task (recording an observation) is a product-quality problem, not just a security nicety. The same applies to `production_supervisor` and `qc_officer`'s now-also-BLOCKED observation-recording ability (§5A) — under the current permission model, only `head_grower`/`tenant_admin` can record any observation at all, which is not a credible posture for an external commercial launch.
+- `operator`, `production_supervisor`, and `qc_officer`'s proposed `observation_entry.manage` grant is **not recommended to activate for external commercial rollout** until AUTHZ-002B2 actually ships it as a real grant — the permission-model blocker is resolved (AUTHZ-002B1), but for a customer paying for the product, a role that still cannot perform a core, obvious floor task (recording an observation) because the grant was never activated is a product-quality problem, not just a security nicety.
 - `storekeeper`'s narrow scope (§7) becomes a **P1** gap rather than an acceptable pilot limitation — an external paying customer is more likely to expect real input/store tracking as a baseline feature.
 - **Multi-farm caveat (§1)**: this matrix assumes either a single-farm customer or that farm-scoped role assignment has been implemented. For a genuinely multi-farm external customer without that, granting any operational role to an individual gives them that authority across **every** farm in the tenant, not just their assigned site. This is a **P0** blocker for that customer segment specifically (§1, §13) — not solved by this permission matrix, and not safe to paper over with role choice alone. The available interim mitigation is provisioning one CMP tenant per farm for that customer (CMP is already multi-tenant), accepted explicitly, not silently.
 - `auditor` vs `read_only` remains identical (§9); flagged as a discoverability question a compliance-conscious paying customer may explicitly ask about, elevating `audit.read` from a "nice to have" toward something worth prioritizing sooner.
 
-Matrix B's BLOCKED cells (revised, §5A): `observation.manage` for `production_supervisor`, `operator`, **and** `qc_officer` — inherited unchanged from Matrix A, since this is a software-authority limitation independent of pilot-vs-external deployment shape. Every other Matrix B reduction from Matrix A is a risk-based recommendation (flagged, conditional, or role-not-recommended), not a hard technical impossibility, and is stated as such rather than dressed up as a blocker it isn't.
-
----
-
-### POST-P0-SPLIT DESIRED — target authority once the entry/definition split ships
-
-**Not implementable today — do not treat any GRANT below as currently available.** This is the design intent §5A.B describes, restated as a matrix slice for the affected permission only, applicable identically to both Matrix A and Matrix B once the split ships:
-
-| Role | OBSERVATION ENTRY (desired) | OBSERVATION DEFINITION (desired) |
-|---|---|---|
-| tenant_admin | GRANT | GRANT |
-| farm_manager | DENY | DENY |
-| head_grower | GRANT | GRANT |
-| production_supervisor | GRANT | DENY |
-| operator | GRANT | DENY |
-| storekeeper | DENY | DENY |
-| qc_officer | GRANT | DENY *(see §5A — ambiguous; DENY is the recommended resolution given the current inability to scope definitions to "QC-specific")* |
-| auditor | DENY | DENY |
-| packing_supervisor | DENY | DENY |
-| cold_store_supervisor | DENY | DENY |
-| dispatch_officer | DENY | DENY |
-| read_only | DENY | DENY |
-
-Once this ships, both matrices' `observation.manage` row is replaced by two rows using this table directly — `production_supervisor`, `operator`, and `qc_officer` move from **BLOCKED** to a real **GRANT** on the entry-only permission, with no change to any other role.
+Matrix B's `observation_entry.manage` cells for `production_supervisor`, `operator`, and `qc_officer` are inherited unchanged from Matrix A as **proposed** grants (same permission-model reality regardless of pilot-vs-external deployment shape) — whether to *activate* them sooner or later for an external customer is the recommendation immediately above, not a difference in what's technically proposed. Every other Matrix B reduction from Matrix A is a risk-based recommendation (flagged, conditional, or role-not-recommended), not a hard technical impossibility, and is stated as such rather than dressed up as a blocker it isn't.
 
 ---
 
@@ -484,7 +503,7 @@ Once this ships, both matrices' `observation.manage` row is replaced by two rows
 | # | Gap | Imperial pilot | Multi-farm Imperial | External SaaS |
 |---|---|---|---|---|
 | 1 | Farm-scoped role assignment (no user/role↔farm restriction exists — §1) | P2 (no impact, single farm) | P1 | **P0** |
-| 2 | `observation.manage` bundles routine entry + definition configuration (§5, §5A) | **P0** — under the current unsplit permission, only `head_grower`/`tenant_admin` can safely record any observation at all; `production_supervisor`, `operator`, and `qc_officer` are all BLOCKED (§5A corrected two of these from AUTHZ-002A.1, which had granted them the unsplit permission inconsistently) | P0 | P0 |
+| 2 | `observation.manage` bundled routine entry + definition configuration (§5, §5A) | **TECHNICALLY RESOLVED at the permission-model level (AUTHZ-002B1)** — `observation_entry.manage`/`observation_definition.manage` now exist and are correctly wired. **Not resolved operationally**: `ROLE_PERMISSIONS` still grants nothing to `production_supervisor`/`operator`/`qc_officer` — activating this document's proposed grants is AUTHZ-002B2's job and remains its own required step, tracked as a normal implementation task rather than a granularity P0 | Same — activation still pending | Same — activation still pending |
 | 3 | `quality_hold.manage` bundles place+release (§6) | P1 (SOP acceptable interim) | P1 | P1 |
 | 4 | `recall.manage` bundles open+close (§10) | P1 (role-restriction mitigates) | P1 | P1 (gates `farm_manager`'s grant in Matrix B) |
 | 5 | No general Input/Store module/permissions (§7) | P1 | P1 | P1 |
@@ -492,7 +511,7 @@ Once this ships, both matrices' `observation.manage` row is replaced by two rows
 | 7 | `crop_batch.manage` bundles creation + stage-transition | P2 | P2 | P2 |
 | 8 | `dispatch.manage` lacks a confirm/dual-control step | P2 | P2 | P2 |
 
-Conservative but practical, per instruction: only #1 (for the external/multi-farm segments only — **P2 for the Imperial single-farm pilot itself**) and #2 (a genuine P0 for every deployment shape, since it blocks `production_supervisor`, `operator`, and `qc_officer` — not just `operator` — from recording any observation at all) are treated as hard P0s for the Imperial pilot. Everything else (#3–#8) is a real, tracked hardening item that does not block the Imperial single-farm pilot as designed in Matrix A. This matches the expected shape: essentially one disciplined P0 (the observation split) for the pilot itself, with the farm-scope gap correctly excluded from the pilot's own P0 list since it has no practical effect on a single-farm deployment.
+**Post-AUTHZ-002B1 status**: the observation-granularity item (#2) — previously the sole disciplined P0 blocking the Imperial pilot — is now technically resolved. What remains before the Imperial pilot can actually use `production_supervisor`/`operator`/`qc_officer` observation recording is a normal implementation step (AUTHZ-002B2 activating this document's already-proposed grants in `ROLE_PERMISSIONS`), not a further design or granularity problem. Item #1 (farm-scoped role assignment) remains correctly excluded from the pilot's own P0 list — P2 for the Imperial single-farm pilot itself, with no practical effect until a second farm or an external multi-farm customer is in scope. Everything else (#3–#8) remains a real, tracked hardening item for external commercialization, unaffected by this ticket.
 
 ---
 
