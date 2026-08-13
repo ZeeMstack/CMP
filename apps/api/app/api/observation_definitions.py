@@ -19,7 +19,7 @@ router = APIRouter(tags=["observation-definitions"])
 def create_observation_definition(
     payload: ObservationDefinitionCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_MANAGE)),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_DEFINITION_MANAGE)),
 ) -> ObservationDefinitionRead:
     try:
         definition = observation_service.register_observation_definition(

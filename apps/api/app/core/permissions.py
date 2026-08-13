@@ -91,8 +91,17 @@ class Permission(StrEnum):
     TRANSPLANT_READ = "transplant.read"
     TRANSPLANT_MANAGE = "transplant.manage"
 
+    # Split (AUTHZ-002B1) from a single OBSERVATION_MANAGE: routine
+    # observation recording and observation-definition configuration are
+    # deliberately different authority levels (recording an observation
+    # against an existing definition vs. defining what can be recorded at
+    # all is master data) -- the prior unified permission made it
+    # impossible to grant one without the other. OBSERVATION_READ remains
+    # unified for both records and definitions; no operational reason was
+    # found to split visibility (see docs/domain/AUTHORIZATION_MODEL.md).
     OBSERVATION_READ = "observation.read"
-    OBSERVATION_MANAGE = "observation.manage"
+    OBSERVATION_ENTRY_MANAGE = "observation_entry.manage"
+    OBSERVATION_DEFINITION_MANAGE = "observation_definition.manage"
 
     QUALITY_HOLD_READ = "quality_hold.read"
     QUALITY_HOLD_MANAGE = "quality_hold.manage"

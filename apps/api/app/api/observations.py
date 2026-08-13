@@ -34,7 +34,7 @@ def record_observation(
     batch_id: uuid.UUID,
     payload: ObservationEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_MANAGE)),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_ENTRY_MANAGE)),
 ) -> ObservationEventRead:
     values = [
         {
