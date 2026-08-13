@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.sowing_event import BatchCarrierAssignmentRead, SowingEventCreate, SowingEventRead
 from app.services import sowing_service
@@ -35,7 +35,7 @@ def sow_batch(
     batch_id: uuid.UUID,
     payload: SowingEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SOWING_MANAGE)),
 ) -> SowingEventRead:
     lines = [
         {

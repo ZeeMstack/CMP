@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.asset import AssetCreate, AssetRead
 from app.schemas.asset_position import AssetPositionRead, AssetPositionsGenerate, AssetPositionTreeNode
@@ -29,7 +29,7 @@ def register_asset(
     farm_id: uuid.UUID,
     payload: AssetCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_MANAGE)),
 ) -> AssetRead:
     try:
         asset = asset_service.register_asset(
@@ -95,7 +95,7 @@ def generate_positions(
     asset_id: uuid.UUID,
     payload: AssetPositionsGenerate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_MANAGE)),
 ) -> list[AssetPositionRead]:
     try:
         created = asset_service.generate_positions(

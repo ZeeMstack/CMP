@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.quality_hold import QualityHoldCreate, QualityHoldRead, QualityHoldReleaseCreate
 from app.services import quality_hold_service
@@ -33,7 +33,7 @@ def place_quality_hold(
     batch_id: uuid.UUID,
     payload: QualityHoldCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.QUALITY_HOLD_MANAGE)),
 ) -> QualityHoldRead:
     try:
         hold = quality_hold_service.place_quality_hold(
@@ -103,7 +103,7 @@ def release_quality_hold(
     hold_id: uuid.UUID,
     payload: QualityHoldReleaseCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.QUALITY_HOLD_MANAGE)),
 ) -> QualityHoldRead:
     try:
         quality_hold_service.release_quality_hold(

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.finished_goods_ledger import FinishedGoodsBalanceRead, FinishedGoodsLedgerEntryRead
 from app.schemas.packing import FinishedGoodsLotRead, PackingEventCreate, PackingEventRead
@@ -36,7 +36,7 @@ def record_packing(
     farm_id: uuid.UUID,
     payload: PackingEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_MANAGE)),
 ) -> PackingEventRead:
     input_lines = [
         {

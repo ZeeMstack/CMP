@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.seed_lot import SeedLotCreate, SeedLotRead
 from app.services import sowing_service
@@ -25,7 +25,7 @@ def register_seed_lot(
     farm_id: uuid.UUID,
     payload: SeedLotCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.SEED_LOT_MANAGE)),
 ) -> SeedLotRead:
     try:
         seed_lot = sowing_service.register_seed_lot(

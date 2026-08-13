@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.transplant_event import TransplantEventCreate, TransplantEventRead
 from app.services import transplant_service
@@ -36,7 +36,7 @@ def record_transplant(
     batch_id: uuid.UUID,
     payload: TransplantEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.TRANSPLANT_MANAGE)),
 ) -> TransplantEventRead:
     source_lines = [
         {

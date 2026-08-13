@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.production_system import ProductionSystemCreate, ProductionSystemRead
 from app.services import production_system_service
@@ -17,7 +17,7 @@ router = APIRouter(tags=["production-systems"])
 def create_production_system(
     payload: ProductionSystemCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.PRODUCTION_SYSTEM_MANAGE)),
 ) -> ProductionSystemRead:
     try:
         production_system = production_system_service.register_production_system(

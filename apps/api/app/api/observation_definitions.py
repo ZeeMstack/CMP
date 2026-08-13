@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth import TenantContext, require_tenant_context
+from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.observation_definition import ObservationDefinitionCreate, ObservationDefinitionRead
 from app.services import observation_service
@@ -19,7 +19,7 @@ router = APIRouter(tags=["observation-definitions"])
 def create_observation_definition(
     payload: ObservationDefinitionCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_tenant_context),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_MANAGE)),
 ) -> ObservationDefinitionRead:
     try:
         definition = observation_service.register_observation_definition(

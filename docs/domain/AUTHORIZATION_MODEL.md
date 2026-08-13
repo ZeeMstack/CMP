@@ -26,53 +26,53 @@ Unknown permission values cannot silently succeed: `Permission` is a closed `Str
 | `farm.read` | `GET /farms/{farm_id}`, `GET /farms` | **Enforced** (AUTHZ-001A technical proof; `GET /farms` added in AUTHZ-001B1) |
 | `farm.manage` | `POST /farms` | **Enforced** (AUTHZ-001A technical proof) |
 | `location.read` | `GET /farms/{farm_id}/locations*` (tree, by id, children, path, occupant, subtree-occupancy) | **Enforced** (AUTHZ-001B1) |
-| `location.manage` | `POST /farms/{farm_id}/locations`, `.../bulk-children` | Planned (AUTHZ-001B2) |
+| `location.manage` | `POST /farms/{farm_id}/locations`, `.../bulk-children` | **Enforced** (AUTHZ-001B2) |
 | `asset.read` | `GET /farms/{farm_id}/assets*` | **Enforced** (AUTHZ-001B1) |
-| `asset.manage` | `POST /farms/{farm_id}/assets`, `.../positions/generate` | Planned (AUTHZ-001B2) |
+| `asset.manage` | `POST /farms/{farm_id}/assets`, `.../positions/generate` | **Enforced** (AUTHZ-001B2) |
 | `carrier.read` | `GET /farms/{farm_id}/carriers*` | **Enforced** (AUTHZ-001B1) |
-| `carrier.manage` | `POST /farms/{farm_id}/carriers`, `.../bulk` | Planned (AUTHZ-001B2) |
-| `movement.manage` | `POST /farms/{farm_id}/movements` (occupant relocation command) | Planned (AUTHZ-001B2) |
+| `carrier.manage` | `POST /farms/{farm_id}/carriers`, `.../bulk` | **Enforced** (AUTHZ-001B2) |
+| `movement.manage` | `POST /farms/{farm_id}/movements` (occupant relocation command) | **Enforced** (AUTHZ-001B2) |
 | `crop.read` | `GET /crops`, `GET /crops/{id}`, `GET /crops/{id}/varieties*` | **Enforced** (AUTHZ-001B1) |
-| `crop.manage` | `POST /crops`, `POST /crops/{id}/varieties` | Planned (AUTHZ-001B2) |
+| `crop.manage` | `POST /crops`, `POST /crops/{id}/varieties` | **Enforced** (AUTHZ-001B2) |
 | `production_system.read` | `GET /production-systems*` | **Enforced** (AUTHZ-001B1) |
-| `production_system.manage` | `POST /production-systems` | Planned (AUTHZ-001B2) |
+| `production_system.manage` | `POST /production-systems` | **Enforced** (AUTHZ-001B2) |
 | `workflow.read` | `GET /workflows*`, `.../versions/{id}` | **Enforced** (AUTHZ-001B1) |
-| `workflow.manage` | `POST /workflows`, `.../versions`, `.../stages`, `.../transitions`, `.../publish` | Planned (AUTHZ-001B2) |
+| `workflow.manage` | `POST /workflows`, `.../versions`, `.../stages`, `.../transitions`, `.../publish` | **Enforced** (AUTHZ-001B2) |
 | `crop_batch.read` | `GET /farms/{farm_id}/crop-batches*` (list, by id, operational-summary/context, current-stage, stage-history, stage-transitions/{id}) | **Enforced** (AUTHZ-001B1) |
-| `crop_batch.manage` | `POST /farms/{farm_id}/crop-batches`, `.../stage-transitions` | Planned (AUTHZ-001B2) |
+| `crop_batch.manage` | `POST /farms/{farm_id}/crop-batches`, `.../stage-transitions` | **Enforced** (AUTHZ-001B2) |
 | `batch_derivation.read` | `GET /farms/{farm_id}/batch-derivations/{id}`, `.../crop-batches/{id}/lineage` | **Enforced** (AUTHZ-001B1) |
-| `batch_derivation.manage` | `POST .../crop-batches/{id}/split`, `POST /farms/{farm_id}/crop-batch-merges` | Planned (AUTHZ-001B2) |
+| `batch_derivation.manage` | `POST .../crop-batches/{id}/split`, `POST /farms/{farm_id}/crop-batch-merges` | **Enforced** (AUTHZ-001B2) |
 | `seed_lot.read` | `GET /farms/{farm_id}/seed-lots*` | **Enforced** (AUTHZ-001B1) |
-| `seed_lot.manage` | `POST /farms/{farm_id}/seed-lots` | Planned (AUTHZ-001B2) |
+| `seed_lot.manage` | `POST /farms/{farm_id}/seed-lots` | **Enforced** (AUTHZ-001B2) |
 | `sowing.read` | `GET .../crop-batches/{id}/sowings*`, `.../carriers*`, `GET /farms/{farm_id}/carriers/{id}/batch-assignment` | **Enforced** (AUTHZ-001B1) |
-| `sowing.manage` | `POST .../crop-batches/{id}/sowings` | Planned (AUTHZ-001B2) |
+| `sowing.manage` | `POST .../crop-batches/{id}/sowings` | **Enforced** (AUTHZ-001B2) |
 | `transplant.read` | `GET .../crop-batches/{id}/transplants*` | **Enforced** (AUTHZ-001B1) |
-| `transplant.manage` | `POST .../crop-batches/{id}/transplants` | Planned (AUTHZ-001B2) |
+| `transplant.manage` | `POST .../crop-batches/{id}/transplants` | **Enforced** (AUTHZ-001B2) |
 | `observation.read` | `GET .../crop-batches/{id}/observations*`, `GET /observation-definitions*` | **Enforced** (AUTHZ-001B1) |
-| `observation.manage` | `POST .../crop-batches/{id}/observations`, `POST /observation-definitions` | Planned (AUTHZ-001B2) |
+| `observation.manage` | `POST .../crop-batches/{id}/observations`, `POST /observation-definitions` | **Enforced** (AUTHZ-001B2) |
 | `quality_hold.read` | `GET .../crop-batches/{id}/quality-holds*` | **Enforced** (AUTHZ-001B1) |
-| `quality_hold.manage` | `POST .../quality-holds`, `.../quality-holds/{id}/release` | Planned (AUTHZ-001B2) |
+| `quality_hold.manage` | `POST .../quality-holds`, `.../quality-holds/{id}/release` | **Enforced** (AUTHZ-001B2) — covers both placing *and* releasing a hold; see "Future hardening" below |
 | `harvest.read` | `GET .../crop-batches/{id}/harvests*`, `GET /farms/{farm_id}/harvested-produce-lots*` (incl. ledger, balance) | **Enforced** (AUTHZ-001B1) |
-| `harvest.manage` | `POST .../crop-batches/{id}/harvests` | Planned (AUTHZ-001B2) |
+| `harvest.manage` | `POST .../crop-batches/{id}/harvests` | **Enforced** (AUTHZ-001B2) |
 | `packing.read` | `GET /farms/{farm_id}/packing-events*`, `GET .../finished-goods-lots*` (incl. ledger, balance) | **Enforced** (AUTHZ-001B1) |
-| `packing.manage` | `POST /farms/{farm_id}/packing-events` | Planned (AUTHZ-001B2) |
+| `packing.manage` | `POST /farms/{farm_id}/packing-events` | **Enforced** (AUTHZ-001B2) |
 | `finished_goods_storage.read` | `GET .../finished-goods-lots/{id}/storage-movements`, `.../placements`, `GET .../locations/{id}/finished-goods-inventory` | **Enforced** (AUTHZ-001B1) |
-| `finished_goods_storage.manage` | `POST /farms/{farm_id}/finished-goods-storage-movements` | Planned (AUTHZ-001B2) |
+| `finished_goods_storage.manage` | `POST /farms/{farm_id}/finished-goods-storage-movements` | **Enforced** (AUTHZ-001B2) |
 | `dispatch.read` | `GET /farms/{farm_id}/dispatches*` | **Enforced** (AUTHZ-001B1) |
-| `dispatch.manage` | `POST /farms/{farm_id}/dispatches` | Planned (AUTHZ-001B2) |
+| `dispatch.manage` | `POST /farms/{farm_id}/dispatches` | **Enforced** (AUTHZ-001B2) |
 | `recall.read` | `GET /farms/{farm_id}/recall-cases*` | **Enforced** (AUTHZ-001B1) |
-| `recall.manage` | `POST /farms/{farm_id}/recall-cases`, `.../recall-cases/{id}/close` | Planned (AUTHZ-001B2) |
+| `recall.manage` | `POST /farms/{farm_id}/recall-cases`, `.../recall-cases/{id}/close` | **Enforced** (AUTHZ-001B2) — covers both opening *and* closing a case; see "Future hardening" below |
 | `traceability.read` | `GET /farms/{farm_id}/traceability/*` (finished-goods-lot trace, crop-batch/produce-lot impact) | **Enforced** (AUTHZ-001B1) |
-| `tenant.members.manage` | `POST /memberships` | Planned (AUTHZ-001B2) |
+| `tenant.members.manage` | `POST /memberships` | **Enforced** (AUTHZ-001B2) |
 
-Not permission-gated by design, unaffected by this ticket or AUTHZ-001B1:
+Not permission-gated by design, unaffected by AUTHZ-001B1 or AUTHZ-001B2:
 
 - `GET /` — inline service-info endpoint (`app.main.root`), no auth at all.
 - `GET /auth/me` — tenant-**un**scoped by definition (its purpose is letting a caller discover which tenants it may select before any tenant context exists); uses `require_authenticated_principal`, not `require_tenant_context`, so no `role_code`/`TenantContext` exists yet at that point.
 - `GET /health`, `GET /ready` — infrastructure probes, no auth at all.
-- `POST /dev/bootstrap/*` — development-only, mounted only when `ENABLE_DEV_AUTH=true` (itself forbidden outside `ENV=development`, see `app.core.dev_auth.check_dev_auth_startup_invariant`); exists specifically to create a tenant's *first* membership before any membership can exist. Has no `GET` endpoint at all today.
+- `POST /dev/bootstrap/tenants`, `POST /dev/bootstrap/users`, `POST /dev/bootstrap/memberships` — development-only, mounted only when `ENABLE_DEV_AUTH=true` (itself forbidden outside `ENV=development`, see `app.core.dev_auth.check_dev_auth_startup_invariant`); exist specifically to create a tenant, a user identity, and a tenant's *first* membership — each strictly before any membership (and therefore any permission) can exist for that tenant. These are the only mutation endpoints exempt from `require_permission`; every other mounted mutation/action route is enforced.
 
-This exemption list is itself enforced, not just documented: `tests/test_authz_read_enforcement_architecture.py::test_exemption_list_is_exact_not_a_superset` asserts every entry still corresponds to a real mounted route, so a stale entry can't silently mask a future gap.
+This exemption list is itself enforced, not just documented: `tests/test_authz_read_enforcement_architecture.py::test_exemption_list_is_exact_not_a_superset` (reads) and `tests/test_authz_mutation_enforcement_architecture.py::test_exemption_list_is_exact_not_a_superset` (mutations) each assert every entry still corresponds to a real mounted route, so a stale entry can't silently mask a future gap.
 
 ## Role policy
 
@@ -85,7 +85,7 @@ This exemption list is itself enforced, not just documented: `tests/test_authz_r
 | any other string (including a future role_code added to `APPROVED_ROLE_CODES` before this policy is updated) | **None** (deny by default) |
 | missing/blank | **None** |
 
-Every role other than `tenant_admin` has real precedent as an authenticatable role in this codebase's fixtures/tests, but **no source or product document defines what any of them may specifically do** (`docs/CMP_MASTER_SPEC.md` §11 lists role *names* only — "typical roles: tenant admin, facility manager, head grower, storekeeper, supervisor, operator, QC, auditor, packing/cold-store/dispatch users, and read-only management" — with no per-role authority beyond "backend permissions and farm access apply to all commands"). Inventing a permission set for any of them would be a product decision, not a foundation-architecture one. They are deliberately left unmapped rather than guessed at, which — via `get_permissions_for_role`'s deny-by-default lookup — grants them zero permissions today. Assigning real permission sets to these roles (most plausibly at least `read_only` → the `*.read` tier, and role-specific `*.manage` grants for the production-floor roles) is deferred to **AUTHZ-001B**, pending an explicit product decision on each role's intended authority.
+Every role other than `tenant_admin` has real precedent as an authenticatable role in this codebase's fixtures/tests, but **no source or product document defines what any of them may specifically do** (`docs/CMP_MASTER_SPEC.md` §11 lists role *names* only — "typical roles: tenant admin, facility manager, head grower, storekeeper, supervisor, operator, QC, auditor, packing/cold-store/dispatch users, and read-only management" — with no per-role authority beyond "backend permissions and farm access apply to all commands"). Inventing a permission set for any of them would be a product decision, not a foundation-architecture one. They are deliberately left unmapped rather than guessed at, which — via `get_permissions_for_role`'s deny-by-default lookup — grants them zero permissions today. This remains true after both AUTHZ-001B1 (read enforcement) and AUTHZ-001B2 (mutation/action enforcement): both tickets rolled out *enforcement* of the existing policy uniformly across every endpoint, not the policy's content. Assigning real permission sets to these roles (most plausibly at least `read_only` → the `*.read` tier, and role-specific `*.manage` grants for the production-floor roles) remains deferred to a future, explicitly-scoped role-policy ticket, pending a product decision on each role's intended authority.
 
 ## Error semantics
 
@@ -118,13 +118,29 @@ Every route continues to compose `require_permission` exactly as `app.core.permi
 
 Structural proof, not a hand-maintained checklist: `tests/test_authz_read_enforcement_architecture.py` walks the live, mounted FastAPI route table (`app.routes[*].dependant`) and fails immediately if any current or future tenant-scoped `GET` endpoint is missing `require_permission`, is gated by a non-`.read` permission, or still depends on bare `require_tenant_context` — there is no endpoint-name list to keep in sync by hand. `tests/test_authz_read_enforcement_http.py` adds representative HTTP-level behavioral coverage (zero-permission-role denial, same-user-different-tenant-role independence, cross-tenant `404`) across a cross-section of domains beyond the original farms proof slice.
 
-**Mutation/action endpoints (create, update-via-command, domain actions) are unaffected by AUTHZ-001B1** — every `POST` endpoint outside the original `POST /farms` proof still uses plain `require_tenant_context`, deferred to **AUTHZ-001B2**.
+**Mutation/action endpoints (create, update-via-command, domain actions) were unaffected by AUTHZ-001B1** — every `POST` endpoint outside the original `POST /farms` proof used plain `require_tenant_context` until **AUTHZ-001B2** (below).
 
-## What AUTHZ-001A / AUTHZ-001B1 deliberately do not do
+## Mutation/action enforcement (AUTHZ-001B2)
 
-- Does not enforce any permission on a mutation/action (`POST`) endpoint beyond the original `POST /farms` technical proof — deferred to AUTHZ-001B2.
-- Does not assign any permission to any role other than `tenant_admin`.
+Every tenant-scoped mutation/action endpoint is now gated by `require_permission(Permission.<domain>_MANAGE)`. CMP's API is, and has always been, append-only: a live route audit confirmed **zero** `PUT`/`PATCH`/`DELETE` endpoints exist anywhere — every mutation is a `POST`, either a simple create or a domain command (movement, stage transition, split/merge, quality-hold place/release, harvest/pack/dispatch, recall open/close). 34 tenant-scoped mutation routes across 20 router files are covered; see the catalog table above for the per-domain route list, all now marked **Enforced (AUTHZ-001B2)**. `POST /farms` (AUTHZ-001A's own technical proof) required no change — it was already `FARM_MANAGE`-gated and is simply one of the now-uniformly-enforced routes, not a special case.
+
+Command/action endpoints are mapped to the domain that owns business authority, not inferred from the HTTP verb: e.g. a movement command is `movement.manage`, a quality-hold release is `quality_hold.manage` (the same permission as placing a hold — see "Future hardening" below), a recall case close is `recall.manage` (the same permission as opening a case). No mutation required inventing a new permission or splitting an existing one; every mutation mapped cleanly to exactly one existing `.manage` `Permission`.
+
+`POST /memberships` (tenant-membership administration) is gated by `tenant.members.manage`, audited specifically for privilege-bootstrap risk: the caller's own membership and permission are fully resolved by `require_permission`/`require_tenant_context` *before* the route body runs, and the membership being created is always for a different `user_id` under the caller's own `tenant_id` — a caller can never grant themselves a tenant they don't already administer.
+
+As with AUTHZ-001B1, every route continues to compose `require_permission` exactly as its own contract describes — no route inspects `role_code`, email, or any Auth0 claim; no route performs its own membership lookup; no service-layer permission check was introduced; no duplicate/bare `require_tenant_context` was left alongside `require_permission` on any route.
+
+Structural proof: `tests/test_authz_mutation_enforcement_architecture.py` walks the live, mounted FastAPI route table and fails immediately if any current or future tenant-scoped mutation/action endpoint (of any HTTP method) is missing `require_permission`, is gated by a non-`.manage` permission, still depends on bare `require_tenant_context`, or if a defined `.manage` permission is never bound to any route. `tests/test_authz_mutation_enforcement_http.py` adds representative HTTP-level behavioral coverage across a cross-section of domains (location, movement, crop, production_system) beyond the farms proof slice: zero-permission-role denial, same-user-different-tenant-role independence, no/inactive-membership denial, cross-tenant `404` for a domain command, and two properties unique to mutations — a denied request produces **zero** domain side effects and **zero** audit-trail writes (verified by explicit before/after state checks, not just the response status code), and authorization is evaluated **before** any idempotency-record lookup: a caller who no longer holds the required permission cannot obtain a cached command result by replaying another caller's `client_command_id`, while an authorized caller's own exact-replay semantics remain unchanged.
+
+### Future hardening: quality-hold and recall segregation of duty
+
+`quality_hold.manage` governs both **placing** and **releasing** a hold; `recall.manage` governs both **opening** and **closing** a recall case. AUTHZ-001A first noted this; AUTHZ-001B2 deliberately did **not** split either permission or add any self-approval restriction (e.g. preventing the same user from placing and releasing the same hold) — no such segregation-of-duty policy is currently approved, and inventing one here would be a product/quality-policy decision, not a foundation-architecture one. If segregation of duty for these two commands is required, it needs its own explicitly-scoped ticket to (a) decide the policy, (b) potentially add `quality_hold.release`/`recall.close` permissions, and (c) decide whether enforcement is a permission split, a same-actor check, or both.
+
+## What AUTHZ-001A / AUTHZ-001B1 / AUTHZ-001B2 deliberately do not do
+
+- Does not assign any permission to any role other than `tenant_admin` — the non-admin role→permission matrix remains entirely undefined (zero permissions for every role but `tenant_admin`), deferred to a future role-policy ticket.
+- Does not split `quality_hold.manage` or `recall.manage` into place/release or open/close, and does not add any self-approval restriction — see "Future hardening" above.
 - Does not add a database permission/role table, a role editor, or any setup/role-management UI.
 - Does not use Auth0 Organizations or Auth0 RBAC for CMP business authorization.
-- Does not change the database schema (no migration in either ticket).
+- Does not change the database schema (no migration in any of these tickets).
 - Does not change frontend behavior (`apps/web` untouched).
