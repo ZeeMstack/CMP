@@ -24,24 +24,241 @@ def _ctx(role_code: str | None) -> TenantContext:
     return TenantContext(tenant_id=uuid.uuid4(), user_id=uuid.uuid4(), role_code=role_code)  # type: ignore[arg-type]
 
 
-# --- Role policy: deny by default -------------------------------------------
+# --- Role policy: Imperial Pilot activation (AUTHZ-002B2) -------------------
+#
+# EXPECTED_ROLE_GRANTS is an INDEPENDENT hand/mechanically-transcribed
+# pin of docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md's Matrix A
+# ("Imperial Pilot", the current-implementable matrix), not a re-import
+# of app.core.permissions.ROLE_PERMISSIONS -- comparing the policy
+# against itself would be tautological and would never catch an
+# accidental production edit. `farm_manager` uses that document's
+# explicit MINIMUM tier (25 permissions, no `dispatch.manage`), not the
+# optional 26-permission "broader pilot" tier.
+
+EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
+    "farm_manager": frozenset({
+        Permission.FARM_READ, Permission.FARM_MANAGE,
+        Permission.LOCATION_READ, Permission.LOCATION_MANAGE,
+        Permission.ASSET_READ, Permission.ASSET_MANAGE,
+        Permission.CARRIER_READ, Permission.CARRIER_MANAGE,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ, Permission.RECALL_MANAGE,
+        Permission.TRACEABILITY_READ,
+    }),
+    "head_grower": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ, Permission.CROP_MANAGE,
+        Permission.PRODUCTION_SYSTEM_READ, Permission.PRODUCTION_SYSTEM_MANAGE,
+        Permission.WORKFLOW_READ, Permission.WORKFLOW_MANAGE,
+        Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE,
+        Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.OBSERVATION_DEFINITION_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "production_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.MOVEMENT_MANAGE,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE,
+        Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ, Permission.SOWING_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "operator": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.MOVEMENT_MANAGE,
+        Permission.CROP_BATCH_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ, Permission.SOWING_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+    }),
+    "storekeeper": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.SEED_LOT_READ, Permission.SEED_LOT_MANAGE,
+    }),
+    "qc_officer": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ, Permission.QUALITY_HOLD_MANAGE,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "packing_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ, Permission.PACKING_MANAGE,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "cold_store_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "dispatch_officer": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "auditor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    "read_only": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+}
+
+_EXPECTED_COUNTS = {
+    "farm_manager": 25, "head_grower": 25, "production_supervisor": 24, "operator": 16,
+    "storekeeper": 6, "qc_officer": 19, "packing_supervisor": 12, "cold_store_supervisor": 11,
+    "dispatch_officer": 11, "auditor": 20, "read_only": 20,
+}
 
 
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
+    assert len(_ALL_PERMISSIONS) == 42
 
 
-@pytest.mark.parametrize("role", sorted(APPROVED_ROLE_CODES - {"tenant_admin"}))
-def test_every_other_approved_role_has_zero_permissions_pending_product_decision(role: str) -> None:
-    """Every `role_code` the database will actually accept
-    (`APPROVED_ROLE_CODES`) other than `tenant_admin` is a real,
-    authenticatable role with no source/doc establishing what it may
-    specifically do -- deliberately denied by default (see
-    docs/AUTHORIZATION_MODEL.md, 'deferred to AUTHZ-001B'). This is a
-    regression guard: granting any of these a permission must be a
-    conscious edit to this test, not a silent side effect."""
-    assert get_permissions_for_role(role) == frozenset()
+def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
+    """The pin itself must cover exactly the 11 non-admin approved roles --
+    catches a role silently missing from EXPECTED_ROLE_GRANTS before it
+    could mask a missing/incorrect exact-set assertion below."""
+    assert set(EXPECTED_ROLE_GRANTS.keys()) == APPROVED_ROLE_CODES - {"tenant_admin"}
+
+
+@pytest.mark.parametrize("role", sorted(EXPECTED_ROLE_GRANTS.keys()))
+def test_role_has_exactly_the_approved_imperial_pilot_permission_set(role: str) -> None:
+    """AUTHZ-002B2: the Imperial Pilot policy is now active. Asserts the
+    EXACT set, not merely a count -- a role gaining or losing any single
+    permission fails this test even if the total count happens to still
+    match. Counts are asserted separately below as a secondary,
+    easier-to-read signal of *what* changed when this fails."""
+    actual = get_permissions_for_role(role)
+    expected = EXPECTED_ROLE_GRANTS[role]
+    assert actual == expected, (
+        f"{role}: missing {sorted(p.value for p in expected - actual)}, "
+        f"unexpected {sorted(p.value for p in actual - expected)}"
+    )
+
+
+@pytest.mark.parametrize("role", sorted(EXPECTED_ROLE_GRANTS.keys()))
+def test_role_permission_count_matches_approved_policy_document(role: str) -> None:
+    assert len(get_permissions_for_role(role)) == _EXPECTED_COUNTS[role]
 
 
 def test_unrecognized_role_code_has_zero_permissions() -> None:
@@ -68,6 +285,105 @@ def test_role_permissions_mapping_has_no_unapproved_role_code_keys() -> None:
     itself would reject -- keeps the policy and the DB CHECK constraint
     from silently diverging in the 'policy is more permissive' direction."""
     assert set(ROLE_PERMISSIONS.keys()) <= APPROVED_ROLE_CODES
+
+
+def test_role_permissions_keys_exactly_equal_approved_role_codes() -> None:
+    """AUTHZ-002B2: stronger than the subset check above -- every one of
+    the 12 APPROVED_ROLE_CODES must now have an explicit policy entry
+    (no role silently left out of the activation), and no extra,
+    unapproved key may appear either."""
+    assert set(ROLE_PERMISSIONS.keys()) == APPROVED_ROLE_CODES
+    assert len(APPROVED_ROLE_CODES) == 12
+
+
+def test_auditor_and_read_only_contain_zero_manage_permissions() -> None:
+    """AUTHZ-002B2 section 8: both are pure-visibility roles by design --
+    neither may hold any mutation authority, regardless of how their read
+    sets evolve."""
+    for role in ("auditor", "read_only"):
+        granted = get_permissions_for_role(role)
+        manage_grants = {p for p in granted if p.value.endswith(".manage")}
+        assert manage_grants == set(), f"{role} unexpectedly holds manage permission(s): {manage_grants}"
+
+
+def test_auditor_and_read_only_are_currently_identical_by_design() -> None:
+    """Not a fabricated difference -- the policy document is explicit that
+    these two roles are technically identical until a future `audit.read`
+    permission exists. This test documents that as an intentional,
+    verified fact rather than an accidental coincidence."""
+    assert get_permissions_for_role("auditor") == get_permissions_for_role("read_only")
+
+
+# --- Sensitive-permission negative tests (AUTHZ-002B2 section 12) -----------
+#
+# EXPECTED_ROLE_GRANTS's exact-set tests above already prove these
+# implicitly (a missing permission can't be present), but the ticket asks
+# for dedicated, explicitly-named negative assertions for the specific
+# sensitive permissions it names -- kept as a separate, traceable block.
+
+
+def test_farm_manager_negative_grants() -> None:
+    granted = get_permissions_for_role("farm_manager")
+    assert Permission.TENANT_MEMBERS_MANAGE not in granted
+    assert Permission.DISPATCH_MANAGE not in granted  # minimum policy: no broader-pilot backup dispatch
+
+
+def test_head_grower_negative_grants() -> None:
+    granted = get_permissions_for_role("head_grower")
+    assert Permission.OBSERVATION_DEFINITION_MANAGE in granted
+    assert Permission.TENANT_MEMBERS_MANAGE not in granted
+
+
+def test_production_supervisor_negative_grants() -> None:
+    granted = get_permissions_for_role("production_supervisor")
+    assert Permission.OBSERVATION_ENTRY_MANAGE in granted
+    assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
+
+
+def test_operator_negative_grants() -> None:
+    granted = get_permissions_for_role("operator")
+    assert Permission.OBSERVATION_ENTRY_MANAGE in granted
+    assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
+
+
+def test_qc_officer_negative_grants() -> None:
+    granted = get_permissions_for_role("qc_officer")
+    assert Permission.OBSERVATION_ENTRY_MANAGE in granted
+    assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
+    assert Permission.RECALL_MANAGE not in granted
+
+
+def test_storekeeper_negative_grants() -> None:
+    granted = get_permissions_for_role("storekeeper")
+    assert Permission.ASSET_MANAGE not in granted
+    assert Permission.CARRIER_MANAGE not in granted
+
+
+def test_packing_supervisor_negative_grants() -> None:
+    granted = get_permissions_for_role("packing_supervisor")
+    assert Permission.FINISHED_GOODS_STORAGE_MANAGE not in granted
+    assert Permission.DISPATCH_MANAGE not in granted
+
+
+def test_cold_store_supervisor_negative_grants() -> None:
+    granted = get_permissions_for_role("cold_store_supervisor")
+    assert Permission.PACKING_MANAGE not in granted
+    assert Permission.DISPATCH_MANAGE not in granted
+
+
+def test_dispatch_officer_negative_grants() -> None:
+    """Matrix A grants dispatch_officer only dispatch.read/manage,
+    finished_goods_storage.read, and packing.read -- no
+    finished_goods_storage.manage or packing.manage."""
+    granted = get_permissions_for_role("dispatch_officer")
+    assert Permission.PACKING_MANAGE not in granted
+    assert Permission.FINISHED_GOODS_STORAGE_MANAGE not in granted
+
+
+def test_tenant_admin_has_all_42() -> None:
+    granted = get_permissions_for_role("tenant_admin")
+    assert len(granted) == 42
+    assert granted == _ALL_PERMISSIONS
 
 
 # --- Immutability (AUTHZ-001A.1) ---------------------------------------------
@@ -139,10 +455,16 @@ def test_has_permission_true_for_a_permission_the_role_is_granted() -> None:
     assert has_permission(_ctx("tenant_admin"), Permission.FARM_MANAGE) is True
 
 
-def test_has_permission_false_for_a_role_with_no_permissions() -> None:
-    assert has_permission(_ctx("operator"), Permission.FARM_READ) is False
+def test_has_permission_false_for_a_permission_the_role_is_not_granted() -> None:
+    """AUTHZ-002B2: `operator` now holds real permissions, so this can no
+    longer use FARM_READ as a negative example -- use a permission the
+    approved policy specifically withholds from each role instead."""
+    assert has_permission(_ctx("operator"), Permission.TENANT_MEMBERS_MANAGE) is False
+    assert has_permission(_ctx("operator"), Permission.OBSERVATION_DEFINITION_MANAGE) is False
     assert has_permission(_ctx("read_only"), Permission.FARM_MANAGE) is False
 
 
 def test_has_permission_false_for_blank_role() -> None:
+    """A blank/missing role_code is still the one true "zero permissions"
+    case now that every approved role_code has real grants."""
     assert has_permission(_ctx(None), Permission.FARM_READ) is False

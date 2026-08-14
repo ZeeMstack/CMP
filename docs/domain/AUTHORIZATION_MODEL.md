@@ -79,14 +79,25 @@ This exemption list is itself enforced, not just documented: `tests/test_authz_r
 
 `app.core.permissions.ROLE_PERMISSIONS` — the single centralized mapping; no route or service compares `role_code` directly (enforced by `tests/test_authz_architecture.py`).
 
-| `role_code` | Permissions granted (AUTHZ-001A) |
-|---|---|
-| `tenant_admin` | **All** currently-defined `Permission` values |
-| `farm_manager`, `head_grower`, `production_supervisor`, `operator`, `storekeeper`, `qc_officer`, `auditor`, `packing_supervisor`, `cold_store_supervisor`, `dispatch_officer`, `read_only` | **None** (deny by default) |
-| any other string (including a future role_code added to `APPROVED_ROLE_CODES` before this policy is updated) | **None** (deny by default) |
-| missing/blank | **None** |
+**AUTHZ-002B2 activated the Imperial Pilot role policy.** Every one of the 12 `APPROVED_ROLE_CODES` now has a real, explicit, non-empty (except where the policy genuinely intends zero mutation authority) grant — this is no longer "all non-admin roles have zero permissions." The source of truth for exactly what each role holds is `docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md`'s Matrix A ("Imperial Pilot"); this table summarizes it, but that document is authoritative if the two ever disagree.
 
-Every role other than `tenant_admin` has real precedent as an authenticatable role in this codebase's fixtures/tests, but **no source or product document defines what any of them may specifically do** (`docs/CMP_MASTER_SPEC.md` §11 lists role *names* only — "typical roles: tenant admin, facility manager, head grower, storekeeper, supervisor, operator, QC, auditor, packing/cold-store/dispatch users, and read-only management" — with no per-role authority beyond "backend permissions and farm access apply to all commands"). Inventing a permission set for any of them would be a product decision, not a foundation-architecture one. They are deliberately left unmapped rather than guessed at, which — via `get_permissions_for_role`'s deny-by-default lookup — grants them zero permissions today. This remains true after both AUTHZ-001B1 (read enforcement) and AUTHZ-001B2 (mutation/action enforcement): both tickets rolled out *enforcement* of the existing policy uniformly across every endpoint, not the policy's content. Assigning real permission sets to these roles (most plausibly at least `read_only` → the `*.read` tier, and role-specific `*.manage` grants for the production-floor roles) remains deferred to a future, explicitly-scoped role-policy ticket, pending a product decision on each role's intended authority.
+| `role_code` | Permission count | Summary |
+|---|---|---|
+| `tenant_admin` | 42 (all) | Superuser |
+| `farm_manager` | 25 (minimum-tier — no `dispatch.manage` backup, no `tenant.members.manage`) | Site infrastructure + full visibility + senior recall escalation |
+| `head_grower` | 25 | Agronomic master data (crop/production-system/workflow/observation-definition) + batch lifecycle |
+| `production_supervisor` | 24 | Floor execution oversight; no master-data configuration |
+| `operator` | 16 | Restricted routine execution only |
+| `storekeeper` | 6 | Seed-lot receiving only — see the policy document's storekeeper limitation |
+| `qc_officer` | 19 | Observation entry, quality-hold place/release, cross-chain read visibility; no recall |
+| `packing_supervisor` | 12 | Packing execution only |
+| `cold_store_supervisor` | 11 | Finished-goods storage execution only |
+| `dispatch_officer` | 11 | Dispatch execution only |
+| `auditor` | 20 (all `*.read`) | Zero mutations — technically identical to `read_only` today (see the policy document's gap list) |
+| `read_only` | 20 (all `*.read`) | Zero mutations |
+| any other string / missing / blank | 0 | Deny by default, unchanged |
+
+Every grant above is mechanically pinned by `tests/test_permissions.py`'s exact-set assertions (`EXPECTED_ROLE_GRANTS`, independently transcribed from the policy document, not re-derived from `ROLE_PERMISSIONS` itself) — a future accidental privilege change to any role fails that test immediately. External-Commercial-V1 hardening items the policy document itself defers (farm-scoped role assignment; quality-hold place/release split; recall open/close split; a general Input/Store module; an `audit.read` permission) are **not** implemented by this activation and remain open, tracked in that document's P1/P2 list.
 
 ## Error semantics
 
