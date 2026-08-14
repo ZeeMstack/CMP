@@ -14,6 +14,7 @@ const tree: LocationTreeNode[] = [
     location_type_id: "type-gh",
     status: "active",
     occupiable: false,
+        capacity: null,
     children: [
       {
         id: "zone-a",
@@ -22,6 +23,7 @@ const tree: LocationTreeNode[] = [
         location_type_id: "type-zone",
         status: "active",
         occupiable: false,
+        capacity: null,
         children: [
           {
             id: "table-1-pos-1",
@@ -30,6 +32,7 @@ const tree: LocationTreeNode[] = [
             location_type_id: "type-position",
             status: "active",
             occupiable: true,
+        capacity: null,
             children: [],
           },
           {
@@ -39,6 +42,7 @@ const tree: LocationTreeNode[] = [
             location_type_id: "type-position",
             status: "active",
             occupiable: true,
+        capacity: null,
             children: [],
           },
         ],
@@ -113,6 +117,22 @@ describe("LocationTree", () => {
               current_stage: { id: "stage-1", code: "GROW", name: "Growing", is_terminal: false, stage_category: "production" },
             },
           },
+          // DOMAIN-FARM-002.1 additive field -- `occupant` stays the
+          // legacy singular view (occupants[0]); this fixture is a
+          // single-occupant (capacity=1) target, so the two agree.
+          occupants: [
+            {
+              kind: "carrier",
+              id: "carrier-1",
+              carrier_code: "PLATE-01",
+              batch: {
+                batch_id: "batch-1",
+                batch_code: "LOT-006",
+                crop: { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" },
+                current_stage: { id: "stage-1", code: "GROW", name: "Growing", is_terminal: false, stage_category: "production" },
+              },
+            },
+          ],
         },
       ],
     });

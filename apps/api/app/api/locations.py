@@ -141,6 +141,7 @@ def get_farm_tree(
             location_type_id=loc.location_type_id,
             status=loc.status,
             occupiable=loc.occupiable,
+            capacity=loc.capacity,
             children=[],
         )
         for loc in flat

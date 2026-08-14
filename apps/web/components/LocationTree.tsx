@@ -114,6 +114,9 @@ function TreeNode({
             identifier next to it -- never repeated with equal emphasis. */}
         <span className="truncate text-sm font-medium text-ink">{node.name}</span>
         {node.code !== node.name && <span className="shrink-0 text-xs text-ink-muted">{node.code}</span>}
+        {node.capacity != null && node.capacity > 1 && (
+          <span className="shrink-0 text-xs text-ink-muted">capacity {node.capacity}</span>
+        )}
         {node.status !== "active" && <StatusBadge label={node.status} tone="closed" />}
         {hasChildren && <AggregateCountLabel aggregate={aggregate} />}
         {isRoot && subtreeQuery.error && (

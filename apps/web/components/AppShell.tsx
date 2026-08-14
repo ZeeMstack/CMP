@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Boxes, LayoutGrid, LogOut, Map, Menu, X } from "lucide-react";
+import { Boxes, LayoutGrid, LogOut, Map, Menu, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -19,6 +19,7 @@ function navItems(farmId: string) {
     { href: `/farms/${farmId}`, label: "Home", icon: LayoutGrid, exact: true },
     { href: `/farms/${farmId}/locations`, label: "Locations", icon: Map, exact: false },
     { href: `/farms/${farmId}/crop-batches`, label: "Batches", icon: Boxes, exact: false },
+    { href: `/farms/${farmId}/farm-setup`, label: "Farm Setup", icon: Wrench, exact: false },
   ];
 }
 

@@ -131,12 +131,11 @@ def _validate_hierarchy(
         raise InvalidLocationHierarchyError(f"{parent_type_id}:{child_type_id}:{governing_classification}")
 
 
-def create_location(
+def _create_location_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
     farm_id: uuid.UUID,
-    actor_user_id: uuid.UUID | None,
     location_type_code: str,
     code: str,
     name: str,
@@ -145,6 +144,13 @@ def create_location(
     occupiable: bool | None,
     capacity: int | None = None,
 ) -> Location:
+    """The validate+insert+flush core of `create_location`, with no commit
+    and no audit event -- reused directly by FARM-SETUP-001's orchestration
+    service so a multi-location setup command can create many locations in
+    one transaction with one commit at the end, instead of each call
+    committing (and thus becoming unrollback-able) independently. Public
+    `create_location` below is a thin wrapper: same behavior as before this
+    ticket, just with its core extracted."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     location_type = _get_location_type_by_code(db, location_type_code)
 
@@ -184,6 +190,35 @@ def create_location(
         if _constraint_name(exc) not in _CODE_UNIQUENESS_CONSTRAINTS:
             raise
         raise DuplicateLocationCodeError(f"{parent_location_id}:{code}") from exc
+    return location
+
+
+def create_location(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    location_type_code: str,
+    code: str,
+    name: str,
+    parent_location_id: uuid.UUID | None,
+    greenhouse_classification: str | None,
+    occupiable: bool | None,
+    capacity: int | None = None,
+) -> Location:
+    location = _create_location_core(
+        db,
+        tenant_id=tenant_id,
+        farm_id=farm_id,
+        location_type_code=location_type_code,
+        code=code,
+        name=name,
+        parent_location_id=parent_location_id,
+        greenhouse_classification=greenhouse_classification,
+        occupiable=occupiable,
+        capacity=capacity,
+    )
 
     append_audit_event(
         db,
@@ -203,13 +238,12 @@ def create_location(
     return location
 
 
-def bulk_generate_children(
+def _bulk_generate_children_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
     farm_id: uuid.UUID,
     parent_id: uuid.UUID,
-    actor_user_id: uuid.UUID | None,
     location_type_code: str,
     code_prefix: str,
     start: int,
@@ -217,7 +251,21 @@ def bulk_generate_children(
     pad_width: int,
     name_template: str | None,
     capacity: int | None = None,
+    occupiable: bool | None = None,
 ) -> list[Location]:
+    """The validate+insert+flush core of `bulk_generate_children`, with no
+    commit and no audit event -- see `_create_location_core`'s docstring
+    for why FARM-SETUP-001 needs this split.
+
+    `occupiable=None` (the pre-existing, unchanged default for every
+    caller before FARM-SETUP-001) uses the location type's own default,
+    exactly as before. FARM-SETUP-001 needs an explicit per-instance
+    override here for the same reason `create_location` already has one:
+    `grow_table.default_occupiable` is `False` (grow_table is a purely
+    structural node until a real instance is deliberately made the
+    occupiable Leafy leaf -- DOMAIN-FARM-001's own documented design),
+    so Farm Setup must be able to pass `occupiable=True` when it
+    bulk-generates real Leafy Tables."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     parent = _get_active_location_in_scope(
         db, tenant_id=tenant_id, farm_id=farm_id, location_id=parent_id
@@ -255,7 +303,7 @@ def bulk_generate_children(
             location_type_id=location_type.id,
             code=code,
             name=name,
-            occupiable=location_type.default_occupiable,
+            occupiable=location_type.default_occupiable if occupiable is None else occupiable,
             capacity=capacity,
         )
         db.add(location)
@@ -268,6 +316,37 @@ def bulk_generate_children(
         if _constraint_name(exc) not in _CODE_UNIQUENESS_CONSTRAINTS:
             raise
         raise DuplicateLocationCodeError(f"{parent_id}:{code_prefix}") from exc
+    return created
+
+
+def bulk_generate_children(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    parent_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    location_type_code: str,
+    code_prefix: str,
+    start: int,
+    end: int,
+    pad_width: int,
+    name_template: str | None,
+    capacity: int | None = None,
+) -> list[Location]:
+    created = _bulk_generate_children_core(
+        db,
+        tenant_id=tenant_id,
+        farm_id=farm_id,
+        parent_id=parent_id,
+        location_type_code=location_type_code,
+        code_prefix=code_prefix,
+        start=start,
+        end=end,
+        pad_width=pad_width,
+        name_template=name_template,
+        capacity=capacity,
+    )
 
     append_audit_event(
         db,

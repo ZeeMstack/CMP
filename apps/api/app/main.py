@@ -7,6 +7,7 @@ from app.api.carriers import router as carriers_router
 from app.api.crop_batches import router as crop_batches_router
 from app.api.crops import router as crops_router
 from app.api.dispatch import router as dispatch_router
+from app.api.farm_setup import router as farm_setup_router
 from app.api.farms import router as farms_router
 from app.api.finished_goods_storage import router as finished_goods_storage_router
 from app.api.traceability import router as traceability_router
@@ -41,6 +42,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(memberships_router)
     api.include_router(farms_router)
     api.include_router(locations_router)
+    api.include_router(farm_setup_router)
     api.include_router(assets_router)
     api.include_router(carriers_router)
     api.include_router(movements_router)

@@ -22,6 +22,10 @@ export type LocationAggregateCount = components["schemas"]["LocationAggregateCou
 export type OccupiedLocation = components["schemas"]["OccupiedLocation"];
 export type LocationOccupant = components["schemas"]["LocationOccupant"];
 export type LocationPathSegment = components["schemas"]["LocationPathSegment"];
+export type GreenhouseOverviewItem = components["schemas"]["GreenhouseOverviewItem"];
+export type GreenhouseSetupCreate = components["schemas"]["GreenhouseSetupCreate"];
+export type GreenhouseSetupResult = components["schemas"]["GreenhouseSetupResult"];
+export type GreenhouseStructureRead = components["schemas"]["GreenhouseStructureRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -56,6 +60,38 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     try {
       const body = (await response.json()) as { detail?: string };
       detail = body.detail;
+    } catch {
+      // response body wasn't JSON; fall back to the generic message for this status
+    }
+    throw errorFromResponse(response.status, detail);
+  }
+  return (await response.json()) as T;
+}
+
+/** FARM-SETUP-001: the one write path this client layer has -- everything
+ * else here is (deliberately) read-only. Mirrors `getJson`'s error/401
+ * handling exactly so a mutation failure is reported through the same
+ * `AppError` machinery every read already uses. */
+async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (cause) {
+    throw errorFromNetworkFailure(cause);
+  }
+  if (response.status === 401) {
+    triggerSessionRecovery(currentReturnToPath());
+  }
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const responseBody = (await response.json()) as { detail?: string };
+      detail = responseBody.detail;
     } catch {
       // response body wasn't JSON; fall back to the generic message for this status
     }
@@ -136,4 +172,26 @@ export function getQualityHolds(
   signal?: AbortSignal,
 ): Promise<QualityHoldRead[]> {
   return getJson<QualityHoldRead[]>(`/farms/${farmId}/crop-batches/${batchId}/quality-holds`, signal);
+}
+
+// --- FARM-SETUP-001 -----------------------------------------------------
+
+export function getGreenhouseSetupOverview(farmId: string, signal?: AbortSignal): Promise<GreenhouseOverviewItem[]> {
+  return getJson<GreenhouseOverviewItem[]>(`/farms/${farmId}/farm-setup/greenhouses`, signal);
+}
+
+export function getGreenhouseStructure(
+  farmId: string,
+  greenhouseId: string,
+  signal?: AbortSignal,
+): Promise<GreenhouseStructureRead> {
+  return getJson<GreenhouseStructureRead>(`/farms/${farmId}/farm-setup/greenhouses/${greenhouseId}`, signal);
+}
+
+export function createGreenhouseSetup(
+  farmId: string,
+  payload: GreenhouseSetupCreate,
+  signal?: AbortSignal,
+): Promise<GreenhouseSetupResult> {
+  return postJson<GreenhouseSetupResult>(`/farms/${farmId}/farm-setup/greenhouses`, payload, signal);
 }

@@ -142,6 +142,10 @@ class LocationTreeNode(BaseModel):
     location_type_id: uuid.UUID
     status: str
     occupiable: bool
+    # FARM-SETUP-001: additive -- lets the existing generic Locations tree
+    # view show a table's/bag position's configured capacity without a
+    # second request per node.
+    capacity: int | None
     children: list["LocationTreeNode"] = []
 
 
