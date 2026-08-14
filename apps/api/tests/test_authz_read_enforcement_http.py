@@ -59,20 +59,26 @@ def test_tenant_admin_can_read_across_representative_domains(client, active_cont
 
 
 @pytest.mark.integration
-def test_zero_permission_role_is_forbidden_across_representative_domains(client, db_session) -> None:
-    """`operator` is a real, DB-approved role with zero granted
-    permissions (see docs/domain/AUTHORIZATION_MODEL.md) -- proves the
-    denial generalizes across domains, not just the AUTHZ-001A farm
-    proof slice."""
-    tenant_id, headers = _membership_headers(db_session, role_code="operator")
+def test_role_lacking_a_specific_read_permission_is_forbidden_across_representative_domains(
+    client, db_session
+) -> None:
+    """AUTHZ-002B2 activated the Imperial Pilot role policy -- every
+    approved role now holds *some* real permissions (including the
+    farm/location/asset/carrier baseline-context reads granted to all 12
+    roles), so no role_code is "zero permissions" anymore. `storekeeper`
+    is the narrowest active role (6 permissions, none of them crop/
+    production-system/workflow/crop-batch domain reads) -- proves the
+    denial generalizes across domains genuinely outside a real role's
+    grant set, not just the AUTHZ-001A farm proof slice."""
+    tenant_id, headers = _membership_headers(db_session, role_code="storekeeper")
     farm = farm_service.create_farm(
         db_session, tenant_id=tenant_id, actor_user_id=None, code="rd-farm", name="RD Farm",
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
 
-    assert client.get(f"/farms/{farm.id}/locations/tree", headers=headers).status_code == 403
     assert client.get(f"/farms/{farm.id}/crop-batches", headers=headers).status_code == 403
-    assert client.get(f"/farms/{farm.id}/assets", headers=headers).status_code == 403
+    assert client.get("/production-systems", headers=headers).status_code == 403
+    assert client.get("/workflows", headers=headers).status_code == 403
     assert client.get("/crops", headers=headers).status_code == 403
 
 
@@ -82,11 +88,13 @@ def test_zero_permission_role_is_forbidden_across_representative_domains(client,
 @pytest.mark.integration
 def test_same_user_different_role_per_tenant_for_a_read_permission(client, db_session) -> None:
     """Extends AUTHZ-001A.1's FARM_MANAGE proof to a read permission on a
-    different domain (location.read): one user, tenant_admin in Tenant A
-    (has LOCATION_READ), read_only in Tenant B (has none) -- selecting
-    Tenant B must still deny, proving the role used is always the ACTIVE
-    membership's role_code for the SELECTED tenant, never a role held
-    elsewhere."""
+    different domain (crop_batch.read): one user, tenant_admin in Tenant A
+    (has CROP_BATCH_READ), storekeeper in Tenant B (does not -- AUTHZ-002B2's
+    narrowest active role) -- selecting Tenant B must still deny, proving
+    the role used is always the ACTIVE membership's role_code for the
+    SELECTED tenant, never a role held elsewhere. (location.read is no
+    longer usable for this proof post-AUTHZ-002B2: it's a baseline-context
+    read every one of the 12 approved roles now holds.)"""
     user = user_service.create_user(
         db_session,
         oidc_issuer="https://issuer.example",
@@ -100,7 +108,7 @@ def test_same_user_different_role_per_tenant_for_a_read_permission(client, db_se
         db_session, tenant_id=tenant_a.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None
     )
     membership_service.add_membership(
-        db_session, tenant_id=tenant_b.id, user_id=user.id, role_code="read_only", actor_user_id=None
+        db_session, tenant_id=tenant_b.id, user_id=user.id, role_code="storekeeper", actor_user_id=None
     )
     farm_a = farm_service.create_farm(
         db_session, tenant_id=tenant_a.id, actor_user_id=None, code="rd-farm-a", name="RD Farm A",
@@ -114,8 +122,8 @@ def test_same_user_different_role_per_tenant_for_a_read_permission(client, db_se
     headers_a = {"X-Dev-Tenant-Id": str(tenant_a.id), "X-Dev-User-Id": str(user.id)}
     headers_b = {"X-Dev-Tenant-Id": str(tenant_b.id), "X-Dev-User-Id": str(user.id)}
 
-    assert client.get(f"/farms/{farm_a.id}/locations/tree", headers=headers_a).status_code == 200
-    assert client.get(f"/farms/{farm_b.id}/locations/tree", headers=headers_b).status_code == 403
+    assert client.get(f"/farms/{farm_a.id}/crop-batches", headers=headers_a).status_code == 200
+    assert client.get(f"/farms/{farm_b.id}/crop-batches", headers=headers_b).status_code == 403
 
 
 # --- inactive/no membership: still fails before permission evaluation -------

@@ -72,14 +72,17 @@ def test_tenant_admin_can_create_and_read_a_farm(client, active_context) -> None
 def test_known_role_with_no_granted_permissions_is_forbidden_from_reading_and_managing(client, db_session) -> None:
     """`operator` is a real, DB-approved role (APPROVED_ROLE_CODES) with
     real precedent elsewhere in this test suite -- not a malformed or
-    unrecognized value -- but AUTHZ-001A deliberately grants it zero
-    permissions (see docs/AUTHORIZATION_MODEL.md). This proves
-    `require_permission` denies a legitimately-authenticated, legitimately
-    tenant-scoped caller whose role simply isn't authorized for this
-    action -- distinct from any authentication failure."""
+    unrecognized value. Since AUTHZ-002B2 activated the Imperial Pilot
+    policy, `operator` genuinely holds FARM_READ (a baseline-context read
+    every one of the 12 approved roles gets) but still lacks CROP_READ and
+    FARM_MANAGE -- this proves `require_permission` denies a legitimately-
+    authenticated, legitimately tenant-scoped caller whose role simply
+    isn't authorized for a *specific* action -- distinct from any
+    authentication failure, and distinct from a role with zero permissions
+    (no such role exists anymore)."""
     _tenant_id, headers = _membership_headers(db_session, role_code="operator")
 
-    read_response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
+    read_response = client.get("/crops", headers=headers)
     assert read_response.status_code == 403
     assert "role" not in read_response.json()["detail"].lower()
     assert "permission" in read_response.json()["detail"].lower() or "action" in read_response.json()["detail"].lower()
@@ -203,10 +206,16 @@ def test_unauthenticated_request_is_401_not_403(client) -> None:
 def test_dev_auth_identity_is_still_subject_to_permission_checks(client, db_session) -> None:
     """Dev-auth bypasses Auth0/OIDC, never CMP's own authorization -- a
     dev-mode caller with a real active membership but no granted
-    permissions must be denied exactly like a real bearer-authenticated
-    caller would be."""
+    *mutation* permissions must be denied exactly like a real
+    bearer-authenticated caller would be. `read_only` holds every `.read`
+    permission (including FARM_READ, since AUTHZ-002B2) but zero `.manage`
+    permissions by design -- `POST /farms` (FARM_MANAGE) is unaffected by
+    that and still proves the same point GET /farms/{id} used to."""
     _tenant_id, headers = _membership_headers(db_session, role_code="read_only")
-    response = client.get(f"/farms/{uuid.uuid4()}", headers=headers)
+    response = client.post(
+        "/farms", headers=headers,
+        json={"code": "authz-ro", "name": "Read Only Farm", "country_code": "AE", "timezone": "Asia/Dubai"},
+    )
     assert response.status_code == 403
 
 

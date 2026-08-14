@@ -239,7 +239,10 @@ def test_permission_denial_creates_zero_domain_side_effects_or_audit_events(
     tenant, farm = scenario["tenant"], scenario["farm"]
     trolley, positions = scenario["trolley"], scenario["positions"]
 
-    zero_permission_headers = _membership_headers(db_session, tenant_id=tenant.id, role_code="operator")
+    # AUTHZ-002B2: `operator` now genuinely holds MOVEMENT_MANAGE (Imperial
+    # Pilot policy activation) -- `read_only` is the role that still
+    # correctly lacks it, used here in its place.
+    zero_permission_headers = _membership_headers(db_session, tenant_id=tenant.id, role_code="read_only")
 
     occupancy_before = movement_service.get_occupancy(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="asset", occupant_id=trolley.id
@@ -337,7 +340,10 @@ def test_authorization_is_evaluated_before_idempotency_replay_lookup(
     assert replay_by_admin.status_code == 201
     assert replay_by_admin.json()["id"] == movement_id
 
-    zero_permission_headers = _membership_headers(db_session, tenant_id=tenant.id, role_code="operator")
+    # AUTHZ-002B2: `operator` now genuinely holds MOVEMENT_MANAGE (Imperial
+    # Pilot policy activation) -- `read_only` is the role that still
+    # correctly lacks it, used here in its place.
+    zero_permission_headers = _membership_headers(db_session, tenant_id=tenant.id, role_code="read_only")
     replay_by_zero_permission = client.post(f"/farms/{farm.id}/movements", json=payload, headers=zero_permission_headers)
     assert replay_by_zero_permission.status_code == 403
     assert "id" not in replay_by_zero_permission.json()

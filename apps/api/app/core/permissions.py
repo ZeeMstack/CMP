@@ -131,22 +131,29 @@ class Permission(StrEnum):
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
-# The one centralized role -> permission policy. `tenant_admin` is the
-# only role whose authority is established by this ticket's own
-# instruction ("tenant_admin has all currently defined CMP tenant
-# permissions"); every other currently-approved `role_code`
-# (`app.models.membership.APPROVED_ROLE_CODES`) -- farm_manager,
-# head_grower, production_supervisor, operator, storekeeper, qc_officer,
-# auditor, packing_supervisor, cold_store_supervisor, dispatch_officer,
-# read_only -- has real precedent in fixtures/tests as an authenticatable
-# role, but NO source or doc establishes what that role specifically may
-# or may not do (confirmed against docs/CMP_MASTER_SPEC.md section 11,
-# which only lists role *names*, not permissions). Inventing a permission
-# set for any of them here would be a product decision this ticket is not
-# authorized to make -- they are deliberately left unmapped, which (via
-# `get_permissions_for_role`'s deny-by-default lookup) grants them zero
-# permissions. This is intentional, not an oversight; see
-# docs/AUTHORIZATION_MODEL.md's "deferred to AUTHZ-001B" section.
+# The one centralized role -> permission policy.
+#
+# AUTHZ-002B2 activates the Imperial Pilot policy designed and
+# progressively challenge-reviewed in AUTHZ-002A/.1/.2 and
+# AUTHZ-002B1, whose single source of truth is Matrix A ("Imperial
+# Pilot") in docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md. Every
+# non-admin grant below was mechanically derived from that document's
+# current-implementable matrix (not re-derived from memory) before
+# this file was edited -- see that document for the full per-permission
+# justification, the master-data/operational/control classification,
+# and the segregation-of-duty analysis behind each inclusion/exclusion.
+# `farm_manager` uses that document's explicit MINIMUM tier (25
+# permissions) for this pilot activation, not the optional 26-permission
+# "broader pilot" tier that additionally includes `dispatch.manage` as
+# backup authority -- that tier is documented but deliberately not
+# activated here.
+#
+# External-commercial-V1 hardening items the policy document itself
+# defers (farm-scoped role assignment; quality-hold place/release
+# split; recall open/close split; a general Input/Store module; an
+# `audit.read` permission distinguishing `auditor` from `read_only`)
+# are NOT implemented by this activation -- see that document's P1/P2
+# gap list, unchanged by this ticket.
 #
 # Immutability (AUTHZ-001A.1): each grant is already a `frozenset`, which
 # has no `.add()`/`.remove()` -- `ROLE_PERMISSIONS["tenant_admin"].add(...)`
@@ -163,6 +170,245 @@ _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 # "casual".
 _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "tenant_admin": _ALL_PERMISSIONS,
+    # Site general manager (MINIMUM tier, 25) -- infrastructure setup,
+    # full read visibility, senior recall escalation authority. Does NOT
+    # get tenant.members.manage (SaaS account admin is tenant_admin-only)
+    # and does NOT get dispatch.manage under this pilot's minimum policy
+    # (the optional broader-pilot backup-dispatch grant is not activated).
+    "farm_manager": frozenset({
+        Permission.FARM_READ, Permission.FARM_MANAGE,
+        Permission.LOCATION_READ, Permission.LOCATION_MANAGE,
+        Permission.ASSET_READ, Permission.ASSET_MANAGE,
+        Permission.CARRIER_READ, Permission.CARRIER_MANAGE,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ, Permission.RECALL_MANAGE,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Agronomic planning/master-data authority (25): crop/production-system
+    # /workflow catalog, observation definitions, crop-batch lifecycle
+    # (creation, stage transitions, splits/merges), harvest as the
+    # conclusion of the batches this role owns. No tenant administration,
+    # no dispatch/packing/storage authority.
+    "head_grower": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ, Permission.CROP_MANAGE,
+        Permission.PRODUCTION_SYSTEM_READ, Permission.PRODUCTION_SYSTEM_MANAGE,
+        Permission.WORKFLOW_READ, Permission.WORKFLOW_MANAGE,
+        Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE,
+        Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.OBSERVATION_DEFINITION_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Production-floor execution oversight (24): the same transactional
+    # commands operators perform, plus supervisory-level authority
+    # operators do not have (batch creation/stage transitions,
+    # splits/merges). No master-data configuration -- in particular no
+    # observation_definition.manage, unlike head_grower.
+    "production_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.MOVEMENT_MANAGE,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE,
+        Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ, Permission.SOWING_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Restricted transactional execution (16): routine, single-purpose
+    # floor commands only -- sowing, transplant, movement, harvest
+    # recording, observation entry. No planning, no configuration, no
+    # quality/compliance authority. observation_definition.manage is
+    # deliberately absent -- entry and definition authority were split
+    # by AUTHZ-002B1 specifically so this role could receive one without
+    # the other.
+    "operator": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.MOVEMENT_MANAGE,
+        Permission.CROP_BATCH_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ, Permission.SOWING_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+    }),
+    # Input/equipment receiving (6) -- intentionally narrow: the only
+    # genuine "input receiving" action the current permission catalog
+    # supports is seed-lot registration. No asset.manage/carrier.manage
+    # (equipment registration remains centralized under farm_manager) --
+    # not withheld to make the role look narrow, but because a general
+    # Input/Store module (nutrients, substrate, consumables) does not
+    # exist yet; see the policy document's storekeeper section.
+    "storekeeper": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.SEED_LOT_READ, Permission.SEED_LOT_MANAGE,
+    }),
+    # Quality authority (19): observation entry (not definition -- cannot
+    # be safely scoped to "QC-specific" vs. agronomic, see the policy
+    # document), quality-hold place/release (still unified -- P1 hardening
+    # item for external commercialization, not split here), and cross-
+    # chain read visibility for root-cause investigation. No recall.manage
+    # -- recall is a management escalation, deliberately kept separate
+    # from the function that detects the underlying quality issue.
+    "qc_officer": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.QUALITY_HOLD_READ, Permission.QUALITY_HOLD_MANAGE,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Packing execution (12): owns its own stage only. Upstream
+    # harvest.read (what's available to pack), downstream
+    # finished_goods_storage.read (visibility once packed) -- never
+    # finished_goods_storage.manage or dispatch.manage; those stay with
+    # cold_store_supervisor/dispatch_officer.
+    "packing_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ, Permission.PACKING_MANAGE,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Finished-goods storage execution (11): owns its own stage only.
+    # Upstream packing.read, downstream dispatch.read -- never
+    # packing.manage or dispatch.manage.
+    "cold_store_supervisor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Dispatch execution (11): owns its own stage only. Upstream
+    # finished_goods_storage.read and packing.read (lot provenance for
+    # shipment documentation) -- never packing.manage or
+    # finished_goods_storage.manage.
+    "dispatch_officer": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Broad compliance/traceability visibility (20) -- every `.read`
+    # permission, zero `.manage`. Technically identical to `read_only`
+    # today: the policy document's intended differentiator (an
+    # `audit.read` permission gating the raw audit-event log) does not
+    # exist yet -- see that document's gap list. Not fabricating a
+    # difference here.
+    "auditor": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
+    # Broad operational visibility (20), zero mutations -- identical set
+    # to `auditor` today, by design (see that role's comment above).
+    "read_only": frozenset({
+        Permission.FARM_READ,
+        Permission.LOCATION_READ,
+        Permission.ASSET_READ,
+        Permission.CARRIER_READ,
+        Permission.CROP_READ,
+        Permission.PRODUCTION_SYSTEM_READ,
+        Permission.WORKFLOW_READ,
+        Permission.CROP_BATCH_READ,
+        Permission.BATCH_DERIVATION_READ,
+        Permission.SEED_LOT_READ,
+        Permission.SOWING_READ,
+        Permission.TRANSPLANT_READ,
+        Permission.OBSERVATION_READ,
+        Permission.QUALITY_HOLD_READ,
+        Permission.HARVEST_READ,
+        Permission.PACKING_READ,
+        Permission.FINISHED_GOODS_STORAGE_READ,
+        Permission.DISPATCH_READ,
+        Permission.RECALL_READ,
+        Permission.TRACEABILITY_READ,
+    }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)
 
