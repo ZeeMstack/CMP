@@ -26,8 +26,23 @@ EXPECTED_CODES = {
     "cold_store",
     "cold_store_position",
     "dispatch_area",
+    # DOMAIN-FARM-001: Nursery-specific types, none of which existed before
+    # this ticket (the authoritative Nursery topology does not reuse the
+    # generic "area"/"grow_table"/"table_position" types for these sections).
+    "seedling_area",
+    "seedling_table",
+    "intersalads",
+    "intersalads_table",
+    "intervines",
+    "intervines_table",
 }
 
+# The generic (classification-agnostic, greenhouse_classification IS NULL)
+# rule set — unchanged from before DOMAIN-FARM-001. These rules still exist
+# in the DB (nothing was deleted), but govern only locations OUTSIDE any
+# classified greenhouse tree (see APPROVED_SCOPED_PAIRS below for what
+# actually governs inside one) — `location_service._validate_hierarchy`
+# never falls back to this set once a governing classification is resolved.
 APPROVED_PAIRS = {
     (None, "greenhouse"),
     (None, "store"),
@@ -56,6 +71,28 @@ APPROVED_PAIRS = {
     ("cold_store", "cold_store_position"),
 }
 
+# DOMAIN-FARM-001: the authoritative, classification-scoped topology — the
+# ONLY rules consulted once a candidate location resolves to inside a
+# classified greenhouse tree. (classification, parent_code, child_code).
+APPROVED_SCOPED_TRIPLES = {
+    ("nursery", "greenhouse", "seeding_station"),
+    ("nursery", "greenhouse", "germination_chamber"),
+    ("nursery", "greenhouse", "seedling_area"),
+    ("nursery", "greenhouse", "intersalads"),
+    ("nursery", "greenhouse", "intervines"),
+    ("nursery", "germination_chamber", "chamber_position"),
+    ("nursery", "seedling_area", "seedling_table"),
+    ("nursery", "intersalads", "intersalads_table"),
+    ("nursery", "intervines", "intervines_table"),
+    ("leafy_greens", "greenhouse", "zone"),
+    ("leafy_greens", "zone", "span"),
+    ("leafy_greens", "span", "grow_table"),
+    ("vines", "greenhouse", "zone"),
+    ("vines", "zone", "span"),
+    ("vines", "span", "grow_gutter"),
+    ("vines", "grow_gutter", "grow_bag_position"),
+}
+
 
 @pytest.mark.integration
 def test_system_location_types_seeded_correctly(db_session) -> None:
@@ -65,16 +102,35 @@ def test_system_location_types_seeded_correctly(db_session) -> None:
 
 @pytest.mark.integration
 def test_all_approved_hierarchy_pairs_are_seeded(db_session) -> None:
+    """The original 25 generic (classification-agnostic) pairs are
+    unmodified by DOMAIN-FARM-001 -- nothing was deleted or rewritten,
+    only new classification-scoped rows were added alongside them."""
     rows = db_session.execute(
         text(
             "SELECT p.code AS parent_code, c.code AS child_code "
             "FROM location_type_hierarchy_rules r "
             "LEFT JOIN location_types p ON p.id = r.parent_type_id "
-            "JOIN location_types c ON c.id = r.child_type_id"
+            "JOIN location_types c ON c.id = r.child_type_id "
+            "WHERE r.greenhouse_classification IS NULL"
         )
     ).mappings().all()
     pairs = {(row["parent_code"], row["child_code"]) for row in rows}
     assert pairs == APPROVED_PAIRS
+
+
+@pytest.mark.integration
+def test_all_approved_classification_scoped_triples_are_seeded(db_session) -> None:
+    rows = db_session.execute(
+        text(
+            "SELECT r.greenhouse_classification AS classification, p.code AS parent_code, c.code AS child_code "
+            "FROM location_type_hierarchy_rules r "
+            "JOIN location_types p ON p.id = r.parent_type_id "
+            "JOIN location_types c ON c.id = r.child_type_id "
+            "WHERE r.greenhouse_classification IS NOT NULL"
+        )
+    ).mappings().all()
+    triples = {(row["classification"], row["parent_code"], row["child_code"]) for row in rows}
+    assert triples == APPROVED_SCOPED_TRIPLES
 
 
 @pytest.mark.integration

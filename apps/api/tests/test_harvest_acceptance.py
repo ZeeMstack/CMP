@@ -113,10 +113,11 @@ def test_harvest_acceptance_flow(client, active_context, db_session) -> None:
     # asset position (kind 'slot'), not a location, per the seeded
     # occupancy-compatibility rules — placing them requires a real trolley
     # asset, which is unrelated setup for a harvest test. Two extra
-    # cultivation-plate carriers (compatible with the location type
-    # `table_position`, per the seeded rules) are created and placed
-    # instead, purely to prove harvest leaves occupancy/movement alone;
-    # they are not part of the harvested batch.
+    # cultivation-plate carriers are created and placed on two sibling Grow
+    # Tables instead (DOMAIN-FARM-001: the authoritative Leafy topology
+    # stops at the Table itself -- there is no further numbered
+    # table_position level under it), purely to prove harvest leaves
+    # occupancy/movement alone; they are not part of the harvested batch.
     greenhouse_resp = client.post(
         f"/farms/{farm_id}/locations", headers=headers,
         json={
@@ -126,24 +127,29 @@ def test_harvest_acceptance_flow(client, active_context, db_session) -> None:
     )
     assert greenhouse_resp.status_code == 201, greenhouse_resp.text
     greenhouse = greenhouse_resp.json()
+    zone_resp = client.post(
+        f"/farms/{farm_id}/locations", headers=headers,
+        json={"location_type_code": "zone", "code": f"zone-{suffix}", "name": "Zone", "parent_location_id": greenhouse["id"]},
+    )
+    assert zone_resp.status_code == 201, zone_resp.text
+    zone = zone_resp.json()
     span_resp = client.post(
         f"/farms/{farm_id}/locations", headers=headers,
-        json={"location_type_code": "span", "code": f"span-{suffix}", "name": "Span", "parent_location_id": greenhouse["id"]},
+        json={"location_type_code": "span", "code": f"span-{suffix}", "name": "Span", "parent_location_id": zone["id"]},
     )
     assert span_resp.status_code == 201, span_resp.text
     span = span_resp.json()
-    table_resp = client.post(
-        f"/farms/{farm_id}/locations", headers=headers,
-        json={"location_type_code": "grow_table", "code": f"table-{suffix}", "name": "Table", "parent_location_id": span["id"]},
-    )
-    assert table_resp.status_code == 201, table_resp.text
-    table_id = table_resp.json()["id"]
-    positions_resp = client.post(
-        f"/farms/{farm_id}/locations/{table_id}/bulk-children", headers=headers,
-        json={"location_type_code": "table_position", "code_prefix": f"TP{suffix}", "start": 1, "end": 2, "pad_width": 2},
-    )
-    assert positions_resp.status_code == 201, positions_resp.text
-    position_ids = [p["id"] for p in positions_resp.json()]
+    position_ids = []
+    for n in range(2):
+        table_resp = client.post(
+            f"/farms/{farm_id}/locations", headers=headers,
+            json={
+                "location_type_code": "grow_table", "code": f"table-{suffix}-{n}", "name": f"Table {n}",
+                "parent_location_id": span["id"], "occupiable": True,
+            },
+        )
+        assert table_resp.status_code == 201, table_resp.text
+        position_ids.append(table_resp.json()["id"])
 
     occupancy_carriers = [
         client.post(

@@ -98,11 +98,13 @@ def build_direct_placement_workflow_scaffold(db: Session, tenant, user, farm, *,
     `build_transplant_workflow_scaffold` (SEEDING requires `seed_tray`,
     which the seeded `occupancy_compatibility_rules` only ever permit at an
     asset `slot` position, never directly at a location), this scaffold's
-    SEEDING stage requires `cultivation_plate` -- the carrier type actually
-    compatible with `table_position` locations -- so `sow_batch`'s own
-    carrier can be placed directly, with no intervening transplant. Used by
-    placement-facts and subtree-occupancy tests, which care about location
-    occupancy, not sowing-origin/transplant semantics."""
+    SEEDING stage requires `cultivation_plate` -- a carrier type directly
+    compatible with a location (`table_position`, and, since DOMAIN-FARM-001,
+    `grow_table` too -- see that migration's own compatibility-rule addition)
+    -- so `sow_batch`'s own carrier can be placed directly, with no
+    intervening transplant. Used by placement-facts and subtree-occupancy
+    tests, which care about location occupancy, not sowing-origin/transplant
+    semantics."""
     suffix = suffix or uuid.uuid4().hex[:8]
     crop = crop_service.register_crop(
         db, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
@@ -291,10 +293,16 @@ def transplant_to_plate(db: Session, tenant, user, farm, *, batch_id, source_ass
 
 
 def build_greenhouse_tree(db: Session, tenant, user, farm, *, suffix=None, position_count=2):
-    """Greenhouse -> Zone -> Span -> Grow Table -> N Table Positions -- the
-    real leafy-green hierarchy (matches the pilot seed script and the
-    hierarchy rules actually enforced by `location_service`), exercising
-    subtree occupancy aggregation across four structural levels."""
+    """Greenhouse -> Zone -> Span -> N sibling Grow Tables -- the
+    authoritative Leafy Greens hierarchy per DOMAIN-FARM-001: production
+    Cultivation Plates are Carriers, not Locations, so the Table itself is
+    the occupiable leaf -- there is no further numbered "table position"
+    level under it. Exercises subtree occupancy aggregation across three
+    structural ancestor levels (greenhouse/zone/span) with N occupiable
+    leaves (each Grow Table can hold at most one occupant in this ticket's
+    scope, since capacity-aware occupancy, DOMAIN-FARM-002, does not exist
+    yet -- `occupiable=True` is set per-instance, an already-supported
+    override, not a change to `grow_table`'s own type default)."""
     suffix = suffix or uuid.uuid4().hex[:8]
     gh = location_service.create_location(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="greenhouse",
@@ -311,16 +319,15 @@ def build_greenhouse_tree(db: Session, tenant, user, farm, *, suffix=None, posit
         code=f"SP-{suffix}", name="Span 1", parent_location_id=zone.id,
         greenhouse_classification=None, occupiable=None,
     )
-    table = location_service.create_location(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="grow_table",
-        code=f"GT-{suffix}", name="Grow Table", parent_location_id=span.id,
-        greenhouse_classification=None, occupiable=None,
-    )
-    positions = location_service.bulk_generate_children(
-        db, tenant_id=tenant.id, farm_id=farm.id, parent_id=table.id, actor_user_id=user.id,
-        location_type_code="table_position", code_prefix=f"P{suffix}-", start=1, end=position_count, pad_width=2, name_template=None,
-    )
-    return {"greenhouse": gh, "zone": zone, "span": span, "table": table, "positions": positions}
+    positions = [
+        location_service.create_location(
+            db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="grow_table",
+            code=f"GT-{suffix}-{n:02d}", name=f"Grow Table {n}", parent_location_id=span.id,
+            greenhouse_classification=None, occupiable=True,
+        )
+        for n in range(1, position_count + 1)
+    ]
+    return {"greenhouse": gh, "zone": zone, "span": span, "positions": positions}
 
 
 def place_carrier(db: Session, tenant, user, farm, *, carrier_id, location_id, effective_time):

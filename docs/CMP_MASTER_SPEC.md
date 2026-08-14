@@ -41,39 +41,45 @@ Operational locations use one UUID-based parent-child tree. Farms select control
 
 ### 3.1 Nursery Greenhouse
 
+DOMAIN-FARM-001 (authoritative, implemented): does not use Zone/Span. Every section is a direct child of the Nursery greenhouse:
+
 ```text
 Nursery
 ├─ Seeding Area / Station
-├─ Germination Area → Chamber → Chamber Position
-├─ Seedling Area → [Zone] → Grow Table → Table Position
-├─ InterVines → [Zone] → Grow Table → Table Position
-└─ InterSalads → [Zone] → Grow Table → Table Position
+├─ Germination Chamber → Chamber Position
+├─ Seedling Area → Seedling Table
+├─ InterSalads → InterSalads Table
+└─ InterVines → InterVines Table
 ```
 
-- Seeder: equipment/work centre.
-- Germination trolley: mobile asset with shelves and slots.
-- Seed tray: carrier occupying a trolley slot.
+- Seeder: equipment/work centre (`seeding_machine` asset type). CMP records which machine performed a sowing event.
+- Germination trolley: mobile asset with shelves and slots. Imperial’s pilot does not use trolley-movement as an operational workflow, but the architecture does not pretend a physically movable trolley is a fixed location — it remains an asset, occupying a chamber position like any other occupant.
+- Seed tray: carrier occupying a trolley slot. Aggregate capacity/seed-count only — individual tray cells/holes are not tracked.
 - Trolley: occupies a chamber position.
-- Grow cube: carrier used in InterVines.
-- Cultivation plate: carrier used in InterSalads.
+- Nursery Cultivation Plate: carrier used in InterSalads — physically distinct from the Production Cultivation Plate used in Leafy-Greens greenhouses (§3.2); a leafy seedling transplants again, plate to plate, moving from Nursery to production.
+- Grow cube: carrier used in InterVines — one cube, one plant, travels with the plant into Vines production.
 
 The system must derive a tray’s effective location through `tray → trolley slot → trolley → chamber position`.
 
 ### 3.2 Leafy-Greens Greenhouse
 
+DOMAIN-FARM-001 (authoritative, implemented): exact chain, no shortcuts — Zone and Span are both mandatory, not optional, for this template:
+
 ```text
-Greenhouse → [Zone] → Span → Grow Table → Table Position
+Greenhouse → Zone → Span → Grow Table
 ```
 
-Cultivation plates occupy positions. Default rule: one crop batch per plate; a table may hold multiple batches if every plate is identified.
+Stops at the table. The Production Cultivation Plate is a **carrier**, not a location — it occupies the Grow Table directly. There is no further "Table Position" location level: the farm does not define permanent, numbered plate positions on a table, because the physical plate itself is the numbered object. Default rule: one crop batch per plate; a table may hold multiple batches once multiple plates are placed on it (capacity-aware occupancy, DOMAIN-FARM-002).
 
 ### 3.3 Vines Greenhouse
 
+DOMAIN-FARM-001 (authoritative, implemented): exact chain, no shortcuts:
+
 ```text
-Greenhouse → [Zone] → Span → Grow Gutter → [Left/Right] → Grow-Bag Position
+Greenhouse → Zone → Span → Grow Gutter → Grow-Bag Position
 ```
 
-A grow-bag position is fixed; the grow bag is replaceable. Single-sided gutters must be supported. Plant/grow-cube positions may be added when plant-level traceability is configured.
+A grow-bag position is fixed; the grow bag is replaceable. **Grow Gutter Side (Left/Right) is not a placement level** — it describes plant canopy/branch training around the passage only, never a crop-location axis; every plant has branches trained on both sides regardless of gutter length. Plant/grow-cube positions (individual mortality/replacement tracking) are a later, explicitly-scoped ticket, not yet implemented.
 
 ### 3.4 Stores and Finished Goods
 

@@ -70,6 +70,10 @@ def test_nursery_greenhouse_creation(db_session, active_context_with_farm) -> No
 
 @pytest.mark.integration
 def test_germination_chamber_creation(db_session, active_context_with_farm) -> None:
+    """DOMAIN-FARM-001: the germination chamber is a direct child of the
+    nursery greenhouse -- no generic "area" wrapper (that shape belonged to
+    the pre-correction generic hierarchy rules, not the authoritative
+    Nursery topology)."""
     tenant, user, _headers, farm = active_context_with_farm
     greenhouse = _create(
         db_session,
@@ -81,16 +85,6 @@ def test_germination_chamber_creation(db_session, active_context_with_farm) -> N
         name="Nursery Greenhouse",
         greenhouse_classification="nursery",
     )
-    area = _create(
-        db_session,
-        tenant,
-        farm,
-        user,
-        location_type_code="area",
-        code="germ-area",
-        name="Germination Area",
-        parent_location_id=greenhouse.id,
-    )
     chamber = _create(
         db_session,
         tenant,
@@ -99,9 +93,9 @@ def test_germination_chamber_creation(db_session, active_context_with_farm) -> N
         location_type_code="germination_chamber",
         code="GC-01",
         name="Germination Chamber GC-01",
-        parent_location_id=area.id,
+        parent_location_id=greenhouse.id,
     )
-    assert chamber.parent_location_id == area.id
+    assert chamber.parent_location_id == greenhouse.id
 
 
 @pytest.mark.integration
@@ -115,12 +109,12 @@ def test_case_insensitive_sibling_code_uniqueness(db_session, active_context_wit
         location_type_code="greenhouse",
         code="gh-1",
         name="GH",
-        greenhouse_classification="other",
+        greenhouse_classification="nursery",
     )
-    _create(db_session, tenant, farm, user, location_type_code="area", code="area-1", name="Area", parent_location_id=greenhouse.id)
+    _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="chamber-1", name="Chamber", parent_location_id=greenhouse.id)
     with pytest.raises(DuplicateLocationCodeError):
         _create(
-            db_session, tenant, farm, user, location_type_code="area", code="AREA-1", name="Dup",
+            db_session, tenant, farm, user, location_type_code="germination_chamber", code="CHAMBER-1", name="Dup",
             parent_location_id=greenhouse.id,
         )
 
@@ -128,40 +122,18 @@ def test_case_insensitive_sibling_code_uniqueness(db_session, active_context_wit
 @pytest.mark.integration
 def test_same_code_allowed_under_different_parents(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    gh_a = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-a", name="A", greenhouse_classification="other")
-    gh_b = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-b", name="B", greenhouse_classification="other")
-    area_a = _create(db_session, tenant, farm, user, location_type_code="area", code="AREA-1", name="Area A", parent_location_id=gh_a.id)
-    area_b = _create(db_session, tenant, farm, user, location_type_code="area", code="AREA-1", name="Area B", parent_location_id=gh_b.id)
-    assert area_a.code == area_b.code
-    assert area_a.parent_location_id != area_b.parent_location_id
-
-
-@pytest.mark.integration
-def test_optional_zone_hierarchy_area_directly_to_span(db_session, active_context_with_farm) -> None:
-    tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="leafy_greens")
-    area = _create(db_session, tenant, farm, user, location_type_code="area", code="area-1", name="Area", parent_location_id=greenhouse.id)
-    span = _create(db_session, tenant, farm, user, location_type_code="span", code="span-1", name="Span 1", parent_location_id=area.id)
-    assert span.parent_location_id == area.id
-
-
-@pytest.mark.integration
-def test_optional_gutter_side_hierarchy_gutter_directly_to_bag_position(db_session, active_context_with_farm) -> None:
-    tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="vines")
-    span = _create(db_session, tenant, farm, user, location_type_code="span", code="span-1", name="Span", parent_location_id=greenhouse.id)
-    gutter = _create(db_session, tenant, farm, user, location_type_code="grow_gutter", code="gutter-1", name="Gutter", parent_location_id=span.id)
-    bag_position = _create(
-        db_session, tenant, farm, user, location_type_code="grow_bag_position", code="POS-01", name="Position 1",
-        parent_location_id=gutter.id,
-    )
-    assert bag_position.parent_location_id == gutter.id
+    gh_a = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-a", name="A", greenhouse_classification="nursery")
+    gh_b = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-b", name="B", greenhouse_classification="nursery")
+    chamber_a = _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="CHAMBER-1", name="Chamber A", parent_location_id=gh_a.id)
+    chamber_b = _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="CHAMBER-1", name="Chamber B", parent_location_id=gh_b.id)
+    assert chamber_a.code == chamber_b.code
+    assert chamber_a.parent_location_id != chamber_b.parent_location_id
 
 
 @pytest.mark.integration
 def test_invalid_parent_child_type_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="other")
+    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="nursery")
     with pytest.raises(InvalidLocationHierarchyError):
         _create(
             db_session, tenant, farm, user, location_type_code="chamber_position", code="P01", name="Pos",
@@ -184,12 +156,13 @@ def test_representative_invalid_parent_child_pairs_rejected(
     tenant, user, _headers, farm = active_context_with_farm
     kwargs = dict(location_type_code=parent_type_code, code=parent_code, name="Parent")
     if parent_type_code == "greenhouse":
-        kwargs["greenhouse_classification"] = "other"
+        kwargs["greenhouse_classification"] = "nursery"
     elif parent_type_code == "chamber_position":
-        # A germination_chamber is required to hold a chamber_position.
+        # A germination_chamber (a direct child of the nursery greenhouse,
+        # per DOMAIN-FARM-001's corrected topology) is required to hold a
+        # chamber_position.
         greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-cp", name="GH", greenhouse_classification="nursery")
-        area = _create(db_session, tenant, farm, user, location_type_code="area", code="area-cp", name="Area", parent_location_id=greenhouse.id)
-        chamber = _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="chamber-cp", name="Chamber", parent_location_id=area.id)
+        chamber = _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="chamber-cp", name="Chamber", parent_location_id=greenhouse.id)
         kwargs["parent_location_id"] = chamber.id
     parent = _create(db_session, tenant, farm, user, **kwargs)
     with pytest.raises(InvalidLocationHierarchyError):
@@ -217,7 +190,7 @@ def test_cross_tenant_parent_rejected(db_session, active_context_with_farm) -> N
         code="gh-other",
         name="Other GH",
         parent_location_id=None,
-        greenhouse_classification="other",
+        greenhouse_classification="nursery",
         occupiable=None,
     )
     with pytest.raises(LocationNotFoundError):
@@ -242,7 +215,7 @@ def test_cross_farm_parent_rejected(db_session, active_context_with_farm) -> Non
         db_session, tenant_id=tenant.id, actor_user_id=user.id, code="other-farm", name="Other Farm",
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
-    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="other")
+    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="nursery")
     with pytest.raises(LocationNotFoundError):
         location_service.create_location(
             db_session,
@@ -261,7 +234,7 @@ def test_cross_farm_parent_rejected(db_session, active_context_with_farm) -> Non
 @pytest.mark.integration
 def test_inactive_parent_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="other")
+    greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-1", name="GH", greenhouse_classification="nursery")
     # Update via the ORM (not raw SQL) so the identity-map copy of `greenhouse`
     # reflects the change immediately, rather than staying stale in memory.
     greenhouse.status = "inactive"

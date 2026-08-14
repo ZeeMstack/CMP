@@ -1853,3 +1853,344 @@ def test_migration_downgrade_removes_recall_tables_triggers_and_restores_cmp019_
             )
         ).first()
         assert derivation_gate is not None, "re-upgrade must recreate the batch-derivation containment trigger"
+
+
+# ============================================================================
+# DOMAIN-FARM-001.1: existing-topology guard on the classification-scoped
+# hierarchy migration (9ca4ac801827). Each test downgrades to the revision
+# immediately before it (68215f964ca9 -- the old, generic-only hierarchy
+# schema), inserts a "pre-existing business location" via raw SQL (the ORM
+# models reflect the NEW schema shape and cannot be used against a
+# downgraded database), then attempts to upgrade to head and asserts the
+# guard's behavior.
+# ============================================================================
+
+PRE_TOPOLOGY_REVISION = "68215f964ca9"
+
+
+def _legacy_type_id(conn, code: str):
+    return conn.execute(text("SELECT id FROM location_types WHERE code = :code"), {"code": code}).scalar_one()
+
+
+def _insert_legacy_location(
+    conn, *, tenant_id, farm_id, location_type_code: str, code: str,
+    parent_location_id=None, greenhouse_classification=None,
+):
+    import uuid
+
+    location_id = uuid.uuid4()
+    type_id = _legacy_type_id(conn, location_type_code)
+    conn.execute(
+        text(
+            "INSERT INTO locations (id, tenant_id, farm_id, parent_location_id, location_type_id, "
+            "code, name, status, greenhouse_classification, occupiable) "
+            "VALUES (:id, :tid, :fid, :pid, :ltid, :code, :code, 'active', :classification, false)"
+        ),
+        {
+            "id": location_id, "tid": tenant_id, "fid": farm_id, "pid": parent_location_id,
+            "ltid": type_id, "code": code, "classification": greenhouse_classification,
+        },
+    )
+    return location_id
+
+
+def _build_legacy_tenant_farm(conn, *, suffix: str):
+    import uuid
+
+    tenant_id = uuid.uuid4()
+    farm_id = uuid.uuid4()
+    conn.execute(
+        text("INSERT INTO tenants (id, code, name, status) VALUES (:id, :code, :code, 'active')"),
+        {"id": tenant_id, "code": f"df1-{suffix}"},
+    )
+    conn.execute(
+        text(
+            "INSERT INTO farms (id, tenant_id, code, name, status, country_code, timezone) "
+            "VALUES (:id, :tid, :code, :code, 'active', 'AE', 'Asia/Dubai')"
+        ),
+        {"id": farm_id, "tid": tenant_id, "code": f"df1-farm-{suffix}"},
+    )
+    return tenant_id, farm_id
+
+
+def _cleanup_legacy_tenant(test_engine, tenant_id) -> None:
+    """The migration guard tests build tenants/farms/locations directly via
+    raw SQL against a downgraded schema (the ORM-based shared scenario
+    cleanups assume the current schema shape) -- clean up the same way,
+    with FK/trigger checks disabled so this works regardless of which
+    schema revision is currently active."""
+    conn = test_engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(text("SET session_replication_role = replica"))
+        conn.execute(text("DELETE FROM locations WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+    except Exception:
+        trans.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@pytest.mark.integration
+def test_migration_upgrade_rejects_existing_nursery_greenhouse_with_invalid_zone_child(
+    test_engine, alembic_head_restore
+) -> None:
+    """(A) An existing Nursery greenhouse with a `zone` child (legal under
+    the old generic rules, illegal under the new Nursery-scoped rules,
+    which do not use zone/span at all) must block the upgrade."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="nursery-zone")
+    gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-NURSERY-A", greenhouse_classification="nursery",
+    )
+    zone_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="zone",
+        code="ZONE-A", parent_location_id=gh_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-001 cannot activate classification-scoped topology"):
+            command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == PRE_TOPOLOGY_REVISION, "a failed guard must leave the database at its pre-upgrade revision"
+
+            # (H) data-preservation proof: both rows survive, unchanged.
+            rows = conn2.execute(
+                text("SELECT id, code, parent_location_id FROM locations WHERE tenant_id = :tid ORDER BY code"),
+                {"tid": tenant_id},
+            ).mappings().all()
+            assert [r["code"] for r in rows] == ["GH-NURSERY-A", "ZONE-A"]
+            assert rows[1]["parent_location_id"] == gh_id
+    finally:
+        _cleanup_legacy_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_upgrade_rejects_existing_leafy_greenhouse_with_table_position_under_grow_table(
+    test_engine, alembic_head_restore
+) -> None:
+    """(B) An existing Leafy greenhouse with a full, otherwise-legal
+    greenhouse->zone->span->grow_table chain, plus one extra
+    grow_table->table_position edge (legal under the old generic rules,
+    illegal under the new Leafy-scoped rules, which stop at grow_table)."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="leafy-tp")
+    gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-LEAFY-A", greenhouse_classification="leafy_greens",
+    )
+    zone_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="zone",
+        code="ZONE-A", parent_location_id=gh_id,
+    )
+    span_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="span",
+        code="SPAN-A", parent_location_id=zone_id,
+    )
+    table_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="grow_table",
+        code="TABLE-A", parent_location_id=span_id,
+    )
+    position_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="table_position",
+        code="POS-A", parent_location_id=table_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-001 cannot activate classification-scoped topology"):
+            command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == PRE_TOPOLOGY_REVISION
+
+            rows = conn2.execute(
+                text("SELECT id, code FROM locations WHERE tenant_id = :tid ORDER BY code"),
+                {"tid": tenant_id},
+            ).mappings().all()
+            assert [r["code"] for r in rows] == ["GH-LEAFY-A", "POS-A", "SPAN-A", "TABLE-A", "ZONE-A"]
+    finally:
+        _cleanup_legacy_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_upgrade_rejects_existing_vines_greenhouse_with_gutter_side(
+    test_engine, alembic_head_restore
+) -> None:
+    """(C) An existing Vines greenhouse with a full, otherwise-legal
+    greenhouse->zone->span->grow_gutter chain, plus one extra
+    grow_gutter->gutter_side edge (legal under the old generic rules,
+    illegal under the new Vines-scoped rules -- gutter_side is deliberately
+    absent, since it is not a crop-placement location)."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="vines-side")
+    gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-VINES-A", greenhouse_classification="vines",
+    )
+    zone_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="zone",
+        code="ZONE-A", parent_location_id=gh_id,
+    )
+    span_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="span",
+        code="SPAN-A", parent_location_id=zone_id,
+    )
+    gutter_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="grow_gutter",
+        code="GUTTER-A", parent_location_id=span_id,
+    )
+    side_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="gutter_side",
+        code="SIDE-A", parent_location_id=gutter_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-001 cannot activate classification-scoped topology"):
+            command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == PRE_TOPOLOGY_REVISION
+
+            rows = conn2.execute(
+                text("SELECT id, code FROM locations WHERE tenant_id = :tid ORDER BY code"),
+                {"tid": tenant_id},
+            ).mappings().all()
+            assert [r["code"] for r in rows] == ["GH-VINES-A", "GUTTER-A", "SIDE-A", "SPAN-A", "ZONE-A"]
+    finally:
+        _cleanup_legacy_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_upgrade_rejects_existing_leafy_greenhouse_span_shortcut(
+    test_engine, alembic_head_restore
+) -> None:
+    """(D) An existing Leafy greenhouse with `span` created directly under
+    the greenhouse (skipping zone -- legal under the old generic rules,
+    illegal under the new Leafy-scoped rules, which require the full exact
+    chain with no shortcuts)."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="leafy-shortcut")
+    gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-LEAFY-B", greenhouse_classification="leafy_greens",
+    )
+    span_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="span",
+        code="SPAN-B", parent_location_id=gh_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-001 cannot activate classification-scoped topology"):
+            command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == PRE_TOPOLOGY_REVISION
+
+            rows = conn2.execute(
+                text("SELECT id, code FROM locations WHERE tenant_id = :tid ORDER BY code"),
+                {"tid": tenant_id},
+            ).mappings().all()
+            assert [r["code"] for r in rows] == ["GH-LEAFY-B", "SPAN-B"]
+    finally:
+        _cleanup_legacy_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_upgrade_accepts_existing_valid_greenhouse_trees(test_engine, alembic_head_restore) -> None:
+    """(G) A pre-existing tree that already happens to match the new
+    authoritative shape exactly (Nursery: greenhouse->germination_chamber
+    ->chamber_position; Leafy: greenhouse->zone->span->grow_table) must
+    upgrade cleanly -- the guard must not be a false positive against
+    genuinely legal data."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="valid")
+    nursery_gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-NURSERY-VALID", greenhouse_classification="nursery",
+    )
+    chamber_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="germination_chamber",
+        code="CHAMBER-VALID", parent_location_id=nursery_gh_id,
+    )
+    position_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="chamber_position",
+        code="POS-VALID", parent_location_id=chamber_id,
+    )
+    leafy_gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-LEAFY-VALID", greenhouse_classification="leafy_greens",
+    )
+    zone_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="zone",
+        code="ZONE-VALID", parent_location_id=leafy_gh_id,
+    )
+    span_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="span",
+        code="SPAN-VALID", parent_location_id=zone_id,
+    )
+    table_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="grow_table",
+        code="TABLE-VALID", parent_location_id=span_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        command.upgrade(_cfg(), "head")
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == _resolve_head_revision(_cfg())
+
+            rows = conn2.execute(
+                text("SELECT id, code, parent_location_id FROM locations WHERE tenant_id = :tid ORDER BY code"),
+                {"tid": tenant_id},
+            ).mappings().all()
+            assert {r["code"] for r in rows} == {
+                "GH-NURSERY-VALID", "CHAMBER-VALID", "POS-VALID",
+                "GH-LEAFY-VALID", "ZONE-VALID", "SPAN-VALID", "TABLE-VALID",
+            }
+            by_code = {r["code"]: r for r in rows}
+            assert by_code["CHAMBER-VALID"]["parent_location_id"] == nursery_gh_id
+            assert by_code["POS-VALID"]["parent_location_id"] == chamber_id
+            assert by_code["TABLE-VALID"]["parent_location_id"] == span_id
+    finally:
+        _cleanup_legacy_tenant(test_engine, tenant_id)

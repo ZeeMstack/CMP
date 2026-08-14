@@ -4,7 +4,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-GREENHOUSE_CLASSIFICATIONS = frozenset({"nursery", "leafy_greens", "vines", "mixed", "other"})
+GREENHOUSE_CLASSIFICATIONS = frozenset({"nursery", "leafy_greens", "vines"})
 
 MAX_BULK_CHILDREN = 500
 

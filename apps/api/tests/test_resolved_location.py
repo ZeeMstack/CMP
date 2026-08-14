@@ -21,8 +21,8 @@ def test_asset_resolved_location_direct_placement(db_session, placed_trolley_and
     assert resolved["direct_target"] == {"kind": "location", "id": scenario["positions"]["P12"].id}
     assert resolved["unresolved_reason"] is None
     codes = [entry["code"] for entry in resolved["fixed_location_path"]]
-    assert codes == ["nursery-gh", "germ-area", "GC-01", "P12"]
-    assert resolved["path_string"] == "nursery-gh / germ-area / GC-01 / P12"
+    assert codes == ["nursery-gh", "GC-01", "P12"]
+    assert resolved["path_string"] == "nursery-gh / GC-01 / P12"
 
 
 @pytest.mark.integration
@@ -35,8 +35,8 @@ def test_carrier_resolved_location_via_trolley(db_session, placed_trolley_and_tr
     assert resolved["direct_target"] == {"kind": "asset_position", "id": scenario["slot_03_04"].id}
     assert [e["code"] for e in resolved["position_path"]] == ["SH-03", "SL-04"]
     assert resolved["containing_asset"]["code"] == "GT-0001"
-    assert [e["code"] for e in resolved["fixed_location_path"]] == ["nursery-gh", "germ-area", "GC-01", "P12"]
-    assert resolved["path_string"] == "nursery-gh / germ-area / GC-01 / P12 / GT-0001 / SH-03 / SL-04"
+    assert [e["code"] for e in resolved["fixed_location_path"]] == ["nursery-gh", "GC-01", "P12"]
+    assert resolved["path_string"] == "nursery-gh / GC-01 / P12 / GT-0001 / SH-03 / SL-04"
     assert resolved["unresolved_reason"] is None
 
 
@@ -99,10 +99,15 @@ def test_direct_carrier_placement_in_fixed_location_resolved(db_session, active_
         location_type_code="greenhouse", code="vine-gh", name="Vine GH",
         parent_location_id=None, greenhouse_classification="vines", occupiable=None,
     )
+    zone = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="zone", code="zone-1", name="Zone",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
     span = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="span", code="span-1", name="Span",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+        parent_location_id=zone.id, greenhouse_classification=None, occupiable=None,
     )
     gutter = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -129,7 +134,7 @@ def test_direct_carrier_placement_in_fixed_location_resolved(db_session, active_
     )
     assert resolved["position_path"] is None
     assert resolved["containing_asset"] is None
-    assert [e["code"] for e in resolved["fixed_location_path"]] == ["vine-gh", "span-1", "gutter-1", "BP-01"]
+    assert [e["code"] for e in resolved["fixed_location_path"]] == ["vine-gh", "zone-1", "span-1", "gutter-1", "BP-01"]
 
 
 @pytest.mark.integration
@@ -152,6 +157,6 @@ def test_resolved_location_avoids_n_plus_1_queries(db_session, placed_trolley_an
         event.remove(engine, "before_cursor_execute", _count)
 
     # A handful of scoped queries/CTEs, not one query per ancestor in either
-    # the position path (2 levels) or the fixed-location path (4 levels) —
+    # the position path (2 levels) or the fixed-location path (3 levels) —
     # a naive per-ancestor implementation would scale with depth well past this.
     assert statement_count <= 12, statement_count

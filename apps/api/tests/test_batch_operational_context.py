@@ -268,8 +268,8 @@ def test_single_placement_reports_full_path(test_engine) -> None:
             )
             session.commit()
             batch_id, farm_id = sown["batch"].id, farm.id
-            gh_id, zone_id, span_id, table_id, position_id = (
-                tree["greenhouse"].id, tree["zone"].id, tree["span"].id, tree["table"].id, position.id,
+            gh_id, zone_id, span_id, position_id = (
+                tree["greenhouse"].id, tree["zone"].id, tree["span"].id, position.id,
             )
 
         with _snapshot_connection(test_engine) as conn:
@@ -281,7 +281,10 @@ def test_single_placement_reports_full_path(test_engine) -> None:
         assert ctx.placement.unplaced_carrier_count == 0
         [placement] = ctx.placement.placements
         assert placement.location_id == position_id
-        assert [seg.id for seg in placement.path] == [gh_id, zone_id, span_id, table_id, position_id]
+        # DOMAIN-FARM-001: the Grow Table itself is the leaf (position ==
+        # the table), so the path is greenhouse/zone/span/table -- 4
+        # segments, not 5.
+        assert [seg.id for seg in placement.path] == [gh_id, zone_id, span_id, position_id]
         assert ctx.placement.common_ancestor_path == placement.path
     finally:
         if tenant_id is not None:
@@ -424,7 +427,7 @@ def test_multiple_placements_shared_branch_yields_common_ancestor_path(test_engi
             )
             session.commit()
             batch_id, farm_id = sown["batch"].id, farm.id
-            gh_id, zone_id, span_id, table_id = tree["greenhouse"].id, tree["zone"].id, tree["span"].id, tree["table"].id
+            gh_id, zone_id, span_id = tree["greenhouse"].id, tree["zone"].id, tree["span"].id
 
         with _snapshot_connection(test_engine) as conn:
             [ctx] = operational_read_service.get_batch_operational_contexts(
@@ -432,7 +435,11 @@ def test_multiple_placements_shared_branch_yields_common_ancestor_path(test_engi
             )
         assert ctx.placement.placed_carrier_count == 2
         assert ctx.placement.common_ancestor_path is not None
-        assert [seg.id for seg in ctx.placement.common_ancestor_path] == [gh_id, zone_id, span_id, table_id]
+        # DOMAIN-FARM-001: positions[0]/positions[1] are now two SIBLING
+        # Grow Tables directly under span (no shared "table" parent between
+        # them, since the table itself is the leaf) -- the shared branch
+        # stops at span, one level higher than before this ticket.
+        assert [seg.id for seg in ctx.placement.common_ancestor_path] == [gh_id, zone_id, span_id]
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
