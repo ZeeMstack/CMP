@@ -15,6 +15,10 @@ EXPECTED_RULES = {
     ("carrier", "cultivation_plate", "location", "table_position"),
     ("carrier", "grow_cube", "location", "table_position"),
     ("carrier", "grow_bag", "location", "grow_bag_position"),
+    # DOMAIN-FARM-001: the authoritative Leafy topology stops at grow_table
+    # itself (no table_position beneath it) -- the Production Cultivation
+    # Plate carrier must be able to occupy the table directly.
+    ("carrier", "cultivation_plate", "location", "grow_table"),
 }
 
 

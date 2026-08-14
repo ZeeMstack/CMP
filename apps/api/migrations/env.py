@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -9,18 +10,39 @@ from sqlalchemy import engine_from_config, pool, text
 
 import app.models  # noqa: F401  (registers models on Base.metadata)
 from app.core.db import Base
-from app.core.settings import settings
 
 config = context.config
 
-# Only fall back to the app's default DATABASE_URL when the caller hasn't
-# already configured one (e.g. plain `alembic upgrade head` from the CLI).
-# A caller that explicitly sets sqlalchemy.url — such as the test suite,
-# which must target TEST_DATABASE_URL / cmp_test, never the dev database —
-# always wins.
-_configured_url = config.get_main_option("sqlalchemy.url")
-if not _configured_url or _configured_url == "driver://user:pass@localhost/dbname":
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+# Fixed module name shared with tests/test_alembic_url_safety.py's own
+# loader: registering in sys.modules under this exact name means both
+# loaders converge on the same module object (and therefore the same
+# AlembicUrlNotConfiguredError class identity), whichever side loads it
+# first — otherwise two independent importlib loads of the same file
+# produce two structurally-identical but distinct classes, and a test's
+# `pytest.raises(AlembicUrlNotConfiguredError)` would never match an
+# instance raised from this file's own separately-loaded copy.
+_ALEMBIC_URL_SAFETY_MODULE_NAME = "cmp_alembic_url_safety"
+
+
+def _load_alembic_url_safety():
+    if _ALEMBIC_URL_SAFETY_MODULE_NAME in sys.modules:
+        return sys.modules[_ALEMBIC_URL_SAFETY_MODULE_NAME]
+    path = Path(__file__).resolve().parent / "_alembic_url_safety.py"
+    spec = importlib.util.spec_from_file_location(_ALEMBIC_URL_SAFETY_MODULE_NAME, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_ALEMBIC_URL_SAFETY_MODULE_NAME] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# ALEMBIC-SAFETY-001 (see INCIDENT-001): fail closed. No fallback to
+# settings.database_url or any other default — a bare `alembic
+# upgrade`/`downgrade`/`current` invocation with no explicit sqlalchemy.url
+# must fail here, before fileConfig, before target_metadata is even bound,
+# and long before run_migrations_online()'s own engine_from_config(...)
+# call below ever executes. It must never silently target any real
+# database, development or otherwise.
+_load_alembic_url_safety().resolve_explicit_alembic_url(config)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

@@ -43,15 +43,10 @@ def _build_committed_scenario(test_engine):
         location_type_code="greenhouse", code="gh-1", name="GH",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    area = location_service.create_location(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="area", code="area-1", name="Area",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
     chamber = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="germination_chamber", code="GC-1", name="Chamber",
-        parent_location_id=area.id, greenhouse_classification=None, occupiable=None,
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
     )
     position = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,

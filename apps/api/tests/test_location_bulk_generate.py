@@ -44,15 +44,10 @@ def test_atomic_generation_of_20_chamber_positions(db_session, active_context_wi
         location_type_code="greenhouse", code="nursery-gh", name="Nursery Greenhouse",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    area = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="area", code="germ-area", name="Germination Area",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
     chamber = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="germination_chamber", code="GC-01", name="Germination Chamber GC-01",
-        parent_location_id=area.id, greenhouse_classification=None, occupiable=None,
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
     )
 
     created = location_service.bulk_generate_children(
@@ -87,15 +82,10 @@ def test_bulk_generation_collision_leaves_no_locations_or_audit_event(db_session
         location_type_code="greenhouse", code="gh-1", name="GH",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    area = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="area", code="germ-area", name="Germination Area",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
     chamber = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="germination_chamber", code="GC-01", name="Chamber",
-        parent_location_id=area.id, greenhouse_classification=None, occupiable=None,
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
     )
     # Pre-create P05 so the batch collides mid-range.
     location_service.create_location(

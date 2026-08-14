@@ -35,9 +35,9 @@ Administrative: `Tenant → Country → City/Region → Farm`.
 
 Operational locations use a configurable tree beginning at Farm. Standard templates are defined in `docs/CMP_MASTER_SPEC.md` for:
 
-- Nursery: seeding, germination chamber/positions, seedling tables, InterVines, InterSalads.
-- Leafy greens: optional zone → span → grow table → table position.
-- Vines: optional zone → span → grow gutter → optional side → grow-bag position.
+- Nursery: seeding, germination chamber/positions, seedling tables, InterVines, InterSalads. Does not use zone/span.
+- Leafy greens: zone → span → grow table (mandatory chain, no shortcuts). The grow table is the leaf; the Production Cultivation Plate is a carrier occupying it, not a further location level.
+- Vines: zone → span → grow gutter → grow-bag position (mandatory chain, no shortcuts). Grow Gutter Side (left/right) is not a location — it is plant canopy/branch training only.
 
 ## Architecture
 
@@ -56,6 +56,12 @@ Keep business rules in domain/application services, not routes, UI components, O
 Use commands such as `/movements`, `/transformations`, `/stock-issues`, `/quality-holds`, `/harvest-events`, and `/reversals`. Do not move a carrier through a generic `PATCH`.
 
 Every offline command has an idempotency key. UI states: `queued`, `synchronized`, `rejected`, `needs attention`. Never show queued work as server-confirmed.
+
+## Development Database Safety
+
+Never run bare `python -m alembic upgrade`, `downgrade`, or `current` (or any other Alembic command that can execute a migration) for verification or migration work. `migrations/env.py` fails closed: it refuses to resolve a database target automatically, so a bare invocation with no explicit URL fails loudly before connecting — but always construct the target explicitly anyway; do not rely on the failure as the workflow.
+
+Alembic database targets must always be supplied explicitly, via an approved helper or a `Config` with `sqlalchemy.url` set directly — e.g. `scripts/reset_test_database.py`, or `tests/conftest.py`'s `migrations_alembic_config()`. For test/migration work, use this existing `cmp_test`-safe tooling; never hand-construct a bare CLI invocation. The development database must never be targeted implicitly.
 
 ## Working Method
 

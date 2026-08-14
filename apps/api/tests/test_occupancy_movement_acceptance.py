@@ -20,17 +20,11 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
         json={"location_type_code": "greenhouse", "code": "nursery-gh", "name": "Nursery Greenhouse",
               "greenhouse_classification": "nursery"},
     ).json()["id"]
-    area_id = client.post(
-        f"/farms/{farm.id}/locations", headers=headers_a,
-        json={"location_type_code": "area", "code": "germ-area", "name": "Germination Area",
-              "parent_location_id": greenhouse_id},
-    ).json()["id"]
-
     # 4: Germination chamber with >= 20 positions.
     chamber_resp = client.post(
         f"/farms/{farm.id}/locations", headers=headers_a,
         json={"location_type_code": "germination_chamber", "code": "GC-01", "name": "Germination Chamber GC-01",
-              "parent_location_id": area_id},
+              "parent_location_id": greenhouse_id},
     )
     assert chamber_resp.status_code == 201
     chamber_id = chamber_resp.json()["id"]

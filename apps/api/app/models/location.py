@@ -29,13 +29,16 @@ class Location(TimestampMixin, Base):
         CheckConstraint("status IN ('active', 'inactive')", name="ck_locations_status"),
         CheckConstraint(
             "greenhouse_classification IS NULL OR greenhouse_classification IN "
-            "('nursery', 'leafy_greens', 'vines', 'mixed', 'other')",
+            "('nursery', 'leafy_greens', 'vines')",
             name="ck_locations_greenhouse_classification_allowed",
         ),
         # Whether classification is required/forbidden depends on the row's
         # location_type (greenhouse vs not) — a plain CHECK can't join to
         # location_types, so that half of the rule is enforced by a
         # PostgreSQL trigger (in the migration) plus schema/service checks.
+        # DOMAIN-FARM-001: the same trigger also enforces immutability —
+        # once set on a greenhouse, greenhouse_classification can never
+        # change (UPDATE is rejected if NEW differs from OLD).
         Index(
             "ux_locations_sibling_code_lower",
             "parent_location_id",

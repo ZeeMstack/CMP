@@ -138,14 +138,17 @@ def test_nested_aggregate_counts_correct_across_levels(test_engine) -> None:
             place_carrier(session, tenant, user, farm, carrier_id=trays[1].id, location_id=tree["positions"][1].id, effective_time=t0)
             session.commit()
             farm_id = farm.id
-            gh_id, zone_id, span_id, table_id = tree["greenhouse"].id, tree["zone"].id, tree["span"].id, tree["table"].id
+            gh_id, zone_id, span_id = tree["greenhouse"].id, tree["zone"].id, tree["span"].id
 
         with _snapshot_connection(test_engine) as conn:
             result = operational_read_service.get_location_subtree_occupancy(
                 conn, tenant_id=tenant_id, farm_id=farm_id, root_location_id=gh_id
             )
         by_id = {a.location_id: a for a in result.aggregate_counts}
-        for node_id in (gh_id, zone_id, span_id, table_id):
+        # DOMAIN-FARM-001: the Table itself is the occupiable leaf (no
+        # further table_position level) -- three structural ancestor levels
+        # (greenhouse/zone/span) roll up counts from the 4 sibling tables.
+        for node_id in (gh_id, zone_id, span_id):
             assert by_id[node_id].occupiable_location_count == 4
             assert by_id[node_id].occupied_location_count == 2
         assert len(result.occupied_locations) == 2
@@ -292,7 +295,7 @@ def test_sibling_and_outside_root_locations_excluded(test_engine) -> None:
             place_carrier(session, tenant, user, farm, carrier_id=tray_b.id, location_id=tree_b["positions"][0].id, effective_time=t0)
             session.commit()
             farm_id, gh_a_id, gh_b_id = farm.id, tree_a["greenhouse"].id, tree_b["greenhouse"].id
-            tree_b_ids = {gh_b_id, tree_b["zone"].id, tree_b["span"].id, tree_b["table"].id}
+            tree_b_ids = {gh_b_id, tree_b["zone"].id, tree_b["span"].id, tree_b["positions"][0].id}
             position_a_id = tree_a["positions"][0].id
 
         with _snapshot_connection(test_engine) as conn:
