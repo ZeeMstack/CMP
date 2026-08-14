@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -24,6 +24,12 @@ class Location(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
     greenhouse_classification: Mapped[str | None] = mapped_column(String, nullable=True)
     occupiable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # DOMAIN-FARM-002: configured occupant capacity. NULL means an effective
+    # capacity of 1 (backward-compatible exclusive behavior); distinct from
+    # `occupiable`, which governs whether this location may be a target at
+    # all. See CHECK below and `occupancies_enforce_insert_integrity`
+    # (migration) for the authoritative, concurrency-safe enforcement.
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         CheckConstraint("status IN ('active', 'inactive')", name="ck_locations_status"),
@@ -32,6 +38,7 @@ class Location(TimestampMixin, Base):
             "('nursery', 'leafy_greens', 'vines')",
             name="ck_locations_greenhouse_classification_allowed",
         ),
+        CheckConstraint("capacity IS NULL OR capacity >= 1", name="ck_locations_capacity_positive"),
         # Whether classification is required/forbidden depends on the row's
         # location_type (greenhouse vs not) — a plain CHECK can't join to
         # location_types, so that half of the rule is enforced by a

@@ -102,3 +102,63 @@ def test_idempotency_checked_before_mutable_entity_validation(db_session, placed
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
             destination_kind="location", destination_id=scenario["positions"]["P14"].id, reason=None,
         )
+
+
+@pytest.mark.integration
+def test_idempotent_replay_does_not_double_consume_capacity(db_session, active_context_with_farm) -> None:
+    """DOMAIN-FARM-002 section 23: an exact replay of the command that
+    itself filled the target's only slot must return the original result,
+    not fail merely because the target the command itself filled is now
+    "full"."""
+    import uuid as uuid_module
+
+    from app.services import asset_service, location_service
+
+    tenant, user, _headers, farm = active_context_with_farm
+    greenhouse = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code=f"gh-{uuid_module.uuid4().hex[:6]}", name="GH",
+        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+    )
+    chamber = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="germination_chamber", code=f"gc-{uuid_module.uuid4().hex[:6]}", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
+    position = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="chamber_position", code=f"p-{uuid_module.uuid4().hex[:6]}", name="Position",
+        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=1,
+    )
+    trolley = asset_service.register_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code=f"GT-{uuid_module.uuid4().hex[:6]}", name="Trolley",
+        commissioned_date=None,
+    )
+    command_id = uuid.uuid4()
+    effective_time = _now()
+
+    first = movement_service.execute_movement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        client_command_id=command_id, effective_time=effective_time,
+        occupant_kind="asset", occupant_id=trolley.id,
+        destination_kind="location", destination_id=position.id, reason=None,
+    )
+    # The target (capacity=1) is now full -- exactly because of `first`.
+    # Replaying the identical command must still return the original
+    # movement, not raise TargetOccupiedError.
+    replay = movement_service.execute_movement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        client_command_id=command_id, effective_time=effective_time,
+        occupant_kind="asset", occupant_id=trolley.id,
+        destination_kind="location", destination_id=position.id, reason=None,
+    )
+    assert replay.id == first.id
+    assert (
+        db_session.execute(
+            select(func.count()).select_from(Occupancy).where(
+                Occupancy.target_location_id == position.id, Occupancy.end_time.is_(None)
+            )
+        ).scalar_one()
+        == 1
+    )

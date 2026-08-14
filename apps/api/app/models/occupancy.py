@@ -69,16 +69,14 @@ class Occupancy(Base):
             unique=True,
             postgresql_where=text("end_time IS NULL AND occupant_carrier_id IS NOT NULL"),
         ),
-        Index(
-            "ux_occupancies_active_target_location",
-            "target_location_id",
-            unique=True,
-            postgresql_where=text("end_time IS NULL AND target_location_id IS NOT NULL"),
-        ),
-        Index(
-            "ux_occupancies_active_target_position",
-            "target_asset_position_id",
-            unique=True,
-            postgresql_where=text("end_time IS NULL AND target_asset_position_id IS NOT NULL"),
-        ),
+        # DOMAIN-FARM-002: the universal target-side unique indexes
+        # (`ux_occupancies_active_target_location`,
+        # `ux_occupancies_active_target_position`) were removed -- a target
+        # may now host more than one active occupant, up to its configured
+        # `capacity` (NULL/1 = exclusive, unchanged default behavior).
+        # Capacity is enforced authoritatively by a row-locking trigger
+        # (`enforce_occupancy_insert_integrity`, extended by migration
+        # f91c366cfe57), not by a unique index. Occupant-side exclusivity
+        # above is unaffected: one asset/carrier still has at most one
+        # active occupancy anywhere.
     )

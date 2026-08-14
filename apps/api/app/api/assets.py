@@ -9,7 +9,7 @@ from app.core.permissions import Permission, require_permission
 from app.schemas.asset import AssetCreate, AssetRead
 from app.schemas.asset_position import AssetPositionRead, AssetPositionsGenerate, AssetPositionTreeNode
 from app.schemas.movement import MovementRead, TargetRef
-from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead, TargetOccupantRead
+from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead, TargetOccupantRead, TargetOccupantsRead
 from app.services import asset_service, movement_service
 from app.services.errors import (
     AssetNotFoundError,
@@ -110,6 +110,8 @@ def generate_positions(
             slot_prefix=payload.slot_prefix,
             shelf_pad_width=payload.shelf_pad_width,
             slot_pad_width=payload.slot_pad_width,
+            shelf_capacity=payload.shelf_capacity,
+            slot_capacity=payload.slot_capacity,
         )
     except (FarmNotFoundError, AssetNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
@@ -216,12 +218,38 @@ def get_position_occupant(
     ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
 ) -> TargetOccupantRead:
     try:
-        occupancy = movement_service.get_target_occupant(
+        occupancies = movement_service.list_target_occupants(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, target_kind="asset_position", target_id=position_id
         )
     except (FarmNotFoundError, AssetPositionNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     return TargetOccupantRead(
         target=TargetRef(kind="asset_position", id=position_id),
-        active_occupancy=OccupancyRead.from_model(occupancy) if occupancy is not None else None,
+        active_occupancy=OccupancyRead.from_model(occupancies[0]) if occupancies else None,
+        active_occupancy_count=len(occupancies),
+    )
+
+
+@router.get(
+    "/farms/{farm_id}/assets/{asset_id}/positions/{position_id}/occupants", response_model=TargetOccupantsRead
+)
+def get_position_occupants(
+    farm_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    position_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
+) -> TargetOccupantsRead:
+    """DOMAIN-FARM-002.1: the truthful, complete-state counterpart to
+    `get_position_occupant` -- returns every active occupancy, not just
+    one, so a capacity>1 position is never under-reported."""
+    try:
+        occupancies = movement_service.list_target_occupants(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, target_kind="asset_position", target_id=position_id
+        )
+    except (FarmNotFoundError, AssetPositionNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return TargetOccupantsRead(
+        target=TargetRef(kind="asset_position", id=position_id),
+        active_occupancies=[OccupancyRead.from_model(o) for o in occupancies],
     )

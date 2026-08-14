@@ -2194,3 +2194,223 @@ def test_migration_upgrade_accepts_existing_valid_greenhouse_trees(test_engine, 
             assert by_code["TABLE-VALID"]["parent_location_id"] == span_id
     finally:
         _cleanup_legacy_tenant(test_engine, tenant_id)
+
+
+# =====================================================================
+# DOMAIN-FARM-002: capacity-aware occupancy migration round-trip (section 30)
+# =====================================================================
+
+PRE_CAPACITY_REVISION = "9ca4ac801827"
+
+
+def _cleanup_capacity_migration_tenant(test_engine, tenant_id) -> None:
+    """Unlike `_cleanup_legacy_tenant` (locations/farms/tenants only), these
+    scenarios also create assets, asset_positions, occupancies, movements,
+    and carriers -- delete those first, still under
+    `session_replication_role = replica` (which disables PostgreSQL's
+    internal FK-enforcement triggers too, not just user triggers)."""
+    conn = test_engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(text("SET session_replication_role = replica"))
+        conn.execute(text("DELETE FROM occupancies WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM movements WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM asset_positions WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :tid)"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM assets WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM locations WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+    except Exception:
+        trans.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _build_capacity_migration_scenario(test_engine, *, suffix: str, position_capacity):
+    import uuid as uuid_module
+
+    from sqlalchemy.orm import Session
+
+    # users are global/platform-level and never cleaned up by
+    # _cleanup_capacity_migration_tenant (mirrors every other ORM-based
+    # scenario builder in this file) -- a random component guarantees
+    # oidc_subject uniqueness across repeated runs, unlike a fixed label.
+    suffix = f"{suffix}-{uuid_module.uuid4().hex[:8]}"
+
+    from app.services import asset_service, farm_service, location_service, membership_service, tenant_service, user_service
+
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant = tenant_service.create_tenant(session, code=f"cap-mig-{suffix}", name="Capacity Migration Tenant")
+    user = user_service.create_user(
+        session, oidc_issuer="cap-mig", oidc_subject=suffix, email=f"cap-mig-{suffix}@example.com",
+        display_name="Capacity Migration User",
+    )
+    membership_service.add_membership(
+        session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None
+    )
+    farm = farm_service.create_farm(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="Capacity Migration Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    greenhouse = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code=f"gh-{suffix}", name="GH",
+        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+    )
+    chamber = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="germination_chamber", code=f"gc-{suffix}", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
+    position = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="chamber_position", code=f"p-{suffix}", name="Position",
+        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=position_capacity,
+    )
+    trolley = asset_service.register_asset(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code=f"GT-{suffix}", name="Trolley", commissioned_date=None,
+    )
+    result = {"tenant_id": tenant.id, "farm_id": farm.id, "user_id": user.id, "position_id": position.id, "trolley_id": trolley.id}
+    session.close()
+    conn.close()
+    return result
+
+
+@pytest.mark.integration
+def test_capacity_migration_safe_round_trip_downgrade_then_upgrade(test_engine, alembic_head_restore) -> None:
+    """(Q) No expanded capacity, no multi-occupancy anywhere -- downgrading
+    past f91c366cfe57 and upgrading back must succeed cleanly."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    scenario = _build_capacity_migration_scenario(test_engine, suffix="safe", position_capacity=None)
+    try:
+        from app.services import movement_service
+        from datetime import datetime, timezone
+        from sqlalchemy.orm import Session
+        import uuid as uuid_module
+
+        conn = test_engine.connect()
+        session = Session(bind=conn)
+        movement_service.execute_movement(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+            client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc),
+            occupant_kind="asset", occupant_id=scenario["trolley_id"],
+            destination_kind="location", destination_id=scenario["position_id"], reason=None,
+        )
+        session.close()
+        conn.close()
+
+        command.downgrade(_cfg(), PRE_CAPACITY_REVISION)
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == PRE_CAPACITY_REVISION
+            has_capacity_column = conn2.execute(
+                text("SELECT 1 FROM information_schema.columns WHERE table_name = 'locations' AND column_name = 'capacity'")
+            ).scalar_one_or_none()
+            assert has_capacity_column is None
+
+        command.upgrade(_cfg(), "head")
+        with test_engine.connect() as conn3:
+            current = conn3.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == _resolve_head_revision(_cfg())
+            rows = conn3.execute(
+                text("SELECT code FROM locations WHERE tenant_id = :tid ORDER BY code"), {"tid": scenario["tenant_id"]}
+            ).mappings().all()
+            codes = {r["code"] for r in rows}
+            assert len(codes) == 3
+            assert any(c.startswith("gh-safe-") for c in codes)
+            assert any(c.startswith("gc-safe-") for c in codes)
+            assert any(c.startswith("p-safe-") for c in codes)
+    finally:
+        _cleanup_capacity_migration_tenant(test_engine, scenario["tenant_id"])
+
+
+@pytest.mark.integration
+def test_capacity_migration_downgrade_refuses_when_capacity_configured(test_engine, alembic_head_restore) -> None:
+    """(R) A Location with configured capacity > 1 exists (regardless of how
+    many occupants are actually active right now) -- downgrade must refuse
+    loudly rather than silently discard the configuration, and business
+    rows must remain untouched."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    scenario = _build_capacity_migration_scenario(test_engine, suffix="configured", position_capacity=3)
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-002 downgrade refused"):
+            command.downgrade(_cfg(), PRE_CAPACITY_REVISION)
+
+        with test_engine.connect() as conn:
+            current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == _resolve_head_revision(_cfg()), "a refused downgrade must leave the database at head"
+            capacity = conn.execute(
+                text("SELECT capacity FROM locations WHERE id = :id"), {"id": scenario["position_id"]}
+            ).scalar_one()
+            assert capacity == 3
+    finally:
+        _cleanup_capacity_migration_tenant(test_engine, scenario["tenant_id"])
+
+
+@pytest.mark.integration
+def test_capacity_migration_downgrade_refuses_when_multi_occupancy_present(test_engine, alembic_head_restore) -> None:
+    """(R) A target currently has more than one active occupancy (capacity
+    actually in use, not merely configured) -- downgrade must refuse rather
+    than collapse/delete occupants or choose one arbitrarily."""
+    import uuid as uuid_module
+    from datetime import datetime, timezone
+
+    from app.models.movement import Movement
+    from app.models.occupancy import Occupancy
+    from sqlalchemy.orm import Session
+
+    from app.services import asset_service
+
+    _assert_operating_on_cmp_test_database(test_engine)
+    scenario = _build_capacity_migration_scenario(test_engine, suffix="multiocc", position_capacity=2)
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    second_trolley = asset_service.register_asset(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        asset_type_code="germination_trolley", code="GT-multiocc-2", name="Trolley 2", commissioned_date=None,
+    )
+    now = datetime.now(timezone.utc)
+    for trolley_id in (scenario["trolley_id"], second_trolley.id):
+        mv = Movement(
+            id=uuid_module.uuid4(), tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+            occupant_asset_id=trolley_id, destination_location_id=scenario["position_id"],
+            command_type="movement", client_command_id=uuid_module.uuid4(),
+            request_fingerprint=f"mig-{trolley_id}", effective_time=now, actor_user_id=scenario["user_id"],
+        )
+        session.add(mv)
+        session.flush()
+        occ = Occupancy(
+            id=uuid_module.uuid4(), tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+            occupant_asset_id=trolley_id, target_location_id=scenario["position_id"],
+            effective_time=now, opened_by_movement_id=mv.id, actor_user_id=scenario["user_id"],
+        )
+        session.add(occ)
+        session.flush()
+    session.commit()
+    session.close()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="DOMAIN-FARM-002 downgrade refused"):
+            command.downgrade(_cfg(), PRE_CAPACITY_REVISION)
+
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == _resolve_head_revision(_cfg())
+            active_count = conn2.execute(
+                text(
+                    "SELECT COUNT(*) FROM occupancies WHERE target_location_id = :tid AND end_time IS NULL"
+                ),
+                {"tid": scenario["position_id"]},
+            ).scalar_one()
+            assert active_count == 2, "downgrade guard must never collapse/delete occupants"
+    finally:
+        _cleanup_capacity_migration_tenant(test_engine, scenario["tenant_id"])

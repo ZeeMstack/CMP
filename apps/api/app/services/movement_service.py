@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -121,14 +121,53 @@ def _get_active_occupancy_for_occupant(
 def _get_active_occupancy_for_target(
     db: Session, *, target_kind: str, target_id: uuid.UUID, lock: bool = False
 ) -> Occupancy | None:
+    """Returns one active occupancy for the target, if any exist.
+
+    DOMAIN-FARM-002: a target with capacity > 1 may have several
+    simultaneous active occupancies -- this no longer assumes at most one
+    (that guarantee was removed along with the target-side unique indexes).
+    Returns an arbitrary one (the earliest by effective_time) rather than
+    raising on multiple rows. Existing single-occupant callers
+    (`get_target_occupant`) keep working for the still-common capacity=1
+    case; they degrade to reporting only one of several occupants for a
+    capacity>1 target rather than crashing. A full multi-occupant read is
+    deliberately out of this ticket's scope -- see
+    `_count_active_occupancies_for_target` for the capacity-enforcement path,
+    which counts rather than fetches a single row."""
     if target_kind == "location":
         condition = Occupancy.target_location_id == target_id
     else:
         condition = Occupancy.target_asset_position_id == target_id
-    query = select(Occupancy).where(condition, Occupancy.end_time.is_(None))
+    query = select(Occupancy).where(condition, Occupancy.end_time.is_(None)).order_by(Occupancy.effective_time)
     if lock:
         query = query.with_for_update()
-    return db.execute(query).scalar_one_or_none()
+    return db.execute(query.limit(1)).scalars().first()
+
+
+def _count_active_occupancies_for_target(db: Session, *, target_kind: str, target_id: uuid.UUID) -> int:
+    if target_kind == "location":
+        condition = Occupancy.target_location_id == target_id
+    else:
+        condition = Occupancy.target_asset_position_id == target_id
+    return db.execute(
+        select(func.count()).select_from(Occupancy).where(condition, Occupancy.end_time.is_(None))
+    ).scalar_one()
+
+
+def _list_active_occupancies_for_target(db: Session, *, target_kind: str, target_id: uuid.UUID) -> list[Occupancy]:
+    """DOMAIN-FARM-002.1: the truthful complement to
+    `_get_active_occupancy_for_target` -- returns every active occupancy for
+    the target, not just one, so a capacity>1 target's actual state is never
+    silently under-reported as if it held a single occupant. Deterministic
+    ordering (earliest effective_time first, id as tiebreaker) matches
+    `_get_active_occupancy_for_target`'s own choice of "the" occupant, so
+    `list(...)[0]` and the singular read agree for the same target."""
+    if target_kind == "location":
+        condition = Occupancy.target_location_id == target_id
+    else:
+        condition = Occupancy.target_asset_position_id == target_id
+    query = select(Occupancy).where(condition, Occupancy.end_time.is_(None)).order_by(Occupancy.effective_time, Occupancy.id)
+    return list(db.execute(query).scalars())
 
 
 def _target_kind_id(occupancy: Occupancy) -> tuple[str, uuid.UUID]:
@@ -176,6 +215,28 @@ def _constraint_name(exc: IntegrityError) -> str | None:
     orig = getattr(exc, "orig", None)
     diag = getattr(orig, "diag", None)
     return getattr(diag, "constraint_name", None)
+
+
+_CAPACITY_EXCEEDED_MARKER = "CMP-DOMAIN-FARM-002 target capacity exceeded"
+
+
+def _is_capacity_exceeded_error(exc: IntegrityError) -> bool:
+    """DOMAIN-FARM-002: the DB-layer capacity backstop
+    (`enforce_occupancy_insert_integrity`, migration f91c366cfe57) raises
+    its trigger exception with SQLSTATE 23514 (check_violation) so it
+    surfaces as `IntegrityError` like any other constraint failure here,
+    even though capacity is no longer a unique index -- identified by its
+    fixed message marker rather than a constraint name, since a trigger
+    RAISE has no constraint to name. In the normal application path this is
+    unreachable (the service already checks capacity under the same target
+    row lock before ever attempting the insert); this exists purely so a
+    direct-SQL/ORM write bypassing movement_service still surfaces as a
+    clean domain error, not a raw trigger message, if it somehow reaches
+    this code path."""
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    message = getattr(diag, "message_primary", None) or str(orig or exc)
+    return _CAPACITY_EXCEEDED_MARKER in message
 
 
 def _find_existing_movement(db: Session, *, tenant_id: uuid.UUID, client_command_id: uuid.UUID) -> Movement | None:
@@ -267,10 +328,17 @@ def execute_movement(
         if destination_kind == "asset_position" and occupant_kind == "asset" and destination_row.asset_id == occupant_id:
             raise AssetCannotOccupyOwnPositionError(str(occupant_id))
 
-        target_occupancy = _get_active_occupancy_for_target(
-            db, target_kind=destination_kind, target_id=destination_id, lock=True
+        # DOMAIN-FARM-002: destination_row was already locked (FOR UPDATE)
+        # by _resolve_target above -- capacity is decided under that same
+        # lock, so a concurrent mover targeting the same destination blocks
+        # here rather than racing. NULL capacity means an effective
+        # capacity of 1 (exclusive, backward-compatible with pre-capacity
+        # behavior).
+        effective_capacity = destination_row.capacity or 1
+        active_target_count = _count_active_occupancies_for_target(
+            db, target_kind=destination_kind, target_id=destination_id
         )
-        if target_occupancy is not None:
+        if active_target_count >= effective_capacity:
             raise TargetOccupiedError(str(destination_id))
 
         _check_compatibility(
@@ -331,10 +399,15 @@ def execute_movement(
         except IntegrityError as exc:
             db.rollback()
             constraint = _constraint_name(exc)
-            if constraint in ("ux_occupancies_active_target_location", "ux_occupancies_active_target_position"):
-                raise TargetOccupiedError(str(destination_id)) from exc
             if constraint in ("ux_occupancies_active_occupant_asset", "ux_occupancies_active_occupant_carrier"):
                 raise OccupantAlreadyActiveError(str(occupant_id)) from exc
+            # DOMAIN-FARM-002: capacity is enforced by a trigger (row-locked
+            # COUNT check), not a unique index -- see
+            # _is_capacity_exceeded_error. Unreachable via this normal
+            # application path (the service's own pre-check above already
+            # holds the same target row lock), kept as a defensive backstop.
+            if _is_capacity_exceeded_error(exc):
+                raise TargetOccupiedError(str(destination_id)) from exc
             raise
 
     kind = "removal" if destination_kind is None else ("placement" if source_kind is None else "move")
@@ -393,8 +466,25 @@ def get_movement_history(
 def get_target_occupant(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, target_kind: str, target_id: uuid.UUID
 ) -> Occupancy | None:
+    """Legacy singular read -- for a capacity>1 target with several active
+    occupancies, returns only one of them (the earliest). Kept for backward
+    compatibility; callers that need the true, complete state must use
+    `list_target_occupants` instead (its API-facing response also carries
+    an explicit count, see `TargetOccupantRead.active_occupancy_count`, so
+    this endpoint's output is never silently presented as complete)."""
     _resolve_target(db, tenant_id=tenant_id, farm_id=farm_id, target_kind=target_kind, target_id=target_id)
     return _get_active_occupancy_for_target(db, target_kind=target_kind, target_id=target_id)
+
+
+def list_target_occupants(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, target_kind: str, target_id: uuid.UUID
+) -> list[Occupancy]:
+    """DOMAIN-FARM-002.1: the truthful, complete read -- every active
+    occupancy for the target, in deterministic order. For a truly exclusive
+    (capacity<=1) target this returns 0 or 1 rows, identical in substance to
+    `get_target_occupant`; for capacity>1 it returns all of them."""
+    _resolve_target(db, tenant_id=tenant_id, farm_id=farm_id, target_kind=target_kind, target_id=target_id)
+    return _list_active_occupancies_for_target(db, target_kind=target_kind, target_id=target_id)
 
 
 def _location_path(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, location_id: uuid.UUID) -> list[dict]:

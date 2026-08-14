@@ -36,9 +36,11 @@ Uniqueness is enforced by three partial indexes: two for the generic set (mirror
 
 **Farm tree and path.** The complete tree for a farm is loaded with a single tenant-and-farm-scoped query and assembled into a nested structure in application code — no per-node queries. A single location's path is produced by a recursive (`WITH RECURSIVE`) query at read time; **no materialized path is stored**, consistent with ADR-004.
 
-**Bulk generation.** Numbered children (e.g. `P01`–`P20`) are generated atomically: codes are always server-generated from a prefix/range/padding — never client-supplied — capped at 500 per command, and either all children are created or none are. One audit event is recorded per bulk command, not one per generated child.
+**Bulk generation.** Numbered children (e.g. `P01`–`P20`) are generated atomically: codes are always server-generated from a prefix/range/padding — never client-supplied — capped at 500 per command, and either all children are created or none are. One audit event is recorded per bulk command, not one per generated child. `capacity` (see below), when supplied, is applied identically to every generated row — never a guessed per-type default.
 
-**Deferred:** updates, reparenting/move, and deletion of locations; capacity-aware occupancy (DOMAIN-FARM-002 — a location/asset-position may hold more than one active occupant, up to a configured capacity); Grow Cube individual-plant identity; carriers/occupancy/movement changes beyond what already exists.
+**Capacity (DOMAIN-FARM-002).** Both `create_location` and `bulk_generate_children` accept an optional `capacity` (positive integer, `NULL` when omitted). `NULL`/`1` means the pre-existing exclusive behavior (at most one active occupant); `>1` permits that many simultaneous identified occupants, enforced at the DB layer — see `OCCUPANCY_MOVEMENT_MODEL.md`. `capacity` is orthogonal to `occupiable`: a non-occupiable location with `capacity > 1` configured is still never a valid movement target. `grow_table.default_occupiable` was **not** changed by this ticket — Farm Setup (a later ticket) creates the actual table instances with their real `occupiable`/`capacity` values; CMP never invents a plate/tray/hole count.
+
+**Deferred:** updates, reparenting/move, and deletion of locations; Grow Cube individual-plant identity; Carrier-as-occupancy-target (`target_carrier_id`); carriers/occupancy/movement changes beyond what already exists.
 
 ## Classification-aware topology (implemented, DOMAIN-FARM-001)
 

@@ -26,6 +26,12 @@ def _normalize_classification(v: str | None) -> str | None:
     return v
 
 
+def _validate_capacity(v: int | None) -> int | None:
+    if v is not None and v < 1:
+        raise ValueError("capacity must be a positive integer")
+    return v
+
+
 class LocationCreate(BaseModel):
     location_type_code: str
     code: str
@@ -33,11 +39,19 @@ class LocationCreate(BaseModel):
     parent_location_id: uuid.UUID | None = None
     greenhouse_classification: str | None = None
     occupiable: bool | None = None
+    # DOMAIN-FARM-002: NULL/omitted -> effective capacity 1 (exclusive,
+    # backward-compatible). Configured data only -- never a guessed default.
+    capacity: int | None = None
 
     @field_validator("code")
     @classmethod
     def validate_code(cls, v: str) -> str:
         return _normalize_code(v)
+
+    @field_validator("capacity")
+    @classmethod
+    def validate_capacity(cls, v: int | None) -> int | None:
+        return _validate_capacity(v)
 
     @field_validator("greenhouse_classification")
     @classmethod
@@ -61,6 +75,10 @@ class LocationBulkChildrenCreate(BaseModel):
     end: int
     pad_width: int
     name_template: str | None = None
+    # DOMAIN-FARM-002: applied identically to every generated row (e.g. 12
+    # tables generated with capacity=24 all receive capacity=24). NULL/
+    # omitted -> effective capacity 1 for every generated row.
+    capacity: int | None = None
 
     @field_validator("code_prefix")
     @classmethod
@@ -69,6 +87,11 @@ class LocationBulkChildrenCreate(BaseModel):
         if not v:
             raise ValueError("code_prefix must not be blank")
         return v
+
+    @field_validator("capacity")
+    @classmethod
+    def validate_capacity(cls, v: int | None) -> int | None:
+        return _validate_capacity(v)
 
     @model_validator(mode="after")
     def validate_range(self) -> "LocationBulkChildrenCreate":
@@ -97,6 +120,7 @@ class LocationRead(BaseModel):
     status: str
     greenhouse_classification: str | None
     occupiable: bool
+    capacity: int | None
 
 
 class LocationPathEntry(BaseModel):

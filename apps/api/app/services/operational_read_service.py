@@ -392,17 +392,24 @@ def get_location_subtree_occupancy(
     occupancy_rows = conn.execute(
         text(
             """
-            SELECT o.target_location_id AS location_id, o.occupant_asset_id, o.occupant_carrier_id,
-                   c.code AS carrier_code
+            SELECT o.id AS occupancy_id, o.target_location_id AS location_id,
+                   o.occupant_asset_id, o.occupant_carrier_id, c.code AS carrier_code
             FROM occupancies o
             LEFT JOIN carriers c ON c.id = o.occupant_carrier_id
             WHERE o.tenant_id = :tid AND o.farm_id = :fid AND o.end_time IS NULL
               AND o.target_location_id = ANY(:ids)
+            ORDER BY o.effective_time, o.id
             """
         ),
         {"tid": tenant_id, "fid": farm_id, "ids": list(occupiable_ids) or [uuid.UUID(int=0)]},
     ).mappings().all()
-    occupied_by_location = {r["location_id"]: dict(r) for r in occupancy_rows}
+    # DOMAIN-FARM-002.1: a capacity>1 location may have several simultaneous
+    # active occupancies -- group into a list per location (deterministically
+    # ordered above) rather than collapsing to one via dict-overwrite, which
+    # silently dropped every occupant but the last.
+    occupied_by_location: dict[uuid.UUID, list[dict]] = defaultdict(list)
+    for r in occupancy_rows:
+        occupied_by_location[r["location_id"]].append(dict(r))
 
     carrier_ids = {r["occupant_carrier_id"] for r in occupancy_rows if r["occupant_carrier_id"] is not None}
     batch_context_by_carrier: dict[uuid.UUID, dict] = {}
@@ -449,9 +456,7 @@ def get_location_subtree_occupancy(
             location_id=nid, occupiable_location_count=total, occupied_location_count=occupied,
         ))
 
-    occupied_locations = []
-    for nid in sorted(occupied_by_location.keys(), key=str):
-        r = occupied_by_location[nid]
+    def _build_occupant(r: dict) -> LocationOccupant:
         is_carrier = r["occupant_carrier_id"] is not None
         occupant_id = r["occupant_carrier_id"] if is_carrier else r["occupant_asset_id"]
         batch_ctx = None
@@ -465,13 +470,15 @@ def get_location_subtree_occupancy(
                     stage_category=b["stage_category"],
                 ),
             )
-        occupied_locations.append(OccupiedLocation(
-            location_id=nid,
-            occupant=LocationOccupant(
-                kind="carrier" if is_carrier else "asset", id=occupant_id,
-                carrier_code=r["carrier_code"] if is_carrier else None, batch=batch_ctx,
-            ),
-        ))
+        return LocationOccupant(
+            kind="carrier" if is_carrier else "asset", id=occupant_id,
+            carrier_code=r["carrier_code"] if is_carrier else None, batch=batch_ctx,
+        )
+
+    occupied_locations = []
+    for nid in sorted(occupied_by_location.keys(), key=str):
+        occupants = [_build_occupant(r) for r in occupied_by_location[nid]]
+        occupied_locations.append(OccupiedLocation(location_id=nid, occupant=occupants[0], occupants=occupants))
 
     return SubtreeOccupancyRead(
         root_location_id=root_location_id, aggregate_counts=aggregate_counts, occupied_locations=occupied_locations,

@@ -69,7 +69,7 @@ DOMAIN-FARM-001 (authoritative, implemented): exact chain, no shortcuts — Zone
 Greenhouse → Zone → Span → Grow Table
 ```
 
-Stops at the table. The Production Cultivation Plate is a **carrier**, not a location — it occupies the Grow Table directly. There is no further "Table Position" location level: the farm does not define permanent, numbered plate positions on a table, because the physical plate itself is the numbered object. Default rule: one crop batch per plate; a table may hold multiple batches once multiple plates are placed on it (capacity-aware occupancy, DOMAIN-FARM-002).
+Stops at the table. The Production Cultivation Plate is a **carrier**, not a location — it occupies the Grow Table directly. There is no further "Table Position" location level: the farm does not define permanent, numbered plate positions on a table, because the physical plate itself is the numbered object. Default rule: one crop batch per plate; a table may hold multiple plates once its `capacity` is configured above 1 (capacity-aware occupancy, DOMAIN-FARM-002, implemented — see §5). `grow_table.default_occupiable` itself was not changed; Farm Setup creates the actual table instances with their real `occupiable`/`capacity` values.
 
 ### 3.3 Vines Greenhouse
 
@@ -111,6 +111,8 @@ Occupancy supports:
 - availability and history.
 
 Use database constraints and transactional checks to prevent conflicting occupancy or capacity overflow.
+
+DOMAIN-FARM-002 (authoritative, implemented): `locations.capacity`/`asset_positions.capacity` implement the "exclusive positions" case above plus multi-occupant targets — a configured positive integer count of simultaneously permitted *identified occupants* (Carrier/Asset occupancy rows), enforced by a row-locking DB trigger so no transaction can commit over capacity, even via direct SQL. `NULL`/`1` is exclusive (backward-compatible). This is not the "quantity capacity (kg, crates, plates, plants, etc.)" case above — biological/measured quantity per occupant remains unimplemented and out of DOMAIN-FARM-002's scope, as is Carrier-as-occupancy-target (e.g. a Grow Bag's contained Grow Cubes).
 
 ## 6. Movements
 
