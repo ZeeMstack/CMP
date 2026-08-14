@@ -39,6 +39,15 @@ function callProxy(path: string[], cookieHeader?: string) {
   return route.GET(request, { params: Promise.resolve({ path }) });
 }
 
+function callProxyPost(path: string[], body: unknown, cookieHeader?: string) {
+  const request = new NextRequest(`http://localhost/api/${path.join("/")}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(cookieHeader ? { cookie: cookieHeader } : {}) },
+    body: JSON.stringify(body),
+  });
+  return route.POST(request, { params: Promise.resolve({ path }) });
+}
+
 const SELECTED_TENANT_COOKIE = "cmp_tenant_id=selected-tenant-abc";
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -61,13 +70,239 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-describe("generic proxy is GET-only", () => {
-  it("exports GET and nothing else", () => {
+describe("generic proxy supports exactly GET and POST", () => {
+  it("exports GET and POST, and nothing else", () => {
+    // FARM-SETUP-001 added POST (Greenhouse setup creation is CMP's first
+    // business mutation UX) -- PUT/PATCH/DELETE remain deliberately absent
+    // (CMP has no PUT/PATCH/DELETE endpoints anywhere; see
+    // AUTHORIZATION_MODEL.md's permission-catalog note). This guard still
+    // fails the moment any of those three is added without a deliberate
+    // review of this file's own routing/identity assumptions.
     expect(typeof route.GET).toBe("function");
-    expect((route as Record<string, unknown>).POST).toBeUndefined();
+    expect(typeof route.POST).toBe("function");
     expect((route as Record<string, unknown>).PUT).toBeUndefined();
     expect((route as Record<string, unknown>).PATCH).toBeUndefined();
     expect((route as Record<string, unknown>).DELETE).toBeUndefined();
+  });
+});
+
+describe("proxy target URL safety (FARM-SETUP-001.1 section 11)", () => {
+  it("never proxies to an external host even when a path segment decodes to an empty string (protocol-relative host override)", async () => {
+    // `new URL("//evil.example/steal", "http://backend.internal:8000")`
+    // resolves to `http://evil.example/steal` per the WHATWG URL spec --
+    // an empty leading path segment (reachable if a request path segment
+    // ever decodes to "") joined with the rest would produce exactly a
+    // "//host/..." string. This proves the actual route handler's URL
+    // construction is safe against that input shape, not merely that
+    // ordinary paths look fine.
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await callProxy(["", "evil.example", "steal"], SELECTED_TENANT_COOKIE);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.hostname).toBe("backend.internal");
+    expect(url.hostname).not.toBe("evil.example");
+  });
+
+  it("never proxies to an external host for a POST request either", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse({ ok: true }, 201));
+
+    await callProxyPost(["", "evil.example", "steal"], {}, SELECTED_TENANT_COOKIE);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.hostname).toBe("backend.internal");
+    expect(url.hostname).not.toBe("evil.example");
+  });
+
+  it("a client-supplied Authorization header is never forwarded upstream -- only the server-resolved identity is", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    const request = new NextRequest("http://localhost/api/farms", {
+      headers: {
+        cookie: SELECTED_TENANT_COOKIE,
+        Authorization: "Bearer attacker-supplied-token",
+        "X-CMP-Tenant-Id": "attacker-tenant",
+        "X-Dev-Tenant-Id": "attacker-dev-tenant",
+        "X-Dev-User-Id": "attacker-dev-user",
+      },
+    });
+    await route.GET(request, { params: Promise.resolve({ path: ["farms"] }) });
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    // Dev-bypass mode's own server-resolved identity, not anything the
+    // client sent -- proves the outgoing header set is built exclusively
+    // server-side (`identity.headers`), never merged with `request.headers`.
+    expect(headers["X-Dev-Tenant-Id"]).toBe("selected-tenant-abc");
+    expect(headers["X-Dev-User-Id"]).toBe("dev-user");
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("a client-supplied Authorization header cannot smuggle a bearer token past a POST either", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse({ ok: true }, 201));
+
+    const request = new NextRequest("http://localhost/api/farms/farm-1/farm-setup/greenhouses", {
+      method: "POST",
+      headers: {
+        cookie: SELECTED_TENANT_COOKIE,
+        "Content-Type": "application/json",
+        Authorization: "Bearer attacker-supplied-token",
+      },
+      body: JSON.stringify({}),
+    });
+    await route.POST(request, { params: Promise.resolve({ path: ["farms", "farm-1", "farm-setup", "greenhouses"] }) });
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers["X-Dev-User-Id"]).toBe("dev-user");
+  });
+
+  it("stays scoped under the configured backend base URL for an ordinary path -- sanity check", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await callProxy(["farms", "farm-1", "farm-setup", "greenhouses"], SELECTED_TENANT_COOKIE);
+
+    const [url] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://backend.internal:8000/farms/farm-1/farm-setup/greenhouses");
+  });
+});
+
+describe("CSRF / same-origin boundary (FARM-SETUP-001.2 section 6/7)", () => {
+  it("rejects a POST carrying a cross-origin Origin header, before ever calling the backend", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+
+    const request = new NextRequest("http://localhost/api/farms/farm-1/farm-setup/greenhouses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        origin: "https://evil.example",
+        cookie: SELECTED_TENANT_COOKIE,
+      },
+      body: JSON.stringify({}),
+    });
+    const response = await route.POST(request, { params: Promise.resolve({ path: ["farms", "farm-1", "farm-setup", "greenhouses"] }) });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "cross_origin_rejected" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a POST with a matching same-origin Origin header", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse({ greenhouse_id: "gh-1" }, 201));
+
+    const request = new NextRequest("http://localhost/api/farms/farm-1/farm-setup/greenhouses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        origin: "http://localhost",
+        cookie: SELECTED_TENANT_COOKIE,
+      },
+      body: JSON.stringify({}),
+    });
+    const response = await route.POST(request, { params: Promise.resolve({ path: ["farms", "farm-1", "farm-setup", "greenhouses"] }) });
+
+    expect(response.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still accepts a POST with no Origin header at all -- SameSite cookies remain the primary defense", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse({ greenhouse_id: "gh-1" }, 201));
+
+    const response = await callProxyPost(["farms", "farm-1", "farm-setup", "greenhouses"], {}, SELECTED_TENANT_COOKIE);
+
+    expect(response.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("GET is not gated on Origin -- only the mutating verb is (matches every other Route Handler's convention)", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    const request = new NextRequest("http://localhost/api/farms", {
+      headers: { origin: "https://evil.example", cookie: SELECTED_TENANT_COOKIE },
+    });
+    const response = await route.GET(request, { params: Promise.resolve({ path: ["farms"] }) });
+
+    expect(response.status).toBe(200);
+  });
+});
+
+describe("POST passthrough (FARM-SETUP-001)", () => {
+  it("forwards the request body and Content-Type: application/json to the backend", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockResolvedValue(jsonResponse({ greenhouse_id: "gh-1" }, 201));
+
+    const payload = { code: "GH-01", classification: "leafy_greens" };
+    const response = await callProxyPost(
+      ["farms", "farm-1", "farm-setup", "greenhouses"],
+      payload,
+      SELECTED_TENANT_COOKIE,
+    );
+
+    expect(response.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/farms/farm-1/farm-setup/greenhouses");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual(payload);
+    const headers = init.headers as Record<string, string>;
+    expect(headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("reuses the exact same identity resolution as GET -- an auth failure still returns 401 and never calls the backend", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "false");
+    // real mode, no session -> getCmpApiAccessToken rejects
+    mockGetCmpApiAccessToken.mockRejectedValue(new SessionExpiredError(new Error("x")));
+
+    const response = await callProxyPost(["farms", "farm-1", "farm-setup", "greenhouses"], {});
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("relays a network failure as 502, matching GET's own network-error handling", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user");
+    fetchMock.mockRejectedValue(new Error("boom"));
+
+    const response = await callProxyPost(
+      ["farms", "farm-1", "farm-setup", "greenhouses"],
+      {},
+      SELECTED_TENANT_COOKIE,
+    );
+
+    expect(response.status).toBe(502);
   });
 });
 

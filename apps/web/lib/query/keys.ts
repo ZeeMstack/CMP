@@ -29,4 +29,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "crop-batches", "operational-summary", state] as const,
   batchOperationalContext: (tenantId: string, farmId: string, batchId: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "operational-context"] as const,
+  greenhouseSetupOverview: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses"] as const,
+  greenhouseStructure: (tenantId: string, farmId: string, greenhouseId: string) =>
+    ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses", greenhouseId] as const,
 };

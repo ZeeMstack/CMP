@@ -1,8 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
+import type { GreenhouseSetupCreate } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { queryKeys } from "@/lib/query/keys";
 
@@ -127,5 +128,45 @@ export function useQualityHolds(farmId: string, batchId: string) {
     queryFn: ({ signal }) => api.getQualityHolds(farmId, batchId, signal),
     staleTime: STALE_DETAIL_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+// --- FARM-SETUP-001 -------------------------------------------------------
+
+export function useGreenhouseSetupOverview(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.greenhouseSetupOverview(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getGreenhouseSetupOverview(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useGreenhouseStructure(farmId: string, greenhouseId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.greenhouseStructure(tenantId ?? "", farmId, greenhouseId),
+    queryFn: ({ signal }) => api.getGreenhouseStructure(farmId, greenhouseId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** The idempotency key (`client_command_id`) lives in the payload itself
+ * (set once by the caller before the first submit attempt) -- an
+ * accidental double-click or a network-retry-triggered resubmit reuses
+ * the SAME payload object and therefore the same id, so the backend
+ * recognizes it as a replay rather than a second Greenhouse. */
+export function useCreateGreenhouseSetup(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GreenhouseSetupCreate) => api.createGreenhouseSetup(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.greenhouseSetupOverview(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
   });
 }

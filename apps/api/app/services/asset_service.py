@@ -39,17 +39,22 @@ def _get_asset_type_by_code(db: Session, code: str) -> AssetType:
     return asset_type
 
 
-def register_asset(
+def _register_asset_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
     farm_id: uuid.UUID,
-    actor_user_id: uuid.UUID | None,
     asset_type_code: str,
     code: str,
     name: str,
     commissioned_date: date | None,
 ) -> Asset:
+    """The validate+insert+flush core of `register_asset`, with no commit
+    and no audit event -- reused by FARM-SETUP-001's orchestration service
+    so a setup command that also registers assets (Germination Trolley,
+    Seeding Machine) commits everything, locations and assets alike, in
+    one transaction. Public `register_asset` below is an unchanged thin
+    wrapper around this."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     asset_type = _get_asset_type_by_code(db, asset_type_code)
 
@@ -67,6 +72,29 @@ def register_asset(
     except IntegrityError as exc:
         db.rollback()
         raise DuplicateAssetCodeError(f"{tenant_id}:{code}") from exc
+    return asset
+
+
+def register_asset(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    asset_type_code: str,
+    code: str,
+    name: str,
+    commissioned_date: date | None,
+) -> Asset:
+    asset = _register_asset_core(
+        db,
+        tenant_id=tenant_id,
+        farm_id=farm_id,
+        asset_type_code=asset_type_code,
+        code=code,
+        name=name,
+        commissioned_date=commissioned_date,
+    )
 
     append_audit_event(
         db,
@@ -103,12 +131,11 @@ def list_assets(
     return list(db.execute(query.order_by(func.lower(Asset.code))).scalars())
 
 
-def generate_positions(
+def _generate_positions_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
     farm_id: uuid.UUID,
-    actor_user_id: uuid.UUID | None,
     asset_id: uuid.UUID,
     shelf_count: int,
     slots_per_shelf: int,
@@ -118,7 +145,12 @@ def generate_positions(
     slot_pad_width: int,
     shelf_capacity: int | None = None,
     slot_capacity: int | None = None,
-) -> list[AssetPosition]:
+) -> tuple[AssetType, list[AssetPosition]]:
+    """The validate+insert+flush core of `generate_positions`, with no
+    commit and no audit event -- see `_register_asset_core`'s docstring for
+    why FARM-SETUP-001 needs this split. Returns the asset type alongside
+    the created positions since the public wrapper's audit event needs
+    `asset_type.code` too."""
     asset = get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id)
     asset_type = db.get(AssetType, asset.asset_type_id)
     if asset_type is None or not asset_type.supports_positions:
@@ -170,6 +202,39 @@ def generate_positions(
         if _constraint_name(exc) not in ("ux_asset_positions_sibling_code_lower", "ux_asset_positions_root_code_lower"):
             raise
         raise DuplicatePositionCodeError(f"{asset_id}:{shelf_prefix}/{slot_prefix}") from exc
+    return asset_type, created
+
+
+def generate_positions(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    asset_id: uuid.UUID,
+    shelf_count: int,
+    slots_per_shelf: int,
+    shelf_prefix: str,
+    slot_prefix: str,
+    shelf_pad_width: int,
+    slot_pad_width: int,
+    shelf_capacity: int | None = None,
+    slot_capacity: int | None = None,
+) -> list[AssetPosition]:
+    asset_type, created = _generate_positions_core(
+        db,
+        tenant_id=tenant_id,
+        farm_id=farm_id,
+        asset_id=asset_id,
+        shelf_count=shelf_count,
+        slots_per_shelf=slots_per_shelf,
+        shelf_prefix=shelf_prefix,
+        slot_prefix=slot_prefix,
+        shelf_pad_width=shelf_pad_width,
+        slot_pad_width=slot_pad_width,
+        shelf_capacity=shelf_capacity,
+        slot_capacity=slot_capacity,
+    )
 
     append_audit_event(
         db,

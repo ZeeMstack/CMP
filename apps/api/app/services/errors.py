@@ -603,3 +603,13 @@ class RecallContainmentOpenError(DomainError):
     lot currently contained by an open recall case."""
 
     pass
+
+
+class FarmSetupCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class FarmSetupValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

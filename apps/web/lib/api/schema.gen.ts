@@ -234,6 +234,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/locations/{location_id}/occupants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Location Occupants
+         * @description DOMAIN-FARM-002.1: the truthful, complete-state counterpart to
+         *     `get_location_occupant` -- returns every active occupancy, not just
+         *     one, so a capacity>1 target is never under-reported.
+         */
+        get: operations["get_location_occupants_farms__farm_id__locations__location_id__occupants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/locations/{location_id}/subtree-occupancy": {
         parameters: {
             query?: never;
@@ -251,6 +273,53 @@ export interface paths {
          *     row per empty location.
          */
         get: operations["get_location_subtree_occupancy_farms__farm_id__locations__location_id__subtree_occupancy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/farm-setup/greenhouses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Greenhouse Setup Overview */
+        get: operations["get_greenhouse_setup_overview_farms__farm_id__farm_setup_greenhouses_get"];
+        put?: never;
+        /**
+         * Create Greenhouse Setup
+         * @description FARM-SETUP-001: creates a Greenhouse plus its full requested
+         *     classification-specific physical structure in one atomic command.
+         *
+         *     FARM-SETUP-001.1: gated on BOTH `location.manage` AND `asset.manage`,
+         *     stacked as two separate dependencies -- this command can register
+         *     Nursery Assets (trolleys, seeding machines), so it must not rely on
+         *     the incidental fact that every role currently holding `location.manage`
+         *     also holds `asset.manage`. A hypothetical membership with only one of
+         *     the two permissions must not be able to create Assets through this
+         *     command.
+         */
+        post: operations["create_greenhouse_setup_farms__farm_id__farm_setup_greenhouses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/farm-setup/greenhouses/{greenhouse_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Greenhouse Structure */
+        get: operations["get_greenhouse_structure_farms__farm_id__farm_setup_greenhouses__greenhouse_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -388,6 +457,28 @@ export interface paths {
         };
         /** Get Position Occupant */
         get: operations["get_position_occupant_farms__farm_id__assets__asset_id__positions__position_id__occupant_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/assets/{asset_id}/positions/{position_id}/occupants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Position Occupants
+         * @description DOMAIN-FARM-002.1: the truthful, complete-state counterpart to
+         *     `get_position_occupant` -- returns every active occupancy, not just
+         *     one, so a capacity>1 position is never under-reported.
+         */
+        get: operations["get_position_occupants_farms__farm_id__assets__asset_id__positions__position_id__occupants_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1615,63 +1706,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/dev/bootstrap/tenants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap Tenant */
-        post: operations["bootstrap_tenant_dev_bootstrap_tenants_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap User */
-        post: operations["bootstrap_user_dev_bootstrap_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/memberships": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bootstrap Membership
-         * @description Development-only: creates a tenant's first membership. No active
-         *     membership is required to call this — that's the whole point of a
-         *     bootstrap route. `POST /memberships` (not under /dev/bootstrap) is for
-         *     an already-active member to add further members.
-         */
-        post: operations["bootstrap_membership_dev_bootstrap_memberships_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/": {
         parameters: {
             query?: never;
@@ -1724,6 +1758,8 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+            /** Capacity */
+            capacity: number | null;
         };
         /** AssetPositionTreeNode */
         AssetPositionTreeNode: {
@@ -1758,6 +1794,10 @@ export interface components {
             shelf_pad_width: number;
             /** Slot Pad Width */
             slot_pad_width: number;
+            /** Shelf Capacity */
+            shelf_capacity?: number | null;
+            /** Slot Capacity */
+            slot_capacity?: number | null;
         };
         /** AssetRead */
         AssetRead: {
@@ -2198,25 +2238,6 @@ export interface components {
             id: string;
             /** Code */
             code: string;
-        };
-        /**
-         * BootstrapMembershipCreate
-         * @description Development-only: creates a membership without requiring an existing
-         *     active membership, to bootstrap a tenant's first member.
-         */
-        BootstrapMembershipCreate: {
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
-            /** Role Code */
-            role_code: string;
         };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
@@ -2954,6 +2975,186 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /**
+         * GreenhouseOverviewItem
+         * @description One row of the Farm Setup Greenhouses overview -- every count is
+         *     derived from actual configured `locations` rows, never fabricated.
+         */
+        GreenhouseOverviewItem: {
+            /**
+             * Greenhouse Id
+             * Format: uuid
+             */
+            greenhouse_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Classification */
+            classification: string;
+            /** Status */
+            status: string;
+            counts: components["schemas"]["GreenhouseSetupCounts"];
+        };
+        /** GreenhouseSetupCounts */
+        GreenhouseSetupCounts: {
+            /**
+             * Zones
+             * @default 0
+             */
+            zones: number;
+            /**
+             * Spans
+             * @default 0
+             */
+            spans: number;
+            /**
+             * Tables
+             * @default 0
+             */
+            tables: number;
+            /**
+             * Gutters
+             * @default 0
+             */
+            gutters: number;
+            /**
+             * Bag Positions
+             * @default 0
+             */
+            bag_positions: number;
+            /**
+             * Seeding Stations
+             * @default 0
+             */
+            seeding_stations: number;
+            /**
+             * Germination Chambers
+             * @default 0
+             */
+            germination_chambers: number;
+            /**
+             * Seedling Tables
+             * @default 0
+             */
+            seedling_tables: number;
+            /**
+             * Intersalads Tables
+             * @default 0
+             */
+            intersalads_tables: number;
+            /**
+             * Intervines Tables
+             * @default 0
+             */
+            intervines_tables: number;
+            /**
+             * Trolleys
+             * @default 0
+             */
+            trolleys: number;
+            /**
+             * Trolley Levels
+             * @default 0
+             */
+            trolley_levels: number;
+            /**
+             * Trolley Slots
+             * @default 0
+             */
+            trolley_slots: number;
+            /**
+             * Seeding Machines
+             * @default 0
+             */
+            seeding_machines: number;
+        };
+        /** GreenhouseSetupCreate */
+        GreenhouseSetupCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Classification */
+            classification: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            nursery?: components["schemas"]["NurserySetupConfig"] | null;
+            leafy?: components["schemas"]["LeafySetupConfig"] | null;
+            vines?: components["schemas"]["VinesSetupConfig"] | null;
+        };
+        /** GreenhouseSetupResult */
+        GreenhouseSetupResult: {
+            /**
+             * Greenhouse Id
+             * Format: uuid
+             */
+            greenhouse_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Classification */
+            classification: string;
+            counts: components["schemas"]["GreenhouseSetupCounts"];
+        };
+        /**
+         * GreenhouseStructureRead
+         * @description A readable, classification-shaped view of one Greenhouse's existing
+         *     physical structure -- not a generic Location dump. Exactly one of the
+         *     three classification-specific groups below is populated, matching
+         *     `greenhouse.classification`.
+         */
+        GreenhouseStructureRead: {
+            /**
+             * Greenhouse Id
+             * Format: uuid
+             */
+            greenhouse_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Classification */
+            classification: string;
+            /** Leafy Zones */
+            leafy_zones?: components["schemas"]["StructureZoneNode"][] | null;
+            /** Vines Zones */
+            vines_zones?: components["schemas"]["StructureVinesZoneNode"][] | null;
+            nursery_seeding_station?: components["schemas"]["StructureSectionNode"] | null;
+            nursery_germination_chamber?: components["schemas"]["StructureSectionNode"] | null;
+            nursery_seedling?: components["schemas"]["StructureNurseryTableGroup"] | null;
+            nursery_intersalads?: components["schemas"]["StructureNurseryTableGroup"] | null;
+            nursery_intervines?: components["schemas"]["StructureNurseryTableGroup"] | null;
+        };
+        /**
+         * GutterGeneratorConfig
+         * @description Generates N sibling Grow Gutters under one Span, each with the same
+         *     number of Grow Bag Positions. Grow Bag Position is a true exclusive
+         *     physical position -- its capacity is never configurable here and is
+         *     always left at the domain default (NULL -> effective capacity 1);
+         *     this model has no `capacity` field at all, deliberately, so there is no
+         *     biological/plant-capacity input to misuse.
+         */
+        GutterGeneratorConfig: {
+            /** Code Prefix */
+            code_prefix: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Pad Width */
+            pad_width: number;
+            /** Bag Positions Per Gutter */
+            bag_positions_per_gutter: number;
+            /** Bag Position Code Prefix */
+            bag_position_code_prefix: string;
+            /** Bag Position Pad Width */
+            bag_position_pad_width: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3068,6 +3269,11 @@ export interface components {
             /** Potentially Affected Dispatched Package Count */
             potentially_affected_dispatched_package_count: number;
         };
+        /** LeafySetupConfig */
+        LeafySetupConfig: {
+            /** Zones */
+            zones: components["schemas"]["ZoneSetupConfig"][];
+        };
         /** Limitation */
         Limitation: {
             /** Code */
@@ -3137,6 +3343,8 @@ export interface components {
             pad_width: number;
             /** Name Template */
             name_template?: string | null;
+            /** Capacity */
+            capacity?: number | null;
         };
         /** LocationCreate */
         LocationCreate: {
@@ -3152,6 +3360,8 @@ export interface components {
             greenhouse_classification?: string | null;
             /** Occupiable */
             occupiable?: boolean | null;
+            /** Capacity */
+            capacity?: number | null;
         };
         /** LocationInventoryRead */
         LocationInventoryRead: {
@@ -3246,6 +3456,8 @@ export interface components {
             greenhouse_classification: string | null;
             /** Occupiable */
             occupiable: boolean;
+            /** Capacity */
+            capacity: number | null;
         };
         /** LocationTreeNode */
         LocationTreeNode: {
@@ -3267,6 +3479,8 @@ export interface components {
             status: string;
             /** Occupiable */
             occupiable: boolean;
+            /** Capacity */
+            capacity: number | null;
             /**
              * Children
              * @default []
@@ -3377,6 +3591,38 @@ export interface components {
             actor_user_id: string | null;
             /** Reason */
             reason: string | null;
+        };
+        /**
+         * NurserySectionConfig
+         * @description FARM-SETUP-001.1: Seeding Station / Germination Chamber -- a single
+         *     physical section directly under the Nursery Greenhouse, user-supplied
+         *     code (never a generated/hidden identity, unlike the table generators --
+         *     there is exactly one of each per Nursery, not "N of them").
+         */
+        NurserySectionConfig: {
+            /** Code */
+            code: string;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * NurserySetupConfig
+         * @description Section 7 (Seedling/InterSalads/InterVines tables) plus sections 8-9
+         *     (optional Germination Trolley/Seeding Machine assets) plus
+         *     FARM-SETUP-001.1's Seeding Station / Germination Chamber -- the
+         *     complete authoritative Nursery topology is now configurable entirely
+         *     inside Farm Setup, no generic Location API workaround required.
+         */
+        NurserySetupConfig: {
+            seeding_station?: components["schemas"]["NurserySectionConfig"] | null;
+            germination_chamber?: components["schemas"]["NurserySectionConfig"] | null;
+            seedling_tables?: components["schemas"]["TableGeneratorConfig"] | null;
+            intersalads_tables?: components["schemas"]["TableGeneratorConfig"] | null;
+            intervines_tables?: components["schemas"]["TableGeneratorConfig"] | null;
+            /** Trolleys */
+            trolleys?: components["schemas"]["TrolleySetupConfig"][];
+            /** Seeding Machines */
+            seeding_machines?: components["schemas"]["SeedingMachineSetupConfig"][];
         };
         /** ObservationDefinitionCreate */
         ObservationDefinitionCreate: {
@@ -3651,6 +3897,8 @@ export interface components {
              */
             location_id: string;
             occupant: components["schemas"]["LocationOccupant"];
+            /** Occupants */
+            occupants: components["schemas"]["LocationOccupant"][];
         };
         /**
          * OperationalStageSummary
@@ -4286,6 +4534,13 @@ export interface components {
              */
             originating_batch_id: string;
         };
+        /** SeedingMachineSetupConfig */
+        SeedingMachineSetupConfig: {
+            /** Code */
+            code: string;
+            /** Name */
+            name?: string | null;
+        };
         /** SowingEventCreate */
         SowingEventCreate: {
             /**
@@ -4430,6 +4685,13 @@ export interface components {
             /** Seed Lot Code */
             seed_lot_code: string;
         };
+        /** SpanSetupConfig */
+        SpanSetupConfig: {
+            /** Code */
+            code: string;
+            tables?: components["schemas"]["TableGeneratorConfig"] | null;
+            gutters?: components["schemas"]["GutterGeneratorConfig"] | null;
+        };
         /** SplitOutputIn */
         SplitOutputIn: {
             /** Output Batch Code */
@@ -4484,6 +4746,101 @@ export interface components {
              */
             recorded_time: string;
         };
+        /** StructureGutterNode */
+        StructureGutterNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Bag Position Count */
+            bag_position_count: number;
+        };
+        /** StructureNurseryTableGroup */
+        StructureNurseryTableGroup: {
+            /** Area Id */
+            area_id: string | null;
+            /** Tables */
+            tables: components["schemas"]["StructureTableNode"][];
+        };
+        /**
+         * StructureSectionNode
+         * @description FARM-SETUP-001.1: Seeding Station / Germination Chamber -- a single
+         *     section directly under the Nursery Greenhouse, not a generated group.
+         */
+        StructureSectionNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** StructureSpanNode */
+        StructureSpanNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Tables */
+            tables: components["schemas"]["StructureTableNode"][];
+        };
+        /** StructureTableNode */
+        StructureTableNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Capacity */
+            capacity: number | null;
+        };
+        /** StructureVinesSpanNode */
+        StructureVinesSpanNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Gutters */
+            gutters: components["schemas"]["StructureGutterNode"][];
+        };
+        /** StructureVinesZoneNode */
+        StructureVinesZoneNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Spans */
+            spans: components["schemas"]["StructureVinesSpanNode"][];
+        };
+        /** StructureZoneNode */
+        StructureZoneNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Spans */
+            spans: components["schemas"]["StructureSpanNode"][];
+        };
         /** SubtreeOccupancyRead */
         SubtreeOccupancyRead: {
             /**
@@ -4496,10 +4853,54 @@ export interface components {
             /** Occupied Locations */
             occupied_locations: components["schemas"]["OccupiedLocation"][];
         };
-        /** TargetOccupantRead */
+        /**
+         * TableGeneratorConfig
+         * @description Generates N sibling table-like locations under one parent, in one
+         *     `_bulk_generate_children_core` call -- code_prefix/start/end/pad_width
+         *     exactly mirror the existing `LocationBulkChildrenCreate` shape.
+         *     Numbering restarts naturally per parent simply because each parent gets
+         *     its own generator config with its own `start` (see LOCATION_MODEL.md
+         *     setup section) -- no separate "restart vs continue" flag is needed.
+         */
+        TableGeneratorConfig: {
+            /** Code Prefix */
+            code_prefix: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Pad Width */
+            pad_width: number;
+            /** Capacity */
+            capacity?: number | null;
+        };
+        /**
+         * TargetOccupantRead
+         * @description Legacy singular read. `active_occupancy` is only ONE occupant for a
+         *     capacity>1 target with several active occupancies (the earliest by
+         *     effective_time) -- `active_occupancy_count` (DOMAIN-FARM-002.1, additive)
+         *     makes that explicit rather than silently implying `active_occupancy` is
+         *     the complete state. A caller must check `active_occupancy_count > 1` (or
+         *     just always prefer `TargetOccupantsRead`/`active_occupancies` below) to
+         *     know whether more occupants exist than are shown here.
+         */
         TargetOccupantRead: {
             target: components["schemas"]["TargetRef"];
             active_occupancy: components["schemas"]["OccupancyRead"] | null;
+            /** Active Occupancy Count */
+            active_occupancy_count: number;
+        };
+        /**
+         * TargetOccupantsRead
+         * @description DOMAIN-FARM-002.1: the truthful, complete read -- every active
+         *     occupancy for the target, not just one. For a truly exclusive
+         *     (capacity<=1) target this is 0 or 1 entries, identical in substance to
+         *     `TargetOccupantRead`.
+         */
+        TargetOccupantsRead: {
+            target: components["schemas"]["TargetRef"];
+            /** Active Occupancies */
+            active_occupancies: components["schemas"]["OccupancyRead"][];
         };
         /** TargetRef */
         TargetRef: {
@@ -4513,27 +4914,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-        };
-        /** TenantCreate */
-        TenantCreate: {
-            /** Code */
-            code: string;
-            /** Name */
-            name: string;
-        };
-        /** TenantRead */
-        TenantRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Code */
-            code: string;
-            /** Name */
-            name: string;
-            /** Status */
-            status: string;
         };
         /** TransplantAllocationIn */
         TransplantAllocationIn: {
@@ -4722,34 +5102,38 @@ export interface components {
             /** Note */
             note: string | null;
         };
-        /** UserCreate */
-        UserCreate: {
-            /** Oidc Issuer */
-            oidc_issuer: string;
-            /** Oidc Subject */
-            oidc_subject: string;
-            /** Email */
-            email: string;
-            /** Display Name */
-            display_name: string;
+        /**
+         * TrolleyLevelGeneratorConfig
+         * @description Mirrors `AssetPositionsGenerate` exactly. `slots_per_shelf` is the
+         *     number of Seed Trays each Level physically holds -- represented as one
+         *     exclusive numbered slot per tray (the existing, only, occupancy-
+         *     compatibility-proven target for a seed_tray carrier), not as a single
+         *     high-capacity shelf row; `slot_capacity` stays NULL/1 accordingly
+         *     unless the caller has a genuine reason to widen it.
+         */
+        TrolleyLevelGeneratorConfig: {
+            /** Shelf Count */
+            shelf_count: number;
+            /** Slots Per Shelf */
+            slots_per_shelf: number;
+            /** Shelf Prefix */
+            shelf_prefix: string;
+            /** Slot Prefix */
+            slot_prefix: string;
+            /** Shelf Pad Width */
+            shelf_pad_width: number;
+            /** Slot Pad Width */
+            slot_pad_width: number;
+            /** Slot Capacity */
+            slot_capacity?: number | null;
         };
-        /** UserRead */
-        UserRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Oidc Issuer */
-            oidc_issuer: string;
-            /** Oidc Subject */
-            oidc_subject: string;
-            /** Email */
-            email: string;
-            /** Display Name */
-            display_name: string;
-            /** Status */
-            status: string;
+        /** TrolleySetupConfig */
+        TrolleySetupConfig: {
+            /** Code */
+            code: string;
+            /** Name */
+            name?: string | null;
+            levels: components["schemas"]["TrolleyLevelGeneratorConfig"];
         };
         /** ValidationError */
         ValidationError: {
@@ -4810,6 +5194,11 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** VinesSetupConfig */
+        VinesSetupConfig: {
+            /** Zones */
+            zones: components["schemas"]["ZoneSetupConfig"][];
         };
         /** WorkflowCreate */
         WorkflowCreate: {
@@ -5050,6 +5439,13 @@ export interface components {
             published_at: string | null;
             /** Retired At */
             retired_at: string | null;
+        };
+        /** ZoneSetupConfig */
+        ZoneSetupConfig: {
+            /** Code */
+            code: string;
+            /** Spans */
+            spans: components["schemas"]["SpanSetupConfig"][];
         };
         /** DispatchLineRead */
         app__schemas__dispatch__DispatchLineRead: {
@@ -6104,6 +6500,43 @@ export interface operations {
             };
         };
     };
+    get_location_occupants_farms__farm_id__locations__location_id__occupants_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetOccupantsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_location_subtree_occupancy_farms__farm_id__locations__location_id__subtree_occupancy_get: {
         parameters: {
             query?: never;
@@ -6128,6 +6561,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubtreeOccupancyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_greenhouse_setup_overview_farms__farm_id__farm_setup_greenhouses_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreenhouseOverviewItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_greenhouse_setup_farms__farm_id__farm_setup_greenhouses_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GreenhouseSetupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreenhouseSetupResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_greenhouse_structure_farms__farm_id__farm_setup_greenhouses__greenhouse_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                greenhouse_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreenhouseStructureRead"];
                 };
             };
             /** @description Validation Error */
@@ -6470,6 +7016,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TargetOccupantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_position_occupants_farms__farm_id__assets__asset_id__positions__position_id__occupants_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                asset_id: string;
+                position_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetOccupantsRead"];
                 };
             };
             /** @description Validation Error */
@@ -9718,105 +10302,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallCaseDetailRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_tenant_dev_bootstrap_tenants_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TenantCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_user_dev_bootstrap_users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_membership_dev_bootstrap_memberships_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BootstrapMembershipCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MembershipRead"];
                 };
             };
             /** @description Validation Error */
