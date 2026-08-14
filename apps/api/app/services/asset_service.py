@@ -20,6 +20,12 @@ from app.services.errors import (
 )
 
 
+def _constraint_name(exc: IntegrityError) -> str | None:
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
 def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> None:
     farm = farm_service.get_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     if farm.status != "active":
@@ -110,6 +116,8 @@ def generate_positions(
     slot_prefix: str,
     shelf_pad_width: int,
     slot_pad_width: int,
+    shelf_capacity: int | None = None,
+    slot_capacity: int | None = None,
 ) -> list[AssetPosition]:
     asset = get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id)
     asset_type = db.get(AssetType, asset.asset_type_id)
@@ -137,6 +145,7 @@ def generate_positions(
             position_kind="shelf",
             code=shelf_code,
             name=f"Shelf {shelf_code}",
+            capacity=shelf_capacity,
         )
         db.add(shelf)
         created.append(shelf)
@@ -149,6 +158,7 @@ def generate_positions(
                 position_kind="slot",
                 code=slot_code,
                 name=f"Slot {slot_code}",
+                capacity=slot_capacity,
             )
             db.add(slot)
             created.append(slot)
@@ -157,6 +167,8 @@ def generate_positions(
         db.flush()
     except IntegrityError as exc:
         db.rollback()
+        if _constraint_name(exc) not in ("ux_asset_positions_sibling_code_lower", "ux_asset_positions_root_code_lower"):
+            raise
         raise DuplicatePositionCodeError(f"{asset_id}:{shelf_prefix}/{slot_prefix}") from exc
 
     append_audit_event(

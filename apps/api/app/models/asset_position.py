@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, func, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -28,6 +28,8 @@ class AssetPosition(TimestampMixin, Base):
     position_kind: Mapped[str] = mapped_column(String, nullable=False)
     code: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # DOMAIN-FARM-002: see Location.capacity docstring -- identical semantics.
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -38,6 +40,7 @@ class AssetPosition(TimestampMixin, Base):
             "(position_kind = 'slot' AND parent_position_id IS NOT NULL)",
             name="ck_asset_positions_kind_matches_parent",
         ),
+        CheckConstraint("capacity IS NULL OR capacity >= 1", name="ck_asset_positions_capacity_positive"),
         Index(
             "ux_asset_positions_sibling_code_lower",
             "parent_position_id",

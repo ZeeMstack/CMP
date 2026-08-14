@@ -19,6 +19,15 @@ from app.services.errors import (
 )
 
 
+_CODE_UNIQUENESS_CONSTRAINTS = ("ux_locations_sibling_code_lower", "ux_locations_root_code_lower")
+
+
+def _constraint_name(exc: IntegrityError) -> str | None:
+    orig = getattr(exc, "orig", None)
+    diag = getattr(orig, "diag", None)
+    return getattr(diag, "constraint_name", None)
+
+
 def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> None:
     farm = farm_service.get_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     if farm.status != "active":
@@ -134,6 +143,7 @@ def create_location(
     parent_location_id: uuid.UUID | None,
     greenhouse_classification: str | None,
     occupiable: bool | None,
+    capacity: int | None = None,
 ) -> Location:
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     location_type = _get_location_type_by_code(db, location_type_code)
@@ -164,12 +174,15 @@ def create_location(
         name=name,
         greenhouse_classification=greenhouse_classification,
         occupiable=location_type.default_occupiable if occupiable is None else occupiable,
+        capacity=capacity,
     )
     db.add(location)
     try:
         db.flush()
     except IntegrityError as exc:
         db.rollback()
+        if _constraint_name(exc) not in _CODE_UNIQUENESS_CONSTRAINTS:
+            raise
         raise DuplicateLocationCodeError(f"{parent_location_id}:{code}") from exc
 
     append_audit_event(
@@ -203,6 +216,7 @@ def bulk_generate_children(
     end: int,
     pad_width: int,
     name_template: str | None,
+    capacity: int | None = None,
 ) -> list[Location]:
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     parent = _get_active_location_in_scope(
@@ -242,6 +256,7 @@ def bulk_generate_children(
             code=code,
             name=name,
             occupiable=location_type.default_occupiable,
+            capacity=capacity,
         )
         db.add(location)
         created.append(location)
@@ -250,6 +265,8 @@ def bulk_generate_children(
         db.flush()
     except IntegrityError as exc:
         db.rollback()
+        if _constraint_name(exc) not in _CODE_UNIQUENESS_CONSTRAINTS:
+            raise
         raise DuplicateLocationCodeError(f"{parent_id}:{code_prefix}") from exc
 
     append_audit_event(

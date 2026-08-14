@@ -49,8 +49,27 @@ class OccupancyRead(BaseModel):
 
 
 class TargetOccupantRead(BaseModel):
+    """Legacy singular read. `active_occupancy` is only ONE occupant for a
+    capacity>1 target with several active occupancies (the earliest by
+    effective_time) -- `active_occupancy_count` (DOMAIN-FARM-002.1, additive)
+    makes that explicit rather than silently implying `active_occupancy` is
+    the complete state. A caller must check `active_occupancy_count > 1` (or
+    just always prefer `TargetOccupantsRead`/`active_occupancies` below) to
+    know whether more occupants exist than are shown here."""
+
     target: TargetRef
     active_occupancy: OccupancyRead | None
+    active_occupancy_count: int
+
+
+class TargetOccupantsRead(BaseModel):
+    """DOMAIN-FARM-002.1: the truthful, complete read -- every active
+    occupancy for the target, not just one. For a truly exclusive
+    (capacity<=1) target this is 0 or 1 entries, identical in substance to
+    `TargetOccupantRead`."""
+
+    target: TargetRef
+    active_occupancies: list[OccupancyRead]
 
 
 class PathEntry(BaseModel):

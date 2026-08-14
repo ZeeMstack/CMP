@@ -105,7 +105,16 @@ class LocationOccupant(BaseModel):
 
 class OccupiedLocation(BaseModel):
     location_id: uuid.UUID
+    # DOMAIN-FARM-002.1: `occupant` is kept for backward compatibility and
+    # is always the earliest-by-effective_time active occupant -- for a
+    # truly exclusive (capacity<=1) target this is the complete state, but
+    # for a capacity>1 target with multiple active occupants it is only
+    # ONE of several. `occupants` is the additive, truthful, complete list
+    # (same ordering, `occupants[0] == occupant`) -- callers that need to
+    # know whether a target is actually multi-occupied must read this, not
+    # `occupant` alone.
     occupant: LocationOccupant
+    occupants: list[LocationOccupant]
 
 
 class LocationAggregateCount(BaseModel):

@@ -456,3 +456,54 @@ def test_snapshot_is_never_mixed_across_a_concurrent_placement_commit(test_engin
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_capacity_three_target_with_three_occupants_reports_all_three(test_engine) -> None:
+    """DOMAIN-FARM-002.1 section 9: a capacity>1 target's active occupants
+    must never be silently collapsed to one -- the dict-overwrite bug fixed
+    by this ticket would have kept only the last of the three placed here."""
+    tenant_id = None
+    try:
+        t0 = now() - timedelta(minutes=30)
+        with committed_connection(test_engine) as session:
+            tenant, user, farm = build_committed_tenant_farm(session)
+            tenant_id = tenant.id
+            tree = build_greenhouse_tree(session, tenant, user, farm, position_count=1)
+            table = tree["positions"][0]
+            from sqlalchemy import text as sa_text
+
+            session.execute(sa_text("UPDATE locations SET capacity = 3 WHERE id = :id"), {"id": table.id})
+            plates = [
+                carrier_service.register_carrier(
+                    session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+                    carrier_type_code="cultivation_plate", code=f"PLATE-{uuid.uuid4().hex[:8]}", issued_date=None,
+                )
+                for _ in range(3)
+            ]
+            for plate in plates:
+                place_carrier(session, tenant, user, farm, carrier_id=plate.id, location_id=table.id, effective_time=t0)
+            session.commit()
+            farm_id, table_id = farm.id, table.id
+            plate_ids = {p.id for p in plates}
+
+        with _snapshot_connection(test_engine) as conn:
+            result = operational_read_service.get_location_subtree_occupancy(
+                conn, tenant_id=tenant_id, farm_id=farm_id, root_location_id=table_id
+            )
+        [agg] = result.aggregate_counts
+        assert agg.occupiable_location_count == 1
+        assert agg.occupied_location_count == 1  # one LOCATION is occupied, regardless of occupant count
+
+        [occ] = result.occupied_locations
+        assert occ.location_id == table_id
+        # Legacy singular field: still populated, backward compatible.
+        assert occ.occupant.kind == "carrier"
+        assert occ.occupant.id in plate_ids
+        # Additive truthful field: ALL three occupants present, none dropped.
+        assert len(occ.occupants) == 3
+        assert {o.id for o in occ.occupants} == plate_ids
+        assert occ.occupants[0] == occ.occupant
+    finally:
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)

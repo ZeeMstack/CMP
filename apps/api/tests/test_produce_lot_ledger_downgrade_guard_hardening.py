@@ -746,11 +746,21 @@ def test_clean_downgrade_with_no_produce_lots(test_engine, alembic_head_restore)
 
 @pytest.mark.integration
 def test_current_head_resolution_is_dynamic(test_engine) -> None:
-    # NEW_REVISION ("dd4e6fab718a") is CMP-016A's own marker migration, not
-    # necessarily "head" — DOMAIN-FARM-001 ("9ca4ac801827") now sits above
-    # it, so this asserts against the true current head directly rather
-    # than reusing that older, unrelated constant.
-    assert _resolve_head_revision(_cfg()) == "9ca4ac801827"
+    # DOMAIN-FARM-002: a hardcoded expected-head literal here (as this test
+    # previously had, first "dd4e6fab718a" then "9ca4ac801827") goes stale
+    # on every single future migration forever -- the opposite of what a
+    # test named "...is_dynamic" should do. Proven structurally instead:
+    # _resolve_head_revision must match the script graph's one true head,
+    # and that head must genuinely have no descendant revision (the actual
+    # definition of "is head"), so this test never needs updating again.
+    script = ScriptDirectory.from_config(_cfg())
+    heads = script.get_heads()
+    assert len(heads) == 1, f"expected exactly one Alembic head, found {heads}"
+    resolved = _resolve_head_revision(_cfg())
+    assert resolved == heads[0]
+    assert script.get_revision(resolved).nextrev == frozenset(), (
+        f"{resolved} has a descendant revision -- it is not actually head"
+    )
     assert _pre_cmp014_revision(_cfg()) == "c7f14b8e29a3"
 
 

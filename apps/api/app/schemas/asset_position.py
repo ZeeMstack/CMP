@@ -21,6 +21,12 @@ class AssetPositionsGenerate(BaseModel):
     slot_prefix: str
     shelf_pad_width: int
     slot_pad_width: int
+    # DOMAIN-FARM-002: applied identically to every generated shelf/slot
+    # respectively. NULL/omitted -> effective capacity 1 (exclusive,
+    # backward-compatible). Configured data only, never a guessed default --
+    # this ticket does not create any Germination workflow that uses it.
+    shelf_capacity: int | None = None
+    slot_capacity: int | None = None
 
     @field_validator("shelf_prefix")
     @classmethod
@@ -31,6 +37,13 @@ class AssetPositionsGenerate(BaseModel):
     @classmethod
     def validate_slot_prefix(cls, v: str) -> str:
         return _normalize_prefix(v, "slot_prefix")
+
+    @field_validator("shelf_capacity", "slot_capacity")
+    @classmethod
+    def validate_capacities(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("capacity must be a positive integer")
+        return v
 
     @model_validator(mode="after")
     def validate_counts(self) -> "AssetPositionsGenerate":
@@ -57,6 +70,7 @@ class AssetPositionRead(BaseModel):
     position_kind: str
     code: str
     name: str
+    capacity: int | None
 
 
 class AssetPositionTreeNode(BaseModel):

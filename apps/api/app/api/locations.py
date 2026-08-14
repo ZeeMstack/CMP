@@ -16,7 +16,7 @@ from app.schemas.location import (
     LocationTreeNode,
 )
 from app.schemas.movement import TargetRef
-from app.schemas.occupancy import OccupancyRead, TargetOccupantRead
+from app.schemas.occupancy import OccupancyRead, TargetOccupantRead, TargetOccupantsRead
 from app.schemas.operational_read import SubtreeOccupancyRead
 from app.services import location_service, movement_service, operational_read_service
 from app.services.errors import (
@@ -53,6 +53,7 @@ def create_location(
             parent_location_id=payload.parent_location_id,
             greenhouse_classification=payload.greenhouse_classification,
             occupiable=payload.occupiable,
+            capacity=payload.capacity,
         )
     except (FarmNotFoundError, LocationNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
@@ -99,6 +100,7 @@ def bulk_create_children(
             end=payload.end,
             pad_width=payload.pad_width,
             name_template=payload.name_template,
+            capacity=payload.capacity,
         )
     except (FarmNotFoundError, LocationNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
@@ -214,14 +216,37 @@ def get_location_occupant(
     ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
 ) -> TargetOccupantRead:
     try:
-        occupancy = movement_service.get_target_occupant(
+        occupancies = movement_service.list_target_occupants(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, target_kind="location", target_id=location_id
         )
     except (FarmNotFoundError, LocationNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     return TargetOccupantRead(
         target=TargetRef(kind="location", id=location_id),
-        active_occupancy=OccupancyRead.from_model(occupancy) if occupancy is not None else None,
+        active_occupancy=OccupancyRead.from_model(occupancies[0]) if occupancies else None,
+        active_occupancy_count=len(occupancies),
+    )
+
+
+@router.get("/farms/{farm_id}/locations/{location_id}/occupants", response_model=TargetOccupantsRead)
+def get_location_occupants(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_READ)),
+) -> TargetOccupantsRead:
+    """DOMAIN-FARM-002.1: the truthful, complete-state counterpart to
+    `get_location_occupant` -- returns every active occupancy, not just
+    one, so a capacity>1 target is never under-reported."""
+    try:
+        occupancies = movement_service.list_target_occupants(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, target_kind="location", target_id=location_id
+        )
+    except (FarmNotFoundError, LocationNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    return TargetOccupantsRead(
+        target=TargetRef(kind="location", id=location_id),
+        active_occupancies=[OccupancyRead.from_model(o) for o in occupancies],
     )
 
 
