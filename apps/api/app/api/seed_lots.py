@@ -7,6 +7,7 @@ from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.seed_lot import SeedLotCreate, SeedLotRead
+from app.schemas.sowing_event import SeedLotBatchSummary
 from app.services import sowing_service
 from app.services.errors import (
     CropNotFoundError,
@@ -71,5 +72,25 @@ def get_seed_lot(
 ) -> SeedLotRead:
     try:
         return sowing_service.get_seed_lot(db, tenant_id=ctx.tenant_id, farm_id=farm_id, seed_lot_id=seed_lot_id)
+    except (FarmNotFoundError, SeedLotNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/seed-lots/{seed_lot_id}/crop-batches", response_model=list[SeedLotBatchSummary]
+)
+def list_batches_for_seed_lot(
+    farm_id: uuid.UUID,
+    seed_lot_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.SEED_LOT_READ)),
+) -> list[SeedLotBatchSummary]:
+    """Section 49: "which Crop Batches were sown from this Seed Lot" --
+    gated on `seed_lot.read` (the resource being read), matching
+    `get_seed_lot` above."""
+    try:
+        return sowing_service.list_batches_for_seed_lot(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, seed_lot_id=seed_lot_id
+        )
     except (FarmNotFoundError, SeedLotNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc

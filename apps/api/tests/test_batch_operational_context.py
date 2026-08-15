@@ -31,7 +31,6 @@ from tests._operational_read_scenario import (
     place_carrier,
     release_hold,
     sow_batch,
-    sow_second_carrier,
     split,
     transition,
     transplant_to_plate,
@@ -85,14 +84,10 @@ def test_split_child_inherits_sowing_origin_from_parent(test_engine) -> None:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_transplant_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0)
-            second = sow_second_carrier(
-                session, tenant, user, farm, batch_id=sown["batch"].id, seed_lot_id=sown["seed_lot"].id,
-                effective_time=t0,
-            )
+            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, carrier_count=2)
             session.commit()
             parent_id, farm_id = sown["batch"].id, farm.id
-            assignment_id, sibling_assignment_id = sown["assignment_id"], second["assignment_id"]
+            assignment_id, sibling_assignment_id = sown["assignment_ids"][0], sown["assignment_ids"][1]
 
             output_code = f"CHILD-{uuid.uuid4().hex[:8]}"
             sibling_code = f"SIBLING-{uuid.uuid4().hex[:8]}"
@@ -194,14 +189,10 @@ def test_zero_active_carriers_on_fully_split_source_batch(test_engine) -> None:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_transplant_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0)
-            second = sow_second_carrier(
-                session, tenant, user, farm, batch_id=sown["batch"].id, seed_lot_id=sown["seed_lot"].id,
-                effective_time=minutes_after(t0, 1),
-            )
+            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, carrier_count=2)
             session.commit()
             parent_id, farm_id = sown["batch"].id, farm.id
-            assignment_id, sibling_assignment_id = sown["assignment_id"], second["assignment_id"]
+            assignment_id, sibling_assignment_id = sown["assignment_ids"][0], sown["assignment_ids"][1]
 
             split(
                 session, tenant, user, farm, batch_id=parent_id,
@@ -352,27 +343,16 @@ def test_two_active_carriers_with_only_one_placed_is_partial(test_engine) -> Non
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_direct_placement_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, site_count=20, carrier_type_code="cultivation_plate")
+            # NURSERY-OPS-001: at most one Sowing Event per Crop Batch, ever
+            # -- the simplest true two-active-carrier case for one batch is
+            # now sowing both carriers in the SAME command (carrier_count=2),
+            # not a second, separate sowing command.
+            sown = sow_batch(
+                session, tenant, user, farm, scaffold, effective_time=t0, site_count=20,
+                carrier_type_code="cultivation_plate", carrier_count=2,
+            )
             tree = build_greenhouse_tree(session, tenant, user, farm, position_count=1)
 
-            # Split the single sown assignment's carrier into two batches is
-            # not what's wanted here (that changes batch identity); instead
-            # give the batch a second independent carrier by transplanting
-            # only half the sown assignment's plants isn't supported either
-            # (transplant reconciliation requires the whole source line to
-            # resolve). Simplest true two-active-carrier case for one batch:
-            # sow with two carriers directly.
-            from app.services import carrier_service, sowing_service
-
-            tray2 = carrier_service.register_carrier(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-                carrier_type_code="cultivation_plate", code=f"TRAY2-{uuid.uuid4().hex[:8]}", issued_date=None,
-            )
-            sowing_service.sow_batch(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=sown["batch"].id,
-                client_command_id=uuid.uuid4(), effective_time=minutes_after(t0, 1), note=None,
-                lines=[{"carrier_id": tray2.id, "seed_lot_id": sown["seed_lot"].id, "sown_site_count": 10, "seed_count": 10, "line_note": None}],
-            )
             place_carrier(
                 session, tenant, user, farm, carrier_id=sown["tray"].id, location_id=tree["positions"][0].id,
                 effective_time=minutes_after(t0, 2),
@@ -394,8 +374,6 @@ def test_two_active_carriers_with_only_one_placed_is_partial(test_engine) -> Non
 
 @pytest.mark.integration
 def test_multiple_placements_shared_branch_yields_common_ancestor_path(test_engine) -> None:
-    from app.services import carrier_service, sowing_service
-
     from tests._operational_read_scenario import build_greenhouse_tree
 
     tenant_id = None
@@ -405,18 +383,14 @@ def test_multiple_placements_shared_branch_yields_common_ancestor_path(test_engi
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_direct_placement_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, carrier_type_code="cultivation_plate")
+            # NURSERY-OPS-001: one Sowing command, both carriers.
+            sown = sow_batch(
+                session, tenant, user, farm, scaffold, effective_time=t0, carrier_type_code="cultivation_plate",
+                carrier_count=2,
+            )
             tree = build_greenhouse_tree(session, tenant, user, farm, position_count=2)
+            tray2 = sown["trays"][1]
 
-            tray2 = carrier_service.register_carrier(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-                carrier_type_code="cultivation_plate", code=f"TRAY2-{uuid.uuid4().hex[:8]}", issued_date=None,
-            )
-            sowing_service.sow_batch(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=sown["batch"].id,
-                client_command_id=uuid.uuid4(), effective_time=minutes_after(t0, 1), note=None,
-                lines=[{"carrier_id": tray2.id, "seed_lot_id": sown["seed_lot"].id, "sown_site_count": 10, "seed_count": 10, "line_note": None}],
-            )
             place_carrier(
                 session, tenant, user, farm, carrier_id=sown["tray"].id, location_id=tree["positions"][0].id,
                 effective_time=minutes_after(t0, 2),
@@ -447,8 +421,6 @@ def test_multiple_placements_shared_branch_yields_common_ancestor_path(test_engi
 
 @pytest.mark.integration
 def test_multiple_placements_separate_branches_yields_no_common_ancestor(test_engine) -> None:
-    from app.services import carrier_service, sowing_service
-
     from tests._operational_read_scenario import build_greenhouse_tree
 
     tenant_id = None
@@ -458,19 +430,15 @@ def test_multiple_placements_separate_branches_yields_no_common_ancestor(test_en
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_direct_placement_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, carrier_type_code="cultivation_plate")
+            # NURSERY-OPS-001: one Sowing command, both carriers.
+            sown = sow_batch(
+                session, tenant, user, farm, scaffold, effective_time=t0, carrier_type_code="cultivation_plate",
+                carrier_count=2,
+            )
             tree_a = build_greenhouse_tree(session, tenant, user, farm, position_count=1)
             tree_b = build_greenhouse_tree(session, tenant, user, farm, position_count=1)
+            tray2 = sown["trays"][1]
 
-            tray2 = carrier_service.register_carrier(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-                carrier_type_code="cultivation_plate", code=f"TRAY2-{uuid.uuid4().hex[:8]}", issued_date=None,
-            )
-            sowing_service.sow_batch(
-                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=sown["batch"].id,
-                client_command_id=uuid.uuid4(), effective_time=minutes_after(t0, 1), note=None,
-                lines=[{"carrier_id": tray2.id, "seed_lot_id": sown["seed_lot"].id, "sown_site_count": 10, "seed_count": 10, "line_note": None}],
-            )
             place_carrier(
                 session, tenant, user, farm, carrier_id=sown["tray"].id, location_id=tree_a["positions"][0].id,
                 effective_time=minutes_after(t0, 2),
@@ -555,15 +523,13 @@ def test_active_state_filter_excludes_closed_and_superseded(test_engine) -> None
                 configured_transition_id=scaffold["t_growing_to_complete"].id, effective_time=minutes_after(t0, 3),
             )
 
-            superseding_parent = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, code_suffix="parent")
-            superseding_sibling = sow_second_carrier(
-                session, tenant, user, farm, batch_id=superseding_parent["batch"].id,
-                seed_lot_id=superseding_parent["seed_lot"].id, effective_time=minutes_after(t0, 1),
+            superseding_parent = sow_batch(
+                session, tenant, user, farm, scaffold, effective_time=t0, code_suffix="parent", carrier_count=2,
             )
             split(
                 session, tenant, user, farm, batch_id=superseding_parent["batch"].id,
                 output_codes=[f"CHILD-{uuid.uuid4().hex[:8]}", f"SIBLING-{uuid.uuid4().hex[:8]}"],
-                source_assignment_ids=[superseding_parent["assignment_id"], superseding_sibling["assignment_id"]],
+                source_assignment_ids=superseding_parent["assignment_ids"],
                 effective_time=minutes_after(t0, 4),
             )
             session.commit()
@@ -610,15 +576,13 @@ def test_all_state_filter_includes_active_closed_and_superseded(test_engine) -> 
                 configured_transition_id=scaffold["t_growing_to_complete"].id, effective_time=minutes_after(t0, 3),
             )
 
-            superseding_parent = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, code_suffix="parent")
-            superseding_sibling = sow_second_carrier(
-                session, tenant, user, farm, batch_id=superseding_parent["batch"].id,
-                seed_lot_id=superseding_parent["seed_lot"].id, effective_time=minutes_after(t0, 1),
+            superseding_parent = sow_batch(
+                session, tenant, user, farm, scaffold, effective_time=t0, code_suffix="parent", carrier_count=2,
             )
             split(
                 session, tenant, user, farm, batch_id=superseding_parent["batch"].id,
                 output_codes=[f"CHILD-{uuid.uuid4().hex[:8]}", f"SIBLING-{uuid.uuid4().hex[:8]}"],
-                source_assignment_ids=[superseding_parent["assignment_id"], superseding_sibling["assignment_id"]],
+                source_assignment_ids=superseding_parent["assignment_ids"],
                 effective_time=minutes_after(t0, 4),
             )
             session.commit()
@@ -660,15 +624,11 @@ def test_superseded_batch_resolves_via_single_batch_lookup(test_engine) -> None:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             scaffold = build_transplant_workflow_scaffold(session, tenant, user, farm)
-            parent = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0)
-            sibling = sow_second_carrier(
-                session, tenant, user, farm, batch_id=parent["batch"].id, seed_lot_id=parent["seed_lot"].id,
-                effective_time=minutes_after(t0, 1),
-            )
+            parent = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0, carrier_count=2)
             split(
                 session, tenant, user, farm, batch_id=parent["batch"].id,
                 output_codes=[f"CHILD-{uuid.uuid4().hex[:8]}", f"SIBLING-{uuid.uuid4().hex[:8]}"],
-                source_assignment_ids=[parent["assignment_id"], sibling["assignment_id"]],
+                source_assignment_ids=parent["assignment_ids"],
                 effective_time=minutes_after(t0, 2),
             )
             session.commit()

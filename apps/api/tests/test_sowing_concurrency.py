@@ -24,6 +24,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import (
+    BatchAlreadySownError,
     CarrierAlreadyAssignedError,
     SowingCommandReusedWithDifferentPayloadError,
 )
@@ -153,6 +154,12 @@ def _line(carrier_id, seed_lot_id):
 
 @pytest.mark.integration
 def test_concurrent_sowing_of_same_carrier_leaves_one_winner(test_engine) -> None:
+    """NURSERY-OPS-001: two DIFFERENT commands targeting the same batch now
+    race against TWO distinct protections (the carrier-level exclusivity
+    check inside `_sow_batch_core`, and the new batch-level "already sown"
+    check in the `sow_batch` wrapper that runs before any row lock) --
+    exactly which one the loser observes is a harmless timing detail, not
+    a correctness question, so both are accepted here."""
     scenario = _build_committed_scenario(test_engine)
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
@@ -171,7 +178,7 @@ def test_concurrent_sowing_of_same_carrier_leaves_one_winner(test_engine) -> Non
                 lines=[_line(carrier_id, scenario["seed_lot_id"])],
             )
             results[name] = ("ok", event.id)
-        except CarrierAlreadyAssignedError as exc:
+        except (CarrierAlreadyAssignedError, BatchAlreadySownError) as exc:
             results[name] = ("conflict", str(exc))
         except Exception as exc:  # pragma: no cover - surfaced via assertion below
             results[name] = ("error", repr(exc))
@@ -241,7 +248,13 @@ def test_concurrent_duplicate_sowing_command_id_is_idempotent(test_engine) -> No
 
 
 @pytest.mark.integration
-def test_concurrent_sowing_of_disjoint_carriers_on_one_batch_both_succeed(test_engine) -> None:
+def test_concurrent_sowing_of_disjoint_carriers_on_one_batch_exactly_one_wins(test_engine) -> None:
+    """NURSERY-OPS-001: supersedes this test's own earlier "both succeed"
+    expectation -- a Crop Batch may now have at most one Sowing Event,
+    ever (`ux_sowing_events_batch_id`), so two DIFFERENT concurrent
+    commands targeting the SAME batch (even with disjoint carrier lists)
+    must resolve to exactly one winner and one BatchAlreadySownError,
+    never two independent successes."""
     scenario = _build_committed_scenario(test_engine)
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
@@ -259,6 +272,8 @@ def test_concurrent_sowing_of_disjoint_carriers_on_one_batch_both_succeed(test_e
                 lines=[_line(carrier_id, scenario["seed_lot_id"])],
             )
             results[name] = ("ok", event.id)
+        except BatchAlreadySownError as exc:
+            results[name] = ("already_sown", str(exc))
         except Exception as exc:  # pragma: no cover
             results[name] = ("error", repr(exc))
         finally:
@@ -274,15 +289,26 @@ def test_concurrent_sowing_of_disjoint_carriers_on_one_batch_both_succeed(test_e
 
     try:
         assert not t_a.is_alive() and not t_b.is_alive()
-        assert results["a"][0] == "ok", results
-        assert results["b"][0] == "ok", results
-        assert results["a"][1] != results["b"][1]
+        outcomes = [results["a"][0], results["b"][0]]
+        assert outcomes.count("ok") == 1, results
+        assert outcomes.count("already_sown") == 1, results
+
+        with test_engine.connect() as check_conn:
+            event_count = check_conn.execute(
+                text("SELECT COUNT(*) FROM sowing_events WHERE batch_id = :bid"),
+                {"bid": scenario["batch_id"]},
+            ).scalar_one()
+        assert event_count == 1, "at most one Sowing Event may ever exist for this batch"
     finally:
         _cleanup_scenario(test_engine, scenario["tenant_id"])
 
 
 @pytest.mark.integration
 def test_concurrent_overlapping_carrier_lists_leave_one_winner(test_engine) -> None:
+    """See test_concurrent_sowing_of_same_carrier_leaves_one_winner's own
+    docstring: NURSERY-OPS-001 adds a second, earlier protection (batch-
+    level "already sown"), so the loser may observe either exception --
+    both accepted here."""
     scenario = _build_committed_scenario(test_engine)
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
@@ -304,7 +330,7 @@ def test_concurrent_overlapping_carrier_lists_leave_one_winner(test_engine) -> N
                 ],
             )
             results[name] = ("ok", event.id)
-        except CarrierAlreadyAssignedError as exc:
+        except (CarrierAlreadyAssignedError, BatchAlreadySownError) as exc:
             results[name] = ("conflict", str(exc))
         except Exception as exc:  # pragma: no cover
             results[name] = ("error", repr(exc))

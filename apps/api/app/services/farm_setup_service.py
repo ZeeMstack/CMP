@@ -543,17 +543,21 @@ def get_greenhouse_structure(
         result.vines_zones = zones
 
     else:  # nursery
-        for section_type, field_name in (
-            ("seeding_station", "nursery_seeding_station"),
-            ("germination_chamber", "nursery_germination_chamber"),
-        ):
-            sections = sorted_children(greenhouse_id, section_type)
-            if sections:
-                section = sections[0]
-                setattr(
-                    result, field_name,
-                    StructureSectionNode(id=section["id"], code=section["code"], name=section["name"]),
-                )
+        # Seeding Station is returned as the FULL list, never collapsed to
+        # "the first one" -- a Nursery can structurally have more than one
+        # (see GreenhouseStructureRead.nursery_seeding_stations), and
+        # silently picking one would let the Sowing form record an
+        # operator's chosen Nursery against a station they never selected.
+        result.nursery_seeding_stations = [
+            StructureSectionNode(id=s["id"], code=s["code"], name=s["name"])
+            for s in sorted_children(greenhouse_id, "seeding_station")
+        ]
+        germination_chambers = sorted_children(greenhouse_id, "germination_chamber")
+        if germination_chambers:
+            chamber = germination_chambers[0]
+            result.nursery_germination_chamber = StructureSectionNode(
+                id=chamber["id"], code=chamber["code"], name=chamber["name"]
+            )
 
         for area_type, table_type, field_name in (
             ("seedling_area", "seedling_table", "nursery_seedling"),

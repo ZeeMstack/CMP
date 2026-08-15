@@ -32,7 +32,15 @@ class SowingEventLine(Base):
     )
     carrier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("carriers.id"), nullable=False)
     seed_lot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("seed_lots.id"), nullable=False)
-    sown_site_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # NURSERY-OPS-001.1: nullable -- "sown site/cell count" is a genuinely
+    # separate, optionally-observed fact from "seeds sown" (see
+    # SEED_SOWING_MODEL.md). CMP-009 originally required both and the
+    # NURSERY-OPS-001 operator command silently set
+    # sown_site_count = seed_count, fabricating an unobserved
+    # one-seed-per-site assumption. NULL now honestly means "not recorded"
+    # -- the CHECK constraints below both pass automatically on NULL
+    # (Postgres CHECK is satisfied unless it evaluates to FALSE).
+    sown_site_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     seed_count: Mapped[int] = mapped_column(Integer, nullable=False)
     line_note: Mapped[str | None] = mapped_column(String, nullable=True)
     recorded_at: Mapped[datetime] = mapped_column(

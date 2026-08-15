@@ -9,12 +9,14 @@ from app.core.permissions import Permission, require_permission
 from app.schemas.sowing_event import BatchCarrierAssignmentRead, SowingEventCreate, SowingEventRead
 from app.services import sowing_service
 from app.services.errors import (
+    BatchAlreadySownError,
     CarrierAlreadyAssignedError,
     CarrierNotFoundError,
     CropBatchClosedError,
     CropBatchNotFoundError,
     FarmNotFoundError,
     InvalidSowingEffectiveTimeError,
+    MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingEventNotFoundError,
@@ -65,9 +67,15 @@ def sow_batch(
         CropBatchClosedError,
         CarrierAlreadyAssignedError,
         SowingCommandReusedWithDifferentPayloadError,
+        BatchAlreadySownError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (SowingValidationError, InvalidSowingEffectiveTimeError, TooManySowingLinesError) as exc:
+    except (
+        SowingValidationError,
+        InvalidSowingEffectiveTimeError,
+        TooManySowingLinesError,
+        MixedSeedLotInSowingCommandError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return sowing_service.get_sowing_event(
         db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id, sowing_event_id=event.id

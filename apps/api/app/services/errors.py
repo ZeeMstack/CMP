@@ -294,6 +294,55 @@ class BatchCarrierAssignmentNotFoundError(DomainError):
     pass
 
 
+class BatchAlreadySownError(DomainError):
+    """NURSERY-OPS-001: a Crop Batch may have at most one Sowing Event,
+    ever -- enforced by `ux_sowing_events_batch_id` (DB-level). Raised when
+    a genuinely new sowing command (a client_command_id not already tied to
+    an existing SowingEvent) targets a batch that already has one."""
+
+    pass
+
+
+class MixedSeedLotInSowingCommandError(DomainError):
+    """NURSERY-OPS-001.1: every line of one Sowing Event must reference the
+    SAME Seed Lot -- enforced here (before any row is written) and again at
+    the DB layer (`enforce_sowing_event_line_insert_integrity`). Raised when
+    a sowing command's lines reference more than one distinct seed_lot_id."""
+
+    pass
+
+
+class SeedingStationInvalidError(DomainError):
+    """NURSERY-OPS-001: the referenced location is not an active
+    `seeding_station` under a Nursery-classified Greenhouse in this
+    tenant/farm."""
+
+    pass
+
+
+class SeedingMachineInvalidError(DomainError):
+    """NURSERY-OPS-001: the referenced asset is not an active
+    `seeding_machine` in this tenant/farm."""
+
+    pass
+
+
+class NoSowingWorkflowFoundError(DomainError):
+    """NURSERY-OPS-001: no active workflow, with a published version whose
+    seeding-category start stage requires seed_tray carriers, matches the
+    selected Seed Lot's crop/variety."""
+
+    pass
+
+
+class AmbiguousSowingWorkflowError(DomainError):
+    """NURSERY-OPS-001: more than one candidate workflow matches the
+    selected Seed Lot's crop/variety -- resolution is ambiguous, and this
+    command never guesses which one an operator meant."""
+
+    pass
+
+
 class DuplicateObservationDefinitionCodeError(DomainError):
     pass
 

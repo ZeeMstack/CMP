@@ -1012,12 +1012,58 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
         code=f"tray-{suffix}", issued_date=None,
     )
-    sowing_service.sow_batch(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), effective_time=now(), note=None,
-        lines=[{"carrier_id": carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": 20, "seed_count": 20, "line_note": None}],
+    # NURSERY-OPS-001 added `seeding_station_id`/`seeding_machine_id` to
+    # `sowing_events` -- absent at this deliberately-downgraded (CMP-013)
+    # schema level, so the CURRENT `sowing_service.sow_batch` (whose ORM
+    # model always selects/inserts those columns) cannot be used here,
+    # exactly like `harvest_service` below it. Built directly via SQL
+    # instead, mirroring that same established pattern -- the pre-existing
+    # seeding stage run (before the harvesting transition) is captured
+    # first since `crop_batch_service.transition_stage` below closes it.
+    seeding_run_id = session.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": batch.id},
+    ).scalar_one()
+    sowing_event_id = uuid.uuid4()
+    assignment_id = uuid.uuid4()
+    sow_effective_time = now()
+    session.execute(
+        text(
+            "INSERT INTO sowing_events "
+            "(id, tenant_id, farm_id, batch_id, active_batch_stage_run_id, effective_time, actor_user_id, "
+            "client_command_id, request_fingerprint, note) VALUES "
+            "(:id, :tid, :fid, :bid, :run_id, :eff, :uid, :cmd, :fp, NULL)"
+        ),
+        {
+            "id": sowing_event_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "run_id": seeding_run_id,
+            "eff": sow_effective_time, "uid": user.id, "cmd": uuid.uuid4(), "fp": "pre-existing-cmp013-schema-sowing",
+        },
     )
-    assignment = sowing_service.list_batch_carriers(session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id)[0]
+    session.execute(
+        text(
+            "INSERT INTO batch_carrier_assignments "
+            "(id, tenant_id, farm_id, batch_id, carrier_id, batch_stage_run_id, assigned_effective_time, "
+            "released_effective_time, opening_sowing_event_id, actor_user_id) VALUES "
+            "(:id, :tid, :fid, :bid, :cid, :run_id, :eff, NULL, :eid, :uid)"
+        ),
+        {
+            "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier.id,
+            "run_id": seeding_run_id, "eff": sow_effective_time, "eid": sowing_event_id, "uid": user.id,
+        },
+    )
+    session.execute(
+        text(
+            "INSERT INTO sowing_event_lines "
+            "(id, tenant_id, farm_id, sowing_event_id, batch_carrier_assignment_id, carrier_id, seed_lot_id, "
+            "sown_site_count, seed_count, line_note) VALUES "
+            "(:id, :tid, :fid, :eid, :aid, :cid, :lid, :site, :seed, NULL)"
+        ),
+        {
+            "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": sowing_event_id, "aid": assignment_id,
+            "cid": carrier.id, "lid": seed_lot.id, "site": 20, "seed": 20,
+        },
+    )
+    assignment = type("_Assignment", (), {"id": assignment_id})()
     crop_batch_service.transition_stage(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=now(), reason=None,

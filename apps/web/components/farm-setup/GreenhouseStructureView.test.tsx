@@ -57,7 +57,7 @@ describe("GreenhouseStructureView", () => {
   it("renders Nursery Seeding Station and Germination Chamber when present", () => {
     const structure: GreenhouseStructureRead = {
       greenhouse_id: "gh-4", code: "NUR-02", name: "Nursery", classification: "nursery",
-      nursery_seeding_station: { id: "sec-1", code: "SEED-01", name: "Seeding Station" },
+      nursery_seeding_stations: [{ id: "sec-1", code: "SEED-01", name: "Seeding Station" }],
       nursery_germination_chamber: { id: "sec-2", code: "GERM-01", name: "Germination Chamber" },
       nursery_seedling: { area_id: null, tables: [] },
       nursery_intersalads: { area_id: null, tables: [] },

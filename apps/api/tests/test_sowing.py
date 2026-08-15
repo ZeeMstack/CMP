@@ -21,9 +21,11 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import (
+    BatchAlreadySownError,
     CarrierAlreadyAssignedError,
     CropBatchClosedError,
     InvalidSowingEffectiveTimeError,
+    MixedSeedLotInSowingCommandError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
     TooManySowingLinesError,
@@ -326,6 +328,35 @@ def test_sow_seed_lot_crop_mismatch_rejected(db_session, active_context_with_far
 
 
 @pytest.mark.integration
+def test_sow_batch_mixed_seed_lot_lines_rejected_by_service(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-001.1 section 4: the general/legacy
+    `POST /crop-batches/{id}/sowings` route's own request shape allows a
+    DIFFERENT seed_lot_id per line -- CMP-009 never rejected two lines of
+    one command citing two different Seed Lots of the same crop/variety.
+    `sowing_service.sow_batch` must reject this itself (before any row is
+    written), not rely solely on the new DB trigger."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    other_seed_lot = sowing_service.register_seed_lot(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=s["crop"].id,
+        variety_id=s["variety"].id, code=f"OTHER-LOT-{uuid.uuid4().hex[:8]}", supplier_name=None,
+        supplier_lot_reference=None, received_date=None, expiry_date=None,
+    )
+    with pytest.raises(MixedSeedLotInSowingCommandError):
+        _sow(
+            db_session, tenant, user, farm, s["batch"],
+            [
+                _simple_line(s["carriers"][0], s["seed_lot"]),
+                _simple_line(s["carriers"][1], other_seed_lot),
+            ],
+        )
+    # Nothing partially persisted -- the whole command is rejected pre-write.
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 0
+
+
+@pytest.mark.integration
 def test_sow_inactive_seed_lot_rejected(db_session, active_context_with_farm) -> None:
     from app.models.seed_lot import SeedLot
 
@@ -419,19 +450,26 @@ def test_sow_too_many_lines_rejected_before_writes(db_session, active_context_wi
 
 
 @pytest.mark.integration
-def test_sow_repeated_events_with_disjoint_carriers_succeed(db_session, active_context_with_farm) -> None:
+def test_sow_second_command_on_already_sown_batch_rejected(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-001: supersedes CMP-009's earlier documented design ("a
+    batch may be sown multiple times as separate carriers become ready") --
+    a deliberate product decision, not a bug. At most one Sowing Event may
+    ever exist for a Crop Batch, enforced both here (service-level, a
+    clear domain error) and by the DB (`ux_sowing_events_batch_id`, proven
+    directly in test_sowing_direct_sql_invariants.py)."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][0], s["seed_lot"])])
-    _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][1], s["seed_lot"])])
+    with pytest.raises(BatchAlreadySownError):
+        _sow(db_session, tenant, user, farm, s["batch"], [_simple_line(s["carriers"][1], s["seed_lot"])])
     assert db_session.execute(
         select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == s["batch"].id)
-    ).scalar_one() == 2
+    ).scalar_one() == 1
     assert db_session.execute(
         select(func.count()).select_from(BatchCarrierAssignment).where(
             BatchCarrierAssignment.batch_id == s["batch"].id
         )
-    ).scalar_one() == 2
+    ).scalar_one() == 1
 
 
 # --- Idempotency --------------------------------------------------------------------
@@ -687,6 +725,42 @@ def test_sowing_api_smoke(client, active_context_with_farm, db_session) -> None:
 
 
 @pytest.mark.integration
+def test_sowing_api_rejects_mixed_seed_lot_lines(client, active_context_with_farm, db_session) -> None:
+    """NURSERY-OPS-001.1 section 4, HTTP level: the general/legacy route
+    itself must reject a request whose lines cite more than one Seed Lot,
+    not merely the new Nursery command."""
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    other_seed_lot = sowing_service.register_seed_lot(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=s["crop"].id,
+        variety_id=s["variety"].id, code=f"OTHER-LOT-{uuid.uuid4().hex[:8]}", supplier_name=None,
+        supplier_lot_reference=None, received_date=None, expiry_date=None,
+    )
+    db_session.commit()
+
+    resp = client.post(
+        f"/farms/{farm.id}/crop-batches/{s['batch'].id}/sowings", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()),
+            "effective_time": datetime.now(timezone.utc).isoformat(),
+            "lines": [
+                {
+                    "carrier_id": str(s["carriers"][0].id), "seed_lot_id": str(s["seed_lot"].id),
+                    "sown_site_count": 200, "seed_count": 200,
+                },
+                {
+                    "carrier_id": str(s["carriers"][1].id), "seed_lot_id": str(other_seed_lot.id),
+                    "sown_site_count": 200, "seed_count": 200,
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 422
+    list_resp = client.get(f"/farms/{farm.id}/crop-batches/{s['batch'].id}/sowings", headers=headers)
+    assert list_resp.json() == []
+
+
+@pytest.mark.integration
 def test_sowing_routes_have_no_mutation_endpoints() -> None:
     from app.main import app
 
@@ -701,15 +775,23 @@ def test_sowing_routes_have_no_mutation_endpoints() -> None:
 
 
 @pytest.mark.integration
-def test_full_api_has_exactly_eight_seed_and_sowing_routes() -> None:
+def test_full_api_has_exactly_ten_seed_and_sowing_routes() -> None:
+    """8 from CMP-009 plus NURSERY-OPS-001's two new routes: the atomic
+    Sowing command (`POST /farms/{farm_id}/nursery/sowings`, matching this
+    filter's "sowings" substring) and the Seed Lot reverse-lookup
+    (`GET /farms/{farm_id}/seed-lots/{seed_lot_id}/crop-batches`, ticket
+    section 49, matching the "seed-lots" substring). The
+    `GET /farms/{farm_id}/nursery/seed-trays/available` read route is
+    deliberately NOT counted here -- it's a Carrier read, not a Seed/
+    Sowing-specific one (see test_nursery_ops.py for its own coverage)."""
     from app.main import app
 
     schema = app.openapi()
-    cmp009_ops = [
+    cmp009_and_nursery_ops = [
         (p, method.upper())
         for p, ops in schema["paths"].items()
         for method in ops
         if "seed-lots" in p or "sowings" in p or (p.endswith("/carriers") and "crop-batches" in p)
         or "batch-assignment" in p
     ]
-    assert len(cmp009_ops) == 8, cmp009_ops
+    assert len(cmp009_and_nursery_ops) == 10, cmp009_and_nursery_ops

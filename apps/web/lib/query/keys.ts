@@ -33,4 +33,19 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses"] as const,
   greenhouseStructure: (tenantId: string, farmId: string, greenhouseId: string) =>
     ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses", greenhouseId] as const,
+
+  // --- NURSERY-OPS-001 -----------------------------------------------------
+  crops: (tenantId: string) => ["tenant", tenantId, "crops"] as const,
+  varieties: (tenantId: string, cropId: string) => ["tenant", tenantId, "crops", cropId, "varieties"] as const,
+  seedLots: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "seed-lots"] as const,
+  seedLot: (tenantId: string, farmId: string, seedLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "seed-lots", seedLotId] as const,
+  availableSeedTrays: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seed-trays", "available"] as const,
+  sowings: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "sowings"] as const,
+  seedLotBatches: (tenantId: string, farmId: string, seedLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "seed-lots", seedLotId, "crop-batches"] as const,
+  assets: (tenantId: string, farmId: string, assetType: string) =>
+    ["tenant", tenantId, "farms", farmId, "assets", assetType] as const,
 };

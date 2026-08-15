@@ -26,6 +26,17 @@ export type GreenhouseOverviewItem = components["schemas"]["GreenhouseOverviewIt
 export type GreenhouseSetupCreate = components["schemas"]["GreenhouseSetupCreate"];
 export type GreenhouseSetupResult = components["schemas"]["GreenhouseSetupResult"];
 export type GreenhouseStructureRead = components["schemas"]["GreenhouseStructureRead"];
+export type SeedLotCreate = components["schemas"]["SeedLotCreate"];
+export type SeedLotRead = components["schemas"]["SeedLotRead"];
+export type SowNewBatchCreate = components["schemas"]["SowNewBatchCreate"];
+export type SowingEventRead = components["schemas"]["SowingEventRead"];
+export type AvailableSeedTrayRead = components["schemas"]["AvailableSeedTrayRead"];
+export type CropSummary = components["schemas"]["CropSummary"];
+export type VarietySummary = components["schemas"]["VarietySummary"];
+export type CropRead = components["schemas"]["CropRead"];
+export type VarietyRead = components["schemas"]["VarietyRead"];
+export type SeedLotBatchSummary = components["schemas"]["SeedLotBatchSummary"];
+export type AssetRead = components["schemas"]["AssetRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -194,4 +205,55 @@ export function createGreenhouseSetup(
   signal?: AbortSignal,
 ): Promise<GreenhouseSetupResult> {
   return postJson<GreenhouseSetupResult>(`/farms/${farmId}/farm-setup/greenhouses`, payload, signal);
+}
+
+// --- NURSERY-OPS-001 ------------------------------------------------------
+
+export function listCrops(signal?: AbortSignal): Promise<CropRead[]> {
+  return getJson<CropRead[]>("/crops", signal);
+}
+
+export function listVarieties(cropId: string, signal?: AbortSignal): Promise<VarietyRead[]> {
+  return getJson<VarietyRead[]>(`/crops/${cropId}/varieties`, signal);
+}
+
+export function listSeedLots(farmId: string, signal?: AbortSignal): Promise<SeedLotRead[]> {
+  return getJson<SeedLotRead[]>(`/farms/${farmId}/seed-lots`, signal);
+}
+
+export function getSeedLot(farmId: string, seedLotId: string, signal?: AbortSignal): Promise<SeedLotRead> {
+  return getJson<SeedLotRead>(`/farms/${farmId}/seed-lots/${seedLotId}`, signal);
+}
+
+export function registerSeedLot(farmId: string, payload: SeedLotCreate, signal?: AbortSignal): Promise<SeedLotRead> {
+  return postJson<SeedLotRead>(`/farms/${farmId}/seed-lots`, payload, signal);
+}
+
+export function listAvailableSeedTrays(farmId: string, signal?: AbortSignal): Promise<AvailableSeedTrayRead[]> {
+  return getJson<AvailableSeedTrayRead[]>(`/farms/${farmId}/nursery/seed-trays/available`, signal);
+}
+
+export function sowNewBatch(
+  farmId: string,
+  payload: SowNewBatchCreate,
+  signal?: AbortSignal,
+): Promise<SowingEventRead> {
+  return postJson<SowingEventRead>(`/farms/${farmId}/nursery/sowings`, payload, signal);
+}
+
+export function listSowings(farmId: string, batchId: string, signal?: AbortSignal): Promise<SowingEventRead[]> {
+  return getJson<SowingEventRead[]>(`/farms/${farmId}/crop-batches/${batchId}/sowings`, signal);
+}
+
+export function listAssets(farmId: string, assetType?: string, signal?: AbortSignal): Promise<AssetRead[]> {
+  const query = assetType ? `?asset_type=${encodeURIComponent(assetType)}` : "";
+  return getJson<AssetRead[]>(`/farms/${farmId}/assets${query}`, signal);
+}
+
+export function listBatchesForSeedLot(
+  farmId: string,
+  seedLotId: string,
+  signal?: AbortSignal,
+): Promise<SeedLotBatchSummary[]> {
+  return getJson<SeedLotBatchSummary[]>(`/farms/${farmId}/seed-lots/${seedLotId}/crop-batches`, signal);
 }

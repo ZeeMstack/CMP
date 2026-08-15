@@ -299,11 +299,38 @@ def test_scenario_c_nursery_exact_counts_and_no_zone_span(db_session, active_con
     structure = farm_setup_service.get_greenhouse_structure(
         db_session.connection(), tenant_id=tenant.id, farm_id=farm.id, greenhouse_id=result.greenhouse_id,
     )
-    assert structure.nursery_seeding_station is not None and structure.nursery_seeding_station.code == "SEED-01"
+    assert [s.code for s in structure.nursery_seeding_stations] == ["SEED-01"]
     assert structure.nursery_germination_chamber is not None and structure.nursery_germination_chamber.code == "GERM-01"
     assert len(structure.nursery_seedling.tables) == 3
     assert len(structure.nursery_intersalads.tables) == 2
     assert len(structure.nursery_intervines.tables) == 2
+
+
+@pytest.mark.integration
+def test_nursery_structure_returns_every_seeding_station_not_just_the_first(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-001.1 section 11: the Farm Setup wizard only ever
+    creates one Seeding Station per Nursery, but the generic
+    `location_service.create_location` has no cardinality guard preventing
+    a second one being added under the same Nursery Greenhouse later --
+    `get_greenhouse_structure` must report all of them, never silently
+    collapse to the first, so the Sowing form can require an explicit
+    operator choice instead of guessing."""
+    tenant, user, _headers, farm = active_context_with_farm
+    from app.services import location_service
+
+    result = farm_setup_service.create_greenhouse_setup(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, payload=_nursery_payload(),
+    )
+    location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="seeding_station", code="SEED-02", name="Second Seeding Station",
+        parent_location_id=result.greenhouse_id, greenhouse_classification=None, occupiable=None, capacity=None,
+    )
+
+    structure = farm_setup_service.get_greenhouse_structure(
+        db_session.connection(), tenant_id=tenant.id, farm_id=farm.id, greenhouse_id=result.greenhouse_id,
+    )
+    assert sorted(s.code for s in structure.nursery_seeding_stations) == ["SEED-01", "SEED-02"]
 
 
 @pytest.mark.integration

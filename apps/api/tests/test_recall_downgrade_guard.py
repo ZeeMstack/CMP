@@ -33,6 +33,91 @@ from tests._recall_scenario import (
     open_case,
     pack_lot,
 )
+from tests._traceability_scenario import build_workflow_scaffold
+from app.services import carrier_service, crop_batch_service, sowing_service
+
+
+def _sow_batch_at_downgraded_schema(db: Session, tenant, user, farm, *, carrier_count=1, suffix=None):
+    """NURSERY-OPS-001 added `seeding_station_id`/`seeding_machine_id` to
+    `sowing_events` -- absent below `_PRE_CMP020_REVISION`, so the CURRENT
+    `sowing_service.sow_batch` (whose ORM model always selects/inserts
+    those columns) cannot be used against the deliberately-downgraded
+    schema this test exercises below, exactly like this module's own
+    documented principle for CMP-020-shaped service code in general. Built
+    directly via SQL instead (mirrors test_migrations.py's own equivalent
+    fix for the same root cause) -- returns the same
+    `{"batch", "assignment_ids"}` shape `build_batch_with_assignments`
+    would have, for its two callers (`harvest_all`) below."""
+    suffix = suffix or uuid.uuid4().hex[:8]
+    scaffold = build_workflow_scaffold(db, tenant, user, farm, suffix=suffix)
+    batch = crop_batch_service.create_batch(
+        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"BATCH-{suffix}", workflow_id=scaffold["workflow"].id, effective_time=now(),
+    )
+    seed_lot = sowing_service.register_seed_lot(
+        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=scaffold["crop"].id,
+        variety_id=scaffold["variety"].id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
+        received_date=None, expiry_date=None,
+    )
+    seeding_run_id = db.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": batch.id},
+    ).scalar_one()
+    sowing_event_id = uuid.uuid4()
+    sow_effective_time = now()
+    db.execute(
+        text(
+            "INSERT INTO sowing_events "
+            "(id, tenant_id, farm_id, batch_id, active_batch_stage_run_id, effective_time, actor_user_id, "
+            "client_command_id, request_fingerprint, note) VALUES "
+            "(:id, :tid, :fid, :bid, :run_id, :eff, :uid, :cmd, :fp, NULL)"
+        ),
+        {
+            "id": sowing_event_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "run_id": seeding_run_id,
+            "eff": sow_effective_time, "uid": user.id, "cmd": uuid.uuid4(), "fp": "pre-cmp020-schema-sowing",
+        },
+    )
+    assignment_ids = []
+    for n in range(1, carrier_count + 1):
+        carrier = carrier_service.register_carrier(
+            db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
+        )
+        assignment_id = uuid.uuid4()
+        db.execute(
+            text(
+                "INSERT INTO batch_carrier_assignments "
+                "(id, tenant_id, farm_id, batch_id, carrier_id, batch_stage_run_id, assigned_effective_time, "
+                "released_effective_time, opening_sowing_event_id, actor_user_id) VALUES "
+                "(:id, :tid, :fid, :bid, :cid, :run_id, :eff, NULL, :eid, :uid)"
+            ),
+            {
+                "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier.id,
+                "run_id": seeding_run_id, "eff": sow_effective_time, "eid": sowing_event_id, "uid": user.id,
+            },
+        )
+        db.execute(
+            text(
+                "INSERT INTO sowing_event_lines "
+                "(id, tenant_id, farm_id, sowing_event_id, batch_carrier_assignment_id, carrier_id, seed_lot_id, "
+                "sown_site_count, seed_count, line_note) VALUES "
+                "(:id, :tid, :fid, :eid, :aid, :cid, :lid, :site, :seed, NULL)"
+            ),
+            {
+                "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": sowing_event_id, "aid": assignment_id,
+                "cid": carrier.id, "lid": seed_lot.id, "site": 20, "seed": 20,
+            },
+        )
+        assignment_ids.append(assignment_id)
+    # SEEDING -> HARVESTING: `transition_stage` never touches `sowing_events`,
+    # so (unlike `sow_batch`) it's safe to call as-is against the downgraded
+    # schema -- `harvest_all` below requires the batch already be in a
+    # harvesting-category stage.
+    crop_batch_service.transition_stage(
+        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), configured_transition_id=scaffold["transition_1"].id, effective_time=now(), reason=None,
+    )
+    return {"batch": batch, "assignment_ids": assignment_ids}
 
 API_ROOT = Path(__file__).resolve().parent.parent
 _PRE_CMP020_REVISION = "677fcd22cb3c"
@@ -195,7 +280,7 @@ def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_s
             with committed_connection(test_engine) as session:
                 tenant, user, farm = build_committed_tenant_farm(session)
                 tenant_id = tenant.id
-                scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+                scaffold = _sow_batch_at_downgraded_schema(session, tenant, user, farm, carrier_count=1)
                 _, produce_lot_id = harvest_all(session, tenant, user, farm, batch_id=scaffold["batch"].id, assignment_ids=scaffold["assignment_ids"])
                 session.commit()
                 farm_id, user_id = farm.id, user.id

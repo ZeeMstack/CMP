@@ -1068,6 +1068,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/seed-lots/{seed_lot_id}/crop-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Batches For Seed Lot
+         * @description Section 49: "which Crop Batches were sown from this Seed Lot" --
+         *     gated on `seed_lot.read` (the resource being read), matching
+         *     `get_seed_lot` above.
+         */
+        get: operations["list_batches_for_seed_lot_farms__farm_id__seed_lots__seed_lot_id__crop_batches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/sowings": {
         parameters: {
             query?: never;
@@ -1129,6 +1151,53 @@ export interface paths {
         };
         /** Get Carrier Batch Assignment */
         get: operations["get_carrier_batch_assignment_farms__farm_id__carriers__carrier_id__batch_assignment_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/sowings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sow New Batch
+         * @description NURSERY-OPS-001: the atomic Sowing command -- one call creates
+         *     exactly one Crop Batch and its one Sowing Event. Gated on
+         *     `sowing.manage` alone: this is a production/operational write, not a
+         *     structural configuration change (Farm Setup's `location.manage`/
+         *     `asset.manage` do not apply -- the Seeding Station/Seeding Machine are
+         *     being USED here, not created).
+         */
+        post: operations["sow_new_batch_farms__farm_id__nursery_sowings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seed-trays/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Seed Trays
+         * @description Section 16: an active `seed_tray` Carrier with no active Batch-
+         *     Carrier-Assignment. Gated on `carrier.read` (the resource actually
+         *     being read), not a Sowing-specific permission.
+         */
+        get: operations["list_available_seed_trays_farms__farm_id__nursery_seed_trays_available_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1869,6 +1938,17 @@ export interface components {
             email: string;
             /** Display Name */
             display_name: string;
+        };
+        /** AvailableSeedTrayRead */
+        AvailableSeedTrayRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            carrier_type: components["schemas"]["CarrierTypeSummary"];
         };
         /** BatchAssignmentTransferRead */
         BatchAssignmentTransferRead: {
@@ -3124,7 +3204,8 @@ export interface components {
             leafy_zones?: components["schemas"]["StructureZoneNode"][] | null;
             /** Vines Zones */
             vines_zones?: components["schemas"]["StructureVinesZoneNode"][] | null;
-            nursery_seeding_station?: components["schemas"]["StructureSectionNode"] | null;
+            /** Nursery Seeding Stations */
+            nursery_seeding_stations?: components["schemas"]["StructureSectionNode"][];
             nursery_germination_chamber?: components["schemas"]["StructureSectionNode"] | null;
             nursery_seedling?: components["schemas"]["StructureNurseryTableGroup"] | null;
             nursery_intersalads?: components["schemas"]["StructureNurseryTableGroup"] | null;
@@ -4420,6 +4501,25 @@ export interface components {
             /** Unresolved Reason */
             unresolved_reason: string | null;
         };
+        /**
+         * SeedLotBatchSummary
+         * @description NURSERY-OPS-001 section 49: the reverse of 'which Seed Lot created
+         *     this Batch' -- a simple related-batches read, not a traceability UI.
+         */
+        SeedLotBatchSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Sown Effective Time
+             * Format: date-time
+             */
+            sown_effective_time: string;
+        };
         /** SeedLotCreate */
         SeedLotCreate: {
             /**
@@ -4541,6 +4641,75 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /** SeedingMachineSummary */
+        SeedingMachineSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SeedingStationSummary */
+        SeedingStationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * SowNewBatchCreate
+         * @description NURSERY-OPS-001: the operator-facing Sowing command -- one call
+         *     creates exactly one Crop Batch and its one Sowing Event. No
+         *     `workflow_id` field: the Workflow is auto-resolved server-side from
+         *     the Seed Lot's crop/variety (see nursery_service._resolve_sowing_workflow).
+         */
+        SowNewBatchCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Seed Lot Id
+             * Format: uuid
+             */
+            seed_lot_id: string;
+            /**
+             * Seeding Station Id
+             * Format: uuid
+             */
+            seeding_station_id: string;
+            /** Seeding Machine Id */
+            seeding_machine_id?: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /** Trays */
+            trays: components["schemas"]["SowNewBatchTrayIn"][];
+        };
+        /** SowNewBatchTrayIn */
+        SowNewBatchTrayIn: {
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /** Seeds Sown */
+            seeds_sown: number;
+        };
         /** SowingEventCreate */
         SowingEventCreate: {
             /**
@@ -4592,7 +4761,7 @@ export interface components {
             carrier: components["schemas"]["CarrierSummary"];
             seed_lot: components["schemas"]["SeedLotSummary"];
             /** Sown Site Count */
-            sown_site_count: number;
+            sown_site_count: number | null;
             /** Seed Count */
             seed_count: number;
             /** Line Note */
@@ -4650,8 +4819,15 @@ export interface components {
             client_command_id: string;
             /** Note */
             note: string | null;
+            seeding_station?: components["schemas"]["SeedingStationSummary"] | null;
+            seeding_machine?: components["schemas"]["SeedingMachineSummary"] | null;
             /** Lines */
             lines: components["schemas"]["SowingEventLineRead"][];
+            /**
+             * Total Seeds Sown
+             * @default 0
+             */
+            total_seeds_sown: number;
         };
         /**
          * SowingOrigin
@@ -8575,6 +8751,43 @@ export interface operations {
             };
         };
     };
+    list_batches_for_seed_lot_farms__farm_id__seed_lots__seed_lot_id__crop_batches_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                seed_lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedLotBatchSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_sowings_farms__farm_id__crop_batches__batch_id__sowings_get: {
         parameters: {
             query?: never;
@@ -8752,6 +8965,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchCarrierAssignmentRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sow_new_batch_farms__farm_id__nursery_sowings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SowNewBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SowingEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_seed_trays_farms__farm_id__nursery_seed_trays_available_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableSeedTrayRead"][];
                 };
             };
             /** @description Validation Error */
