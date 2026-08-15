@@ -147,7 +147,7 @@ def test_invalid_parent_child_type_rejected(db_session, active_context_with_farm
     [
         ("greenhouse", "gh-1", "chamber_position"),
         ("store", "store-1", "area"),
-        ("chamber_position", "cp-1", "table_position"),
+        ("store_bin", "sb-1", "table_position"),
     ],
 )
 def test_representative_invalid_parent_child_pairs_rejected(
@@ -157,13 +157,18 @@ def test_representative_invalid_parent_child_pairs_rejected(
     kwargs = dict(location_type_code=parent_type_code, code=parent_code, name="Parent")
     if parent_type_code == "greenhouse":
         kwargs["greenhouse_classification"] = "nursery"
-    elif parent_type_code == "chamber_position":
-        # A germination_chamber (a direct child of the nursery greenhouse,
-        # per DOMAIN-FARM-001's corrected topology) is required to hold a
-        # chamber_position.
-        greenhouse = _create(db_session, tenant, farm, user, location_type_code="greenhouse", code="gh-cp", name="GH", greenhouse_classification="nursery")
-        chamber = _create(db_session, tenant, farm, user, location_type_code="germination_chamber", code="chamber-cp", name="Chamber", parent_location_id=greenhouse.id)
-        kwargs["parent_location_id"] = chamber.id
+    elif parent_type_code == "store_bin":
+        # NURSERY-OPS-002A retired germination_chamber -> chamber_position
+        # from the authoritative Nursery topology, and every Greenhouse now
+        # requires a classification (DB-enforced) -- classified greenhouses
+        # never fall back to the generic hierarchy rules, so chamber_position
+        # (whose only remaining parent, germination_chamber, is unreachable
+        # both via any classified Greenhouse and via the generic "area" path)
+        # has no legitimate parent left at all. store_bin (fully generic, no
+        # greenhouse involved) is an equally valid "some occupiable leaf
+        # rejects an arbitrary child" example.
+        store = _create(db_session, tenant, farm, user, location_type_code="store", code="store-sb", name="Store")
+        kwargs["parent_location_id"] = store.id
     parent = _create(db_session, tenant, farm, user, **kwargs)
     with pytest.raises(InvalidLocationHierarchyError):
         _create(db_session, tenant, farm, user, location_type_code=child_type_code, code="child-1", name="Child", parent_location_id=parent.id)

@@ -41,6 +41,7 @@ from app.schemas.farm_setup import (
     GreenhouseStructureRead,
     LeafySetupConfig,
     NurserySetupConfig,
+    StructureGerminationChamberNode,
     StructureGutterNode,
     StructureNurseryTableGroup,
     StructureSectionNode,
@@ -179,19 +180,28 @@ def _create_nursery_structure(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, greenhouse: Location,
     config: NurserySetupConfig, counts: GreenhouseSetupCounts,
 ) -> None:
-    sections = (
-        ("seeding_station", config.seeding_station, "seeding_stations", "Seeding Station"),
-        ("germination_chamber", config.germination_chamber, "germination_chambers", "Germination Chamber"),
-    )
-    for section_type_code, section_cfg, count_field, default_label in sections:
-        if section_cfg is None:
-            continue
+    if config.seeding_station is not None:
         location_service._create_location_core(
-            db, tenant_id=tenant_id, farm_id=farm_id, location_type_code=section_type_code,
-            code=section_cfg.code, name=section_cfg.name or default_label,
+            db, tenant_id=tenant_id, farm_id=farm_id, location_type_code="seeding_station",
+            code=config.seeding_station.code, name=config.seeding_station.name or "Seeding Station",
             parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None, capacity=None,
         )
-        setattr(counts, count_field, 1)
+        counts.seeding_stations = 1
+
+    if config.germination_chamber is not None:
+        # NURSERY-OPS-002A: the frozen authoritative model -- a Germination
+        # Trolley Asset occupies the Chamber directly (no chamber_position
+        # child locations are ever generated here). `occupiable=True` is an
+        # explicit override, since germination_chamber's own
+        # `LocationType.default_occupiable` stays `false` (mirrors the same
+        # override pattern already used for leafy `grow_table`).
+        location_service._create_location_core(
+            db, tenant_id=tenant_id, farm_id=farm_id, location_type_code="germination_chamber",
+            code=config.germination_chamber.code, name=config.germination_chamber.name or "Germination Chamber",
+            parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True,
+            capacity=config.germination_chamber.trolley_capacity,
+        )
+        counts.germination_chambers = 1
 
     groups = (
         ("seedling_area", "seedling_table", config.seedling_tables, "seedling_tables"),
@@ -555,8 +565,9 @@ def get_greenhouse_structure(
         germination_chambers = sorted_children(greenhouse_id, "germination_chamber")
         if germination_chambers:
             chamber = germination_chambers[0]
-            result.nursery_germination_chamber = StructureSectionNode(
-                id=chamber["id"], code=chamber["code"], name=chamber["name"]
+            result.nursery_germination_chamber = StructureGerminationChamberNode(
+                id=chamber["id"], code=chamber["code"], name=chamber["name"],
+                trolley_capacity=chamber["capacity"],
             )
 
         for area_type, table_type, field_name in (

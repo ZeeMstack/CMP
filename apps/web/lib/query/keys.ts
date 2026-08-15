@@ -48,4 +48,14 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "seed-lots", seedLotId, "crop-batches"] as const,
   assets: (tenantId: string, farmId: string, assetType: string) =>
     ["tenant", tenantId, "farms", farmId, "assets", assetType] as const,
+
+  // --- NURSERY-OPS-002A -----------------------------------------------------
+  availableChambers: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "germination", "chambers", "available"] as const,
+  availableTrolleys: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "germination", "trolleys", "available"] as const,
+  trolleySlots: (tenantId: string, farmId: string, trolleyId: string) =>
+    ["tenant", tenantId, "farms", farmId, "germination", "trolleys", trolleyId, "slots"] as const,
+  germinationTrays: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "germination", "trays"] as const,
 };

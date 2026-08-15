@@ -335,6 +335,46 @@ class NoSowingWorkflowFoundError(DomainError):
     pass
 
 
+class GerminationChamberInvalidError(DomainError):
+    """NURSERY-OPS-002A: the referenced location is not an active, occupiable
+    `germination_chamber` under a Nursery-classified Greenhouse in this
+    tenant/farm."""
+
+    pass
+
+
+class GerminationTrolleyInvalidError(DomainError):
+    """NURSERY-OPS-002A: the referenced asset is not an active
+    `germination_trolley` in this tenant/farm."""
+
+    pass
+
+
+class GerminationTraySlotInvalidError(DomainError):
+    """NURSERY-OPS-002A: the referenced AssetPosition is not an active
+    `slot` belonging to the selected Germination Trolley."""
+
+    pass
+
+
+class TrayNotSownError(DomainError):
+    """NURSERY-OPS-002A: the referenced carrier has no active
+    sowing-origin BatchCarrierAssignment -- it is not a Sown Seed Tray."""
+
+    pass
+
+
+class TrolleyNotInGerminationError(DomainError):
+    """NURSERY-OPS-002A: a Seed Tray may only be placed into a Trolley Slot
+    while that Trolley itself currently occupies a valid Germination Chamber
+    -- the generic Movement primitive would otherwise happily place a tray
+    onto a Trolley sitting nowhere (or outside Germination) and call it
+    "Germination placement", which this Germination-specific orchestration
+    must not permit."""
+
+    pass
+
+
 class AmbiguousSowingWorkflowError(DomainError):
     """NURSERY-OPS-001: more than one candidate workflow matches the
     selected Seed Lot's crop/variety -- resolution is ambiguous, and this

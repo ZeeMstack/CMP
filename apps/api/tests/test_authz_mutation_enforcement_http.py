@@ -237,7 +237,7 @@ def test_permission_denial_creates_zero_domain_side_effects_or_audit_events(
     -- not merely by asserting the response status code."""
     scenario = placed_trolley_and_tray
     tenant, farm = scenario["tenant"], scenario["farm"]
-    trolley, positions = scenario["trolley"], scenario["positions"]
+    trolley, positions = scenario["trolley"], scenario["chambers"]
 
     # AUTHZ-002B2: `operator` now genuinely holds MOVEMENT_MANAGE (Imperial
     # Pilot policy activation) -- `read_only` is the role that still
@@ -256,7 +256,7 @@ def test_permission_denial_creates_zero_domain_side_effects_or_audit_events(
         "client_command_id": str(uuid.uuid4()),
         "effective_time": datetime.now(timezone.utc).isoformat(),
         "occupant": {"kind": "asset", "id": str(trolley.id)},
-        "destination": {"kind": "location", "id": str(positions["P13"].id)},
+        "destination": {"kind": "location", "id": str(positions["GC-02"].id)},
         "reason": None,
     }, headers=zero_permission_headers)
     assert response.status_code == 403
@@ -269,7 +269,7 @@ def test_permission_denial_creates_zero_domain_side_effects_or_audit_events(
     )
     audit_count_after = db_session.query(AuditEvent).filter(AuditEvent.tenant_id == tenant.id).count()
 
-    # Occupant remains at its original position (P12, per the fixture) --
+    # Occupant remains at its original location (GC-01, per the fixture) --
     # no unauthorized location/state transition occurred.
     assert occupancy_after.id == occupancy_before.id
     assert occupancy_after.target_location_id == occupancy_before.target_location_id
@@ -321,14 +321,14 @@ def test_authorization_is_evaluated_before_idempotency_replay_lookup(
        record."""
     scenario = placed_trolley_and_tray
     tenant, admin_headers, farm = scenario["tenant"], scenario["headers"], scenario["farm"]
-    trolley, positions = scenario["trolley"], scenario["positions"]
+    trolley, positions = scenario["trolley"], scenario["chambers"]
 
     client_command_id = str(uuid.uuid4())
     payload = {
         "client_command_id": client_command_id,
         "effective_time": datetime.now(timezone.utc).isoformat(),
         "occupant": {"kind": "asset", "id": str(trolley.id)},
-        "destination": {"kind": "location", "id": str(positions["P13"].id)},
+        "destination": {"kind": "location", "id": str(positions["GC-02"].id)},
         "reason": None,
     }
 

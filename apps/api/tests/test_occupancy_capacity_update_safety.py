@@ -26,27 +26,20 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _build_chamber(db_session, tenant, farm, user):
+def _build_capacity_chamber(db_session, tenant, farm, user, *, capacity):
+    """NURSERY-OPS-002A: the frozen authoritative model -- a Germination
+    Trolley occupies the Chamber Location directly (no chamber_position
+    child). The Chamber itself is the capacity-configurable target."""
     suffix = uuid.uuid4().hex[:8]
     greenhouse = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="greenhouse", code=f"gh-{suffix}", name="GH",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    chamber = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code=f"gc-{suffix}", name="Chamber",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
-    return greenhouse, chamber
-
-
-def _build_position(db_session, tenant, farm, user, *, capacity):
-    _greenhouse, chamber = _build_chamber(db_session, tenant, farm, user)
     return location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code=f"p-{uuid.uuid4().hex[:8]}", name="Position",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=capacity,
+        location_type_code="germination_chamber", code=f"gc-{suffix}", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True, capacity=capacity,
     )
 
 
@@ -125,7 +118,7 @@ def _direct_insert_occupancy(db_session, *, tenant, farm, user, occupant_asset_i
 @pytest.mark.integration
 def test_location_capacity_cannot_be_reduced_below_active_count(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=3)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=3)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(3)]
     for trolley in trolleys:
         _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
@@ -165,7 +158,7 @@ def test_asset_position_capacity_cannot_be_reduced_below_active_count(db_session
 @pytest.mark.integration
 def test_location_capacity_may_be_increased(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=1)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=1)
     trolley = _register_trolley(db_session, tenant, farm, user)
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
 
@@ -177,7 +170,7 @@ def test_location_capacity_may_be_increased(db_session, active_context_with_farm
 @pytest.mark.integration
 def test_location_capacity_may_be_reduced_when_it_still_fits(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=5)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(2)]
     for trolley in trolleys:
         _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
@@ -195,7 +188,7 @@ def test_location_capacity_may_be_reduced_when_it_still_fits(db_session, active_
 @pytest.mark.integration
 def test_capacity_to_null_allowed_when_one_active_occupant(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=3)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=3)
     trolley = _register_trolley(db_session, tenant, farm, user)
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
 
@@ -208,7 +201,7 @@ def test_capacity_to_null_allowed_when_one_active_occupant(db_session, active_co
 def test_capacity_to_null_rejected_when_zero_active_occupants_still_allowed(db_session, active_context_with_farm) -> None:
     """0 occupants, capacity 3 -> NULL: ALLOWED (0 <= 1)."""
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=3)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=3)
 
     db_session.execute(text("UPDATE locations SET capacity = NULL WHERE id = :id"), {"id": position.id})
     db_session.flush()
@@ -223,7 +216,7 @@ def test_capacity_to_null_rejected_when_zero_active_occupants_still_allowed(db_s
 @pytest.mark.integration
 def test_legitimate_closure_still_allowed_after_capacity_reduction_guard(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=2)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=2)
     trolley = _register_trolley(db_session, tenant, farm, user)
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
 
@@ -244,7 +237,7 @@ def test_legitimate_closure_still_allowed_after_capacity_reduction_guard(db_sess
 @pytest.mark.integration
 def test_reactivating_ended_occupancy_is_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=1)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=1)
     trolley = _register_trolley(db_session, tenant, farm, user)
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=position.id)
     _remove(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id)
@@ -277,8 +270,8 @@ def test_reactivating_ended_occupancy_is_rejected(db_session, active_context_wit
 @pytest.mark.integration
 def test_active_occupancy_target_mutation_is_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position_a = _build_position(db_session, tenant, farm, user, capacity=5)
-    position_b = _build_position(db_session, tenant, farm, user, capacity=5)
+    position_a = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
+    position_b = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
     trolley = _register_trolley(db_session, tenant, farm, user)
     active = _direct_insert_occupancy(
         db_session, tenant=tenant, farm=farm, user=user,
@@ -303,7 +296,7 @@ def test_active_occupancy_target_mutation_is_rejected(db_session, active_context
 @pytest.mark.integration
 def test_active_occupancy_occupant_mutation_is_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=5)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
     trolley_a = _register_trolley(db_session, tenant, farm, user)
     trolley_b = _register_trolley(db_session, tenant, farm, user)
     active = _direct_insert_occupancy(

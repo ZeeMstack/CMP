@@ -240,6 +240,21 @@ class NurserySectionConfig(BaseModel):
         return _normalize_code(v)
 
 
+class GerminationChamberSetupConfig(NurserySectionConfig):
+    """NURSERY-OPS-002A: the Germination Chamber directly occupies Germination
+    Trolley Assets (the frozen authoritative model -- no chamber_position
+    child locations). `trolley_capacity` is the number of distinct Trolleys
+    the Chamber may simultaneously hold -- NULL/1 (DOMAIN-FARM-002 default)
+    means exclusive, matching the pre-existing capacity convention exactly."""
+
+    trolley_capacity: int | None = None
+
+    @field_validator("trolley_capacity")
+    @classmethod
+    def validate_trolley_capacity(cls, v: int | None) -> int | None:
+        return _validate_capacity(v)
+
+
 class NurserySetupConfig(BaseModel):
     """Section 7 (Seedling/InterSalads/InterVines tables) plus sections 8-9
     (optional Germination Trolley/Seeding Machine assets) plus
@@ -248,7 +263,7 @@ class NurserySetupConfig(BaseModel):
     inside Farm Setup, no generic Location API workaround required."""
 
     seeding_station: NurserySectionConfig | None = None
-    germination_chamber: NurserySectionConfig | None = None
+    germination_chamber: GerminationChamberSetupConfig | None = None
     seedling_tables: TableGeneratorConfig | None = None
     intersalads_tables: TableGeneratorConfig | None = None
     intervines_tables: TableGeneratorConfig | None = None
@@ -414,6 +429,14 @@ class StructureSectionNode(BaseModel):
     name: str
 
 
+class StructureGerminationChamberNode(StructureSectionNode):
+    """NURSERY-OPS-002A: `trolley_capacity` is the Chamber's configured
+    number-of-Trolleys capacity (NULL means the DOMAIN-FARM-002 default of
+    1, exclusive) -- never a tray/seed/plant quantity."""
+
+    trolley_capacity: int | None = None
+
+
 class GreenhouseStructureRead(BaseModel):
     """A readable, classification-shaped view of one Greenhouse's existing
     physical structure -- not a generic Location dump. Exactly one of the
@@ -433,7 +456,7 @@ class GreenhouseStructureRead(BaseModel):
     # silently collapsed to "the first one", so callers (the Sowing form)
     # can require an explicit operator choice when more than one exists.
     nursery_seeding_stations: list[StructureSectionNode] = Field(default_factory=list)
-    nursery_germination_chamber: StructureSectionNode | None = None
+    nursery_germination_chamber: StructureGerminationChamberNode | None = None
     nursery_seedling: StructureNurseryTableGroup | None = None
     nursery_intersalads: StructureNurseryTableGroup | None = None
     nursery_intervines: StructureNurseryTableGroup | None = None

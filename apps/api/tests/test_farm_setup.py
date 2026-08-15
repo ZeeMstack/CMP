@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 
 from app.schemas.farm_setup import (
+    GerminationChamberSetupConfig,
     GreenhouseSetupCreate,
     GutterGeneratorConfig,
     LeafySetupConfig,
@@ -242,7 +243,7 @@ def test_invalid_grow_table_under_vines_rejected(db_session, active_context_with
 def _nursery_payload(
     *, code="NUR-01", ccid=None, trolleys=None, seeding_machines=None,
     seeding_station=NurserySectionConfig(code="SEED-01"),
-    germination_chamber=NurserySectionConfig(code="GERM-01"),
+    germination_chamber=GerminationChamberSetupConfig(code="GERM-01"),
 ):
     return GreenhouseSetupCreate(
         code=code, name="Nursery GH", classification="nursery", client_command_id=ccid or uuid.uuid4(),
@@ -633,7 +634,7 @@ def test_nursery_status_requires_all_five_sections_for_configured(db_session, ac
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         payload=GreenhouseSetupCreate(
             code="NUR-C", name="Only Germination Chamber", classification="nursery", client_command_id=uuid.uuid4(),
-            nursery=NurserySetupConfig(germination_chamber=NurserySectionConfig(code="GERM-C")),
+            nursery=NurserySetupConfig(germination_chamber=GerminationChamberSetupConfig(code="GERM-C")),
         ),
     )
     # D. Seedling Tables only -> partial
@@ -657,7 +658,7 @@ def test_nursery_status_requires_all_five_sections_for_configured(db_session, ac
             code="NUR-F", name="Four Of Five", classification="nursery", client_command_id=uuid.uuid4(),
             nursery=NurserySetupConfig(
                 seeding_station=NurserySectionConfig(code="SEED-F"),
-                germination_chamber=NurserySectionConfig(code="GERM-F"),
+                germination_chamber=GerminationChamberSetupConfig(code="GERM-F"),
                 seedling_tables=TableGeneratorConfig(code_prefix="ST", start=1, end=1, pad_width=2, capacity=10),
                 intersalads_tables=TableGeneratorConfig(code_prefix="IS", start=1, end=1, pad_width=2, capacity=10),
             ),

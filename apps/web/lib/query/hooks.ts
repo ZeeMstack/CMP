@@ -3,7 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
-import type { GreenhouseSetupCreate, SeedLotCreate, SowNewBatchCreate } from "@/lib/api/client";
+import type {
+  GreenhouseSetupCreate,
+  PlaceTrayCreate,
+  PlaceTrolleyCreate,
+  SeedLotCreate,
+  SowNewBatchCreate,
+} from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { queryKeys } from "@/lib/query/keys";
 
@@ -252,6 +258,85 @@ export function useAssets(farmId: string, assetType: string) {
     queryFn: ({ signal }) => api.listAssets(farmId, assetType, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+// --- NURSERY-OPS-002A -------------------------------------------------------
+// Germination Placement -- physical placement only (no biological outcome).
+
+export function useAvailableChambers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableChambers(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableChambers(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useAvailableTrolleys(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableTrolleys(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableTrolleys(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useTrolleySlots(farmId: string, trolleyId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.trolleySlots(tenantId ?? "", farmId, trolleyId),
+    queryFn: ({ signal }) => api.listTrolleySlots(farmId, trolleyId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(trolleyId),
+  });
+}
+
+export function useGerminationTrays(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.germinationTrays(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listGerminationTrays(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Idempotency key (`client_command_id`) lives in the payload itself, set
+ * once by the caller -- same replay-safe pattern as `useSowNewBatch`. A
+ * Trolley placement changes chamber occupancy (and, transitively, every
+ * Tray resting on that Trolley's resolved location) and asset-level slot
+ * occupancy, so both available-chambers/trolleys reads and the tray list
+ * are invalidated. */
+export function usePlaceTrolley(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PlaceTrolleyCreate) => api.placeTrolley(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableChambers(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableTrolleys(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
+    },
+  });
+}
+
+export function usePlaceTray(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PlaceTrayCreate) => api.placeTray(farmId, payload),
+    onSuccess: (_result, variables) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableTrolleys(tenantId, farmId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.trolleySlots(tenantId, farmId, variables.trolley_id),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
+    },
   });
 }
 

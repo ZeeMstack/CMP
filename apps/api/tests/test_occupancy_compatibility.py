@@ -10,7 +10,10 @@ from app.models.location_type import LocationType
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 
 EXPECTED_RULES = {
-    ("asset", "germination_trolley", "location", "chamber_position"),
+    # NURSERY-OPS-002A: the Germination Trolley occupies the Germination
+    # Chamber Location directly -- chamber_position is retired from the
+    # authoritative Nursery Germination topology.
+    ("asset", "germination_trolley", "location", "germination_chamber"),
     ("carrier", "seed_tray", "position", "slot"),
     ("carrier", "cultivation_plate", "location", "table_position"),
     ("carrier", "grow_cube", "location", "table_position"),
@@ -50,8 +53,8 @@ def test_duplicate_asset_location_rule_rejected(db_session) -> None:
     trolley_type = db_session.execute(
         select(AssetType).where(AssetType.code == "germination_trolley")
     ).scalar_one()
-    chamber_position_type = db_session.execute(
-        select(LocationType).where(LocationType.code == "chamber_position")
+    chamber_type = db_session.execute(
+        select(LocationType).where(LocationType.code == "germination_chamber")
     ).scalar_one()
     with pytest.raises(IntegrityError):
         with db_session.begin_nested():
@@ -60,7 +63,7 @@ def test_duplicate_asset_location_rule_rejected(db_session) -> None:
                     "INSERT INTO occupancy_compatibility_rules (id, occupant_asset_type_id, target_location_type_id) "
                     "VALUES (:id, :asset_type_id, :location_type_id)"
                 ),
-                {"id": uuid.uuid4(), "asset_type_id": trolley_type.id, "location_type_id": chamber_position_type.id},
+                {"id": uuid.uuid4(), "asset_type_id": trolley_type.id, "location_type_id": chamber_type.id},
             )
 
 

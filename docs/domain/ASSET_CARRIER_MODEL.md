@@ -15,7 +15,7 @@ A structure such as a table or gutter may have both a linked asset record (for m
 
 ## Germination trolley
 
-The trolley is a **mobile asset**. Its shelves and slots are **relative positions belonging to the trolley**, not independent farm locations — a tray's effective location is derived through the trolley's slot and the trolley's current chamber position (`LOCATION_MODEL.md`).
+The trolley is a **mobile asset**. Its shelves and slots are **relative positions belonging to the trolley**, not independent farm locations — a tray's effective location is derived through the trolley's slot and the trolley's own current Occupancy in a Germination Chamber (`LOCATION_MODEL.md`, `OCCUPANCY_MOVEMENT_MODEL.md`). The Chamber has no fixed/identifiable trolley parking positions of its own (no `chamber_position`) — the Trolley occupies the Chamber directly (NURSERY-OPS-002A).
 
 ## Grow bag
 

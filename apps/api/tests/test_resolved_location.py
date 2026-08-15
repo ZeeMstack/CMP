@@ -18,11 +18,11 @@ def test_asset_resolved_location_direct_placement(db_session, placed_trolley_and
     resolved = movement_service.get_resolved_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="asset", occupant_id=scenario["trolley"].id
     )
-    assert resolved["direct_target"] == {"kind": "location", "id": scenario["positions"]["P12"].id}
+    assert resolved["direct_target"] == {"kind": "location", "id": scenario["chambers"]["GC-01"].id}
     assert resolved["unresolved_reason"] is None
     codes = [entry["code"] for entry in resolved["fixed_location_path"]]
-    assert codes == ["nursery-gh", "GC-01", "P12"]
-    assert resolved["path_string"] == "nursery-gh / GC-01 / P12"
+    assert codes == ["nursery-gh", "GC-01"]
+    assert resolved["path_string"] == "nursery-gh / GC-01"
 
 
 @pytest.mark.integration
@@ -35,8 +35,8 @@ def test_carrier_resolved_location_via_trolley(db_session, placed_trolley_and_tr
     assert resolved["direct_target"] == {"kind": "asset_position", "id": scenario["slot_03_04"].id}
     assert [e["code"] for e in resolved["position_path"]] == ["SH-03", "SL-04"]
     assert resolved["containing_asset"]["code"] == "GT-0001"
-    assert [e["code"] for e in resolved["fixed_location_path"]] == ["nursery-gh", "GC-01", "P12"]
-    assert resolved["path_string"] == "nursery-gh / GC-01 / P12 / GT-0001 / SH-03 / SL-04"
+    assert [e["code"] for e in resolved["fixed_location_path"]] == ["nursery-gh", "GC-01"]
+    assert resolved["path_string"] == "nursery-gh / GC-01 / GT-0001 / SH-03 / SL-04"
     assert resolved["unresolved_reason"] is None
 
 
@@ -54,13 +54,13 @@ def test_moving_trolley_updates_tray_resolved_location_without_changing_tray_occ
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=uuid.uuid4(), effective_time=_now(),
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
 
     resolved = movement_service.get_resolved_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="carrier", occupant_id=scenario["tray"].id
     )
-    assert resolved["fixed_location_path"][-1]["code"] == "P13"
+    assert resolved["fixed_location_path"][-1]["code"] == "GC-02"
 
     tray_occupancy_after = movement_service.get_occupancy(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="carrier", occupant_id=scenario["tray"].id
