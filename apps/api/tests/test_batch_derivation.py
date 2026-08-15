@@ -20,9 +20,9 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import (
+    BatchAlreadySownError,
     BatchDerivationCommandReusedWithDifferentPayloadError,
     BatchDerivationValidationError,
-    CropBatchClosedError,
     QualityHoldOpenError,
 )
 
@@ -249,6 +249,15 @@ def test_derivation_reused_command_id_different_payload_rejected(db_session, act
 
 @pytest.mark.integration
 def test_superseded_source_batch_rejects_new_sowing(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-001: `_build_batch_with_assignments` already sows the
+    source batch once (that's how it gets assignments to split at all), so
+    a second sowing attempt is now rejected by the broader, unconditional
+    BatchAlreadySownError rule (`ux_sowing_events_batch_id`) before the
+    (still independently true) CropBatchClosedError check is ever reached
+    -- both are correct here; BatchAlreadySownError is simply checked
+    first. See test_sowing.py::test_sow_second_command_on_already_sown_batch_rejected
+    for the rule in isolation, and test_sow_closed_batch_rejected in
+    test_sowing.py for a closed-but-never-sown batch."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_batch_with_assignments(db_session, tenant, user, farm, carrier_count=2)
     aids = s["assignment_ids"]
@@ -267,7 +276,7 @@ def test_superseded_source_batch_rejects_new_sowing(db_session, active_context_w
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="seed_tray", code=f"ST-extra-{suffix}", issued_date=None,
     )
-    with pytest.raises(CropBatchClosedError):
+    with pytest.raises(BatchAlreadySownError):
         sowing_service.sow_batch(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
             client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

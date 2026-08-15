@@ -7,12 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.asset import Asset
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
 from app.models.carrier import Carrier
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
+from app.models.location import Location
 from app.models.seed_lot import SeedLot
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
@@ -26,6 +28,9 @@ from app.schemas.sowing_event import (
     BatchCarrierAssignmentRead,
     CarrierSummary,
     CarrierTypeSummary,
+    SeedingMachineSummary,
+    SeedingStationSummary,
+    SeedLotBatchSummary,
     SeedLotSummary,
     SowingEventLineRead,
     SowingEventRead,
@@ -33,6 +38,7 @@ from app.schemas.sowing_event import (
 from app.services import carrier_service, farm_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
+    BatchAlreadySownError,
     CarrierAlreadyAssignedError,
     CarrierNotFoundError,
     CropBatchClosedError,
@@ -41,6 +47,7 @@ from app.services.errors import (
     DuplicateSeedLotCodeError,
     FarmNotFoundError,
     InvalidSowingEffectiveTimeError,
+    MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
     SeedLotValidationError,
     SowingCommandReusedWithDifferentPayloadError,
@@ -187,6 +194,29 @@ def list_seed_lots(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> 
     return [_row_to_seed_lot_read(r) for r in rows]
 
 
+def list_batches_for_seed_lot(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, seed_lot_id: uuid.UUID
+) -> list[SeedLotBatchSummary]:
+    """NURSERY-OPS-001 section 49: "which Crop Batches were sown from this
+    Seed Lot" -- a simple related-batches read, not a full traceability UI."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    lot = db.execute(
+        select(SeedLot).where(SeedLot.id == seed_lot_id, SeedLot.tenant_id == tenant_id, SeedLot.farm_id == farm_id)
+    ).scalar_one_or_none()
+    if lot is None:
+        raise SeedLotNotFoundError(str(seed_lot_id))
+    rows = db.execute(
+        select(CropBatch.id, CropBatch.code, SowingEvent.effective_time)
+        .select_from(SowingEventLine)
+        .join(SowingEvent, SowingEvent.id == SowingEventLine.sowing_event_id)
+        .join(CropBatch, CropBatch.id == SowingEvent.batch_id)
+        .where(SowingEventLine.tenant_id == tenant_id, SowingEventLine.seed_lot_id == seed_lot_id)
+        .distinct()
+        .order_by(SowingEvent.effective_time.desc())
+    ).all()
+    return [SeedLotBatchSummary(id=r[0], code=r[1], sown_effective_time=r[2]) for r in rows]
+
+
 # --- Sowing ----------------------------------------------------------------------
 
 
@@ -222,7 +252,18 @@ def _find_existing_sowing_event(
     ).scalar_one_or_none()
 
 
-def sow_batch(
+def _find_existing_sowing_event_for_batch(db: Session, *, tenant_id: uuid.UUID, batch_id: uuid.UUID) -> SowingEvent | None:
+    """NURSERY-OPS-001: a Crop Batch may have at most one Sowing Event,
+    ever (`ux_sowing_events_batch_id`, DB-enforced). Used to distinguish a
+    genuinely new sowing command (rejected -- see BatchAlreadySownError)
+    from an exact replay of the one that already exists (handled by the
+    ordinary client_command_id idempotency path above it)."""
+    return db.execute(
+        select(SowingEvent).where(SowingEvent.tenant_id == tenant_id, SowingEvent.batch_id == batch_id)
+    ).scalar_one_or_none()
+
+
+def _sow_batch_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
@@ -233,7 +274,21 @@ def sow_batch(
     effective_time: datetime,
     note: str | None,
     lines: list[dict],
+    request_fingerprint: str,
+    seeding_station_id: uuid.UUID | None = None,
+    seeding_machine_id: uuid.UUID | None = None,
 ) -> SowingEvent:
+    """Validate + insert + flush only -- no idempotency check, no row
+    locking for serialization, no audit event, no commit. Callers own all
+    three: `sow_batch` below (its own client_command_id scheme, batch/
+    carrier/seed-lot row locks) and NURSERY-OPS-001's
+    `nursery_service.sow_new_batch` (its own combined idempotency/locking
+    spanning batch-creation AND sowing as one command). Mirrors
+    FARM-SETUP-001's `_create_location_core` split exactly -- zero behavior
+    change to the public `sow_batch` below, reverified against the full
+    existing sowing test suite. `seeding_station_id`/`seeding_machine_id`
+    are NURSERY-OPS-001 additions (provenance only, already validated by
+    the caller before this point -- this function only persists them)."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if effective_time > datetime.now(timezone.utc):
@@ -244,17 +299,6 @@ def sow_batch(
     if len(carrier_ids_in) != len(set(carrier_ids_in)):
         raise SowingValidationError("duplicate carrier_id within one sowing command")
 
-    fingerprint = _compute_sowing_fingerprint(
-        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
-        effective_time=effective_time, note=note, lines=lines,
-    )
-
-    existing = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
-    if existing is not None:
-        if existing.request_fingerprint == fingerprint:
-            return existing
-        raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id))
-
     batch = db.execute(
         select(CropBatch)
         .where(CropBatch.id == batch_id, CropBatch.tenant_id == tenant_id, CropBatch.farm_id == farm_id)
@@ -262,13 +306,6 @@ def sow_batch(
     ).scalar_one_or_none()
     if batch is None:
         raise CropBatchNotFoundError(str(batch_id))
-
-    # Re-check idempotency now that we're serialized behind the batch lock.
-    existing = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
-    if existing is not None:
-        if existing.request_fingerprint == fingerprint:
-            return existing
-        raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id))
 
     if batch.state != "active":
         raise CropBatchClosedError(str(batch_id))
@@ -318,6 +355,18 @@ def sow_batch(
             raise CarrierNotFoundError(str(cid))
 
     sorted_seed_lot_ids = sorted({line["seed_lot_id"] for line in lines})
+    # NURSERY-OPS-001.1: one Crop Batch -> exactly one Seed Lot. Every line
+    # of this event must reference the SAME Seed Lot -- checked here before
+    # any row is written (and again at the DB layer by
+    # `enforce_sowing_event_line_insert_integrity`, see migration
+    # a7e4f2c9b381), closing a gap in CMP-009's original per-line design
+    # where two lines of one event could otherwise cite two different Seed
+    # Lots of the same crop/variety.
+    if len(sorted_seed_lot_ids) != 1:
+        raise MixedSeedLotInSowingCommandError(
+            "a sowing command's lines must all reference the same seed lot"
+        )
+    canonical_seed_lot_id = sorted_seed_lot_ids[0]
     seed_lots = list(
         db.execute(
             select(SeedLot)
@@ -369,57 +418,152 @@ def sow_batch(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
         active_batch_stage_run_id=active_run.id, effective_time=effective_time,
         actor_user_id=actor_user_id, client_command_id=client_command_id,
-        request_fingerprint=fingerprint, note=note,
+        request_fingerprint=request_fingerprint, note=note,
+        seeding_station_id=seeding_station_id, seeding_machine_id=seeding_machine_id,
+        seed_lot_id=canonical_seed_lot_id,
     )
     db.add(event)
+    db.flush()
+
+    assignment_by_carrier: dict[uuid.UUID, BatchCarrierAssignment] = {}
+    for cid in sorted_carrier_ids:
+        assignment = BatchCarrierAssignment(
+            id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, carrier_id=cid,
+            batch_stage_run_id=active_run.id, assigned_effective_time=effective_time,
+            released_effective_time=None, opening_sowing_event_id=event.id, actor_user_id=actor_user_id,
+        )
+        db.add(assignment)
+        assignment_by_carrier[cid] = assignment
+    db.flush()
+
+    for line in lines:
+        db.add(
+            SowingEventLine(
+                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, sowing_event_id=event.id,
+                batch_carrier_assignment_id=assignment_by_carrier[line["carrier_id"]].id,
+                carrier_id=line["carrier_id"], seed_lot_id=line["seed_lot_id"],
+                sown_site_count=line["sown_site_count"], seed_count=line["seed_count"],
+                line_note=line.get("line_note"),
+            )
+        )
+    db.flush()
+
+    return event
+
+
+def sow_batch(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    effective_time: datetime,
+    note: str | None,
+    lines: list[dict],
+) -> SowingEvent:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    fingerprint = _compute_sowing_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+        effective_time=effective_time, note=note, lines=lines,
+    )
+
+    existing = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # Lock the batch row HERE (in the wrapper, before any idempotency
+    # re-check) -- `_sow_batch_core` below re-locks the same row again,
+    # which is a harmless no-op re-entrant lock within the same
+    # transaction/session. This ordering matters: both re-checks below
+    # must run AFTER serialization, or a losing concurrent duplicate (same
+    # client_command_id, racing another attempt against the same batch)
+    # could slip past both checks before either commits and reach
+    # `_sow_batch_core`'s own carrier-conflict check instead of resolving
+    # as a replay -- exactly the bug this lock-then-recheck ordering
+    # prevents (see test_concurrent_duplicate_sowing_command_id_is_idempotent).
+    batch = db.execute(
+        select(CropBatch)
+        .where(CropBatch.id == batch_id, CropBatch.tenant_id == tenant_id, CropBatch.farm_id == farm_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if batch is None:
+        raise CropBatchNotFoundError(str(batch_id))
+
+    # Re-check idempotency now that we're serialized behind the batch lock.
+    existing = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # NURSERY-OPS-001: a genuinely new command targeting a batch that
+    # already has a Sowing Event is rejected outright -- at most one ever,
+    # system-wide (see BatchAlreadySownError, ux_sowing_events_batch_id).
+    # Checked here too (after the lock, after the replay re-check) so a
+    # losing concurrent duplicate resolves deterministically as "already
+    # sown" rather than racing into the carrier-conflict check below.
+    already_sown = _find_existing_sowing_event_for_batch(db, tenant_id=tenant_id, batch_id=batch_id)
+    if already_sown is not None:
+        raise BatchAlreadySownError(str(batch_id))
+
+    # Everything from here on operates on an already-flushed `event` row (or
+    # fails before any row exists). Any failure — expected or not — must
+    # roll back the whole command; assignments and lines must never be left
+    # half-written against a committed event, and the session must not
+    # carry a failed transaction into the caller.
     try:
-        db.flush()
+        event = _sow_batch_core(
+            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+            client_command_id=client_command_id, effective_time=effective_time, note=note, lines=lines,
+            request_fingerprint=fingerprint,
+        )
     except IntegrityError as exc:
         db.rollback()
         constraint = _constraint_name(exc)
-        if constraint == "ux_sowing_events_tenant_client_command_id":
+        # A losing concurrent duplicate of the SAME client_command_id can
+        # violate ux_sowing_events_batch_id and
+        # ux_sowing_events_tenant_client_command_id simultaneously (both
+        # target the very row the winner just committed) -- which one
+        # Postgres reports is not guaranteed by insertion/definition order,
+        # so a genuine replay must always be checked first, regardless of
+        # which constraint name comes back, before ever concluding
+        # "already sown by a DIFFERENT command" (section 18's ordering
+        # rule: replay resolves before any other mutable-state
+        # conclusion).
+        if constraint in ("ux_sowing_events_tenant_client_command_id", "ux_sowing_events_batch_id"):
             replay = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
             if replay is not None and replay.request_fingerprint == fingerprint:
                 return replay
+            if constraint == "ux_sowing_events_batch_id":
+                raise BatchAlreadySownError(str(batch_id)) from exc
             raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
         raise
+    except Exception:
+        db.rollback()
+        raise
 
-    # Everything from here on operates on an already-flushed `event` row. Any
-    # failure — expected or not — must roll back the whole command; assignments
-    # and lines must never be left half-written against a committed event, and
-    # the session must not carry a failed transaction into the caller.
     try:
-        assignment_by_carrier: dict[uuid.UUID, BatchCarrierAssignment] = {}
-        for cid in sorted_carrier_ids:
-            assignment = BatchCarrierAssignment(
-                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, carrier_id=cid,
-                batch_stage_run_id=active_run.id, assigned_effective_time=effective_time,
-                released_effective_time=None, opening_sowing_event_id=event.id, actor_user_id=actor_user_id,
-            )
-            db.add(assignment)
-            assignment_by_carrier[cid] = assignment
-        db.flush()
-
-        for line in lines:
-            db.add(
-                SowingEventLine(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, sowing_event_id=event.id,
-                    batch_carrier_assignment_id=assignment_by_carrier[line["carrier_id"]].id,
-                    carrier_id=line["carrier_id"], seed_lot_id=line["seed_lot_id"],
-                    sown_site_count=line["sown_site_count"], seed_count=line["seed_count"],
-                    line_note=line.get("line_note"),
-                )
-            )
-        db.flush()
-
+        sorted_carrier_ids = sorted({line["carrier_id"] for line in lines})
+        sorted_seed_lot_ids = sorted({line["seed_lot_id"] for line in lines})
+        site_counts = [line["sown_site_count"] for line in lines]
+        # NURSERY-OPS-001.1: sown_site_count may now be unrecorded (None)
+        # per line -- summing would either crash or silently treat unknown
+        # as zero, so the total is itself None unless EVERY line's site
+        # count is actually known.
+        total_sown_site_count = sum(site_counts) if all(c is not None for c in site_counts) else None
         append_audit_event(
             db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.sown",
             entity_type="sowing_event", entity_id=event.id,
             event_data={
-                "sowing_event_id": str(event.id), "batch_id": str(batch.id),
-                "batch_stage_run_id": str(active_run.id), "effective_time": effective_time.isoformat(),
+                "sowing_event_id": str(event.id), "batch_id": str(batch_id),
+                "batch_stage_run_id": str(event.active_batch_stage_run_id), "effective_time": effective_time.isoformat(),
                 "client_command_id": str(client_command_id), "carrier_count": len(sorted_carrier_ids),
-                "total_sown_site_count": sum(line["sown_site_count"] for line in lines),
+                "total_sown_site_count": total_sown_site_count,
                 "total_seed_count": sum(line["seed_count"] for line in lines),
                 "seed_lot_ids": [str(sid) for sid in sorted_seed_lot_ids],
                 "carrier_ids": [str(cid) for cid in sorted_carrier_ids],
@@ -443,10 +587,14 @@ def _sowing_event_header_query():
             CropBatch.code.label("batch_code"),
             CropBatch.workflow_version_id.label("workflow_version_id"),
             WorkflowStage,
+            Location,
+            Asset,
         )
         .join(CropBatch, CropBatch.id == SowingEvent.batch_id)
         .join(BatchStageRun, BatchStageRun.id == SowingEvent.active_batch_stage_run_id)
         .join(WorkflowStage, WorkflowStage.id == BatchStageRun.workflow_stage_id)
+        .outerjoin(Location, Location.id == SowingEvent.seeding_station_id)
+        .outerjoin(Asset, Asset.id == SowingEvent.seeding_machine_id)
     )
 
 
@@ -488,13 +636,24 @@ def _row_to_sowing_event_read(row, lines: list) -> SowingEventRead:
     event: SowingEvent = row[0]
     m = row._mapping
     stage: WorkflowStage = row[3]
+    seeding_station: Location | None = row[4]
+    seeding_machine: Asset | None = row[5]
     return SowingEventRead(
         id=event.id, tenant_id=event.tenant_id, farm_id=event.farm_id, batch_id=event.batch_id,
         batch_code=m["batch_code"], workflow_version_id=m["workflow_version_id"],
         stage=StageSummary(id=stage.id, code=stage.code, name=stage.name, is_terminal=stage.is_terminal),
         effective_time=event.effective_time, recorded_time=event.recorded_time,
         actor_user_id=event.actor_user_id, client_command_id=event.client_command_id, note=event.note,
+        seeding_station=(
+            SeedingStationSummary(id=seeding_station.id, code=seeding_station.code, name=seeding_station.name)
+            if seeding_station is not None else None
+        ),
+        seeding_machine=(
+            SeedingMachineSummary(id=seeding_machine.id, code=seeding_machine.code, name=seeding_machine.name)
+            if seeding_machine is not None else None
+        ),
         lines=lines,
+        total_seeds_sown=sum(line.seed_count for line in lines),
     )
 
 

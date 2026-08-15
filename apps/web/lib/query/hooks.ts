@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
-import type { GreenhouseSetupCreate } from "@/lib/api/client";
+import type { GreenhouseSetupCreate, SeedLotCreate, SowNewBatchCreate } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { queryKeys } from "@/lib/query/keys";
 
@@ -167,6 +167,119 @@ export function useCreateGreenhouseSetup(farmId: string) {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.greenhouseSetupOverview(tenantId, farmId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+// --- NURSERY-OPS-001 -------------------------------------------------------
+
+export function useCrops() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.crops(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listCrops(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useVarieties(cropId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.varieties(tenantId ?? "", cropId ?? ""),
+    queryFn: ({ signal }) => api.listVarieties(cropId as string, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(cropId),
+  });
+}
+
+export function useSeedLots(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedLots(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSeedLots(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useSeedLot(farmId: string, seedLotId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedLot(tenantId ?? "", farmId, seedLotId),
+    queryFn: ({ signal }) => api.getSeedLot(farmId, seedLotId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useRegisterSeedLot(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SeedLotCreate) => api.registerSeedLot(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedLots(tenantId, farmId) });
+    },
+  });
+}
+
+export function useAvailableSeedTrays(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableSeedTrays(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableSeedTrays(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useBatchesForSeedLot(farmId: string, seedLotId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedLotBatches(tenantId ?? "", farmId, seedLotId),
+    queryFn: ({ signal }) => api.listBatchesForSeedLot(farmId, seedLotId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useAssets(farmId: string, assetType: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.assets(tenantId ?? "", farmId, assetType),
+    queryFn: ({ signal }) => api.listAssets(farmId, assetType, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useSowings(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.sowings(tenantId ?? "", farmId, batchId),
+    queryFn: ({ signal }) => api.listSowings(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Like `useCreateGreenhouseSetup`: the idempotency key
+ * (`client_command_id`) lives in the payload, set once by the caller
+ * before the first submit attempt. On success, invalidates the farm's
+ * available-seed-trays list (the sown trays are no longer available) and
+ * seed lot list (unaffected in count, but keeps things simple/consistent). */
+export function useSowNewBatch(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SowNewBatchCreate) => api.sowNewBatch(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableSeedTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.operationalSummary(tenantId, farmId, "active") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.operationalSummary(tenantId, farmId, "all") });
     },
   });
 }

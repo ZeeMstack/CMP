@@ -111,49 +111,32 @@ def _get_batch_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, bat
 # --- Batch creation --------------------------------------------------------------
 
 
-def create_batch(
+def _create_batch_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
     farm_id: uuid.UUID,
     actor_user_id: uuid.UUID,
-    client_command_id: uuid.UUID,
     code: str,
     workflow_id: uuid.UUID,
     effective_time: datetime,
-) -> CropBatch:
+    client_command_id: uuid.UUID,
+    request_fingerprint: str,
+) -> tuple[CropBatch, Workflow, WorkflowVersion, "WorkflowStage"]:
+    """Validate + insert + flush only -- no idempotency check, no row
+    locking for serialization, no audit event, no commit. Callers own all
+    three: `create_batch` below (its own client_command_id scheme, workflow
+    row lock) and NURSERY-OPS-001's `nursery_service.sow_new_batch` (its own
+    combined idempotency/locking spanning batch-creation AND sowing as one
+    command). Mirrors FARM-SETUP-001's `_create_location_core` split
+    exactly -- zero behavior change to the public `create_batch` below,
+    reverified against the full existing crop-batch test suite."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
-
-    if effective_time > datetime.now(timezone.utc):
-        raise InvalidBatchEffectiveTimeError("effective_time cannot be in the future")
-
-    fingerprint = _compute_creation_fingerprint(
-        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, code=code,
-        workflow_id=workflow_id, effective_time=effective_time,
-    )
-
-    existing = _find_existing_batch(db, tenant_id=tenant_id, client_command_id=client_command_id)
-    if existing is not None:
-        if existing.request_fingerprint == fingerprint:
-            return existing
-        raise BatchCommandReusedWithDifferentPayloadError(str(client_command_id))
-
-    # Lock the workflow row: serializes concurrent creators (racing retries
-    # or racing distinct codes) behind one another.
     workflow = db.execute(
-        select(Workflow).where(Workflow.id == workflow_id, Workflow.tenant_id == tenant_id).with_for_update()
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.tenant_id == tenant_id)
     ).scalar_one_or_none()
     if workflow is None:
         raise WorkflowNotFoundError(str(workflow_id))
-
-    # Re-check idempotency now that we're serialized behind the workflow
-    # lock — a losing concurrent duplicate must resolve as a replay here.
-    existing = _find_existing_batch(db, tenant_id=tenant_id, client_command_id=client_command_id)
-    if existing is not None:
-        if existing.request_fingerprint == fingerprint:
-            return existing
-        raise BatchCommandReusedWithDifferentPayloadError(str(client_command_id))
-
     if workflow.status != "active":
         raise WorkflowInactiveError(str(workflow_id))
 
@@ -191,11 +174,95 @@ def create_batch(
         workflow_id=workflow.id, workflow_version_id=version.id, state="active",
         created_effective_time=effective_time, closed_effective_time=None,
         created_by_user_id=actor_user_id, client_command_id=client_command_id,
-        request_fingerprint=fingerprint,
+        request_fingerprint=request_fingerprint,
     )
     db.add(batch)
-    try:
+    db.flush()
+
+    # The stage run's opening transition must exist before the run does.
+    initial_transition = BatchStageTransition(
+        id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
+        workflow_version_id=version.id, command_kind="initial_entry",
+        source_stage_id=None, destination_stage_id=start_stage.id, configured_transition_id=None,
+        effective_time=effective_time, actor_user_id=actor_user_id,
+        client_command_id=client_command_id, request_fingerprint=request_fingerprint, reason=None,
+    )
+    db.add(initial_transition)
+    db.flush()
+
+    initial_run = BatchStageRun(
+        id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
+        workflow_version_id=version.id, workflow_stage_id=start_stage.id,
+        entered_effective_time=effective_time, exited_effective_time=None,
+        opened_by_transition_id=initial_transition.id, closed_by_transition_id=None,
+        actor_user_id=actor_user_id,
+    )
+    db.add(initial_run)
+    db.flush()
+
+    if start_stage.is_terminal:
+        batch.state = "closed"
+        batch.closed_effective_time = effective_time
         db.flush()
+
+    return batch, workflow, version, start_stage
+
+
+def create_batch(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    code: str,
+    workflow_id: uuid.UUID,
+    effective_time: datetime,
+) -> CropBatch:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    if effective_time > datetime.now(timezone.utc):
+        raise InvalidBatchEffectiveTimeError("effective_time cannot be in the future")
+
+    fingerprint = _compute_creation_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, code=code,
+        workflow_id=workflow_id, effective_time=effective_time,
+    )
+
+    existing = _find_existing_batch(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise BatchCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # Lock the workflow row: serializes concurrent creators (racing retries
+    # or racing distinct codes) behind one another.
+    workflow_lock = db.execute(
+        select(Workflow).where(Workflow.id == workflow_id, Workflow.tenant_id == tenant_id).with_for_update()
+    ).scalar_one_or_none()
+    if workflow_lock is None:
+        raise WorkflowNotFoundError(str(workflow_id))
+
+    # Re-check idempotency now that we're serialized behind the workflow
+    # lock — a losing concurrent duplicate must resolve as a replay here.
+    existing = _find_existing_batch(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise BatchCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # Everything from here on operates on an already-flushed `batch` row (or
+    # fails before any row exists). Any failure — expected or not — must
+    # roll back this whole command; letting the session carry a partially-
+    # flushed, uncommitted batch/transition/run into the caller's next query
+    # (or leaving it in a failed-transaction state after a later
+    # IntegrityError) is not acceptable.
+    try:
+        batch, workflow, version, start_stage = _create_batch_core(
+            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, code=code,
+            workflow_id=workflow_id, effective_time=effective_time,
+            client_command_id=client_command_id, request_fingerprint=fingerprint,
+        )
     except IntegrityError as exc:
         db.rollback()
         constraint = _constraint_name(exc)
@@ -207,41 +274,11 @@ def create_batch(
         if constraint == "ux_crop_batches_tenant_code_lower":
             raise DuplicateBatchCodeError(f"{tenant_id}:{code}") from exc
         raise
+    except Exception:
+        db.rollback()
+        raise
 
-    # Everything from here on operates on an already-flushed `batch` row. Any
-    # failure — expected or not — must roll back this whole command; letting
-    # the session carry a partially-flushed, uncommitted batch/transition/run
-    # into the caller's next query (or leaving it in a failed-transaction
-    # state after a later IntegrityError) is not acceptable.
     try:
-        # The stage run's opening transition must exist before the run does.
-        initial_transition = BatchStageTransition(
-            id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
-            workflow_version_id=version.id, command_kind="initial_entry",
-            source_stage_id=None, destination_stage_id=start_stage.id, configured_transition_id=None,
-            effective_time=effective_time, actor_user_id=actor_user_id,
-            client_command_id=client_command_id, request_fingerprint=fingerprint, reason=None,
-        )
-        db.add(initial_transition)
-        db.flush()
-
-        initial_run = BatchStageRun(
-            id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
-            workflow_version_id=version.id, workflow_stage_id=start_stage.id,
-            entered_effective_time=effective_time, exited_effective_time=None,
-            opened_by_transition_id=initial_transition.id, closed_by_transition_id=None,
-            actor_user_id=actor_user_id,
-        )
-        db.add(initial_run)
-        db.flush()
-
-        batch_closed = False
-        if start_stage.is_terminal:
-            batch.state = "closed"
-            batch.closed_effective_time = effective_time
-            db.flush()
-            batch_closed = True
-
         append_audit_event(
             db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.created",
             entity_type="crop_batch", entity_id=batch.id,
@@ -249,7 +286,7 @@ def create_batch(
                 "batch_id": str(batch.id), "code": batch.code, "farm_id": str(farm_id),
                 "workflow_id": str(workflow.id), "workflow_version_id": str(version.id),
                 "version_number": version.version_number, "initial_stage_id": str(start_stage.id),
-                "client_command_id": str(client_command_id), "batch_closed": batch_closed,
+                "client_command_id": str(client_command_id), "batch_closed": batch.state == "closed",
             },
         )
         db.commit()

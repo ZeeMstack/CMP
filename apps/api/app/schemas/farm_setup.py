@@ -426,7 +426,13 @@ class GreenhouseStructureRead(BaseModel):
     classification: str
     leafy_zones: list[StructureZoneNode] | None = None
     vines_zones: list[StructureVinesZoneNode] | None = None
-    nursery_seeding_station: StructureSectionNode | None = None
+    # NURSERY-OPS-001.1: a Nursery Greenhouse structurally CAN have more than
+    # one Seeding Station location (the generic `POST /farms/{farm_id}/locations`
+    # route has no cardinality guard here, even though today's Farm Setup
+    # wizard only ever creates 0 or 1) -- the full list is returned, never
+    # silently collapsed to "the first one", so callers (the Sowing form)
+    # can require an explicit operator choice when more than one exists.
+    nursery_seeding_stations: list[StructureSectionNode] = Field(default_factory=list)
     nursery_germination_chamber: StructureSectionNode | None = None
     nursery_seedling: StructureNurseryTableGroup | None = None
     nursery_intersalads: StructureNurseryTableGroup | None = None

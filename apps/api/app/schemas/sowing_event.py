@@ -93,9 +93,24 @@ class SowingEventLineRead(BaseModel):
     batch_carrier_assignment_id: uuid.UUID
     carrier: CarrierSummary
     seed_lot: SeedLotSummary
-    sown_site_count: int
+    # NURSERY-OPS-001.1: "not recorded" (the operator command only ever
+    # supplies Seeds Sown) is now represented honestly as NULL, never
+    # fabricated as equal to seed_count.
+    sown_site_count: int | None
     seed_count: int
     line_note: str | None
+
+
+class SeedingStationSummary(BaseModel):
+    id: uuid.UUID
+    code: str
+    name: str
+
+
+class SeedingMachineSummary(BaseModel):
+    id: uuid.UUID
+    code: str
+    name: str
 
 
 class SowingEventRead(BaseModel):
@@ -111,7 +126,20 @@ class SowingEventRead(BaseModel):
     actor_user_id: uuid.UUID
     client_command_id: uuid.UUID
     note: str | None
+    # NURSERY-OPS-001: NULL on every event predating this ticket.
+    seeding_station: SeedingStationSummary | None = None
+    seeding_machine: SeedingMachineSummary | None = None
     lines: list[SowingEventLineRead]
+    total_seeds_sown: int = 0
+
+
+class SeedLotBatchSummary(BaseModel):
+    """NURSERY-OPS-001 section 49: the reverse of 'which Seed Lot created
+    this Batch' -- a simple related-batches read, not a traceability UI."""
+
+    id: uuid.UUID
+    code: str
+    sown_effective_time: datetime
 
 
 class BatchCarrierAssignmentRead(BaseModel):

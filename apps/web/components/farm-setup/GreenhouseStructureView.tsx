@@ -69,8 +69,8 @@ export function GreenhouseStructureView({ structure }: { structure: GreenhouseSt
   }
 
   // Nursery
+  const seedingStations = structure.nursery_seeding_stations ?? [];
   const sections = [
-    { label: "Seeding Station", section: structure.nursery_seeding_station },
     { label: "Germination Chamber", section: structure.nursery_germination_chamber },
   ].filter((s) => s.section != null);
   const groups: { label: string; group: typeof structure.nursery_seedling }[] = [
@@ -79,11 +79,14 @@ export function GreenhouseStructureView({ structure }: { structure: GreenhouseSt
     { label: "InterVines", group: structure.nursery_intervines },
   ];
   const nonEmpty = groups.filter((g) => g.group && g.group.tables.length > 0);
-  if (sections.length === 0 && nonEmpty.length === 0) {
+  if (seedingStations.length === 0 && sections.length === 0 && nonEmpty.length === 0) {
     return <p className="text-sm text-ink-muted">No structure configured yet.</p>;
   }
   return (
     <ul role="tree" aria-label="Greenhouse structure" className="divide-y divide-border-subtle">
+      {seedingStations.map((station) => (
+        <Leaf key={station.id} label={`Seeding Station · ${station.code}`} />
+      ))}
       {sections.map(({ label, section }) => (
         <Leaf key={label} label={`${label} · ${section!.code}`} />
       ))}

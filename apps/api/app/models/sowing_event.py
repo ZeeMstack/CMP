@@ -38,11 +38,31 @@ class SowingEvent(Base):
     client_command_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String, nullable=False)
     note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # NURSERY-OPS-001: provenance only -- NULL on every event predating this
+    # ticket. seeding_station_id is composite tenant/farm-scoped (Location
+    # already has that unique target); seeding_machine_id is a plain FK to
+    # assets.id (Asset is farm-level equipment, referenced as provenance
+    # only, never owned by a Location -- see FARM-SETUP-001.1).
+    seeding_station_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
+    seeding_machine_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assets.id"), nullable=True)
+    # NURSERY-OPS-001.1: the canonical, single Seed Lot for this event --
+    # CMP-009's original design put `seed_lot_id` only on each
+    # `SowingEventLine`, with no DB-level guarantee that every line of one
+    # event referenced the same lot. This column is now authoritative
+    # (backfilled from existing lines on upgrade); the
+    # `enforce_sowing_event_line_insert_integrity` trigger rejects any
+    # line whose `seed_lot_id` disagrees with it (see SEED_SOWING_MODEL.md).
+    seed_lot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("seed_lots.id"), nullable=False)
 
     __table_args__ = (
         Index(
             "ux_sowing_events_tenant_client_command_id", "tenant_id", "client_command_id", unique=True
         ),
+        # NURSERY-OPS-001: at most one Sowing Event per Crop Batch, ever --
+        # a deliberate system-wide restriction superseding CMP-009's
+        # earlier "may be sown multiple times" design (see
+        # SEED_SOWING_MODEL.md's NURSERY-OPS-001 addendum).
+        UniqueConstraint("batch_id", name="ux_sowing_events_batch_id"),
         UniqueConstraint("tenant_id", "farm_id", "id", name="uq_sowing_events_tenant_farm_id"),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "batch_id"],
@@ -58,5 +78,15 @@ class SowingEvent(Base):
                 "batch_stage_runs.id",
             ],
             name="fk_sowing_events_stage_run",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "seeding_station_id"],
+            ["locations.tenant_id", "locations.farm_id", "locations.id"],
+            name="fk_sowing_events_tenant_farm_seeding_station",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "seed_lot_id"],
+            ["seed_lots.tenant_id", "seed_lots.farm_id", "seed_lots.id"],
+            name="fk_sowing_events_tenant_farm_seed_lot",
         ),
     )

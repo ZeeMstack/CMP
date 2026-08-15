@@ -21,15 +21,17 @@ import {
   useCropBatch,
   useFarm,
   useQualityHolds,
+  useSowings,
   useStageHistory,
 } from "@/lib/query/hooks";
 
-const TABS = ["overview", "history", "origin", "quality"] as const;
+const TABS = ["overview", "history", "sowing", "origin", "quality"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
   overview: "Overview",
   history: "History",
+  sowing: "Sowing",
   origin: "Origin & Splits",
   quality: "Quality",
 };
@@ -56,14 +58,16 @@ export default function CropBatchDetailPage() {
     : "overview";
 
   const { data: farm } = useFarm(farmId);
-  // Fixed 6-request budget, all concurrent regardless of the active tab so
+  // Fixed request budget, all concurrent regardless of the active tab so
   // switching tabs never triggers a fresh request waterfall: farm, batch,
-  // stage-history, lineage, quality-holds, operational-context.
+  // stage-history, lineage, quality-holds, operational-context, sowings
+  // (NURSERY-OPS-001).
   const batchQuery = useCropBatch(farmId, batchId);
   const historyQuery = useStageHistory(farmId, batchId);
   const lineageQuery = useBatchLineage(farmId, batchId);
   const qualityQuery = useQualityHolds(farmId, batchId);
   const operationalQuery = useBatchOperationalContext(farmId, batchId);
+  const sowingsQuery = useSowings(farmId, batchId);
 
   if (batchQuery.isLoading) return <LoadingSkeleton rows={6} label="Loading batch" />;
   if (batchQuery.error) return <ErrorState error={batchQuery.error} onRetry={() => batchQuery.refetch()} />;
@@ -238,6 +242,59 @@ export default function CropBatchDetailPage() {
               ))}
             </ul>
           )}
+        </>
+      )}
+
+      {activeTab === "sowing" && (
+        <>
+          {sowingsQuery.isLoading && <LoadingSkeleton rows={3} label="Loading sowing record" />}
+          {sowingsQuery.error && <ErrorState error={sowingsQuery.error} onRetry={() => sowingsQuery.refetch()} />}
+          {sowingsQuery.data && sowingsQuery.data.length === 0 && (
+            <EmptyState title="No Sowing record" description="This batch was not created via the Sowing command." />
+          )}
+          {sowingsQuery.data?.map((event) => (
+            <div key={event.id} className="flex flex-col gap-4">
+              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seed Lot</dt>
+                  <dd className="text-sm text-ink">{event.lines[0]?.seed_lot.code ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Occurred at</dt>
+                  <dd className="text-sm text-ink">{formatDateTimeWithZoneLabel(event.effective_time, timezone)}</dd>
+                </div>
+                {event.seeding_station && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seeding Station</dt>
+                    <dd className="text-sm text-ink">{event.seeding_station.code}</dd>
+                  </div>
+                )}
+                {event.seeding_machine && (
+                  <div>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seeding Machine</dt>
+                    <dd className="text-sm text-ink">{event.seeding_machine.code} (farm-level equipment)</dd>
+                  </div>
+                )}
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Total seeds sown</dt>
+                  <dd className="text-sm text-ink">{event.total_seeds_sown.toLocaleString()}</dd>
+                </div>
+              </dl>
+              <div>
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  Seed Trays ({event.lines.length})
+                </h3>
+                <ul className="divide-y divide-border-subtle">
+                  {event.lines.map((line) => (
+                    <li key={line.id} className="flex items-center justify-between py-1.5 text-sm">
+                      <span className="text-ink">{line.carrier.code}</span>
+                      <span className="text-ink-muted">{line.seed_count} seeds</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
         </>
       )}
 

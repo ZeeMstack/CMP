@@ -249,10 +249,13 @@ def test_seed_lot_api_smoke_and_cross_tenant_rejected(client, active_context_wit
 
 @pytest.mark.integration
 def test_seed_lot_routes_have_no_mutation_endpoints() -> None:
+    """2 from CMP-009 (create, list/detail share one path) plus
+    NURSERY-OPS-001's `GET /farms/{farm_id}/seed-lots/{seed_lot_id}/crop-batches`
+    reverse-lookup (ticket section 49) -- still no PATCH/PUT/DELETE anywhere."""
     from app.main import app
 
     schema = app.openapi()
     seed_lot_paths = {p: ops for p, ops in schema["paths"].items() if "seed-lots" in p}
     methods = {method.upper() for ops in seed_lot_paths.values() for method in ops}
     assert methods == {"GET", "POST"}
-    assert len(seed_lot_paths) == 2
+    assert len(seed_lot_paths) == 3

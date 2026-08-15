@@ -220,7 +220,18 @@ def build_harvest_ready_workflow_scaffold(db: Session, tenant, user, farm, *, su
     }
 
 
-def sow_batch(db: Session, tenant, user, farm, scaffold: dict, *, effective_time, code_suffix=None, site_count=10, carrier_type_code="seed_tray"):
+def sow_batch(
+    db: Session, tenant, user, farm, scaffold: dict, *, effective_time, code_suffix=None, site_count=10,
+    carrier_type_code="seed_tray", carrier_count=1,
+):
+    """NURSERY-OPS-001: a Crop Batch may have at most one Sowing Event,
+    ever (`ux_sowing_events_batch_id`) -- a scenario needing >1 carrier on
+    one batch (e.g. `batch_derivation_service.split_batch` requires >= 2
+    outputs, each with >= 1 assignment) now gets them all from this ONE
+    call (`carrier_count`), not a second, separate sowing command. Returns
+    both the original singular `tray`/`assignment_id` (the first carrier,
+    for every existing single-carrier caller) and the plural
+    `trays`/`assignment_ids` (for callers that need more than one)."""
     code_suffix = code_suffix or uuid.uuid4().hex[:8]
     batch = crop_batch_service.create_batch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
@@ -231,39 +242,28 @@ def sow_batch(db: Session, tenant, user, farm, scaffold: dict, *, effective_time
         variety_id=scaffold["variety"].id, code=f"SEED-{code_suffix}", supplier_name=None,
         supplier_lot_reference=None, received_date=None, expiry_date=None,
     )
-    tray = carrier_service.register_carrier(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code=carrier_type_code, code=f"TRAY-{code_suffix}", issued_date=None,
-    )
+    trays = [
+        carrier_service.register_carrier(
+            db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            carrier_type_code=carrier_type_code, code=f"TRAY-{code_suffix}-{n}", issued_date=None,
+        )
+        for n in range(carrier_count)
+    ]
     sowing_service.sow_batch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=effective_time, note=None,
-        lines=[{"carrier_id": tray.id, "seed_lot_id": seed_lot.id, "sown_site_count": site_count, "seed_count": site_count, "line_note": None}],
+        lines=[
+            {"carrier_id": tray.id, "seed_lot_id": seed_lot.id, "sown_site_count": site_count, "seed_count": site_count, "line_note": None}
+            for tray in trays
+        ],
     )
     assignments = sowing_service.list_batch_carriers(db, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id)
-    assignment_id = next(a.id for a in assignments if a.carrier.id == tray.id)
-    return {"batch": batch, "seed_lot": seed_lot, "tray": tray, "assignment_id": assignment_id}
-
-
-def sow_second_carrier(db: Session, tenant, user, farm, *, batch_id, seed_lot_id, effective_time, site_count=10, carrier_type_code="seed_tray", code_suffix=None):
-    """Adds a second, independent carrier/assignment to an already-sown
-    batch (still in its seeding stage) -- needed for split, since
-    `batch_derivation_service.split_batch` requires >= 2 outputs, each with
-    >= 1 assignment (`ck_batch_derivation_outputs_assignment_count_positive`),
-    so a single-carrier batch cannot be split at all."""
-    code_suffix = code_suffix or uuid.uuid4().hex[:8]
-    tray2 = carrier_service.register_carrier(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code=carrier_type_code, code=f"TRAY2-{code_suffix}", issued_date=None,
-    )
-    sowing_service.sow_batch(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
-        client_command_id=uuid.uuid4(), effective_time=effective_time, note=None,
-        lines=[{"carrier_id": tray2.id, "seed_lot_id": seed_lot_id, "sown_site_count": site_count, "seed_count": site_count, "line_note": None}],
-    )
-    assignments = sowing_service.list_batch_carriers(db, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch_id)
-    assignment_id = next(a.id for a in assignments if a.carrier.id == tray2.id)
-    return {"tray": tray2, "assignment_id": assignment_id}
+    assignment_by_carrier = {a.carrier.id: a.id for a in assignments}
+    assignment_ids = [assignment_by_carrier[tray.id] for tray in trays]
+    return {
+        "batch": batch, "seed_lot": seed_lot, "tray": trays[0], "assignment_id": assignment_ids[0],
+        "trays": trays, "assignment_ids": assignment_ids,
+    }
 
 
 def transition(db: Session, tenant, user, farm, *, batch_id, configured_transition_id, effective_time):
