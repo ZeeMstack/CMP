@@ -239,12 +239,14 @@ def active_context_with_farm(active_context, db_session):
 @pytest.fixture
 def placed_trolley_and_tray(active_context_with_farm, db_session):
     """Builds the CMP-006 core scenario (topology corrected by DOMAIN-FARM-001
-    to the authoritative Nursery shape: the germination chamber is a direct
-    child of the nursery greenhouse, no generic "area" wrapper): nursery
-    greenhouse -> germination chamber -> 20 chamber positions; a germination
-    trolley with 8 shelves x 5 slots; a seed tray. The trolley is placed at
-    chamber position P12; the tray is placed at shelf 3 / slot 4. Returns a
-    dict of the ids/objects used across occupancy and movement tests."""
+    to the authoritative Nursery shape, then again by NURSERY-OPS-002A to the
+    FROZEN direct-occupancy model -- no chamber_position: a Germination
+    Trolley occupies a Germination Chamber Location directly): nursery
+    greenhouse -> three Germination Chambers (GC-01/GC-02/GC-03, each
+    occupiable, exclusive capacity); a germination trolley with 8 shelves x 5
+    slots; a seed tray. The trolley is placed directly into GC-01; the tray
+    is placed at shelf 3 / slot 4. Returns a dict of the ids/objects used
+    across occupancy and movement tests."""
     import uuid
     from datetime import datetime, timezone
 
@@ -256,16 +258,14 @@ def placed_trolley_and_tray(active_context_with_farm, db_session):
         location_type_code="greenhouse", code="nursery-gh", name="Nursery Greenhouse",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    chamber = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code="GC-01", name="Germination Chamber GC-01",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
-    positions = location_service.bulk_generate_children(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, parent_id=chamber.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code_prefix="P", start=1, end=20, pad_width=2, name_template=None,
-    )
-    position_by_code = {p.code: p for p in positions}
+    chambers_by_code = {}
+    for code in ("GC-01", "GC-02", "GC-03"):
+        chambers_by_code[code] = location_service.create_location(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            location_type_code="germination_chamber", code=code, name=f"Germination Chamber {code}",
+            parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True, capacity=None,
+        )
+    chamber = chambers_by_code["GC-01"]
 
     trolley = asset_service.register_asset(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -292,7 +292,7 @@ def placed_trolley_and_tray(active_context_with_farm, db_session):
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=uuid.uuid4(), effective_time=now,
         occupant_kind="asset", occupant_id=trolley.id,
-        destination_kind="location", destination_id=position_by_code["P12"].id, reason=None,
+        destination_kind="location", destination_id=chamber.id, reason=None,
     )
     tray_movement = movement_service.execute_movement(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -303,7 +303,7 @@ def placed_trolley_and_tray(active_context_with_farm, db_session):
 
     return {
         "tenant": tenant, "user": user, "headers": headers, "farm": farm,
-        "greenhouse": greenhouse, "chamber": chamber, "positions": position_by_code,
+        "greenhouse": greenhouse, "chamber": chamber, "chambers": chambers_by_code,
         "trolley": trolley, "shelf_03": shelf_03, "slot_03_04": slot_03_04, "tray": tray,
         "trolley_movement": trolley_movement, "tray_movement": tray_movement,
     }

@@ -25,7 +25,7 @@ def test_duplicate_command_returns_original_movement(db_session, placed_trolley_
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
 
     movements_before = db_session.execute(select(func.count()).select_from(Movement)).scalar_one()
@@ -35,7 +35,7 @@ def test_duplicate_command_returns_original_movement(db_session, placed_trolley_
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
 
     assert second.id == first.id
@@ -55,14 +55,14 @@ def test_reused_command_id_with_different_payload_rejected(db_session, placed_tr
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=_now(),
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
     with pytest.raises(MovementCommandReusedWithDifferentPayloadError):
         movement_service.execute_movement(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=command_id, effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P14"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-03"].id, reason=None,
         )
 
 
@@ -77,7 +77,7 @@ def test_idempotency_checked_before_mutable_entity_validation(db_session, placed
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
 
     # The trolley becoming inactive after the fact must not affect a replay of
@@ -90,7 +90,7 @@ def test_idempotency_checked_before_mutable_entity_validation(db_session, placed
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
     assert replay.id == first.id
 
@@ -100,7 +100,7 @@ def test_idempotency_checked_before_mutable_entity_validation(db_session, placed
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P14"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-03"].id, reason=None,
         )
 
 
@@ -123,12 +123,7 @@ def test_idempotent_replay_does_not_double_consume_capacity(db_session, active_c
     chamber = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="germination_chamber", code=f"gc-{uuid_module.uuid4().hex[:6]}", name="Chamber",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
-    position = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code=f"p-{uuid_module.uuid4().hex[:6]}", name="Position",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=1,
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True, capacity=1,
     )
     trolley = asset_service.register_asset(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -142,7 +137,7 @@ def test_idempotent_replay_does_not_double_consume_capacity(db_session, active_c
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=trolley.id,
-        destination_kind="location", destination_id=position.id, reason=None,
+        destination_kind="location", destination_id=chamber.id, reason=None,
     )
     # The target (capacity=1) is now full -- exactly because of `first`.
     # Replaying the identical command must still return the original
@@ -151,13 +146,13 @@ def test_idempotent_replay_does_not_double_consume_capacity(db_session, active_c
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=command_id, effective_time=effective_time,
         occupant_kind="asset", occupant_id=trolley.id,
-        destination_kind="location", destination_id=position.id, reason=None,
+        destination_kind="location", destination_id=chamber.id, reason=None,
     )
     assert replay.id == first.id
     assert (
         db_session.execute(
             select(func.count()).select_from(Occupancy).where(
-                Occupancy.target_location_id == position.id, Occupancy.end_time.is_(None)
+                Occupancy.target_location_id == chamber.id, Occupancy.end_time.is_(None)
             )
         ).scalar_one()
         == 1

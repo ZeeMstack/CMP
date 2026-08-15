@@ -20,21 +20,23 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
         json={"location_type_code": "greenhouse", "code": "nursery-gh", "name": "Nursery Greenhouse",
               "greenhouse_classification": "nursery"},
     ).json()["id"]
-    # 4: Germination chamber with >= 20 positions.
-    chamber_resp = client.post(
+    # 4: Two Germination Chambers -- NURSERY-OPS-002A frozen model: the
+    # Chamber itself is occupiable, directly by a Germination Trolley Asset
+    # (no chamber_position child locations).
+    chamber_1_resp = client.post(
         f"/farms/{farm.id}/locations", headers=headers_a,
         json={"location_type_code": "germination_chamber", "code": "GC-01", "name": "Germination Chamber GC-01",
-              "parent_location_id": greenhouse_id},
+              "parent_location_id": greenhouse_id, "occupiable": True},
     )
-    assert chamber_resp.status_code == 201
-    chamber_id = chamber_resp.json()["id"]
-    bulk_resp = client.post(
-        f"/farms/{farm.id}/locations/{chamber_id}/bulk-children", headers=headers_a,
-        json={"location_type_code": "chamber_position", "code_prefix": "P", "start": 1, "end": 20, "pad_width": 2},
+    assert chamber_1_resp.status_code == 201
+    chamber_1_id = chamber_1_resp.json()["id"]
+    chamber_2_resp = client.post(
+        f"/farms/{farm.id}/locations", headers=headers_a,
+        json={"location_type_code": "germination_chamber", "code": "GC-02", "name": "Germination Chamber GC-02",
+              "parent_location_id": greenhouse_id, "occupiable": True},
     )
-    assert bulk_resp.status_code == 201
-    positions = {p["code"]: p["id"] for p in bulk_resp.json()}
-    assert len(positions) == 20
+    assert chamber_2_resp.status_code == 201
+    chamber_2_id = chamber_2_resp.json()["id"]
 
     # 5: Germination trolley with 8 shelves x 5 slots.
     trolley_resp = client.post(
@@ -64,13 +66,13 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
     assert tray_resp.status_code == 201
     tray_id = tray_resp.json()["id"]
 
-    # 7: Place trolley at chamber position P12.
+    # 7: Place trolley directly into Germination Chamber GC-01.
     place_trolley_resp = client.post(
         f"/farms/{farm.id}/movements", headers=headers_a,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
             "occupant": {"kind": "asset", "id": trolley_id},
-            "destination": {"kind": "location", "id": positions["P12"]},
+            "destination": {"kind": "location", "id": chamber_1_id},
         },
     )
     assert place_trolley_resp.status_code == 201
@@ -90,17 +92,17 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
     resolved_resp = client.get(f"/farms/{farm.id}/carriers/{tray_id}/resolved-location", headers=headers_a)
     assert resolved_resp.status_code == 200
     resolved = resolved_resp.json()
-    assert resolved["fixed_location_path"][-1]["code"] == "P12"
+    assert resolved["fixed_location_path"][-1]["code"] == "GC-01"
     assert resolved["position_path"][-1]["code"] == "SL-04"
 
-    # 10: Move the trolley to chamber position P13.
+    # 10: Move the trolley to Germination Chamber GC-02.
     move_command_id = str(uuid.uuid4())
     move_resp = client.post(
         f"/farms/{farm.id}/movements", headers=headers_a,
         json={
             "client_command_id": move_command_id, "effective_time": _now_iso(),
             "occupant": {"kind": "asset", "id": trolley_id},
-            "destination": {"kind": "location", "id": positions["P13"]},
+            "destination": {"kind": "location", "id": chamber_2_id},
         },
     )
     assert move_resp.status_code == 201
@@ -111,9 +113,9 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
     assert tray_occupancy_resp.status_code == 200
     assert tray_occupancy_resp.json()["target"] == {"kind": "asset_position", "id": slot_03_04_id}
 
-    # 12: Tray's resolved farm location now ends at P13.
+    # 12: Tray's resolved farm location now ends at GC-02.
     resolved_after_move = client.get(f"/farms/{farm.id}/carriers/{tray_id}/resolved-location", headers=headers_a).json()
-    assert resolved_after_move["fixed_location_path"][-1]["code"] == "P13"
+    assert resolved_after_move["fixed_location_path"][-1]["code"] == "GC-02"
 
     # 13-14: Retry the same movement command id; no duplicate movement/occupancy/audit.
     replay_resp = client.post(
@@ -121,7 +123,7 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
         json={
             "client_command_id": move_command_id, "effective_time": move_resp.json()["effective_time"],
             "occupant": {"kind": "asset", "id": trolley_id},
-            "destination": {"kind": "location", "id": positions["P13"]},
+            "destination": {"kind": "location", "id": chamber_2_id},
         },
     )
     assert replay_resp.status_code == 201

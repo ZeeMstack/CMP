@@ -44,12 +44,19 @@ def _build_chamber(db_session, tenant, farm, user):
     return greenhouse, chamber
 
 
-def _build_position(db_session, tenant, farm, user, *, capacity):
-    _greenhouse, chamber = _build_chamber(db_session, tenant, farm, user)
+def _build_capacity_chamber(db_session, tenant, farm, user, *, capacity):
+    """NURSERY-OPS-002A: the frozen authoritative model -- a Germination
+    Trolley occupies the Chamber Location directly (no chamber_position
+    child). The Chamber itself is the capacity-configurable target."""
+    greenhouse = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code=f"gh-{uuid.uuid4().hex[:8]}", name="GH",
+        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+    )
     return location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code=f"p-{uuid.uuid4().hex[:8]}", name="Position",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=capacity,
+        location_type_code="germination_chamber", code=f"gc-{uuid.uuid4().hex[:8]}", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True, capacity=capacity,
     )
 
 
@@ -116,7 +123,7 @@ def _active_target_count(db_session, *, target_kind, target_id) -> int:
 @pytest.mark.parametrize("capacity", [None, 1])
 def test_location_capacity_null_or_one_is_exclusive(db_session, active_context_with_farm, capacity) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=capacity)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=capacity)
     t1 = _register_trolley(db_session, tenant, farm, user)
     t2 = _register_trolley(db_session, tenant, farm, user)
 
@@ -129,7 +136,7 @@ def test_location_capacity_null_or_one_is_exclusive(db_session, active_context_w
 @pytest.mark.integration
 def test_location_capacity_two_permits_two_rejects_third(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=2)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=2)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(3)]
 
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolleys[0].id, target_kind="location", target_id=position.id)
@@ -142,7 +149,7 @@ def test_location_capacity_two_permits_two_rejects_third(db_session, active_cont
 @pytest.mark.integration
 def test_location_capacity_three_permits_three_rejects_fourth(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=3)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=3)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(4)]
 
     for trolley in trolleys[:3]:
@@ -155,7 +162,7 @@ def test_location_capacity_three_permits_three_rejects_fourth(db_session, active
 @pytest.mark.integration
 def test_location_capacity_frees_slot_on_departure(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=2)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=2)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(3)]
 
     _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolleys[0].id, target_kind="location", target_id=position.id)
@@ -171,15 +178,25 @@ def test_location_capacity_frees_slot_on_departure(db_session, active_context_wi
 
 @pytest.mark.integration
 def test_bulk_generated_locations_all_receive_configured_capacity(db_session, active_context_with_farm) -> None:
+    """Uses a generic store/store_bin chain (not Nursery/chamber_position --
+    retired from the authoritative Nursery Germination topology by
+    NURSERY-OPS-002A) merely as a convenient, unrelated example of a
+    bulk-children-generatable, capacity-configurable location type; the
+    behavior under test (bulk generation honors configured capacity) is
+    entirely generic, not Nursery-specific."""
     tenant, user, _headers, farm = active_context_with_farm
-    _greenhouse, chamber = _build_chamber(db_session, tenant, farm, user)
-    positions = location_service.bulk_generate_children(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, parent_id=chamber.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code_prefix=f"BULK-{uuid.uuid4().hex[:6]}-", start=1, end=5,
+    store = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="store", code=f"store-{uuid.uuid4().hex[:8]}", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
+    )
+    bins = location_service.bulk_generate_children(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, parent_id=store.id, actor_user_id=user.id,
+        location_type_code="store_bin", code_prefix=f"BULK-{uuid.uuid4().hex[:6]}-", start=1, end=5,
         pad_width=2, name_template=None, capacity=4,
     )
-    assert len(positions) == 5
-    assert all(p.capacity == 4 for p in positions)
+    assert len(bins) == 5
+    assert all(p.capacity == 4 for p in bins)
 
 
 # =====================================================================
@@ -261,41 +278,72 @@ def test_schema_rejects_non_positive_asset_position_capacity(bad_capacity) -> No
 @pytest.mark.parametrize("bad_capacity", [0, -1])
 def test_db_directly_rejects_invalid_location_capacity(db_session, active_context_with_farm, bad_capacity) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    _greenhouse, chamber = _build_chamber(db_session, tenant, farm, user)
+    greenhouse, _chamber = _build_chamber(db_session, tenant, farm, user)
     with pytest.raises(IntegrityError):
         location_service.create_location(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            location_type_code="chamber_position", code=f"bad-{uuid.uuid4().hex[:6]}", name="Bad",
-            parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=bad_capacity,
+            location_type_code="germination_chamber", code=f"bad-{uuid.uuid4().hex[:6]}", name="Bad",
+            parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True, capacity=bad_capacity,
         )
 
 
 @pytest.mark.integration
 def test_capacity_does_not_bypass_occupancy_compatibility(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=5)
-    tray = _register_tray(db_session, tenant, farm, user)  # seed_tray is only compatible with 'slot', not chamber_position
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
+    tray = _register_tray(db_session, tenant, farm, user)  # seed_tray is only compatible with 'slot', not germination_chamber
     with pytest.raises(IncompatibleOccupantTargetError):
         _place(db_session, tenant, farm, user, occupant_kind="carrier", occupant_id=tray.id, target_kind="location", target_id=position.id)
 
 
 @pytest.mark.integration
 def test_non_occupiable_location_with_capacity_remains_non_occupiable(db_session, active_context_with_farm) -> None:
+    """Uses a Leafy grow_table, not a germination_chamber -- NURSERY-OPS-002A.1
+    made germination_chamber unconditionally occupiable by frozen domain
+    rule (its `default_occupiable` catalog value is now `true`), so it can
+    no longer serve as a "defaults to non-occupiable" example. grow_table
+    keeps that role (`default_occupiable=false` in the catalog, occupiable
+    only via Farm Setup's explicit per-instance override, same pattern
+    germination_chamber used to follow) -- this test is about the generic
+    capacity-does-not-imply-occupiable invariant, not Germination."""
     tenant, user, _headers, farm = active_context_with_farm
-    _greenhouse, chamber = _build_chamber(db_session, tenant, farm, user)
-    # germination_chamber defaults to non-occupiable; force capacity > 1 to
-    # prove capacity alone never makes a target occupiable.
-    chamber.capacity = 5
+    suffix = uuid.uuid4().hex[:8]
+    greenhouse = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code=f"gh-{suffix}", name="GH",
+        parent_location_id=None, greenhouse_classification="leafy_greens", occupiable=None,
+    )
+    zone = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="zone", code=f"zone-{suffix}", name="Zone",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
+    span = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="span", code=f"span-{suffix}", name="Span",
+        parent_location_id=zone.id, greenhouse_classification=None, occupiable=None,
+    )
+    table = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="grow_table", code=f"table-{suffix}", name="Table",
+        parent_location_id=span.id, greenhouse_classification=None, occupiable=None,
+    )
+    # grow_table defaults to non-occupiable; force capacity > 1 to prove
+    # capacity alone never makes a target occupiable.
+    table.capacity = 5
     db_session.flush()
-    trolley = _register_trolley(db_session, tenant, farm, user)
+    plate = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        carrier_type_code="cultivation_plate", code=f"PLATE-{suffix}", issued_date=None,
+    )
     with pytest.raises(TargetNotOccupiableError):
-        _place(db_session, tenant, farm, user, occupant_kind="asset", occupant_id=trolley.id, target_kind="location", target_id=chamber.id)
+        _place(db_session, tenant, farm, user, occupant_kind="carrier", occupant_id=plate.id, target_kind="location", target_id=table.id)
 
 
 @pytest.mark.integration
 def test_cross_tenant_placement_into_capacity_target_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=3)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=3)
 
     suffix = uuid.uuid4().hex[:8]
     other_tenant = tenant_service.create_tenant(db_session, code=f"other-{suffix}", name="Other Tenant")
@@ -326,11 +374,11 @@ def test_occupant_side_uniqueness_preserved_at_db_layer_for_carrier(db_session, 
     present in two Locations merely because targets now support multiple
     occupants. Bypasses movement_service to prove this at the DB layer."""
     tenant, user, _headers, farm = active_context_with_farm
-    position_a = _build_position(db_session, tenant, farm, user, capacity=5)
-    position_b = _build_position(db_session, tenant, farm, user, capacity=5)
+    position_a = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
+    position_b = _build_capacity_chamber(db_session, tenant, farm, user, capacity=5)
     tray = _register_tray(db_session, tenant, farm, user)
     # seed_tray is only compatible with 'slot' asset positions, not
-    # chamber_position locations -- use asset occupant/location target
+    # germination_chamber locations -- use asset occupant/location target
     # instead so this test isolates occupant-side uniqueness, not compatibility.
     trolley = _register_trolley(db_session, tenant, farm, user)
 
@@ -395,7 +443,7 @@ def _direct_insert_occupancy(db_session, *, tenant, farm, user, occupant_asset_i
 @pytest.mark.integration
 def test_direct_write_cannot_exceed_location_capacity_one(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=1)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=1)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(2)]
     now = _now()
 
@@ -413,7 +461,7 @@ def test_direct_write_cannot_exceed_location_capacity_one(db_session, active_con
 @pytest.mark.integration
 def test_direct_write_cannot_exceed_location_capacity_two(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    position = _build_position(db_session, tenant, farm, user, capacity=2)
+    position = _build_capacity_chamber(db_session, tenant, farm, user, capacity=2)
     trolleys = [_register_trolley(db_session, tenant, farm, user) for _ in range(3)]
     now = _now()
 

@@ -37,6 +37,14 @@ export type CropRead = components["schemas"]["CropRead"];
 export type VarietyRead = components["schemas"]["VarietyRead"];
 export type SeedLotBatchSummary = components["schemas"]["SeedLotBatchSummary"];
 export type AssetRead = components["schemas"]["AssetRead"];
+export type PlaceTrolleyCreate = components["schemas"]["PlaceTrolleyCreate"];
+export type PlaceTrayCreate = components["schemas"]["PlaceTrayCreate"];
+export type TrolleyPlacementRead = components["schemas"]["TrolleyPlacementRead"];
+export type TrayPlacementRead = components["schemas"]["TrayPlacementRead"];
+export type GerminationChamberAvailabilityRead = components["schemas"]["GerminationChamberAvailabilityRead"];
+export type AvailableTrolleyRead = components["schemas"]["AvailableTrolleyRead"];
+export type TrolleySlotAvailabilityRead = components["schemas"]["TrolleySlotAvailabilityRead"];
+export type GerminationTrayRead = components["schemas"]["GerminationTrayRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -256,4 +264,47 @@ export function listBatchesForSeedLot(
   signal?: AbortSignal,
 ): Promise<SeedLotBatchSummary[]> {
   return getJson<SeedLotBatchSummary[]>(`/farms/${farmId}/seed-lots/${seedLotId}/crop-batches`, signal);
+}
+
+// --- NURSERY-OPS-002A ------------------------------------------------------
+// Germination Placement -- physical placement only (Trolley into Chamber,
+// Seed Tray into a Trolley Slot). No biological Germination outcome here.
+
+export function placeTrolley(
+  farmId: string,
+  payload: PlaceTrolleyCreate,
+  signal?: AbortSignal,
+): Promise<TrolleyPlacementRead> {
+  return postJson<TrolleyPlacementRead>(`/farms/${farmId}/germination/trolley-placements`, payload, signal);
+}
+
+export function placeTray(
+  farmId: string,
+  payload: PlaceTrayCreate,
+  signal?: AbortSignal,
+): Promise<TrayPlacementRead> {
+  return postJson<TrayPlacementRead>(`/farms/${farmId}/germination/tray-placements`, payload, signal);
+}
+
+export function listAvailableChambers(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<GerminationChamberAvailabilityRead[]> {
+  return getJson<GerminationChamberAvailabilityRead[]>(`/farms/${farmId}/germination/chambers/available`, signal);
+}
+
+export function listAvailableTrolleys(farmId: string, signal?: AbortSignal): Promise<AvailableTrolleyRead[]> {
+  return getJson<AvailableTrolleyRead[]>(`/farms/${farmId}/germination/trolleys/available`, signal);
+}
+
+export function listTrolleySlots(
+  farmId: string,
+  trolleyId: string,
+  signal?: AbortSignal,
+): Promise<TrolleySlotAvailabilityRead[]> {
+  return getJson<TrolleySlotAvailabilityRead[]>(`/farms/${farmId}/germination/trolleys/${trolleyId}/slots`, signal);
+}
+
+export function listGerminationTrays(farmId: string, signal?: AbortSignal): Promise<GerminationTrayRead[]> {
+  return getJson<GerminationTrayRead[]>(`/farms/${farmId}/germination/trays`, signal);
 }

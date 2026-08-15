@@ -38,7 +38,7 @@ def test_initial_asset_placement(db_session, placed_trolley_and_tray) -> None:
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
     )
     assert occupancy is not None
-    assert occupancy.target_location_id == scenario["positions"]["P12"].id
+    assert occupancy.target_location_id == scenario["chambers"]["GC-01"].id
     assert occupancy.end_time is None
     assert occupancy.opened_by_movement_id == scenario["trolley_movement"].id
 
@@ -66,10 +66,10 @@ def test_movement_between_fixed_locations(db_session, placed_trolley_and_tray) -
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=uuid.uuid4(), effective_time=_now(),
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
-    assert movement.source_location_id == scenario["positions"]["P12"].id
-    assert movement.destination_location_id == scenario["positions"]["P13"].id
+    assert movement.source_location_id == scenario["chambers"]["GC-01"].id
+    assert movement.destination_location_id == scenario["chambers"]["GC-02"].id
 
     db_session.refresh(old_occupancy)
     assert old_occupancy.end_time is not None
@@ -78,7 +78,7 @@ def test_movement_between_fixed_locations(db_session, placed_trolley_and_tray) -
     new_occupancy = movement_service.get_occupancy(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="asset", occupant_id=scenario["trolley"].id
     )
-    assert new_occupancy.target_location_id == scenario["positions"]["P13"].id
+    assert new_occupancy.target_location_id == scenario["chambers"]["GC-02"].id
     assert new_occupancy.opened_by_movement_id == movement.id
 
 
@@ -121,7 +121,7 @@ def test_trolley_movement_preserves_tray_direct_occupancy(db_session, placed_tro
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=uuid.uuid4(), effective_time=_now(),
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
 
     tray_occupancy_after = movement_service.get_occupancy(
@@ -178,7 +178,7 @@ def test_no_op_movement_rejected(db_session, placed_trolley_and_tray) -> None:
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P12"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-01"].id, reason=None,
         )
 
 
@@ -197,19 +197,14 @@ def test_unsupported_occupant_target_combination_rejected(db_session, active_con
     chamber = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="germination_chamber", code="GC-1", name="Chamber",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
-    position = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code="P01", name="Position 1",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None,
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True,
     )
     with pytest.raises(IncompatibleOccupantTargetError):
         movement_service.execute_movement(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scale.id,
-            destination_kind="location", destination_id=position.id, reason=None,
+            destination_kind="location", destination_id=chamber.id, reason=None,
         )
 
 
@@ -217,12 +212,15 @@ def test_unsupported_occupant_target_combination_rejected(db_session, active_con
 def test_non_occupiable_location_rejected(db_session, placed_trolley_and_tray) -> None:
     scenario = placed_trolley_and_tray
     tenant, farm, user = scenario["tenant"], scenario["farm"], scenario["user"]
+    # The Nursery Greenhouse itself is non-occupiable (unlike the fixture's
+    # Germination Chambers, which are occupiable under the NURSERY-OPS-002A
+    # model) -- a genuinely non-occupiable target, unrelated to chambers.
     with pytest.raises(TargetNotOccupiableError):
         movement_service.execute_movement(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["chamber"].id, reason=None,
+            destination_kind="location", destination_id=scenario["greenhouse"].id, reason=None,
         )
 
 
@@ -239,7 +237,7 @@ def test_occupied_target_rejected(db_session, placed_trolley_and_tray) -> None:
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=other_trolley.id,
-            destination_kind="location", destination_id=scenario["positions"]["P12"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-01"].id, reason=None,
         )
 
 
@@ -260,8 +258,8 @@ def test_one_active_occupancy_per_occupant_enforced_by_postgres(db_session, plac
         ),
         {
             "id": matching_movement_id, "tenant_id": tenant.id, "farm_id": farm.id,
-            "asset_id": scenario["trolley"].id, "source_id": scenario["positions"]["P12"].id,
-            "dest_id": scenario["positions"]["P13"].id, "client_id": uuid.uuid4(), "effective_time": effective_time,
+            "asset_id": scenario["trolley"].id, "source_id": scenario["chambers"]["GC-01"].id,
+            "dest_id": scenario["chambers"]["GC-02"].id, "client_id": uuid.uuid4(), "effective_time": effective_time,
         },
     )
     with pytest.raises(IntegrityError):
@@ -274,7 +272,7 @@ def test_one_active_occupancy_per_occupant_enforced_by_postgres(db_session, plac
                 ),
                 {
                     "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id,
-                    "asset_id": scenario["trolley"].id, "location_id": scenario["positions"]["P13"].id,
+                    "asset_id": scenario["trolley"].id, "location_id": scenario["chambers"]["GC-02"].id,
                     "movement_id": matching_movement_id, "effective_time": effective_time,
                 },
             )
@@ -293,7 +291,7 @@ def test_cross_tenant_occupant_rejected(db_session, placed_trolley_and_tray) -> 
             db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
         )
 
 
@@ -330,7 +328,7 @@ def test_inactive_occupant_rejected(db_session, placed_trolley_and_tray) -> None
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
         )
 
 
@@ -338,14 +336,14 @@ def test_inactive_occupant_rejected(db_session, placed_trolley_and_tray) -> None
 def test_inactive_destination_location_rejected(db_session, placed_trolley_and_tray) -> None:
     scenario = placed_trolley_and_tray
     tenant, farm, user = scenario["tenant"], scenario["farm"], scenario["user"]
-    scenario["positions"]["P13"].status = "inactive"
+    scenario["chambers"]["GC-02"].status = "inactive"
     db_session.flush()
     with pytest.raises(InactiveTargetError):
         movement_service.execute_movement(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
         )
 
 
@@ -371,7 +369,7 @@ def test_effective_time_in_future_rejected(db_session, placed_trolley_and_tray) 
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now() + timedelta(days=1),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
         )
 
 
@@ -385,7 +383,7 @@ def test_effective_time_before_current_occupancy_rejected(db_session, placed_tro
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=too_early,
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
         )
 
 
@@ -402,12 +400,12 @@ def test_failed_movement_preserves_original_occupancy(db_session, placed_trolley
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=other_trolley.id,
-            destination_kind="location", destination_id=scenario["positions"]["P12"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-01"].id, reason=None,
         )
     occupancy = movement_service.get_occupancy(
         db_session, tenant_id=tenant.id, farm_id=farm.id, occupant_kind="asset", occupant_id=scenario["trolley"].id
     )
-    assert occupancy.target_location_id == scenario["positions"]["P12"].id
+    assert occupancy.target_location_id == scenario["chambers"]["GC-01"].id
     assert occupancy.end_time is None
 
 
@@ -425,7 +423,7 @@ def test_failed_movement_creates_no_movement_or_audit_event(db_session, placed_t
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
             client_command_id=uuid.uuid4(), effective_time=_now(),
             occupant_kind="asset", occupant_id=scenario["trolley"].id,
-            destination_kind="location", destination_id=scenario["positions"]["P12"].id, reason=None,
+            destination_kind="location", destination_id=scenario["chambers"]["GC-01"].id, reason=None,
         )
 
     movements_after = db_session.execute(select(func.count()).select_from(Movement)).scalar_one()
@@ -478,7 +476,7 @@ def test_closed_occupancy_cannot_be_reopened(db_session, placed_trolley_and_tray
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         client_command_id=uuid.uuid4(), effective_time=_now(),
         occupant_kind="asset", occupant_id=scenario["trolley"].id,
-        destination_kind="location", destination_id=scenario["positions"]["P13"].id, reason=None,
+        destination_kind="location", destination_id=scenario["chambers"]["GC-02"].id, reason=None,
     )
     with pytest.raises(DBAPIError):
         with db_session.begin_nested():
@@ -506,7 +504,7 @@ def test_occupancy_cannot_be_inserted_already_closed(db_session, placed_trolley_
                 ),
                 {
                     "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id,
-                    "asset_id": other_trolley.id, "location_id": scenario["positions"]["P13"].id,
+                    "asset_id": other_trolley.id, "location_id": scenario["chambers"]["GC-02"].id,
                     "movement_id": scenario["trolley_movement"].id,
                 },
             )
@@ -531,7 +529,7 @@ def test_opening_movement_destination_mismatch_rejected(db_session, placed_troll
                 ),
                 {
                     "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id,
-                    "asset_id": other_trolley.id, "location_id": scenario["positions"]["P13"].id,
+                    "asset_id": other_trolley.id, "location_id": scenario["chambers"]["GC-02"].id,
                     "movement_id": scenario["trolley_movement"].id,
                 },
             )

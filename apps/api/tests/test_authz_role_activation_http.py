@@ -190,7 +190,7 @@ def test_operator_can_execute_routine_mutations_but_not_configuration(
         "client_command_id": str(uuid.uuid4()),
         "effective_time": _now().isoformat(),
         "occupant": {"kind": "asset", "id": str(placed_trolley_and_tray["trolley"].id)},
-        "destination": {"kind": "location", "id": str(placed_trolley_and_tray["positions"]["P13"].id)},
+        "destination": {"kind": "location", "id": str(placed_trolley_and_tray["chambers"]["GC-02"].id)},
         "reason": None,
     }, headers=headers)
     assert movement_response.status_code == 201

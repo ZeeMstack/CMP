@@ -1206,6 +1206,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/germination/trolley-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Place Trolley */
+        post: operations["place_trolley_farms__farm_id__germination_trolley_placements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/germination/tray-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Place Tray */
+        post: operations["place_tray_farms__farm_id__germination_tray_placements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/germination/chambers/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Available Chambers */
+        get: operations["list_available_chambers_farms__farm_id__germination_chambers_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/germination/trolleys/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Available Trolleys */
+        get: operations["list_available_trolleys_farms__farm_id__germination_trolleys_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/germination/trolleys/{trolley_id}/slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Trolley Slots */
+        get: operations["list_trolley_slots_farms__farm_id__germination_trolleys__trolley_id__slots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/germination/trays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Germination Trays */
+        get: operations["list_germination_trays_farms__farm_id__germination_trays_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/observation-definitions": {
         parameters: {
             query?: never;
@@ -1949,6 +2051,25 @@ export interface components {
             /** Code */
             code: string;
             carrier_type: components["schemas"]["CarrierTypeSummary"];
+        };
+        /** AvailableTrolleyRead */
+        AvailableTrolleyRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            chamber: components["schemas"]["GerminationChamberSummary"];
+            /** Total Slot Count */
+            total_slot_count: number;
+            /** Occupied Slot Count */
+            occupied_slot_count: number;
+            /** Available Slot Count */
+            available_slot_count: number;
         };
         /** BatchAssignmentTransferRead */
         BatchAssignmentTransferRead: {
@@ -3007,6 +3128,52 @@ export interface components {
             /** Finished Goods Lot Ids */
             finished_goods_lot_ids: string[];
         };
+        /** GerminationChamberAvailabilityRead */
+        GerminationChamberAvailabilityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Trolley Capacity */
+            trolley_capacity: number | null;
+            /** Active Trolley Count */
+            active_trolley_count: number;
+            /** Remaining Capacity */
+            remaining_capacity: number;
+        };
+        /**
+         * GerminationChamberSetupConfig
+         * @description NURSERY-OPS-002A: the Germination Chamber directly occupies Germination
+         *     Trolley Assets (the frozen authoritative model -- no chamber_position
+         *     child locations). `trolley_capacity` is the number of distinct Trolleys
+         *     the Chamber may simultaneously hold -- NULL/1 (DOMAIN-FARM-002 default)
+         *     means exclusive, matching the pre-existing capacity convention exactly.
+         */
+        GerminationChamberSetupConfig: {
+            /** Code */
+            code: string;
+            /** Name */
+            name?: string | null;
+            /** Trolley Capacity */
+            trolley_capacity?: number | null;
+        };
+        /** GerminationChamberSummary */
+        GerminationChamberSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
         /** GerminationCheckIn */
         GerminationCheckIn: {
             /**
@@ -3054,6 +3221,37 @@ export interface components {
             germination_percentage: string;
             /** Note */
             note: string | null;
+        };
+        /** GerminationResolvedPlacement */
+        GerminationResolvedPlacement: {
+            trolley: components["schemas"]["TrolleySummary"];
+            chamber: components["schemas"]["GerminationChamberSummary"];
+            slot: components["schemas"]["SlotSummary"];
+        };
+        /** GerminationTrayRead */
+        GerminationTrayRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            seed_lot: components["schemas"]["SeedLotSummary"];
+            tray: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Seeds Sown */
+            seeds_sown: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "awaiting_placement" | "elsewhere" | "in_germination";
+            placement: components["schemas"]["GerminationResolvedPlacement"] | null;
         };
         /**
          * GreenhouseOverviewItem
@@ -3206,7 +3404,7 @@ export interface components {
             vines_zones?: components["schemas"]["StructureVinesZoneNode"][] | null;
             /** Nursery Seeding Stations */
             nursery_seeding_stations?: components["schemas"]["StructureSectionNode"][];
-            nursery_germination_chamber?: components["schemas"]["StructureSectionNode"] | null;
+            nursery_germination_chamber?: components["schemas"]["StructureGerminationChamberNode"] | null;
             nursery_seedling?: components["schemas"]["StructureNurseryTableGroup"] | null;
             nursery_intersalads?: components["schemas"]["StructureNurseryTableGroup"] | null;
             nursery_intervines?: components["schemas"]["StructureNurseryTableGroup"] | null;
@@ -3696,7 +3894,7 @@ export interface components {
          */
         NurserySetupConfig: {
             seeding_station?: components["schemas"]["NurserySectionConfig"] | null;
-            germination_chamber?: components["schemas"]["NurserySectionConfig"] | null;
+            germination_chamber?: components["schemas"]["GerminationChamberSetupConfig"] | null;
             seedling_tables?: components["schemas"]["TableGeneratorConfig"] | null;
             intersalads_tables?: components["schemas"]["TableGeneratorConfig"] | null;
             intervines_tables?: components["schemas"]["TableGeneratorConfig"] | null;
@@ -4060,6 +4258,61 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** PlaceTrayCreate */
+        PlaceTrayCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Tray Id
+             * Format: uuid
+             */
+            tray_id: string;
+            /**
+             * Trolley Id
+             * Format: uuid
+             */
+            trolley_id: string;
+            /**
+             * Slot Id
+             * Format: uuid
+             */
+            slot_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** PlaceTrolleyCreate */
+        PlaceTrolleyCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Trolley Id
+             * Format: uuid
+             */
+            trolley_id: string;
+            /**
+             * Chamber Id
+             * Format: uuid
+             */
+            chamber_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
         };
         /**
          * PlacementFacts
@@ -4665,6 +4918,20 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** SlotSummary */
+        SlotSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Shelf Code */
+            shelf_code: string;
+        };
         /**
          * SowNewBatchCreate
          * @description NURSERY-OPS-001: the operator-facing Sowing command -- one call
@@ -4921,6 +5188,25 @@ export interface components {
              * Format: date-time
              */
             recorded_time: string;
+        };
+        /**
+         * StructureGerminationChamberNode
+         * @description NURSERY-OPS-002A: `trolley_capacity` is the Chamber's configured
+         *     number-of-Trolleys capacity (NULL means the DOMAIN-FARM-002 default of
+         *     1, exclusive) -- never a tray/seed/plant quantity.
+         */
+        StructureGerminationChamberNode: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Trolley Capacity */
+            trolley_capacity?: number | null;
         };
         /** StructureGutterNode */
         StructureGutterNode: {
@@ -5278,6 +5564,32 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /** TrayPlacementRead */
+        TrayPlacementRead: {
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            tray: components["schemas"]["CarrierSummary"];
+            /** Batch Code */
+            batch_code: string;
+            /** Seeds Sown */
+            seeds_sown: number;
+            trolley: components["schemas"]["TrolleySummary"];
+            slot: components["schemas"]["SlotSummary"];
+            chamber: components["schemas"]["GerminationChamberSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
         /**
          * TrolleyLevelGeneratorConfig
          * @description Mirrors `AssetPositionsGenerate` exactly. `slots_per_shelf` is the
@@ -5303,6 +5615,26 @@ export interface components {
             /** Slot Capacity */
             slot_capacity?: number | null;
         };
+        /** TrolleyPlacementRead */
+        TrolleyPlacementRead: {
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            trolley: components["schemas"]["TrolleySummary"];
+            chamber: components["schemas"]["GerminationChamberSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
         /** TrolleySetupConfig */
         TrolleySetupConfig: {
             /** Code */
@@ -5310,6 +5642,34 @@ export interface components {
             /** Name */
             name?: string | null;
             levels: components["schemas"]["TrolleyLevelGeneratorConfig"];
+        };
+        /** TrolleySlotAvailabilityRead */
+        TrolleySlotAvailabilityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Shelf Code */
+            shelf_code: string;
+            /** Occupied */
+            occupied: boolean;
+        };
+        /** TrolleySummary */
+        TrolleySummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -9041,6 +9401,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvailableSeedTrayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_trolley_farms__farm_id__germination_trolley_placements_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceTrolleyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrolleyPlacementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_tray_farms__farm_id__germination_tray_placements_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceTrayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrayPlacementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_chambers_farms__farm_id__germination_chambers_available_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GerminationChamberAvailabilityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_trolleys_farms__farm_id__germination_trolleys_available_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableTrolleyRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_trolley_slots_farms__farm_id__germination_trolleys__trolley_id__slots_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                trolley_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrolleySlotAvailabilityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_germination_trays_farms__farm_id__germination_trays_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GerminationTrayRead"][];
                 };
             };
             /** @description Validation Error */

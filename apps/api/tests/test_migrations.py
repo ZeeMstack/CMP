@@ -2175,13 +2175,22 @@ def test_migration_upgrade_rejects_existing_leafy_greenhouse_span_shortcut(
         _cleanup_legacy_tenant(test_engine, tenant_id)
 
 
+PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION = "a7e4f2c9b381"
+
+
 @pytest.mark.integration
 def test_migration_upgrade_accepts_existing_valid_greenhouse_trees(test_engine, alembic_head_restore) -> None:
     """(G) A pre-existing tree that already happens to match the new
     authoritative shape exactly (Nursery: greenhouse->germination_chamber
     ->chamber_position; Leafy: greenhouse->zone->span->grow_table) must
-    upgrade cleanly -- the guard must not be a false positive against
-    genuinely legal data."""
+    upgrade cleanly through DOMAIN-FARM-001's own migration -- its guard must
+    not be a false positive against genuinely legal data. Upgrades only to
+    `PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION`, not all the way to head:
+    NURSERY-OPS-002A's own, later, unrelated migration deliberately DOES
+    reject this exact chamber_position-under-Nursery-Germination-Chamber
+    shape (see `test_migration_upgrade_blocked_by_existing_chamber_position_topology`
+    below) -- that is that migration's own correct guard firing on
+    genuinely-retired data, not a false positive of this one."""
     _assert_operating_on_cmp_test_database(test_engine)
     command.downgrade(_cfg(), PRE_TOPOLOGY_REVISION)
 
@@ -2220,11 +2229,11 @@ def test_migration_upgrade_accepts_existing_valid_greenhouse_trees(test_engine, 
     conn.close()
 
     try:
-        command.upgrade(_cfg(), "head")
+        command.upgrade(_cfg(), PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION)
 
         with test_engine.connect() as conn2:
             current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            assert current == _resolve_head_revision(_cfg())
+            assert current == PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION
 
             rows = conn2.execute(
                 text("SELECT id, code, parent_location_id FROM locations WHERE tenant_id = :tid ORDER BY code"),
@@ -2239,7 +2248,140 @@ def test_migration_upgrade_accepts_existing_valid_greenhouse_trees(test_engine, 
             assert by_code["POS-VALID"]["parent_location_id"] == chamber_id
             assert by_code["TABLE-VALID"]["parent_location_id"] == span_id
     finally:
+        # Clean up this test's own chamber_position-under-Nursery-Germination-
+        # Chamber data FIRST -- it would otherwise trip NURSERY-OPS-002A's own
+        # migration guard when restoring to the real head below.
         _cleanup_legacy_tenant(test_engine, tenant_id)
+        command.upgrade(_cfg(), "head")
+
+
+@pytest.mark.integration
+def test_migration_upgrade_blocked_by_existing_chamber_position_topology(test_engine, alembic_head_restore) -> None:
+    """NURSERY-OPS-002A / 002A.1: the companion negative-path proof promised
+    by `test_migration_upgrade_accepts_existing_valid_greenhouse_trees`
+    above -- real, pre-existing chamber_position topology under a Nursery
+    Germination Chamber must FAIL the upgrade loudly (RuntimeError), never
+    be silently deleted, moved, or rewritten."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION)
+
+    conn = test_engine.connect()
+    trans = conn.begin()
+    tenant_id, farm_id = _build_legacy_tenant_farm(conn, suffix="chpos-guard")
+    nursery_gh_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="greenhouse",
+        code="GH-NURSERY-GUARD", greenhouse_classification="nursery",
+    )
+    chamber_id = _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="germination_chamber",
+        code="CHAMBER-GUARD", parent_location_id=nursery_gh_id,
+    )
+    _insert_legacy_location(
+        conn, tenant_id=tenant_id, farm_id=farm_id, location_type_code="chamber_position",
+        code="POS-GUARD", parent_location_id=chamber_id,
+    )
+    trans.commit()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="chamber_position"):
+            command.upgrade(_cfg(), "head")
+    finally:
+        # Same reasoning as the companion test above: clean up before
+        # restoring to head, or this test's own data would trip the guard
+        # a second time during that restore.
+        _cleanup_legacy_tenant(test_engine, tenant_id)
+        command.upgrade(_cfg(), "head")
+
+
+@pytest.mark.integration
+def test_migration_downgrade_blocked_by_existing_trolley_in_chamber_occupancy(test_engine, alembic_head_restore) -> None:
+    """NURSERY-OPS-002A / 002A.1: a live Germination Trolley Occupancy
+    directly in a Germination Chamber (the current model) cannot be
+    truthfully represented by the pre-002A chamber_position model --
+    downgrading past NURSERY-OPS-002A must fail loudly rather than silently
+    drop or rewrite that Occupancy."""
+    _assert_operating_on_cmp_test_database(test_engine)
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy.orm import Session
+
+    import uuid
+
+    from app.services import asset_service, farm_service, location_service, membership_service, movement_service, tenant_service, user_service
+
+    suffix = uuid.uuid4().hex[:8]
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant = tenant_service.create_tenant(session, code=f"dg-guard-{suffix}", name="DG Guard Tenant")
+    user = user_service.create_user(
+        session, oidc_issuer="dg-guard", oidc_subject=suffix, email=f"dg-guard-{suffix}@example.com",
+        display_name="DG Guard User",
+    )
+    membership_service.add_membership(session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None)
+    farm = farm_service.create_farm(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="DG Guard Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    greenhouse = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="greenhouse", code=f"gh-{suffix}", name="Nursery",
+        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+    )
+    chamber = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="germination_chamber", code=f"gc-{suffix}", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True,
+    )
+    trolley = asset_service.register_asset(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code=f"gt-{suffix}", name="Trolley", commissioned_date=None,
+    )
+    movement_service.execute_movement(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        effective_time=datetime.now(timezone.utc), occupant_kind="asset", occupant_id=trolley.id,
+        destination_kind="location", destination_id=chamber.id, reason=None,
+    )
+    tenant_id = tenant.id
+    session.close()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="NURSERY-OPS-002A"):
+            command.downgrade(_cfg(), PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION)
+    finally:
+        _cleanup_capacity_migration_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_germination_chamber_default_occupiable_round_trip(test_engine, alembic_head_restore) -> None:
+    """NURSERY-OPS-002A.1 (section 8): `location_types.default_occupiable`
+    for `germination_chamber` must be false pre-migration, true after
+    upgrade, false again after a safe downgrade (no incompatible
+    operational data present), and true again after re-upgrading -- proving
+    the catalog default is a real, migration-driven fact governing every
+    FUTURE Chamber regardless of creation path, not merely Farm Setup's own
+    explicit per-call override."""
+    _assert_operating_on_cmp_test_database(test_engine)
+
+    def _current_default() -> bool:
+        with test_engine.connect() as conn:
+            return conn.execute(
+                text("SELECT default_occupiable FROM location_types WHERE code = 'germination_chamber'")
+            ).scalar_one()
+
+    command.downgrade(_cfg(), PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION)
+    assert _current_default() is False
+
+    command.upgrade(_cfg(), "head")
+    assert _current_default() is True
+
+    command.downgrade(_cfg(), PRE_GERMINATION_DIRECT_OCCUPANCY_REVISION)
+    assert _current_default() is False
+
+    command.upgrade(_cfg(), "head")
+    assert _current_default() is True
 
 
 # =====================================================================
@@ -2279,6 +2421,13 @@ def _cleanup_capacity_migration_tenant(test_engine, tenant_id) -> None:
 
 
 def _build_capacity_migration_scenario(test_engine, *, suffix: str, position_capacity):
+    """Uses a Leafy Greenhouse/grow_table/cultivation_plate occupant-target
+    pair -- deliberately NOT germination_trolley/germination_chamber.
+    NURSERY-OPS-002A's own migration guards a real Trolley-directly-occupies-
+    Chamber occupancy (the CURRENT model); these tests exist to prove
+    DOMAIN-FARM-002's *capacity* migration round-trips safely on its own,
+    all the way down to before capacity existed at all -- a scenario that
+    must not also trip a later, unrelated ticket's guard."""
     import uuid as uuid_module
 
     from sqlalchemy.orm import Session
@@ -2289,7 +2438,7 @@ def _build_capacity_migration_scenario(test_engine, *, suffix: str, position_cap
     # oidc_subject uniqueness across repeated runs, unlike a fixed label.
     suffix = f"{suffix}-{uuid_module.uuid4().hex[:8]}"
 
-    from app.services import asset_service, farm_service, location_service, membership_service, tenant_service, user_service
+    from app.services import carrier_service, farm_service, location_service, membership_service, tenant_service, user_service
 
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -2308,23 +2457,28 @@ def _build_capacity_migration_scenario(test_engine, *, suffix: str, position_cap
     greenhouse = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code="greenhouse", code=f"gh-{suffix}", name="GH",
-        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
+        parent_location_id=None, greenhouse_classification="leafy_greens", occupiable=None,
     )
-    chamber = location_service.create_location(
+    zone = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code=f"gc-{suffix}", name="Chamber",
+        location_type_code="zone", code=f"zone-{suffix}", name="Zone",
         parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+    )
+    span = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="span", code=f"span-{suffix}", name="Span",
+        parent_location_id=zone.id, greenhouse_classification=None, occupiable=None,
     )
     position = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code=f"p-{suffix}", name="Position",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None, capacity=position_capacity,
+        location_type_code="grow_table", code=f"p-{suffix}", name="Table",
+        parent_location_id=span.id, greenhouse_classification=None, occupiable=True, capacity=position_capacity,
     )
-    trolley = asset_service.register_asset(
+    trolley = carrier_service.register_carrier(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        asset_type_code="germination_trolley", code=f"GT-{suffix}", name="Trolley", commissioned_date=None,
+        carrier_type_code="cultivation_plate", code=f"PLATE-{suffix}", issued_date=None,
     )
-    result = {"tenant_id": tenant.id, "farm_id": farm.id, "user_id": user.id, "position_id": position.id, "trolley_id": trolley.id}
+    result = {"tenant_id": tenant.id, "farm_id": farm.id, "user_id": user.id, "position_id": position.id, "plate_id": trolley.id}
     session.close()
     conn.close()
     return result
@@ -2347,7 +2501,7 @@ def test_capacity_migration_safe_round_trip_downgrade_then_upgrade(test_engine, 
         movement_service.execute_movement(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
             client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc),
-            occupant_kind="asset", occupant_id=scenario["trolley_id"],
+            occupant_kind="carrier", occupant_id=scenario["plate_id"],
             destination_kind="location", destination_id=scenario["position_id"], reason=None,
         )
         session.close()
@@ -2370,9 +2524,10 @@ def test_capacity_migration_safe_round_trip_downgrade_then_upgrade(test_engine, 
                 text("SELECT code FROM locations WHERE tenant_id = :tid ORDER BY code"), {"tid": scenario["tenant_id"]}
             ).mappings().all()
             codes = {r["code"] for r in rows}
-            assert len(codes) == 3
+            assert len(codes) == 4
             assert any(c.startswith("gh-safe-") for c in codes)
-            assert any(c.startswith("gc-safe-") for c in codes)
+            assert any(c.startswith("zone-safe-") for c in codes)
+            assert any(c.startswith("span-safe-") for c in codes)
             assert any(c.startswith("p-safe-") for c in codes)
     finally:
         _cleanup_capacity_migration_tenant(test_engine, scenario["tenant_id"])
@@ -2413,29 +2568,29 @@ def test_capacity_migration_downgrade_refuses_when_multi_occupancy_present(test_
     from app.models.occupancy import Occupancy
     from sqlalchemy.orm import Session
 
-    from app.services import asset_service
+    from app.services import carrier_service
 
     _assert_operating_on_cmp_test_database(test_engine)
     scenario = _build_capacity_migration_scenario(test_engine, suffix="multiocc", position_capacity=2)
     conn = test_engine.connect()
     session = Session(bind=conn)
-    second_trolley = asset_service.register_asset(
+    second_plate = carrier_service.register_carrier(
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        asset_type_code="germination_trolley", code="GT-multiocc-2", name="Trolley 2", commissioned_date=None,
+        carrier_type_code="cultivation_plate", code="PLATE-multiocc-2", issued_date=None,
     )
     now = datetime.now(timezone.utc)
-    for trolley_id in (scenario["trolley_id"], second_trolley.id):
+    for plate_id in (scenario["plate_id"], second_plate.id):
         mv = Movement(
             id=uuid_module.uuid4(), tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-            occupant_asset_id=trolley_id, destination_location_id=scenario["position_id"],
+            occupant_carrier_id=plate_id, destination_location_id=scenario["position_id"],
             command_type="movement", client_command_id=uuid_module.uuid4(),
-            request_fingerprint=f"mig-{trolley_id}", effective_time=now, actor_user_id=scenario["user_id"],
+            request_fingerprint=f"mig-{plate_id}", effective_time=now, actor_user_id=scenario["user_id"],
         )
         session.add(mv)
         session.flush()
         occ = Occupancy(
             id=uuid_module.uuid4(), tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-            occupant_asset_id=trolley_id, target_location_id=scenario["position_id"],
+            occupant_carrier_id=plate_id, target_location_id=scenario["position_id"],
             effective_time=now, opened_by_movement_id=mv.id, actor_user_id=scenario["user_id"],
         )
         session.add(occ)

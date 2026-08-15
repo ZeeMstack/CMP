@@ -43,15 +43,12 @@ def _build_committed_scenario(test_engine):
         location_type_code="greenhouse", code="gh-1", name="GH",
         parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
     )
-    chamber = location_service.create_location(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code="GC-1", name="Chamber",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
-    )
+    # NURSERY-OPS-002A: the frozen authoritative model -- a Germination
+    # Trolley occupies the Chamber Location directly (no chamber_position).
     position = location_service.create_location(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code="P01", name="Position 1",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None,
+        location_type_code="germination_chamber", code="GC-1", name="Chamber",
+        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True,
     )
     trolley_a = asset_service.register_asset(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,

@@ -80,7 +80,9 @@ APPROVED_SCOPED_TRIPLES = {
     ("nursery", "greenhouse", "seedling_area"),
     ("nursery", "greenhouse", "intersalads"),
     ("nursery", "greenhouse", "intervines"),
-    ("nursery", "germination_chamber", "chamber_position"),
+    # NURSERY-OPS-002A: retired from the authoritative Nursery Germination
+    # topology -- a Germination Trolley occupies the Chamber directly (no
+    # chamber_position). The generic (unscoped) rule below is untouched.
     ("nursery", "seedling_area", "seedling_table"),
     ("nursery", "intersalads", "intersalads_table"),
     ("nursery", "intervines", "intervines_table"),

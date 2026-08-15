@@ -37,26 +37,28 @@ def test_bulk_generation_invalid_range_rejected() -> None:
 
 
 @pytest.mark.integration
-def test_atomic_generation_of_20_chamber_positions(db_session, active_context_with_farm) -> None:
+def test_atomic_generation_of_20_store_bins(db_session, active_context_with_farm) -> None:
+    """Uses a Store/store_bin chain (not Nursery/chamber_position --
+    NURSERY-OPS-002A retired germination_chamber -> chamber_position from
+    the authoritative Nursery topology, and every Greenhouse now requires a
+    classification (DB-enforced), so a classified Greenhouse never falls
+    back to the generic hierarchy rules chamber_position would need). This
+    test is about atomic bulk-generation mechanics, entirely generic, not
+    Nursery-specific."""
     tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = location_service.create_location(
+    store = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="greenhouse", code="nursery-gh", name="Nursery Greenhouse",
-        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
-    )
-    chamber = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code="GC-01", name="Germination Chamber GC-01",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+        location_type_code="store", code="store-01", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
     )
 
     created = location_service.bulk_generate_children(
         db_session,
         tenant_id=tenant.id,
         farm_id=farm.id,
-        parent_id=chamber.id,
+        parent_id=store.id,
         actor_user_id=user.id,
-        location_type_code="chamber_position",
+        location_type_code="store_bin",
         code_prefix="P",
         start=1,
         end=20,
@@ -65,8 +67,8 @@ def test_atomic_generation_of_20_chamber_positions(db_session, active_context_wi
     )
     assert len(created) == 20
     assert {c.code for c in created} == {f"P{n:02d}" for n in range(1, 21)}
-    assert all(c.parent_location_id == chamber.id for c in created)
-    assert all(c.occupiable for c in created)  # chamber_position default_occupiable = true
+    assert all(c.parent_location_id == store.id for c in created)
+    assert all(c.occupiable for c in created)  # store_bin default_occupiable = true
 
     audit_count = db_session.execute(
         select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "location.bulk_generated")
@@ -76,22 +78,20 @@ def test_atomic_generation_of_20_chamber_positions(db_session, active_context_wi
 
 @pytest.mark.integration
 def test_bulk_generation_collision_leaves_no_locations_or_audit_event(db_session, active_context_with_farm) -> None:
+    """See the module-level note on `test_atomic_generation_of_20_store_bins`
+    -- this test uses the same generic Store/store_bin chain, since it is
+    about collision-handling mechanics, not Nursery rules."""
     tenant, user, _headers, farm = active_context_with_farm
-    greenhouse = location_service.create_location(
+    store = location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="greenhouse", code="gh-1", name="GH",
-        parent_location_id=None, greenhouse_classification="nursery", occupiable=None,
-    )
-    chamber = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="germination_chamber", code="GC-01", name="Chamber",
-        parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None,
+        location_type_code="store", code="store-1", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
     )
     # Pre-create P05 so the batch collides mid-range.
     location_service.create_location(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        location_type_code="chamber_position", code="P05", name="Preexisting",
-        parent_location_id=chamber.id, greenhouse_classification=None, occupiable=None,
+        location_type_code="store_bin", code="P05", name="Preexisting",
+        parent_location_id=store.id, greenhouse_classification=None, occupiable=None,
     )
 
     with pytest.raises(DuplicateLocationCodeError):
@@ -99,9 +99,9 @@ def test_bulk_generation_collision_leaves_no_locations_or_audit_event(db_session
             db_session,
             tenant_id=tenant.id,
             farm_id=farm.id,
-            parent_id=chamber.id,
+            parent_id=store.id,
             actor_user_id=user.id,
-            location_type_code="chamber_position",
+            location_type_code="store_bin",
             code_prefix="P",
             start=1,
             end=10,
@@ -110,7 +110,7 @@ def test_bulk_generation_collision_leaves_no_locations_or_audit_event(db_session
         )
 
     remaining = db_session.execute(
-        select(func.count()).select_from(Location).where(Location.parent_location_id == chamber.id)
+        select(func.count()).select_from(Location).where(Location.parent_location_id == store.id)
     ).scalar_one()
     assert remaining == 1  # only the pre-existing P05, nothing from the failed batch
 
