@@ -1378,6 +1378,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/germination-outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Germination Outcomes */
+        get: operations["list_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_get"];
+        put?: never;
+        /** Record Germination Outcomes */
+        post: operations["record_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/germination-outcomes/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Germination Outcomes */
+        get: operations["get_current_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/quality-holds": {
         parameters: {
             query?: never;
@@ -3221,6 +3256,179 @@ export interface components {
             germination_percentage: string;
             /** Note */
             note: string | null;
+        };
+        /** GerminationOutcomeBatchAggregateRead */
+        GerminationOutcomeBatchAggregateRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Trays */
+            trays: components["schemas"]["GerminationOutcomeCurrentRead"][];
+            /** Authoritative Living Seedling Total */
+            authoritative_living_seedling_total: number;
+            /** Completed Tray Count */
+            completed_tray_count: number;
+            /** Unresolved Tray Count */
+            unresolved_tray_count: number;
+            /** All Resolved */
+            all_resolved: boolean;
+        };
+        /**
+         * GerminationOutcomeCommandCreate
+         * @description Dedicated, narrow modern command payload -- never exposes the
+         *     generic ObservationEvent `values`/legacy `germination_checks` shape.
+         */
+        GerminationOutcomeCommandCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /** Outcomes */
+            outcomes: components["schemas"]["GerminationOutcomeIn"][];
+        };
+        /** GerminationOutcomeCommandRead */
+        GerminationOutcomeCommandRead: {
+            /**
+             * Observation Event Id
+             * Format: uuid
+             */
+            observation_event_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note: string | null;
+            /** Snapshots */
+            snapshots: components["schemas"]["GerminationOutcomeSnapshotRead"][];
+        };
+        /** GerminationOutcomeCurrentRead */
+        GerminationOutcomeCurrentRead: {
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            tray: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Seeds Sown */
+            seeds_sown: number;
+            /** Sown Site Count */
+            sown_site_count: number | null;
+            /**
+             * Current Placement
+             * @enum {string}
+             */
+            current_placement: "awaiting_placement" | "elsewhere" | "in_germination" | "unknown";
+            latest_snapshot: components["schemas"]["GerminationOutcomeSnapshotRead"] | null;
+            latest_completed_snapshot: components["schemas"]["GerminationOutcomeSnapshotRead"] | null;
+            /** Current Normal Seedling Count */
+            current_normal_seedling_count: number | null;
+            /** Current Abnormal Seedling Count */
+            current_abnormal_seedling_count: number | null;
+            /** Current Living Seedling Count */
+            current_living_seedling_count: number | null;
+            /** Current Seed To Living Gap Count */
+            current_seed_to_living_gap_count: number | null;
+            /** Living Seedling Yield Percent */
+            living_seedling_yield_percent: string | null;
+            /** Assessment Complete */
+            assessment_complete: boolean;
+            /** Authoritative Living Seedling Count */
+            authoritative_living_seedling_count: number | null;
+            /** Latest Effective Time */
+            latest_effective_time: string | null;
+            /** Historical Snapshot Count */
+            historical_snapshot_count: number;
+        };
+        /** GerminationOutcomeIn */
+        GerminationOutcomeIn: {
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Normal Seedling Count */
+            normal_seedling_count: number;
+            /** Abnormal Seedling Count */
+            abnormal_seedling_count: number;
+            /** Assessment Complete */
+            assessment_complete: boolean;
+            /** Note */
+            note?: string | null;
+        };
+        /** GerminationOutcomeSnapshotRead */
+        GerminationOutcomeSnapshotRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Observation Event Id
+             * Format: uuid
+             */
+            observation_event_id: string;
+            tray: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Normal Seedling Count */
+            normal_seedling_count: number;
+            /** Abnormal Seedling Count */
+            abnormal_seedling_count: number;
+            /** Living Seedling Count */
+            living_seedling_count: number;
+            /** Assessment Complete */
+            assessment_complete: boolean;
+            /** Note */
+            note: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
         };
         /** GerminationResolvedPlacement */
         GerminationResolvedPlacement: {
@@ -9850,6 +10058,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ObservationEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GerminationOutcomeSnapshotRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GerminationOutcomeCommandCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GerminationOutcomeCommandRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_germination_outcomes_farms__farm_id__crop_batches__batch_id__germination_outcomes_current_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GerminationOutcomeBatchAggregateRead"];
                 };
             };
             /** @description Validation Error */

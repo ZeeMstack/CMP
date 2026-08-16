@@ -2615,3 +2615,229 @@ def test_capacity_migration_downgrade_refuses_when_multi_occupancy_present(test_
             assert active_count == 2, "downgrade guard must never collapse/delete occupants"
     finally:
         _cleanup_capacity_migration_tenant(test_engine, scenario["tenant_id"])
+
+
+# =====================================================================
+# NURSERY-OPS-002B: germination outcome snapshot migration round trip
+# =====================================================================
+
+PRE_GERMINATION_OUTCOME_REVISION = "c2d6f8a4b153"
+
+
+def _cleanup_germination_outcome_migration_tenant(test_engine, tenant_id) -> None:
+    """Unlike `_cleanup_capacity_migration_tenant` (occupancies/movements/
+    assets/carriers/locations-shaped), this scenario is Sowing/Observation/
+    Workflow-shaped -- a different table set entirely."""
+    conn = test_engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(text("SET session_replication_role = replica"))
+        for table in (
+            "germination_outcome_snapshots", "germination_checks", "observation_events", "sowing_event_lines",
+            "sowing_events", "batch_carrier_assignments", "batch_stage_transitions", "batch_stage_runs",
+            "crop_batches", "carriers", "seed_lots", "workflow_transitions", "workflow_stages",
+            "workflow_versions", "workflows", "production_systems", "varieties", "crops", "audit_events",
+            "farms", "tenant_memberships",
+        ):
+            conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+    finally:
+        conn.close()
+
+
+def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_site_count):
+    import uuid as uuid_module
+    from datetime import datetime, timezone
+
+    from app.services import (
+        carrier_service, crop_batch_service, crop_service, farm_service, membership_service,
+        production_system_service, sowing_service, tenant_service, user_service, workflow_service,
+    )
+
+    tenant = tenant_service.create_tenant(session, code=f"go-mig-{suffix}", name="GO Migration Tenant")
+    user = user_service.create_user(
+        session, oidc_issuer="go-mig", oidc_subject=suffix, email=f"go-mig-{suffix}@example.com",
+        display_name="GO Migration User",
+    )
+    membership_service.add_membership(session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None)
+    farm = farm_service.create_farm(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="GO Migration Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    crop = crop_service.register_crop(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}", common_name="Iceberg",
+        scientific_name=None, crop_category="leafy_green",
+    )
+    variety = crop_service.register_variety(
+        session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"MAM-{suffix}", name="Mamutik",
+        supplier_reference=None,
+    )
+    ps = production_system_service.register_production_system(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-{suffix}", name="Nursery Tray", description=None,
+    )
+    workflow = workflow_service.register_workflow(
+        session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
+        production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
+    )
+    version = workflow_service.create_draft_version(session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id)
+    seeding = workflow_service.add_stage(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding", expected_duration_minutes=None,
+        permitted_location_type_code=None, required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    )
+    complete = workflow_service.add_stage(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        code="COMPLETE", name="Complete", display_order=1, stage_category="completed", expected_duration_minutes=None,
+        permitted_location_type_code=None, required_carrier_type_code=None, is_start=False, is_terminal=True,
+    )
+    workflow_service.add_transition(
+        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+        from_stage_id=seeding.id, to_stage_id=complete.id, code="ADVANCE", name="Advance",
+    )
+    workflow_service.publish_version(session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id)
+    batch = crop_batch_service.create_batch(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid_module.uuid4(),
+        code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=datetime.now(timezone.utc),
+    )
+    seed_lot = sowing_service.register_seed_lot(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
+        code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None, received_date=None, expiry_date=None,
+    )
+    carrier = carrier_service.register_carrier(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-{suffix}-0001", issued_date=None,
+    )
+    sowing_service.sow_batch(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc), note=None,
+        lines=[
+            {
+                "carrier_id": carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": sown_site_count,
+                "seed_count": 200, "line_note": None,
+            }
+        ],
+    )
+    assignment = sowing_service.list_batch_carriers(session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id)[0]
+    return tenant, user, farm, batch, assignment
+
+
+@pytest.mark.integration
+def test_migration_upgrade_preserves_legacy_germination_check_rows(test_engine, alembic_head_restore) -> None:
+    """The legacy GerminationCheck trigger correction (CASE A vs CASE B)
+    must be a pure, additive logic fix -- any pre-existing, already-valid
+    legacy row must survive the upgrade completely untouched."""
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_GERMINATION_OUTCOME_REVISION)
+
+    import uuid as uuid_module
+    from datetime import datetime, timezone
+
+    from sqlalchemy.orm import Session
+
+    from app.services import observation_service
+
+    suffix = uuid_module.uuid4().hex[:8]
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant, user, farm, batch, assignment = _build_germination_outcome_migration_tenant(
+        session, suffix=suffix, sown_site_count=200
+    )
+    event = observation_service.record_observation(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc), note=None, values=[],
+        germination_checks=[
+            {
+                "batch_carrier_assignment_id": assignment.id, "inspected_site_count": 200,
+                "normal_germinated_site_count": 180, "abnormal_germinated_site_count": 10, "failed_site_count": 5,
+            }
+        ],
+        germination_outcomes=[],
+    )
+    check_row_before = conn.execute(
+        text(
+            "SELECT id, inspected_site_count, normal_germinated_site_count, abnormal_germinated_site_count, "
+            "failed_site_count FROM germination_checks WHERE observation_event_id = :eid"
+        ),
+        {"eid": event.id},
+    ).mappings().first()
+    session.commit()
+    tenant_id = tenant.id
+    session.close()
+    conn.close()
+
+    try:
+        command.upgrade(_cfg(), "head")
+        with test_engine.connect() as conn2:
+            current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert current == _resolve_head_revision(_cfg())
+            check_row_after = conn2.execute(
+                text(
+                    "SELECT id, inspected_site_count, normal_germinated_site_count, abnormal_germinated_site_count, "
+                    "failed_site_count FROM germination_checks WHERE id = :id"
+                ),
+                {"id": check_row_before["id"]},
+            ).mappings().first()
+            assert dict(check_row_after) == dict(check_row_before)
+            tables = set(conn2.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).scalars())
+            assert "germination_outcome_snapshots" in tables
+    finally:
+        _cleanup_germination_outcome_migration_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_downgrade_blocked_by_existing_germination_outcome_snapshot(test_engine, alembic_head_restore) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+
+    import uuid as uuid_module
+    from datetime import datetime, timezone
+
+    from sqlalchemy.orm import Session
+
+    from app.services import germination_outcome_service
+
+    suffix = uuid_module.uuid4().hex[:8]
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant, user, farm, batch, assignment = _build_germination_outcome_migration_tenant(
+        session, suffix=suffix, sown_site_count=None
+    )
+    germination_outcome_service.record_germination_outcomes(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc), note=None,
+        outcomes=[
+            {
+                "batch_carrier_assignment_id": assignment.id, "normal_seedling_count": 190,
+                "abnormal_seedling_count": 6, "assessment_complete": True, "note": None,
+            }
+        ],
+    )
+    session.commit()
+    tenant_id = tenant.id
+    session.close()
+    conn.close()
+
+    try:
+        with pytest.raises(RuntimeError, match="NURSERY-OPS-002B"):
+            command.downgrade(_cfg(), PRE_GERMINATION_OUTCOME_REVISION)
+    finally:
+        _cleanup_germination_outcome_migration_tenant(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_germination_outcome_snapshot_table_empty_downgrade_and_reupgrade_safe(test_engine, alembic_head_restore) -> None:
+    _assert_operating_on_cmp_test_database(test_engine)
+    command.downgrade(_cfg(), PRE_GERMINATION_OUTCOME_REVISION)
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == PRE_GERMINATION_OUTCOME_REVISION
+        tables = set(conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).scalars())
+        assert "germination_outcome_snapshots" not in tables
+
+    command.upgrade(_cfg(), "head")
+    with test_engine.connect() as conn:
+        current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        assert current == _resolve_head_revision(_cfg())
+        tables = set(conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).scalars())
+        assert "germination_outcome_snapshots" in tables

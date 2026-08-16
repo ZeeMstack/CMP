@@ -45,6 +45,11 @@ export type GerminationChamberAvailabilityRead = components["schemas"]["Germinat
 export type AvailableTrolleyRead = components["schemas"]["AvailableTrolleyRead"];
 export type TrolleySlotAvailabilityRead = components["schemas"]["TrolleySlotAvailabilityRead"];
 export type GerminationTrayRead = components["schemas"]["GerminationTrayRead"];
+export type GerminationOutcomeCommandCreate = components["schemas"]["GerminationOutcomeCommandCreate"];
+export type GerminationOutcomeCommandRead = components["schemas"]["GerminationOutcomeCommandRead"];
+export type GerminationOutcomeCurrentRead = components["schemas"]["GerminationOutcomeCurrentRead"];
+export type GerminationOutcomeBatchAggregateRead = components["schemas"]["GerminationOutcomeBatchAggregateRead"];
+export type GerminationOutcomeSnapshotRead = components["schemas"]["GerminationOutcomeSnapshotRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -307,4 +312,29 @@ export function listTrolleySlots(
 
 export function listGerminationTrays(farmId: string, signal?: AbortSignal): Promise<GerminationTrayRead[]> {
   return getJson<GerminationTrayRead[]>(`/farms/${farmId}/germination/trays`, signal);
+}
+
+// --- NURSERY-OPS-002B ------------------------------------------------------
+// Modern, INDIVIDUAL-SEEDLING-based Germination outcome -- distinct from the
+// legacy site-based GerminationCheck. Never exposed in this client layer.
+
+export function recordGerminationOutcomes(
+  farmId: string,
+  batchId: string,
+  payload: GerminationOutcomeCommandCreate,
+  signal?: AbortSignal,
+): Promise<GerminationOutcomeCommandRead> {
+  return postJson<GerminationOutcomeCommandRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/germination-outcomes`, payload, signal,
+  );
+}
+
+export function getCurrentGerminationOutcomes(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<GerminationOutcomeBatchAggregateRead> {
+  return getJson<GerminationOutcomeBatchAggregateRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/germination-outcomes/current`, signal,
+  );
 }

@@ -15,6 +15,7 @@ from app.models.farm import Farm
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.germination_check import GerminationCheck
+from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
@@ -68,6 +69,7 @@ __all__ = [
     "FinishedGoodsLedgerEntry",
     "FinishedGoodsStorageMovement",
     "GerminationCheck",
+    "GerminationOutcomeSnapshot",
     "Location",
     "LocationType",
     "LocationTypeHierarchyRule",
