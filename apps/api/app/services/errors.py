@@ -702,3 +702,59 @@ class FarmSetupValidationError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class SeedlingTableInvalidError(DomainError):
+    """NURSERY-OPS-003A: the referenced location is not an active, occupiable
+    `seedling_table` under a Nursery-classified Greenhouse in this
+    tenant/farm."""
+
+    pass
+
+
+class SeedlingEntryValidationError(DomainError):
+    """NURSERY-OPS-003A: the referenced assignment is not eligible for a
+    Seedling entry (e.g. not a seed_tray carrier)."""
+
+    pass
+
+
+class NoCompletedGerminationHandoffError(DomainError):
+    """NURSERY-OPS-003A: no completed GerminationOutcomeSnapshot exists for
+    this assignment at or before the Seedling entry's effective_time --
+    section 10/41: a Seedling entry can never substitute a provisional
+    snapshot, Seeds Sown, or Sown Sites for a genuine completed handoff."""
+
+    pass
+
+
+class SeedlingEntryAlreadyExistsError(DomainError):
+    """NURSERY-OPS-003A: section 8/22 -- at most one SeedlingEntry may ever
+    exist for a given BatchCarrierAssignment. A later physical Movement
+    (e.g. a future Table-to-Table move) is not another biological entry."""
+
+    pass
+
+
+class SeedlingEntryCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InvalidSeedlingEntryEffectiveTimeError(DomainError):
+    pass
+
+
+class SeedlingEntryPhysicalChronologyError(DomainError):
+    """NURSERY-OPS-003A.1: the Tray's own physical Movement history has
+    already advanced past the requested effective_time (a later Movement --
+    through this command or a bare generic one -- already moved it
+    somewhere else) -- a new Movement dated at/before that point would
+    falsify already-recorded physical chronology. Movement itself is
+    append-forward only (`movement_service._execute_movement_core` already
+    rejects `effective_time` preceding the occupant's current active
+    Occupancy); this error exists so that rejection surfaces through the
+    SeedlingEntry command as an actionable domain error (422) instead of
+    the underlying generic `InvalidEffectiveTimeError` propagating
+    unmapped."""
+
+    pass

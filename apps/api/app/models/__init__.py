@@ -37,6 +37,7 @@ from app.models.recall import (
     RecallScopeProduceLot,
 )
 from app.models.seed_lot import SeedLot
+from app.models.seedling_entry import SeedlingEntry
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
 from app.models.tenant import Tenant
@@ -88,6 +89,7 @@ __all__ = [
     "RecallScopeFinishedGoodsLot",
     "RecallScopeProduceLot",
     "SeedLot",
+    "SeedlingEntry",
     "SowingEvent",
     "SowingEventLine",
     "Tenant",

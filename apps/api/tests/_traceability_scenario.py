@@ -263,6 +263,26 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM harvest_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM quality_hold_releases WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM quality_holds WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # NURSERY-OPS-003A: seedling_entries/germination_outcome_snapshots/
+        # observation_events are new to this shared cleanup -- earlier
+        # scenarios never committed real (test_engine-backed) Germination-
+        # outcome or Seedling-entry data. seedling_entries references
+        # germination_outcome_snapshots and movements; germination_outcome_
+        # snapshots (and the legacy germination_checks) reference
+        # observation_events -- all three must precede batch_carrier_
+        # assignments/movements/crop_batches below. Existence-guarded
+        # (`to_regclass`) because some downgrade-guard tests (e.g.
+        # test_recall_downgrade_guard.py) call this cleanup while cmp_test
+        # is deliberately downgraded below the migration that creates
+        # seedling_entries/germination_outcome_snapshots -- a bare DELETE
+        # against a table that doesn't exist at that schema revision would
+        # raise UndefinedTable and mask the test's own assertion.
+        for table in (
+            "seedling_entries", "germination_outcome_snapshots", "germination_checks",
+            "observation_values", "observation_events",
+        ):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         # CMP-FE-002A: transplant_* tables are new to this shared cleanup --
         # earlier CMP-019 scenarios never called transplant_service. Without

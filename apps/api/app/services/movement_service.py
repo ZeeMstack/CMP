@@ -263,6 +263,57 @@ def execute_movement(
     destination_id: uuid.UUID | None,
     reason: str | None,
 ) -> Movement:
+    """Public entry point: runs `_execute_movement_core` then owns the
+    transaction boundary (commit + refresh) itself, exactly as before this
+    function was split -- every existing caller's behavior is unchanged."""
+    movement = _execute_movement_core(
+        db,
+        tenant_id=tenant_id,
+        farm_id=farm_id,
+        actor_user_id=actor_user_id,
+        client_command_id=client_command_id,
+        effective_time=effective_time,
+        occupant_kind=occupant_kind,
+        occupant_id=occupant_id,
+        destination_kind=destination_kind,
+        destination_id=destination_id,
+        reason=reason,
+    )
+    db.commit()
+    db.refresh(movement)
+    return movement
+
+
+def _execute_movement_core(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    client_command_id: uuid.UUID,
+    effective_time: datetime,
+    occupant_kind: str,
+    occupant_id: uuid.UUID,
+    destination_kind: str | None,
+    destination_id: uuid.UUID | None,
+    reason: str | None,
+) -> Movement:
+    """NURSERY-OPS-003A: the validate+insert+flush core of `execute_movement`,
+    with no commit and no refresh -- reused directly by
+    `seedling_entry_service` so a Seedling-entry command can perform the
+    physical Movement and insert its own `SeedlingEntry` row inside ONE
+    transaction/commit (section 15/16 of the ticket), exactly the same
+    extraction pattern `location_service._create_location_core` and
+    `_bulk_generate_children_core` already established for FARM-SETUP-001.
+    Every check, lock, and IntegrityError-recovery path below is unchanged
+    from before the split; only the trailing `db.commit()`/`db.refresh()`
+    moved to the public wrapper above. A flush-time IntegrityError still
+    triggers this function's own `db.rollback()` -- safe for a caller
+    composing a larger transaction only if nothing that caller needs to
+    survive was written before this call (true for `seedling_entry_service`,
+    whose own reads before this call are all plain SELECTs); Postgres would
+    force that rollback on any aborted statement regardless, so this is not
+    an added constraint, merely the existing one made explicit."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     fingerprint = _compute_fingerprint(
@@ -430,8 +481,6 @@ def execute_movement(
             "reason": reason,
         },
     )
-    db.commit()
-    db.refresh(movement)
     return movement
 
 

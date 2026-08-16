@@ -22,6 +22,12 @@ EXPECTED_RULES = {
     # itself (no table_position beneath it) -- the Production Cultivation
     # Plate carrier must be able to occupy the table directly.
     ("carrier", "cultivation_plate", "location", "grow_table"),
+    # NURSERY-OPS-003A: the authoritative Nursery Seedling topology likewise
+    # stops at seedling_table itself (no table position beneath it) -- the
+    # Seed Tray carrier must be able to occupy the table directly. Its prior
+    # rule (carrier:seed_tray -> position:slot, for the Germination Trolley
+    # slot) is untouched.
+    ("carrier", "seed_tray", "location", "seedling_table"),
 }
 
 

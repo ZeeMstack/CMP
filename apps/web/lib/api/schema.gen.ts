@@ -1413,6 +1413,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/nursery/seedling/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Seedling Entry */
+        post: operations["record_seedling_entry_farms__farm_id__nursery_seedling_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seedling/tables/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Available Seedling Tables */
+        get: operations["list_available_seedling_tables_farms__farm_id__nursery_seedling_tables_available_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seedling/trays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Seedling Candidate Trays */
+        get: operations["list_seedling_candidate_trays_farms__farm_id__nursery_seedling_trays_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/quality-holds": {
         parameters: {
             query?: never;
@@ -2086,6 +2137,26 @@ export interface components {
             /** Code */
             code: string;
             carrier_type: components["schemas"]["CarrierTypeSummary"];
+        };
+        /** AvailableSeedlingTableRead */
+        AvailableSeedlingTableRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Capacity */
+            capacity: number | null;
+            /** Active Tray Count */
+            active_tray_count: number;
+            /** Remaining Capacity */
+            remaining_capacity: number;
+            seedling_area: components["schemas"]["SeedlingAreaSummary"];
+            greenhouse: components["schemas"]["SeedlingGreenhouseSummary"];
         };
         /** AvailableTrolleyRead */
         AvailableTrolleyRead: {
@@ -3256,6 +3327,20 @@ export interface components {
             germination_percentage: string;
             /** Note */
             note: string | null;
+        };
+        /** GerminationHandoffSummary */
+        GerminationHandoffSummary: {
+            /** Normal Seedling Count */
+            normal_seedling_count: number;
+            /** Abnormal Seedling Count */
+            abnormal_seedling_count: number;
+            /** Living Seedling Count */
+            living_seedling_count: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
         };
         /** GerminationOutcomeBatchAggregateRead */
         GerminationOutcomeBatchAggregateRead: {
@@ -4962,6 +5047,16 @@ export interface components {
             /** Unresolved Reason */
             unresolved_reason: string | null;
         };
+        /** ResolvedPhysicalPlacement */
+        ResolvedPhysicalPlacement: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "unplaced" | "in_germination" | "on_seedling_table" | "elsewhere";
+            germination: components["schemas"]["GerminationResolvedPlacement"] | null;
+            seedling_table: components["schemas"]["SeedlingTableSummary"] | null;
+        };
         /**
          * SeedLotBatchSummary
          * @description NURSERY-OPS-001 section 49: the reverse of 'which Seed Lot created
@@ -5116,6 +5211,184 @@ export interface components {
         };
         /** SeedingStationSummary */
         SeedingStationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SeedlingAreaSummary */
+        SeedlingAreaSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SeedlingCandidateTrayRead */
+        SeedlingCandidateTrayRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            seed_lot: components["schemas"]["SeedLotSummary"];
+            tray: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Seeds Sown */
+            seeds_sown: number;
+            germination_handoff: components["schemas"]["GerminationHandoffSummary"] | null;
+            seedling_entry: components["schemas"]["SeedlingEntrySummary"] | null;
+            current_placement: components["schemas"]["ResolvedPhysicalPlacement"];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "no_completed_handoff" | "ready_for_seedling" | "in_seedling" | "in_seedling_unanchored" | "elsewhere";
+        };
+        /**
+         * SeedlingEntryCreate
+         * @description Section 26: the operator supplies only physical/handoff-command
+         *     facts -- `starting_living_seedling_count` and
+         *     `source_germination_outcome_snapshot_id` are never accepted from the
+         *     caller; the server always resolves and freezes them authoritatively
+         *     (section 10/11).
+         */
+        SeedlingEntryCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Destination Seedling Table Id
+             * Format: uuid
+             */
+            destination_seedling_table_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** SeedlingEntryRead */
+        SeedlingEntryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            tray: components["schemas"]["CarrierSummary"];
+            seedling_table: components["schemas"]["SeedlingTableSummary"];
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Source Germination Outcome Snapshot Id
+             * Format: uuid
+             */
+            source_germination_outcome_snapshot_id: string;
+            /** Source Normal Seedling Count */
+            source_normal_seedling_count: number;
+            /** Source Abnormal Seedling Count */
+            source_abnormal_seedling_count: number;
+            /**
+             * Source Effective Time
+             * Format: date-time
+             */
+            source_effective_time: string;
+            /** Starting Living Seedling Count */
+            starting_living_seedling_count: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /** SeedlingEntrySummary */
+        SeedlingEntrySummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /**
+             * Source Germination Outcome Snapshot Id
+             * Format: uuid
+             */
+            source_germination_outcome_snapshot_id: string;
+            /** Starting Living Seedling Count */
+            starting_living_seedling_count: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
+        /** SeedlingGreenhouseSummary */
+        SeedlingGreenhouseSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SeedlingTableSummary */
+        SeedlingTableSummary: {
             /**
              * Id
              * Format: uuid
@@ -10173,6 +10446,118 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GerminationOutcomeBatchAggregateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_seedling_entry_farms__farm_id__nursery_seedling_entries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedlingEntryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_seedling_tables_farms__farm_id__nursery_seedling_tables_available_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableSeedlingTableRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seedling_candidate_trays_farms__farm_id__nursery_seedling_trays_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingCandidateTrayRead"][];
                 };
             };
             /** @description Validation Error */
