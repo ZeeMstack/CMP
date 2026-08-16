@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { MoveToSeedlingForm } from "@/components/nursery/MoveToSeedlingForm";
 import { MoveTrayForm } from "@/components/nursery/MoveTrayForm";
 import { PlaceTrolleyForm } from "@/components/nursery/PlaceTrolleyForm";
 import { RecordOutcomeForm } from "@/components/nursery/RecordOutcomeForm";
@@ -14,7 +15,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
-import { useGerminationTrays, usePlaceTray, usePlaceTrolley } from "@/lib/query/hooks";
+import { useGerminationTrays, usePlaceTray, usePlaceTrolley, useRecordSeedlingEntry } from "@/lib/query/hooks";
 
 const STATE_LABEL: Record<GerminationTrayRead["state"], string> = {
   awaiting_placement: "Awaiting placement",
@@ -33,12 +34,13 @@ function errorMessage(error: unknown): string {
 
 export default function GerminationPage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | "outcome" | null>(null);
+  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | "outcome" | "seedling" | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const traysQuery = useGerminationTrays(farmId);
   const placeTrolleyMutation = usePlaceTrolley(farmId);
   const placeTrayMutation = usePlaceTray(farmId);
+  const recordSeedlingEntryMutation = useRecordSeedlingEntry(farmId);
 
   function closeAction() {
     setActiveAction(null);
@@ -82,6 +84,13 @@ export default function GerminationPage() {
               >
                 Record Outcome
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveAction("seedling")}
+                className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
+              >
+                Move to Seedling
+              </button>
             </div>
           )
         }
@@ -121,6 +130,22 @@ export default function GerminationPage() {
 
       {activeAction === "outcome" && (
         <RecordOutcomeForm farmId={farmId} onSuccess={closeAction} onCancel={closeAction} />
+      )}
+
+      {activeAction === "seedling" && (
+        <MoveToSeedlingForm
+          farmId={farmId}
+          isSubmitting={recordSeedlingEntryMutation.isPending}
+          serverError={serverError}
+          onCancel={closeAction}
+          onSubmit={(payload) => {
+            setServerError(null);
+            recordSeedlingEntryMutation.mutate(payload, {
+              onSuccess: closeAction,
+              onError: (error) => setServerError(errorMessage(error)),
+            });
+          }}
+        />
       )}
 
       {activeAction === null && (

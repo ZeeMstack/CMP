@@ -8,6 +8,7 @@ import type {
   GreenhouseSetupCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
 } from "@/lib/api/client";
@@ -366,6 +367,49 @@ export function useRecordGerminationOutcomes(farmId: string, batchId: string) {
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.currentGerminationOutcomes(tenantId, farmId, batchId) });
+    },
+  });
+}
+
+// --- NURSERY-OPS-003A -------------------------------------------------------
+// Seedling Entry & Placement -- atomic physical Movement + frozen biological
+// handoff. No Seedling biological loss/removal here (NURSERY-OPS-003B).
+
+export function useSeedlingCandidateTrays(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedlingCandidateTrays(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSeedlingCandidateTrays(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useAvailableSeedlingTables(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableSeedlingTables(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableSeedlingTables(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Idempotency key (`client_command_id`) lives in the payload itself, same
+ * replay-safe pattern as every other command here. A Seedling entry both
+ * moves the Tray (affecting Table availability and the Germination page's
+ * own tray list) and establishes the frozen handoff (affecting the Seedling
+ * tray list) -- all three reads are invalidated. */
+export function useRecordSeedlingEntry(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SeedlingEntryCreate) => api.recordSeedlingEntry(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingCandidateTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableSeedlingTables(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
     },
   });
 }

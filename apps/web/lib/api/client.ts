@@ -50,6 +50,10 @@ export type GerminationOutcomeCommandRead = components["schemas"]["GerminationOu
 export type GerminationOutcomeCurrentRead = components["schemas"]["GerminationOutcomeCurrentRead"];
 export type GerminationOutcomeBatchAggregateRead = components["schemas"]["GerminationOutcomeBatchAggregateRead"];
 export type GerminationOutcomeSnapshotRead = components["schemas"]["GerminationOutcomeSnapshotRead"];
+export type SeedlingEntryCreate = components["schemas"]["SeedlingEntryCreate"];
+export type SeedlingEntryRead = components["schemas"]["SeedlingEntryRead"];
+export type AvailableSeedlingTableRead = components["schemas"]["AvailableSeedlingTableRead"];
+export type SeedlingCandidateTrayRead = components["schemas"]["SeedlingCandidateTrayRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -337,4 +341,33 @@ export function getCurrentGerminationOutcomes(
   return getJson<GerminationOutcomeBatchAggregateRead>(
     `/farms/${farmId}/crop-batches/${batchId}/germination-outcomes/current`, signal,
   );
+}
+
+// --- NURSERY-OPS-003A ------------------------------------------------------
+// Seedling Entry & Placement -- atomically pairs a physical Movement (Trolley
+// Slot -> Seedling Table) with an immutable frozen biological handoff
+// referencing the historically-valid completed Germination outcome. No
+// Seedling biological loss/removal here -- that is NURSERY-OPS-003B's own,
+// separate, not-yet-built scope.
+
+export function recordSeedlingEntry(
+  farmId: string,
+  payload: SeedlingEntryCreate,
+  signal?: AbortSignal,
+): Promise<SeedlingEntryRead> {
+  return postJson<SeedlingEntryRead>(`/farms/${farmId}/nursery/seedling/entries`, payload, signal);
+}
+
+export function listAvailableSeedlingTables(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<AvailableSeedlingTableRead[]> {
+  return getJson<AvailableSeedlingTableRead[]>(`/farms/${farmId}/nursery/seedling/tables/available`, signal);
+}
+
+export function listSeedlingCandidateTrays(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<SeedlingCandidateTrayRead[]> {
+  return getJson<SeedlingCandidateTrayRead[]>(`/farms/${farmId}/nursery/seedling/trays`, signal);
 }

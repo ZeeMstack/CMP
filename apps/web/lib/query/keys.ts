@@ -62,4 +62,10 @@ export const queryKeys = {
   // --- NURSERY-OPS-002B -----------------------------------------------------
   currentGerminationOutcomes: (tenantId: string, farmId: string, batchId: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "germination-outcomes", "current"] as const,
+
+  // --- NURSERY-OPS-003A -----------------------------------------------------
+  seedlingCandidateTrays: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "trays"] as const,
+  availableSeedlingTables: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "tables", "available"] as const,
 };

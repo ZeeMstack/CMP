@@ -51,6 +51,8 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
         );
       }
       if (url.includes("/assets")) return jsonResponse(overrides.assets ?? []);
+      if (url.includes("/nursery/seedling/trays")) return jsonResponse(overrides.seedlingTrays ?? []);
+      if (url.includes("/nursery/seedling/tables/available")) return jsonResponse(overrides.seedlingTables ?? []);
       return jsonResponse([]);
     }),
   );
@@ -109,6 +111,29 @@ describe("GerminationPage", () => {
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record Outcome" }));
+    await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByText("Place Trolley")).toBeInTheDocument());
+  });
+
+  it("opens the Move to Seedling form and returns to the list on cancel", async () => {
+    stubFetch({
+      seedlingTrays: [
+        {
+          batch_id: "batch-1", batch_code: "CB-0001",
+          seed_lot: { id: "lot-1", code: "LOT-01", supplier_lot_reference: null, crop: { id: "c1", code: "ICE", common_name: "Iceberg" }, variety: { id: "v1", code: "MAM", name: "Mamutik" } },
+          tray: { id: "tray-1", code: "ST-0001", carrier_type: CARRIER_TYPE },
+          batch_carrier_assignment_id: "bca-1", seeds_sown: 200,
+          germination_handoff: { normal_seedling_count: 190, abnormal_seedling_count: 6, living_seedling_count: 196, effective_time: "2026-08-01T00:00:00Z" },
+          seedling_entry: null,
+          current_placement: { kind: "in_germination", germination: null, seedling_table: null },
+          state: "ready_for_seedling",
+        },
+      ],
+    });
+    render(withQueryClient(<GerminationPage />));
+    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Move to Seedling" }));
     await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByText("Place Trolley")).toBeInTheDocument());
