@@ -48,11 +48,12 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.crop_batch import CropBatch
 from app.models.seedling_disposition_command import SeedlingDispositionCommand
 from app.models.seedling_disposition_event import SeedlingDispositionEvent
@@ -80,6 +81,7 @@ from app.services.errors import (
     SeedlingDispositionCommandReusedWithDifferentPayloadError,
     SeedlingDispositionEventNotFoundError,
     SeedlingDispositionNotReductionError,
+    SeedlingDispositionPredatesCheckpointError,
     SeedlingDispositionValidationError,
 )
 
@@ -158,21 +160,115 @@ def _find_existing_command(db: Session, *, tenant_id: uuid.UUID, client_command_
     ).scalar_one_or_none()
 
 
+def _latest_checkpoint_anchor(
+    db: Session, *, seedling_entry_id: uuid.UUID
+) -> tuple[int, datetime] | tuple[None, None]:
+    """NURSERY-OPS-004A: `(remainder_after, effective_time)` of the latest
+    `SeedlingSourceCheckpoint` for this Tray, or `(None, None)` if no
+    transplant has ever consumed it. Ties broken by `effective_time` DESC,
+    then `recorded_at` DESC, then `id` DESC -- presentation-only tie-break,
+    matching every other chronological read in this module; checkpoint
+    `effective_time` is itself DB-enforced strictly monotonic (section 22),
+    so a genuine tie can never actually occur here."""
+    row = db.execute(
+        select(SeedlingSourceCheckpoint.remainder_after, SeedlingSourceCheckpoint.effective_time)
+        .where(SeedlingSourceCheckpoint.seedling_entry_id == seedling_entry_id)
+        .order_by(
+            SeedlingSourceCheckpoint.effective_time.desc(),
+            SeedlingSourceCheckpoint.recorded_at.desc(),
+            SeedlingSourceCheckpoint.id.desc(),
+        )
+        .limit(1)
+    ).first()
+    if row is None:
+        return None, None
+    return row[0], row[1]
+
+
+def _resolve_anchor(
+    db: Session, *, seedling_entry_id: uuid.UUID, starting: int
+) -> tuple[int, datetime | None]:
+    """`(anchor_value, anchor_time)` -- the latest checkpoint's own
+    `remainder_after`/`effective_time` if one exists, otherwise `(starting,
+    None)`. `anchor_time=None` (no checkpoint) deliberately does NOT fall
+    back to `SeedlingEntry.effective_time` here -- that floor is already,
+    separately, enforced by `record_disposition`/`correct_disposition`
+    themselves (section 58.A: "no checkpoint: 003B behavior unchanged")."""
+    remainder, checkpoint_time = _latest_checkpoint_anchor(db, seedling_entry_id=seedling_entry_id)
+    if remainder is not None:
+        return remainder, checkpoint_time
+    return starting, None
+
+
+def get_source_availability_anchor(
+    db: Session, *, seedling_entry: SeedlingEntry
+) -> tuple[int, datetime, bool]:
+    """Public: `(anchor_value, anchor_time, has_checkpoint)` for a Tray's
+    currently-open biological balance window -- the latest
+    `SeedlingSourceCheckpoint`'s `remainder_after`/`effective_time` (with
+    `has_checkpoint=True`), or the frozen `SeedlingEntry`'s own starting
+    quantity/effective_time (with `has_checkpoint=False`) if no transplant
+    has consumed it yet. Reused by `transplant_service` to derive
+    `source_available_before` AND to select the correct temporal-floor
+    branch -- strictly-greater-than once a checkpoint has closed a window,
+    at-or-after when the SeedlingEntry itself is still the anchor
+    (NURSERY-OPS-004A section 5/6/7/22/23) -- the one place both modules
+    agree on what "the current anchor" means."""
+    remainder, checkpoint_time = _latest_checkpoint_anchor(db, seedling_entry_id=seedling_entry.id)
+    if remainder is not None:
+        return remainder, checkpoint_time, True
+    return seedling_entry.starting_living_seedling_count, seedling_entry.effective_time, False
+
+
+def get_source_available(
+    db: Session, *, seedling_entry: SeedlingEntry, as_of: datetime
+) -> int:
+    """Public: the authoritative, server-derived source availability for
+    this Tray as of `as_of` -- `anchor_value + SUM(disposition deltas with
+    anchor_time < effective_time <= as_of)`. Never caller-supplied, never
+    bounded by `sown_site_count`/`seed_count` (NURSERY-OPS-004A section 5/6/7)."""
+    anchor_value, anchor_time, _has_checkpoint = get_source_availability_anchor(db, seedling_entry=seedling_entry)
+    delta_sum = db.execute(
+        select(func.coalesce(func.sum(SeedlingDispositionEvent.quantity_delta), 0)).where(
+            SeedlingDispositionEvent.seedling_entry_id == seedling_entry.id,
+            SeedlingDispositionEvent.effective_time > anchor_time,
+            SeedlingDispositionEvent.effective_time <= as_of,
+        )
+    ).scalar_one()
+    return anchor_value + delta_sum
+
+
 def _validate_chronological_balance(
     db: Session, *, seedling_entry_id: uuid.UUID, starting: int, new_effective_time: datetime, new_delta: int,
     exclude_event_id: uuid.UUID | None = None,
 ) -> None:
-    """Section 24/26/82: groups ALL deltas (existing rows, minus
-    `exclude_event_id` if given -- used to simulate a not-yet-inserted
-    REVERSAL's cancellation of its target when pre-checking a replacement
-    REDUCTION, section 19/23 -- plus the pending new one) by `effective_time`,
-    walks the groups in chronological order, and proves the running balance
-    never dips below zero or exceeds `starting` at any point -- not merely
-    in the final aggregate (the ticket's own harder example, section 27)."""
-    rows = db.execute(
-        select(SeedlingDispositionEvent.effective_time, SeedlingDispositionEvent.quantity_delta, SeedlingDispositionEvent.id)
-        .where(SeedlingDispositionEvent.seedling_entry_id == seedling_entry_id)
-    ).all()
+    """Section 24/26/82, extended by NURSERY-OPS-004A section 7/8/24/41:
+    resolves the currently-open balance window's anchor (the latest
+    checkpoint's `remainder_after`, or `starting` if none exists yet),
+    rejects a new event at or before that anchor's own `effective_time`
+    (the checkpoint temporal floor -- a checkpoint has already frozen
+    everything through its own time), then groups ALL deltas strictly
+    AFTER that anchor time (existing rows, minus `exclude_event_id` if
+    given, plus the pending new one) by `effective_time`, walks the groups
+    in chronological order, and proves the running balance never dips
+    below zero or exceeds the anchor value at any point -- not merely in
+    the final aggregate."""
+    anchor_value, anchor_time = _resolve_anchor(db, seedling_entry_id=seedling_entry_id, starting=starting)
+
+    if anchor_time is not None and new_effective_time <= anchor_time:
+        raise SeedlingDispositionPredatesCheckpointError(
+            f"effective_time {new_effective_time.isoformat()} is at or before the latest transplant "
+            f"checkpoint's own effective_time {anchor_time.isoformat()} -- this fact has already been "
+            f"consumed into an immutable transplant handoff and can no longer be changed"
+        )
+
+    query = select(
+        SeedlingDispositionEvent.effective_time, SeedlingDispositionEvent.quantity_delta, SeedlingDispositionEvent.id
+    ).where(SeedlingDispositionEvent.seedling_entry_id == seedling_entry_id)
+    if anchor_time is not None:
+        query = query.where(SeedlingDispositionEvent.effective_time > anchor_time)
+    rows = db.execute(query).all()
+
     grouped: dict[datetime, int] = {}
     for et, delta, eid in rows:
         if exclude_event_id is not None and eid == exclude_event_id:
@@ -180,7 +276,7 @@ def _validate_chronological_balance(
         grouped[et] = grouped.get(et, 0) + delta
     grouped[new_effective_time] = grouped.get(new_effective_time, 0) + new_delta
 
-    running = starting
+    running = anchor_value
     for et in sorted(grouped):
         running += grouped[et]
         if running < 0:
@@ -188,14 +284,20 @@ def _validate_chronological_balance(
                 f"recording this event would drive the chronological Seedling living-quantity balance "
                 f"below zero as of {et.isoformat()}"
             )
-        if running > starting:
+        if running > anchor_value:
             raise SeedlingDispositionBalanceError(
                 f"recording this event would drive the chronological Seedling living-quantity balance "
-                f"above the frozen starting quantity as of {et.isoformat()}"
+                f"above the current open balance window's own opening quantity as of {et.isoformat()}"
             )
 
 
 def _current_balance(db: Session, *, seedling_entry_id: uuid.UUID, starting: int) -> int:
+    """`current_living_seedling_count` -- UNCHANGED NURSERY-OPS-003B
+    meaning, deliberately checkpoint-unaware (NURSERY-OPS-004A section 27):
+    all living plants historically associated with this Tray's entire
+    disposition history, net of every disposition ever recorded against
+    it. This is NOT "how many plants remain available to transplant" --
+    see `get_source_available` for that question."""
     total = db.execute(
         select(SeedlingDispositionEvent.quantity_delta).where(
             SeedlingDispositionEvent.seedling_entry_id == seedling_entry_id
@@ -407,6 +509,17 @@ def correct_disposition(
     if already_corrected is not None:
         raise SeedlingDispositionAlreadyCorrectedError(str(target_event_id))
 
+    # NURSERY-OPS-004A section 6/25: a target already consumed into a
+    # transplant checkpoint may never be newly corrected -- a REVERSAL
+    # sharing the target's own effective_time would retroactively rewrite
+    # a quantity a downstream, immutable transplant handoff already relied
+    # on. Deliberately checked and raised BEFORE the release check below --
+    # this is a distinct reason (history-frozen), not "assignment released"
+    # (the assignment may still be fully active with remainder > 0).
+    _, checkpoint_time = _latest_checkpoint_anchor(db, seedling_entry_id=entry.id)
+    if checkpoint_time is not None and target.effective_time <= checkpoint_time:
+        raise SeedlingDispositionPredatesCheckpointError(str(target_event_id))
+
     assignment = db.execute(
         select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == entry.batch_carrier_assignment_id)
     ).scalar_one()
@@ -578,7 +691,12 @@ def list_seedling_biological_trays(
 ) -> list[SeedlingBiologicalTrayRead]:
     """Section 54/57: every Tray that has a `SeedlingEntry` (active OR
     released -- section 56 wants released context visible too), with its
-    frozen start and derived current balance. One query, no N+1."""
+    frozen start and derived current balance. One query, no N+1.
+
+    NURSERY-OPS-004A section 28: extended with the latest transplant
+    checkpoint (if any) and the checkpoint-aware `current_source_available_
+    count` -- `current_living_seedling_count` stays exactly as it was
+    (checkpoint-unaware; see `_current_balance`'s own docstring)."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -588,6 +706,10 @@ def list_seedling_biological_trays(
             "bca.id AS assignment_id, bca.released_effective_time, "
             "se.id AS seedling_entry_id, se.starting_living_seedling_count, "
             "agg.total_reduction_magnitude, agg.total_reversal_magnitude, agg.event_count, "
+            "cp.id AS checkpoint_id, cp.effective_time AS checkpoint_effective_time, "
+            "cp.remainder_after AS checkpoint_remainder_after, cpcount.checkpoint_count, "
+            "COALESCE(cp.remainder_after, se.starting_living_seedling_count) "
+            "  + COALESCE(post.delta_sum, 0) AS current_source_available_count, "
             "table_loc.id AS table_id, table_loc.code AS table_code "
             "FROM seedling_entries se "
             "JOIN batch_carrier_assignments bca ON bca.id = se.batch_carrier_assignment_id "
@@ -604,6 +726,18 @@ def list_seedling_biological_trays(
             "    COUNT(*) AS event_count "
             "  FROM seedling_disposition_events WHERE seedling_entry_id = se.id "
             ") agg ON true "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT id, effective_time, remainder_after FROM seedling_source_checkpoints "
+            "  WHERE seedling_entry_id = se.id "
+            "  ORDER BY effective_time DESC, recorded_at DESC, id DESC LIMIT 1 "
+            ") cp ON true "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT COUNT(*) AS checkpoint_count FROM seedling_source_checkpoints WHERE seedling_entry_id = se.id "
+            ") cpcount ON true "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT COALESCE(SUM(quantity_delta), 0) AS delta_sum FROM seedling_disposition_events "
+            "  WHERE seedling_entry_id = se.id AND (cp.effective_time IS NULL OR effective_time > cp.effective_time) "
+            ") post ON true "
             "LEFT JOIN occupancies occ ON occ.occupant_carrier_id = carrier.id AND occ.end_time IS NULL "
             "LEFT JOIN locations table_loc ON table_loc.id = occ.target_location_id "
             "LEFT JOIN location_types table_lt ON table_lt.id = table_loc.location_type_id AND table_lt.code = 'seedling_table' "
@@ -619,6 +753,7 @@ def list_seedling_biological_trays(
         reduction = r["total_reduction_magnitude"]
         reversal = r["total_reversal_magnitude"]
         current = starting - reduction + reversal
+        source_available = r["current_source_available_count"]
         results.append(
             SeedlingBiologicalTrayRead(
                 batch_id=r["batch_id"], batch_code=r["batch_code"], tray_id=r["tray_id"], tray_code=r["tray_code"],
@@ -626,7 +761,11 @@ def list_seedling_biological_trays(
                 batch_carrier_assignment_id=r["assignment_id"], seedling_entry_id=r["seedling_entry_id"],
                 starting_living_seedling_count=starting, total_reduction_magnitude=reduction,
                 total_reversal_magnitude=reversal, current_living_seedling_count=current,
-                is_depleted=(current == 0), event_count=r["event_count"],
+                current_source_available_count=source_available,
+                checkpoint_count=r["checkpoint_count"], latest_checkpoint_id=r["checkpoint_id"],
+                latest_checkpoint_effective_time=r["checkpoint_effective_time"],
+                latest_checkpoint_remainder_after=r["checkpoint_remainder_after"],
+                is_depleted=(source_available == 0), event_count=r["event_count"],
                 seedling_table_id=r["table_id"], seedling_table_code=r["table_code"],
                 assignment_active=(r["released_effective_time"] is None),
                 assignment_released_effective_time=r["released_effective_time"],

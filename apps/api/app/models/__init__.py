@@ -41,6 +41,7 @@ from app.models.seedling_disposition_command import SeedlingDispositionCommand
 from app.models.seedling_disposition_event import SeedlingDispositionEvent
 from app.models.seedling_disposition_reason import SeedlingDispositionReason
 from app.models.seedling_entry import SeedlingEntry
+from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
 from app.models.tenant import Tenant
@@ -96,6 +97,7 @@ __all__ = [
     "SeedlingDispositionEvent",
     "SeedlingDispositionReason",
     "SeedlingEntry",
+    "SeedlingSourceCheckpoint",
     "SowingEvent",
     "SowingEventLine",
     "Tenant",

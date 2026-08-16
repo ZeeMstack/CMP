@@ -5365,6 +5365,14 @@ export interface components {
          *     a `SeedlingEntry`, the frozen start, the derived current balance, and
          *     enough context to drive both the record and correction UI without a
          *     second round-trip.
+         *
+         *     NURSERY-OPS-004A section 27/28: `current_living_seedling_count` keeps
+         *     its UNCHANGED 003B meaning -- all living plants ever accounted for by
+         *     this Tray's disposition history, checkpoint-unaware. It does NOT mean
+         *     "still available to transplant" once any checkpoint exists.
+         *     `current_source_available_count` is the new, checkpoint/transplant-
+         *     aware figure operators must use to decide how many plants remain
+         *     transplantable right now.
          */
         SeedlingBiologicalTrayRead: {
             /**
@@ -5405,6 +5413,16 @@ export interface components {
             total_reversal_magnitude: number;
             /** Current Living Seedling Count */
             current_living_seedling_count: number;
+            /** Current Source Available Count */
+            current_source_available_count: number;
+            /** Checkpoint Count */
+            checkpoint_count: number;
+            /** Latest Checkpoint Id */
+            latest_checkpoint_id: string | null;
+            /** Latest Checkpoint Effective Time */
+            latest_checkpoint_effective_time: string | null;
+            /** Latest Checkpoint Remainder After */
+            latest_checkpoint_remainder_after: number | null;
             /** Is Depleted */
             is_depleted: boolean;
             /** Event Count */
@@ -6302,24 +6320,51 @@ export interface components {
             destination_lines: components["schemas"]["TransplantDestinationLineRead"][];
             /** Allocations */
             allocations: components["schemas"]["TransplantAllocationRead"][];
-            /** Total Source Plant Count */
-            total_source_plant_count: number;
+            /** Total Source Available Before */
+            total_source_available_before: number;
             /** Total Destination Plant Count */
             total_destination_plant_count: number;
             /** Total Discarded Plant Count */
             total_discarded_plant_count: number;
+            /** Total Remainder After */
+            total_remainder_after: number;
         };
-        /** TransplantSourceLineIn */
+        /**
+         * TransplantSourceLineIn
+         * @description NURSERY-OPS-004A: the operator supplies only the transplant-boundary
+         *     reconciliation facts for a source Tray -- never `source_plant_count`
+         *     (the authoritative `source_available_before`) and never
+         *     `discarded_plant_count` (the server-computed aggregate of the four
+         *     categorized counts below). Both are always server-derived (section 5/12).
+         */
         TransplantSourceLineIn: {
             /**
              * Source Assignment Id
              * Format: uuid
              */
             source_assignment_id: string;
-            /** Source Plant Count */
-            source_plant_count: number;
-            /** Discarded Plant Count */
-            discarded_plant_count: number;
+            /**
+             * Transplant Damage Count
+             * @default 0
+             */
+            transplant_damage_count: number;
+            /**
+             * Qc Rejection Count
+             * @default 0
+             */
+            qc_rejection_count: number;
+            /**
+             * Sample Count
+             * @default 0
+             */
+            sample_count: number;
+            /**
+             * Other Loss Count
+             * @default 0
+             */
+            other_loss_count: number;
+            /** Other Loss Note */
+            other_loss_note?: string | null;
             /** Note */
             note?: string | null;
         };
@@ -6342,12 +6387,29 @@ export interface components {
              * Format: uuid
              */
             sowing_event_id: string;
-            /** Source Plant Count */
-            source_plant_count: number;
+            /** Source Available Before */
+            source_available_before: number;
+            /** Successful Transferred Count */
+            successful_transferred_count: number;
+            /** Transplant Damage Count */
+            transplant_damage_count: number;
+            /** Qc Rejection Count */
+            qc_rejection_count: number;
+            /** Sample Count */
+            sample_count: number;
+            /** Other Loss Count */
+            other_loss_count: number;
+            /** Other Loss Note */
+            other_loss_note: string | null;
             /** Discarded Plant Count */
             discarded_plant_count: number;
-            /** Allocated Plant Count */
-            allocated_plant_count: number;
+            /** Remainder After */
+            remainder_after: number;
+            /**
+             * Checkpoint Id
+             * Format: uuid
+             */
+            checkpoint_id: string;
             /** Note */
             note: string | null;
         };

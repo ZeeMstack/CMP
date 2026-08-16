@@ -13,6 +13,8 @@ from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.seed_lot import SeedLot
+from app.models.seedling_entry import SeedlingEntry
+from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.sowing_event_line import SowingEventLine
 from app.models.transplant_allocation import TransplantAllocation
 from app.models.transplant_destination_line import TransplantDestinationLine
@@ -28,7 +30,7 @@ from app.schemas.transplant_event import (
     TransplantEventRead,
     TransplantSourceLineRead,
 )
-from app.services import farm_service
+from app.services import farm_service, seedling_disposition_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -38,6 +40,7 @@ from app.services.errors import (
     FarmNotFoundError,
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
+    SourceAssignmentHasNoSeedlingEntryError,
     SourceAssignmentNotFoundError,
     TooManyTransplantLinesError,
     TransplantCommandReusedWithDifferentPayloadError,
@@ -82,6 +85,12 @@ def _compute_transplant_fingerprint(
     effective_time: datetime, note: str | None, source_lines: list[dict], destination_lines: list[dict],
     allocations: list[dict],
 ) -> str:
+    """NURSERY-OPS-004A section 47: the fingerprint covers every logical
+    caller-controlled fact -- including the new categorized loss counts --
+    but deliberately never a server-derived quantity (`source_plant_count`/
+    `source_available_before`, `remainder_after`): those are recomputed
+    fresh on every call (including a replay) from the same authoritative
+    Seedling balance, never trusted from a prior computation."""
     sorted_sources = sorted(source_lines, key=lambda line: str(line["source_assignment_id"]))
     sorted_destinations = sorted(destination_lines, key=lambda line: str(line["destination_carrier_id"]))
     sorted_allocations = sorted(
@@ -94,8 +103,9 @@ def _compute_transplant_fingerprint(
     for line in sorted_sources:
         parts.extend(
             [
-                str(line["source_assignment_id"]), str(line["source_plant_count"]),
-                str(line["discarded_plant_count"]), line.get("note") or "",
+                str(line["source_assignment_id"]), str(line["transplant_damage_count"]),
+                str(line["qc_rejection_count"]), str(line["sample_count"]), str(line["other_loss_count"]),
+                line.get("other_loss_note") or "", line.get("note") or "",
             ]
         )
     for line in sorted_destinations:
@@ -136,6 +146,17 @@ def record_transplant(
     destination_lines: list[dict],
     allocations: list[dict],
 ) -> TransplantEvent:
+    """NURSERY-OPS-004A: modernized -- source authority is entirely
+    server-derived from SeedlingEntry + SeedlingDispositionEvents +
+    SeedlingSourceCheckpoints (never caller-supplied, never bounded by
+    `sown_site_count`/`seed_count`). Each source line's `source_plant_count`
+    becomes the authoritative `source_available_before`; `remainder_after`
+    is server-computed and persisted as an immutable `SeedlingSourceCheckpoint`
+    chained to any prior checkpoint for the same Tray. A source assignment
+    is released iff its own `remainder_after == 0`; otherwise it remains
+    active for a future, sequential partial transplant. Same CropBatch
+    throughout -- never calls `batch_derivation_service`, never creates a
+    child Batch."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if effective_time > datetime.now(timezone.utc):
@@ -155,6 +176,11 @@ def record_transplant(
         destination_lines=destination_lines, allocations=allocations,
     )
 
+    # Section 26: exact replay resolves here, before ANY lock, before
+    # checkpoint/current-state validation, before source-availability
+    # recomputation -- must survive a newer checkpoint, lower source
+    # availability, a since-released source assignment, or newer
+    # dispositions, exactly like every other command in this codebase.
     existing = _find_existing_transplant_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:
         if existing.request_fingerprint == fingerprint:
@@ -264,14 +290,31 @@ def record_transplant(
     )
     assignments_by_id = {a.id: a for a in assignments}
 
+    # Section 5/21: modern source authority is SeedlingEntry-anchored --
+    # lock each source's SeedlingEntry too (deterministic id order,
+    # AFTER assignments -- section 44's chain), and resolve
+    # source_available_before from the checkpoint-aware anchor formula,
+    # never from sown_site_count/seed_count.
+    entries_by_assignment: dict[uuid.UUID, SeedlingEntry] = {}
+    seedling_entry_rows = list(
+        db.execute(
+            select(SeedlingEntry)
+            .where(SeedlingEntry.batch_carrier_assignment_id.in_(source_assignment_ids))
+            .order_by(SeedlingEntry.id)
+            .with_for_update()
+        ).scalars()
+    )
+    for entry in seedling_entry_rows:
+        entries_by_assignment[entry.batch_carrier_assignment_id] = entry
+
     for aid in source_assignment_ids:
         assignment = assignments_by_id[aid]
         if assignment.tenant_id != tenant_id or assignment.farm_id != farm_id or assignment.batch_id != batch.id:
             raise SourceAssignmentNotFoundError(str(aid))
         if assignment.released_effective_time is not None:
             raise SourceAssignmentAlreadyReleasedError(str(aid))
-        if assignment.opening_sowing_event_id is None:
-            raise TransplantValidationError(f"source assignment {aid} did not originate from sowing")
+        if aid not in entries_by_assignment:
+            raise SourceAssignmentHasNoSeedlingEntryError(str(aid))
         if effective_time < assignment.assigned_effective_time:
             raise InvalidTransplantEffectiveTimeError(
                 f"effective_time precedes source assignment {aid}'s assigned_effective_time"
@@ -280,24 +323,31 @@ def record_transplant(
         if carrier.status != "active":
             raise TransplantValidationError(f"source carrier {assignment.carrier_id} is not active")
 
-    sown_counts = dict(
-        db.execute(
-            select(SowingEventLine.batch_carrier_assignment_id, SowingEventLine.sown_site_count).where(
-                SowingEventLine.batch_carrier_assignment_id.in_(source_assignment_ids)
+    # Section 6/7/22/23: derive each source's server-authoritative
+    # source_available_before, and enforce the append-forward temporal
+    # floor against the currently-open balance window (the latest
+    # checkpoint, or SeedlingEntry itself if none exists yet). Mirrors the
+    # DB trigger's own branching exactly: once a checkpoint exists it has
+    # already frozen everything through its own effective_time, so a new
+    # transplant must be strictly AFTER it; with no checkpoint yet, a
+    # transplant AT the SeedlingEntry's own effective_time is still valid.
+    source_available_before: dict[uuid.UUID, int] = {}
+    for aid in source_assignment_ids:
+        entry = entries_by_assignment[aid]
+        anchor_value, anchor_time, has_checkpoint = seedling_disposition_service.get_source_availability_anchor(
+            db, seedling_entry=entry
+        )
+        floor_violated = effective_time <= anchor_time if has_checkpoint else effective_time < anchor_time
+        if floor_violated:
+            raise InvalidTransplantEffectiveTimeError(
+                f"effective_time precedes source assignment {aid}'s currently-open balance window "
+                f"(anchor at {anchor_time.isoformat()})"
             )
-        ).all()
-    )
-    for line in source_lines:
-        aid = line["source_assignment_id"]
-        sown_count = sown_counts.get(aid)
-        if sown_count is None:
-            raise TransplantValidationError(f"no sowing line found for source assignment {aid}")
-        if line["source_plant_count"] > sown_count:
-            raise TransplantValidationError(
-                f"source_plant_count for assignment {aid} cannot exceed its original sown_site_count"
-            )
+        source_available_before[aid] = seedling_disposition_service.get_source_available(
+            db, seedling_entry=entry, as_of=effective_time
+        )
 
-    # In-memory reconciliation.
+    # --- Per-source reconciliation (section 16/17) ---------------------------------
     allocated_by_source: dict[uuid.UUID, int] = {}
     allocated_by_destination: dict[uuid.UUID, int] = {}
     for a in allocations:
@@ -308,14 +358,26 @@ def record_transplant(
             allocated_by_destination.get(a["destination_carrier_id"], 0) + a["allocated_plant_count"]
         )
 
+    remainder_by_source: dict[uuid.UUID, int] = {}
+    discarded_by_source: dict[uuid.UUID, int] = {}
     for line in source_lines:
         aid = line["source_assignment_id"]
-        allocated = allocated_by_source.get(aid, 0)
-        if allocated + line["discarded_plant_count"] != line["source_plant_count"]:
+        available = source_available_before[aid]
+        successful = allocated_by_source.get(aid, 0)
+        damage = line["transplant_damage_count"]
+        rejection = line["qc_rejection_count"]
+        sample = line["sample_count"]
+        other = line["other_loss_count"]
+        discarded = damage + rejection + sample + other
+        remainder = available - successful - discarded
+        if remainder < 0:
             raise TransplantValidationError(
-                f"source assignment {aid} does not reconcile: allocated {allocated} + discarded "
-                f"{line['discarded_plant_count']} != source_plant_count {line['source_plant_count']}"
+                f"source assignment {aid} does not reconcile: successful {successful} + damage {damage} "
+                f"+ rejection {rejection} + sample {sample} + other {other} exceeds the authoritative "
+                f"source_available_before {available}"
             )
+        remainder_by_source[aid] = remainder
+        discarded_by_source[aid] = discarded
 
     for line in destination_lines:
         cid = line["destination_carrier_id"]
@@ -326,16 +388,14 @@ def record_transplant(
                 f"assigned_plant_count {line['assigned_plant_count']}"
             )
 
-    total_source = sum(line["source_plant_count"] for line in source_lines)
+    total_source = sum(source_available_before.values())
     total_destination = sum(line["assigned_plant_count"] for line in destination_lines)
-    total_discarded = sum(line["discarded_plant_count"] for line in source_lines)
-    if total_source != total_destination + total_discarded:
+    total_discarded = sum(discarded_by_source.values())
+    total_remainder = sum(remainder_by_source.values())
+    if total_source != total_destination + total_discarded + total_remainder:
         raise TransplantValidationError("transplant event totals do not reconcile")
 
     # --- Writes -------------------------------------------------------------------
-    # Rollback protection starts before the event insert: a duplicate
-    # client_command_id surfaces as an IntegrityError (replay-or-reject); any
-    # other failure at any later point rolls back the whole command.
     try:
         event = TransplantEvent(
             id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
@@ -351,16 +411,13 @@ def record_transplant(
             source_line = TransplantSourceLine(
                 id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, transplant_event_id=event.id,
                 source_batch_carrier_assignment_id=aid, source_carrier_id=assignments_by_id[aid].carrier_id,
-                source_plant_count=line["source_plant_count"], discarded_plant_count=line["discarded_plant_count"],
-                note=line.get("note"),
+                source_plant_count=source_available_before[aid], discarded_plant_count=discarded_by_source[aid],
+                transplant_damage_count=line["transplant_damage_count"], qc_rejection_count=line["qc_rejection_count"],
+                sample_count=line["sample_count"], other_loss_count=line["other_loss_count"],
+                other_loss_note=line.get("other_loss_note"), note=line.get("note"),
             )
             db.add(source_line)
             source_line_by_assignment[aid] = source_line
-        db.flush()
-
-        for aid, assignment in assignments_by_id.items():
-            assignment.released_effective_time = effective_time
-            assignment.released_by_transplant_event_id = event.id
         db.flush()
 
         destination_assignment_by_carrier: dict[uuid.UUID, BatchCarrierAssignment] = {}
@@ -401,6 +458,47 @@ def record_transplant(
             )
         db.flush()
 
+        # Section 10/22: exactly one checkpoint per modern source line,
+        # inserted LAST (after allocations exist, so the DB trigger can
+        # verify remainder arithmetic against real allocation sums),
+        # chained to the actual latest prior checkpoint for that Tray.
+        for aid in source_assignment_ids:
+            entry = entries_by_assignment[aid]
+            previous_checkpoint_id = db.execute(
+                select(SeedlingSourceCheckpoint.id)
+                .where(SeedlingSourceCheckpoint.seedling_entry_id == entry.id)
+                .order_by(
+                    SeedlingSourceCheckpoint.effective_time.desc(),
+                    SeedlingSourceCheckpoint.recorded_at.desc(),
+                    SeedlingSourceCheckpoint.id.desc(),
+                )
+                .limit(1)
+            ).scalar_one_or_none()
+            db.add(
+                SeedlingSourceCheckpoint(
+                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
+                    seedling_entry_id=entry.id, source_batch_carrier_assignment_id=aid,
+                    transplant_source_line_id=source_line_by_assignment[aid].id,
+                    previous_checkpoint_id=previous_checkpoint_id,
+                    remainder_after=remainder_by_source[aid], effective_time=effective_time,
+                )
+            )
+        db.flush()
+
+        # Section 29/30/45: conditional release -- only when this source's
+        # own remainder reaches zero, and only AFTER its own checkpoint
+        # exists (the checkpoint trigger itself asserts the assignment is
+        # still active at checkpoint-insert time -- releasing first would
+        # make every full-consumption transplant trip that guard against
+        # itself). One source reaching zero must never release another
+        # source that still has remainder (each assignment decided
+        # independently).
+        for aid, assignment in assignments_by_id.items():
+            if remainder_by_source[aid] == 0:
+                assignment.released_effective_time = effective_time
+                assignment.released_by_transplant_event_id = event.id
+        db.flush()
+
         append_audit_event(
             db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.transplanted",
             entity_type="transplant_event", entity_id=event.id,
@@ -415,8 +513,9 @@ def record_transplant(
                 ],
                 "destination_carrier_ids": [str(cid) for cid in destination_carrier_ids],
                 "source_line_count": len(source_lines), "destination_line_count": len(destination_lines),
-                "allocation_count": len(allocations), "total_source_plant_count": total_source,
+                "allocation_count": len(allocations), "total_source_available_before": total_source,
                 "total_destination_plant_count": total_destination, "total_discarded_plant_count": total_discarded,
+                "total_remainder_after": total_remainder,
             },
         )
         db.commit()
@@ -464,6 +563,12 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
     ).all():
         totals[row[0]] = totals.get(row[0], 0) + row[1]
 
+    checkpoints_by_line: dict[uuid.UUID, uuid.UUID] = {}
+    for row in db.execute(
+        select(SeedlingSourceCheckpoint.transplant_source_line_id, SeedlingSourceCheckpoint.id)
+    ).all():
+        checkpoints_by_line[row[0]] = row[1]
+
     rows = db.execute(
         select(TransplantSourceLine, Carrier, CarrierType, SeedLot, Crop, Variety, SowingEventLine.sowing_event_id)
         .join(Carrier, Carrier.id == TransplantSourceLine.source_carrier_id)
@@ -476,6 +581,7 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
         .order_by(Carrier.code, Carrier.id)
     ).all()
     for source_line, carrier, carrier_type, seed_lot, crop, variety, sowing_event_id in rows:
+        successful = totals.get(source_line.id, 0)
         grouped[source_line.transplant_event_id].append(
             TransplantSourceLineRead(
                 id=source_line.id,
@@ -490,9 +596,16 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
                     variety=VarietySummary(id=variety.id, code=variety.code, name=variety.name),
                 ),
                 sowing_event_id=sowing_event_id,
-                source_plant_count=source_line.source_plant_count,
+                source_available_before=source_line.source_plant_count,
+                successful_transferred_count=successful,
+                transplant_damage_count=source_line.transplant_damage_count,
+                qc_rejection_count=source_line.qc_rejection_count,
+                sample_count=source_line.sample_count,
+                other_loss_count=source_line.other_loss_count,
+                other_loss_note=source_line.other_loss_note,
                 discarded_plant_count=source_line.discarded_plant_count,
-                allocated_plant_count=totals.get(source_line.id, 0),
+                remainder_after=source_line.source_plant_count - successful - source_line.discarded_plant_count,
+                checkpoint_id=checkpoints_by_line[source_line.id],
                 note=source_line.note,
             )
         )
@@ -588,9 +701,10 @@ def _row_to_transplant_event_read(row, source_lines: list, destination_lines: li
         effective_time=event.effective_time, recorded_time=event.recorded_time,
         actor_user_id=event.actor_user_id, client_command_id=event.client_command_id, note=event.note,
         source_lines=source_lines, destination_lines=destination_lines, allocations=allocations,
-        total_source_plant_count=sum(line.source_plant_count for line in source_lines),
+        total_source_available_before=sum(line.source_available_before for line in source_lines),
         total_destination_plant_count=sum(line.assigned_plant_count for line in destination_lines),
         total_discarded_plant_count=sum(line.discarded_plant_count for line in source_lines),
+        total_remainder_after=sum(line.remainder_after for line in source_lines),
     )
 
 

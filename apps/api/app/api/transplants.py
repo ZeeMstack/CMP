@@ -16,6 +16,7 @@ from app.services.errors import (
     FarmNotFoundError,
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
+    SourceAssignmentHasNoSeedlingEntryError,
     SourceAssignmentNotFoundError,
     TooManyTransplantLinesError,
     TransplantCommandReusedWithDifferentPayloadError,
@@ -41,8 +42,11 @@ def record_transplant(
     source_lines = [
         {
             "source_assignment_id": line.source_assignment_id,
-            "source_plant_count": line.source_plant_count,
-            "discarded_plant_count": line.discarded_plant_count,
+            "transplant_damage_count": line.transplant_damage_count,
+            "qc_rejection_count": line.qc_rejection_count,
+            "sample_count": line.sample_count,
+            "other_loss_count": line.other_loss_count,
+            "other_loss_note": line.other_loss_note,
             "note": line.note,
         }
         for line in payload.source_lines
@@ -95,6 +99,7 @@ def record_transplant(
         TransplantValidationError,
         InvalidTransplantEffectiveTimeError,
         TooManyTransplantLinesError,
+        SourceAssignmentHasNoSeedlingEntryError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return transplant_service.get_transplant_event(

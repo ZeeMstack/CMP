@@ -1,11 +1,21 @@
 """Proves that record_transplant rolls back every partial write when a
 failure occurs after one or more flushes have already succeeded (using the
 established before_flush / audit-monkeypatch techniques from
-test_sowing_rollback.py / test_observation_quality_rollback.py), and
-separately proves that the CMP-011 deferred reconciliation constraint
-triggers genuinely fire at a real transaction commit boundary — not at
-INSERT time — by committing on a dedicated connection and attempting a
-direct-SQL mutation against an already-committed event."""
+test_sowing_rollback.py / test_observation_quality_rollback.py), against
+NURSERY-OPS-004A's actual write order -- TransplantEvent -> TransplantSourceLine(s)
+-> destination BatchCarrierAssignment(s) -> TransplantDestinationLine(s) ->
+TransplantAllocation(s) -> SeedlingSourceCheckpoint(s) -> conditional source
+release (moved to the END, after checkpoint insertion, per the documented
+write-order bug fix: releasing a source assignment before its own
+checkpoint exists would trip the checkpoint insert-integrity trigger's own
+"already released" guard against itself) -- and separately proves that the
+CMP-011 deferred reconciliation constraint triggers genuinely fire at a real
+transaction commit boundary -- not at INSERT time -- by committing on a
+dedicated connection and attempting a direct-SQL mutation against an
+already-committed event. Scenario setup uses the shared
+`build_transplant_ready_scenario` helper (real sow -> Germination ->
+SeedlingEntry pipeline), matching every other NURSERY-OPS-004A transplant
+test file."""
 import uuid
 from datetime import datetime, timezone
 
@@ -14,19 +24,14 @@ from sqlalchemy import event, func, select, text
 from sqlalchemy.orm import Session
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.transplant_allocation import TransplantAllocation
 from app.models.transplant_destination_line import TransplantDestinationLine
 from app.models.transplant_event import TransplantEvent
 from app.models.transplant_source_line import TransplantSourceLine
-from app.services import (
-    carrier_service,
-    crop_batch_service,
-    crop_service,
-    production_system_service,
-    sowing_service,
-    transplant_service,
-    workflow_service,
-)
+from app.services import carrier_service, transplant_service
+from tests._traceability_scenario import cleanup_traceability_scenario
+from tests._transplant_scenario import build_transplant_ready_scenario
 
 
 class _ForcedFailure(Exception):
@@ -57,110 +62,24 @@ def _fail_audit_event(monkeypatch) -> None:
 
 
 def _build_scenario(db_session, tenant, user, farm):
-    suffix = uuid.uuid4().hex[:8]
-    crop = crop_service.register_crop(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
-        common_name="Iceberg", scientific_name=None, crop_category="leafy_green",
-    )
-    variety = crop_service.register_variety(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"MAM-{suffix}",
-        name="Mamutik", supplier_reference=None,
-    )
-    ps = production_system_service.register_production_system(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-{suffix}", name="Nursery Tray",
-        description=None,
-    )
-    workflow = workflow_service.register_workflow(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
-        production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
-    )
-    version = workflow_service.create_draft_version(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
-    )
-    seeding = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
-        expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
-    )
-    transplanting = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="TRANSPLANTING", name="Transplanting", display_order=1, stage_category="transplanting",
-        expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="cultivation_plate", is_start=False, is_terminal=False,
-    )
-    complete = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="COMPLETE", name="Complete", display_order=2, stage_category="completed",
-        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
-        is_start=False, is_terminal=True,
-    )
-    t1 = workflow_service.add_transition(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        from_stage_id=seeding.id, to_stage_id=transplanting.id, code="ADVANCE-1", name="Advance 1",
-    )
-    workflow_service.add_transition(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        from_stage_id=transplanting.id, to_stage_id=complete.id, code="ADVANCE-2", name="Advance 2",
-    )
-    workflow_service.publish_version(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
-    )
-    batch = crop_batch_service.create_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),
-    )
-    seed_lot = sowing_service.register_seed_lot(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-        variety_id=variety.id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
-        received_date=None, expiry_date=None,
-    )
-    source_carriers = [
-        carrier_service.register_carrier(
-            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, 3)
-    ]
-    sowing_service.sow_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
-        lines=[
-            {"carrier_id": c.id, "seed_lot_id": seed_lot.id, "sown_site_count": 200, "seed_count": 200, "line_note": None}
-            for c in source_carriers
-        ],
-    )
-    assignments = sowing_service.list_batch_carriers(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
-    )
-    assignment_by_carrier_code = {a.carrier.code: a.id for a in assignments}
-    source_assignment_ids = [assignment_by_carrier_code[c.code] for c in source_carriers]
-
-    crop_batch_service.transition_stage(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=_now(), reason=None,
-    )
-    destination_carriers = [
-        carrier_service.register_carrier(
-            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="cultivation_plate", code=f"CP-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, 3)
-    ]
-    return {"batch": batch, "source_assignment_ids": source_assignment_ids, "destination_carriers": destination_carriers}
+    return build_transplant_ready_scenario(db_session, tenant, user, farm, tray_count=2)
 
 
 def _lines(s):
+    dest = s["destination_carriers"][:2]
     source_lines = [
-        {"source_assignment_id": aid, "source_plant_count": 200, "discarded_plant_count": 0, "note": None}
+        {
+            "source_assignment_id": aid, "transplant_damage_count": 0, "qc_rejection_count": 0,
+            "sample_count": 0, "other_loss_count": 0, "other_loss_note": None, "note": None,
+        }
         for aid in s["source_assignment_ids"]
     ]
     destination_lines = [
-        {"destination_carrier_id": c.id, "assigned_plant_count": 200, "note": None} for c in s["destination_carriers"]
+        {"destination_carrier_id": c.id, "assigned_plant_count": s["starting"], "note": None} for c in dest
     ]
     allocations = [
-        {"source_assignment_id": aid, "destination_carrier_id": c.id, "allocated_plant_count": 200}
-        for aid, c in zip(s["source_assignment_ids"], s["destination_carriers"])
+        {"source_assignment_id": aid, "destination_carrier_id": c.id, "allocated_plant_count": s["starting"]}
+        for aid, c in zip(s["source_assignment_ids"], dest)
     ]
     return source_lines, destination_lines, allocations
 
@@ -178,11 +97,11 @@ def _run(db_session, tenant, farm, user, batch, source_lines, destination_lines,
 
 
 def _assert_no_partial_writes(db_session, tenant, s) -> None:
-    """Scoped to this test's own tenant/batch/assignments/carriers — never a
+    """Scoped to this test's own tenant/batch/assignments/carriers -- never a
     bare table-wide count, which would be corrupted by committed rows any
     other test (in this file or elsewhere) has left in the shared database."""
     assert db_session.execute(
-        select(func.count()).select_from(TransplantEvent).where(TransplantEvent.batch_id == s["batch"].id)
+        select(func.count()).select_from(TransplantEvent).where(TransplantEvent.batch_id == s["batch_id"])
     ).scalar_one() == 0
     assert db_session.execute(
         select(func.count()).select_from(TransplantSourceLine).where(
@@ -197,6 +116,24 @@ def _assert_no_partial_writes(db_session, tenant, s) -> None:
     assert db_session.execute(
         select(func.count()).select_from(TransplantAllocation).where(TransplantAllocation.tenant_id == tenant.id)
     ).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(SeedlingSourceCheckpoint).where(
+            SeedlingSourceCheckpoint.batch_id == s["batch_id"]
+        )
+    ).scalar_one() == 0
+
+
+def _assert_no_destination_assignments(db_session, s) -> None:
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.carrier_id.in_([c.id for c in s["destination_carriers"]])
+        )
+    ).scalar_one() == 0
+
+
+def _assert_sources_not_released(db_session, s) -> None:
+    for aid in s["source_assignment_ids"]:
+        assert db_session.get(BatchCarrierAssignment, aid).released_effective_time is None
 
 
 def _assert_session_usable(db_session) -> None:
@@ -217,32 +154,27 @@ def test_rollback_after_event_insert_before_source_lines(db_session, active_cont
         _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
     _assert_no_partial_writes(db_session, tenant, s)
-    for aid in s["source_assignment_ids"]:
-        assert db_session.get(BatchCarrierAssignment, aid).released_effective_time is None
+    _assert_sources_not_released(db_session, s)
     _assert_session_usable(db_session)
 
 
 @pytest.mark.integration
-def test_rollback_after_source_release_before_destination_assignments(db_session, active_context_with_farm) -> None:
+def test_rollback_after_source_lines_before_destination_assignments(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-004A's write order opens destination BatchCarrierAssignment
+    rows immediately after the source lines -- well before source release,
+    which is now the LAST write before the audit event. Targeting `new`
+    BatchCarrierAssignment therefore fires exactly here, not at release."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     source_lines, destination_lines, allocations = _lines(s)
-    # BatchCarrierAssignment appears both as a "dirty" object (source release)
-    # and a "new" object (destination open) within this command; targeting
-    # "new" fires strictly after the release update has already been flushed.
     _fail_before_flushing(db_session, new_types=(BatchCarrierAssignment,))
 
     with pytest.raises(_ForcedFailure):
         _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
     _assert_no_partial_writes(db_session, tenant, s)
-    for aid in s["source_assignment_ids"]:
-        assert db_session.get(BatchCarrierAssignment, aid).released_effective_time is None
-    assert db_session.execute(
-        select(func.count()).select_from(BatchCarrierAssignment).where(
-            BatchCarrierAssignment.carrier_id.in_([c.id for c in s["destination_carriers"]])
-        )
-    ).scalar_one() == 0
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
     _assert_session_usable(db_session)
 
 
@@ -257,13 +189,8 @@ def test_rollback_after_destination_assignments_before_destination_lines(db_sess
         _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
     _assert_no_partial_writes(db_session, tenant, s)
-    for aid in s["source_assignment_ids"]:
-        assert db_session.get(BatchCarrierAssignment, aid).released_effective_time is None
-    assert db_session.execute(
-        select(func.count()).select_from(BatchCarrierAssignment).where(
-            BatchCarrierAssignment.carrier_id.in_([c.id for c in s["destination_carriers"]])
-        )
-    ).scalar_one() == 0
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
     _assert_session_usable(db_session)
 
 
@@ -278,11 +205,53 @@ def test_rollback_after_destination_lines_before_allocations(db_session, active_
         _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
     _assert_no_partial_writes(db_session, tenant, s)
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
     _assert_session_usable(db_session)
 
 
 @pytest.mark.integration
-def test_rollback_after_allocations_before_audit(db_session, active_context_with_farm, monkeypatch) -> None:
+def test_rollback_after_allocations_before_checkpoints(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-004A section 10/22: checkpoints are inserted last of all
+    the "new row" writes, after allocations exist -- a failure here must
+    still unwind the event, source lines, destination assignments,
+    destination lines, and allocations together."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    source_lines, destination_lines, allocations = _lines(s)
+    _fail_before_flushing(db_session, new_types=(SeedlingSourceCheckpoint,))
+
+    with pytest.raises(_ForcedFailure):
+        _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+
+    _assert_no_partial_writes(db_session, tenant, s)
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
+    _assert_session_usable(db_session)
+
+
+@pytest.mark.integration
+def test_rollback_after_checkpoints_before_release(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-004A's own write-order bug fix: conditional source
+    release is the LAST row-level write, strictly after its own checkpoint
+    has already been inserted. A failure here must roll back the
+    checkpoint(s) too, not just leave the release un-applied."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    source_lines, destination_lines, allocations = _lines(s)
+    _fail_before_flushing(db_session, dirty_types=(BatchCarrierAssignment,))
+
+    with pytest.raises(_ForcedFailure):
+        _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+
+    _assert_no_partial_writes(db_session, tenant, s)
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
+    _assert_session_usable(db_session)
+
+
+@pytest.mark.integration
+def test_rollback_after_release_before_audit(db_session, active_context_with_farm, monkeypatch) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     source_lines, destination_lines, allocations = _lines(s)
@@ -292,8 +261,8 @@ def test_rollback_after_allocations_before_audit(db_session, active_context_with
         _run(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
     _assert_no_partial_writes(db_session, tenant, s)
-    for aid in s["source_assignment_ids"]:
-        assert db_session.get(BatchCarrierAssignment, aid).released_effective_time is None
+    _assert_sources_not_released(db_session, s)
+    _assert_no_destination_assignments(db_session, s)
     _assert_session_usable(db_session)
 
 
@@ -321,75 +290,20 @@ def test_reused_integrity_error_rolls_back_before_requery(db_session, active_con
 # --- Deferred reconciliation: real commit boundary ------------------------------------
 #
 # Both tests below build their scenario on a dedicated connection so
-# record_transplant's internal commit is a genuine top-level commit — that's
+# record_transplant's internal commit is a genuine top-level commit -- that's
 # what lets the deferred constraint trigger fire at the real commit boundary
 # they're testing. That commit is real and permanent (the append-only
 # triggers reject a plain DELETE), so each test cleans up everything it
-# committed, for its own tenant only, in a `finally` block using
-# `session_replication_role = replica` — the same technique
-# test_transplant_concurrency.py already uses. This keeps the test repeatable
-# against the same database and keeps other tests (e.g. the CMP-011
-# downgrade-guard proofs, or test_migrations.py's clean-downgrade cycle) from
-# ever observing this test's committed workflow/sowing/transplant history.
-
-
-def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
-    """Deletes every row this test committed for its own tenant, bypassing
-    the append-only/no-delete triggers via session_replication_role. Never
-    relies on connection-close, rollback, or Postgres's transactional GUC
-    behavior alone to restore session_replication_role — it is always
-    explicitly reset to DEFAULT before the connection is released, on both
-    the success and failure paths."""
-    with test_engine.connect() as guard_conn:
-        current_db = guard_conn.execute(text("SELECT current_database()")).scalar_one()
-    if current_db != "cmp_test":
-        raise RuntimeError(
-            f"refusing to run privileged test cleanup (session_replication_role) against "
-            f"database {current_db!r}; this cleanup is only permitted against 'cmp_test'"
-        )
-
-    conn = test_engine.connect()
-    trans = conn.begin()
-    try:
-        conn.execute(text("SET session_replication_role = replica"))
-        conn.execute(text("DELETE FROM transplant_allocations WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_destination_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM crop_batches WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM workflow_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM workflow_stages WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM workflow_versions WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM workflows WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM production_systems WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM varieties WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM crops WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
-    except Exception:
-        # The transaction is now aborted; Postgres rejects any further
-        # statement (including SET ... = DEFAULT) until it is rolled back.
-        # Roll back first, then explicitly restore DEFAULT as its own
-        # statement and commit that restoration on its own — never rely on
-        # rollback's GUC-reset behavior alone to undo replica mode.
-        trans.rollback()
-        conn.execute(text("SET session_replication_role = DEFAULT"))
-        conn.commit()
-        raise
-    else:
-        conn.execute(text("SET session_replication_role = DEFAULT"))
-        trans.commit()
-    finally:
-        conn.close()
+# committed, for its own tenant only, via the shared
+# `cleanup_traceability_scenario` helper (bypasses append-only/no-delete
+# triggers via session_replication_role) -- the same helper
+# test_transplant_concurrency.py already uses, and the only one that knows
+# how to unwind a real Nursery scenario's full table set (sowing,
+# Germination, SeedlingEntry, SeedlingSourceCheckpoint, assets). This keeps
+# the test repeatable against the same database and keeps other tests (e.g.
+# the CMP-011 downgrade-guard proofs, or test_migrations.py's clean-downgrade
+# cycle) from ever observing this test's committed workflow/sowing/transplant
+# history.
 
 
 @pytest.mark.integration
@@ -414,7 +328,7 @@ def test_deferred_trigger_rejects_direct_sql_extra_allocation_on_committed_event
             session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="Defer Farm",
             country_code="AE", city_region=None, timezone="Asia/Dubai",
         )
-        s = _build_scenario(session, tenant, user, farm)
+        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=2)
         source_lines, destination_lines, allocations = _lines(s)
         event_row = _run(session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
@@ -440,7 +354,7 @@ def test_deferred_trigger_rejects_direct_sql_extra_allocation_on_committed_event
             ).all()
         )
         # Cross-pair a source line with a destination line that was NOT
-        # already allocated together by the real command — determined by
+        # already allocated together by the real command -- determined by
         # explicitly checking transplant_allocations, not by guessing from
         # independent UUID sort order (two tables' UUIDs sort independently
         # of which source was originally zipped with which destination, so
@@ -449,8 +363,8 @@ def test_deferred_trigger_rejects_direct_sql_extra_allocation_on_committed_event
         # reaching the deferred reconciliation check this test targets).
         # This still pushes both lines' totals over their own counts. The
         # INSERT itself succeeds (the deferred trigger doesn't run yet);
-        # only the real commit — where the deferred constraint trigger
-        # fires — must reject it.
+        # only the real commit -- where the deferred constraint trigger
+        # fires -- must reject it.
         source_line_id, destination_line_id = next(
             (sid, did)
             for sid in source_line_ids
@@ -475,7 +389,7 @@ def test_deferred_trigger_rejects_direct_sql_extra_allocation_on_committed_event
         session.close()
         conn.close()
         if tenant_id is not None:
-            _cleanup_scenario(test_engine, tenant_id)
+            cleanup_traceability_scenario(test_engine, tenant_id)
 
 
 @pytest.mark.integration
@@ -500,7 +414,7 @@ def test_deferred_trigger_rejects_direct_sql_unmatched_destination_open(test_eng
             session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="Defer Farm 2",
             country_code="AE", city_region=None, timezone="Asia/Dubai",
         )
-        s = _build_scenario(session, tenant, user, farm)
+        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=2)
         source_lines, destination_lines, allocations = _lines(s)
         event_row = _run(session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
 
@@ -520,7 +434,7 @@ def test_deferred_trigger_rejects_direct_sql_unmatched_destination_open(test_eng
                 "VALUES (:id, :tenant_id, :farm_id, :batch_id, :carrier_id, :run_id, :eff, :event_id, :actor)"
             ),
             {
-                "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id, "batch_id": s["batch"].id,
+                "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id, "batch_id": s["batch_id"],
                 "carrier_id": extra_carrier.id, "run_id": active_run_id, "eff": event_row.effective_time,
                 "event_id": event_row.id, "actor": user.id,
             },
@@ -532,4 +446,4 @@ def test_deferred_trigger_rejects_direct_sql_unmatched_destination_open(test_eng
         session.close()
         conn.close()
         if tenant_id is not None:
-            _cleanup_scenario(test_engine, tenant_id)
+            cleanup_traceability_scenario(test_engine, tenant_id)

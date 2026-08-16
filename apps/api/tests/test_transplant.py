@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.models.audit_event import AuditEvent
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.transplant_allocation import TransplantAllocation
 from app.models.transplant_destination_line import TransplantDestinationLine
 from app.models.transplant_event import TransplantEvent
@@ -20,26 +21,24 @@ from app.schemas.transplant_event import (
 from app.services import (
     carrier_service,
     crop_batch_service,
-    crop_service,
-    production_system_service,
-    sowing_service,
     transplant_service,
-    workflow_service,
 )
 from app.services.errors import (
     CarrierNotFoundError,
     DestinationCarrierAlreadyAssignedError,
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
+    SourceAssignmentHasNoSeedlingEntryError,
     TransplantCommandReusedWithDifferentPayloadError,
     TransplantValidationError,
 )
+from tests._transplant_scenario import build_transplant_ready_scenario, now as _now
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
 
 def _source(**overrides):
-    defaults = dict(source_assignment_id=uuid.uuid4(), source_plant_count=200, discarded_plant_count=0)
+    defaults = dict(source_assignment_id=uuid.uuid4())
     defaults.update(overrides)
     return TransplantSourceLineIn(**defaults)
 
@@ -56,9 +55,14 @@ def _allocation(source_id, dest_id, count=200):
     )
 
 
-def test_source_line_discard_exceeding_count_rejected() -> None:
+def test_source_line_other_loss_requires_note() -> None:
     with pytest.raises(ValueError):
-        _source(source_plant_count=100, discarded_plant_count=101)
+        _source(other_loss_count=3, other_loss_note=None)
+
+
+def test_source_line_other_loss_zero_note_not_required() -> None:
+    line = _source(other_loss_count=0)
+    assert line.other_loss_note is None
 
 
 def test_event_duplicate_source_assignment_rejected() -> None:
@@ -129,30 +133,6 @@ def test_event_unused_destination_line_rejected() -> None:
         )
 
 
-def test_event_unused_non_discarded_source_line_rejected() -> None:
-    src_used = _source()
-    src_unused = _source()
-    dest = _destination(assigned_plant_count=200)
-    with pytest.raises(ValueError):
-        TransplantEventCreate(
-            client_command_id=uuid.uuid4(), effective_time=datetime.now(timezone.utc),
-            source_lines=[src_used, src_unused], destination_lines=[dest],
-            allocations=[_allocation(src_used.source_assignment_id, dest.destination_carrier_id)],
-        )
-
-
-def test_event_fully_discarded_source_without_allocation_accepted() -> None:
-    src_used = _source()
-    src_discarded = _source(source_plant_count=50, discarded_plant_count=50)
-    dest = _destination()
-    payload = TransplantEventCreate(
-        client_command_id=uuid.uuid4(), effective_time=datetime.now(timezone.utc),
-        source_lines=[src_used, src_discarded], destination_lines=[dest],
-        allocations=[_allocation(src_used.source_assignment_id, dest.destination_carrier_id)],
-    )
-    assert len(payload.source_lines) == 2
-
-
 def test_event_requires_at_least_one_destination_line() -> None:
     with pytest.raises(ValueError):
         TransplantEventCreate(
@@ -195,126 +175,18 @@ def test_event_too_many_source_lines_rejected() -> None:
 # --- Integration helpers ----------------------------------------------------------
 
 
-def _now():
-    return datetime.now(timezone.utc)
-
-
 def _build_scenario(db_session, tenant, user, farm, *, suffix=None, transplanting_required_type="cultivation_plate"):
-    suffix = suffix or uuid.uuid4().hex[:8]
-    crop = crop_service.register_crop(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
-        common_name="Iceberg", scientific_name=None, crop_category="leafy_green",
+    return build_transplant_ready_scenario(
+        db_session, tenant, user, farm, suffix=suffix, tray_count=4, normal=200, abnormal=0,
+        transplanting_required_type=transplanting_required_type,
     )
-    variety = crop_service.register_variety(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"MAM-{suffix}",
-        name="Mamutik", supplier_reference=None,
-    )
-    ps = production_system_service.register_production_system(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-{suffix}", name="Nursery Tray",
-        description=None,
-    )
-    workflow = workflow_service.register_workflow(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
-        production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
-    )
-    version = workflow_service.create_draft_version(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
-    )
-    seeding = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
-        expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
-    )
-    transplanting = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="TRANSPLANTING", name="Transplanting", display_order=1, stage_category="transplanting",
-        expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code=transplanting_required_type, is_start=False, is_terminal=False,
-    )
-    growing = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="GROWING", name="Growing", display_order=2, stage_category="intermediate",
-        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
-        is_start=False, is_terminal=False,
-    )
-    complete = workflow_service.add_stage(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="COMPLETE", name="Complete", display_order=3, stage_category="completed",
-        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
-        is_start=False, is_terminal=True,
-    )
-    t1 = workflow_service.add_transition(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        from_stage_id=seeding.id, to_stage_id=transplanting.id, code="ADVANCE-1", name="Advance 1",
-    )
-    t2 = workflow_service.add_transition(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        from_stage_id=transplanting.id, to_stage_id=growing.id, code="ADVANCE-2", name="Advance 2",
-    )
-    t3 = workflow_service.add_transition(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        from_stage_id=growing.id, to_stage_id=complete.id, code="ADVANCE-3", name="Advance 3",
-    )
-    workflow_service.publish_version(
-        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
-    )
-    batch = crop_batch_service.create_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),
-    )
-    seed_lot = sowing_service.register_seed_lot(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-        variety_id=variety.id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
-        received_date=None, expiry_date=None,
-    )
-    source_carriers = [
-        carrier_service.register_carrier(
-            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, 5)
-    ]
-    sowing_service.sow_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
-        lines=[
-            {
-                "carrier_id": c.id, "seed_lot_id": seed_lot.id, "sown_site_count": 200, "seed_count": 200,
-                "line_note": None,
-            }
-            for c in source_carriers
-        ],
-    )
-    assignments = sowing_service.list_batch_carriers(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
-    )
-    assignment_by_carrier_code = {a.carrier.code: a.id for a in assignments}
-    source_assignment_ids = [assignment_by_carrier_code[c.code] for c in source_carriers]
-
-    crop_batch_service.transition_stage(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=_now(), reason=None,
-    )
-
-    destination_carriers = [
-        carrier_service.register_carrier(
-            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="cultivation_plate", code=f"CP-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, 5)
-    ]
-    return {
-        "crop": crop, "variety": variety, "workflow": workflow,
-        "stages": {"SEEDING": seeding, "TRANSPLANTING": transplanting, "GROWING": growing, "COMPLETE": complete},
-        "transitions": {"t1": t1, "t2": t2, "t3": t3}, "batch": batch, "seed_lot": seed_lot,
-        "source_carriers": source_carriers, "source_assignment_ids": source_assignment_ids,
-        "destination_carriers": destination_carriers,
-    }
 
 
 def _simple_source(assignment_id, **overrides):
-    defaults = dict(source_assignment_id=assignment_id, source_plant_count=200, discarded_plant_count=0, note=None)
+    defaults = dict(
+        source_assignment_id=assignment_id, transplant_damage_count=0, qc_rejection_count=0, sample_count=0,
+        other_loss_count=0, other_loss_note=None, note=None,
+    )
     defaults.update(overrides)
     return defaults
 
@@ -353,7 +225,10 @@ def test_transplant_one_to_one_succeeds(db_session, active_context_with_farm) ->
     allocations = [
         _simple_allocation(aid, c.id) for aid, c in zip(s["source_assignment_ids"], s["destination_carriers"])
     ]
-    event = _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
 
     assert db_session.execute(
         select(func.count()).select_from(TransplantEvent).where(TransplantEvent.batch_id == s["batch"].id)
@@ -371,6 +246,12 @@ def test_transplant_one_to_one_succeeds(db_session, active_context_with_farm) ->
     )
     assert len(active_destination_assignments) == 4
     assert all(a.released_effective_time is None for a in active_destination_assignments)
+    checkpoint_count = db_session.execute(
+        select(func.count()).select_from(SeedlingSourceCheckpoint).where(
+            SeedlingSourceCheckpoint.batch_id == s["batch"].id
+        )
+    ).scalar_one()
+    assert checkpoint_count == 4
     audit_count = db_session.execute(
         select(func.count()).select_from(AuditEvent).where(
             AuditEvent.action == "crop_batch.transplanted", AuditEvent.entity_id == event.id
@@ -393,7 +274,10 @@ def test_transplant_many_to_many_lineage_exact(db_session, active_context_with_f
         _simple_allocation(a0, d0, 120), _simple_allocation(a0, d1, 80),
         _simple_allocation(a1, d0, 100), _simple_allocation(a1, d1, 100),
     ]
-    event = _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
 
     assert db_session.execute(
         select(func.count()).select_from(TransplantAllocation).where(
@@ -417,19 +301,22 @@ def test_transplant_fully_discarded_source_succeeds(db_session, active_context_w
     s = _build_scenario(db_session, tenant, user, farm)
     used, discarded = s["source_assignment_ids"][0], s["source_assignment_ids"][1]
     source_lines = [
-        _simple_source(used, source_plant_count=200),
-        _simple_source(discarded, source_plant_count=200, discarded_plant_count=200),
+        _simple_source(used),
+        _simple_source(discarded, transplant_damage_count=200),
     ]
     destination_lines = [_simple_destination(s["destination_carriers"][0].id)]
     allocations = [_simple_allocation(used, s["destination_carriers"][0].id, 200)]
-    event = _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
     assert event.id is not None
     discarded_assignment = db_session.get(BatchCarrierAssignment, discarded)
     assert discarded_assignment.released_effective_time == event.effective_time
 
 
 @pytest.mark.integration
-def test_source_not_from_sowing_rejected(db_session, active_context_with_farm) -> None:
+def test_source_with_no_seedling_entry_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     source_lines = [_simple_source(aid) for aid in s["source_assignment_ids"]]
@@ -437,8 +324,14 @@ def test_source_not_from_sowing_rejected(db_session, active_context_with_farm) -
     allocations = [
         _simple_allocation(aid, c.id) for aid, c in zip(s["source_assignment_ids"], s["destination_carriers"])
     ]
-    _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
 
+    # The destination assignment just opened by that transplant has no
+    # SeedlingEntry at all (it's transplant-opened, not sowing-opened) --
+    # modern source authority requires one.
     destination_assignment_id = db_session.execute(
         select(BatchCarrierAssignment.id).where(
             BatchCarrierAssignment.carrier_id == s["destination_carriers"][0].id
@@ -448,11 +341,12 @@ def test_source_not_from_sowing_rejected(db_session, active_context_with_farm) -
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="cultivation_plate", code="CP-FRESH-0001", issued_date=None,
     )
-    with pytest.raises(TransplantValidationError):
+    with pytest.raises(SourceAssignmentHasNoSeedlingEntryError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(destination_assignment_id)], [_simple_destination(fresh_destination.id)],
             [_simple_allocation(destination_assignment_id, fresh_destination.id)],
+            effective_time=s["entry_time"] + timedelta(hours=3),
         )
 
 
@@ -465,7 +359,10 @@ def test_source_assignment_already_released_rejected(db_session, active_context_
     allocations = [
         _simple_allocation(aid, c.id) for aid, c in zip(s["source_assignment_ids"], s["destination_carriers"])
     ]
-    _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
 
     fresh_destination = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -476,6 +373,7 @@ def test_source_assignment_already_released_rejected(db_session, active_context_
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(fresh_destination.id)],
             [_simple_allocation(s["source_assignment_ids"][0], fresh_destination.id)],
+            effective_time=s["entry_time"] + timedelta(hours=3),
         )
 
 
@@ -488,7 +386,10 @@ def test_destination_carrier_already_assigned_rejected(db_session, active_contex
     allocations = [
         _simple_allocation(aid, c.id) for aid, c in zip(s["source_assignment_ids"], s["destination_carriers"])
     ]
-    _transplant(db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations)
+    _transplant(
+        db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
 
     s2 = _build_scenario(db_session, tenant, user, farm, suffix="reuse2")
     with pytest.raises(DestinationCarrierAlreadyAssignedError):
@@ -496,6 +397,7 @@ def test_destination_carrier_already_assigned_rejected(db_session, active_contex
             db_session, tenant, farm, user, s2["batch"],
             [_simple_source(s2["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
             [_simple_allocation(s2["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+            effective_time=s2["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -509,6 +411,7 @@ def test_source_destination_carrier_overlap_rejected(db_session, active_context_
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(source_carrier_id)],
             [_simple_allocation(s["source_assignment_ids"][0], source_carrier_id)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -526,6 +429,7 @@ def test_inactive_destination_carrier_rejected(db_session, active_context_with_f
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
             [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -542,6 +446,7 @@ def test_wrong_destination_carrier_type_rejected(db_session, active_context_with
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(wrong_type_carrier.id)],
             [_simple_allocation(s["source_assignment_ids"][0], wrong_type_carrier.id)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -549,11 +454,16 @@ def test_wrong_destination_carrier_type_rejected(db_session, active_context_with
 def test_missing_transplanting_stage_configuration_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, transplanting_required_type=None)
+    fresh_destination = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        carrier_type_code="cultivation_plate", code="CP-ANY-0001", issued_date=None,
+    )
     with pytest.raises(TransplantValidationError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
-            [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
-            [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+            [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(fresh_destination.id)],
+            [_simple_allocation(s["source_assignment_ids"][0], fresh_destination.id)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -561,17 +471,18 @@ def test_missing_transplanting_stage_configuration_rejected(db_session, active_c
 def test_command_in_non_transplanting_stage_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
-    # Advance past TRANSPLANTING into COMPLETE.
+    # Advance past TRANSPLANTING into GROWING.
     crop_batch_service.transition_stage(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
-        client_command_id=uuid.uuid4(), configured_transition_id=s["transitions"]["t2"].id, effective_time=_now(),
-        reason=None,
+        client_command_id=uuid.uuid4(), configured_transition_id=s["transitions"]["t2"].id,
+        effective_time=s["entry_time"] + timedelta(hours=2), reason=None,
     )
     with pytest.raises(TransplantValidationError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
             [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+            effective_time=s["entry_time"] + timedelta(hours=3),
         )
 
 
@@ -589,28 +500,78 @@ def test_future_effective_time_rejected(db_session, active_context_with_farm) ->
 
 
 @pytest.mark.integration
-def test_source_count_exceeds_sown_site_count_rejected(db_session, active_context_with_farm) -> None:
+def test_sown_site_count_never_consulted_for_modern_source(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-004A section 61: the source Tray's own SowingEventLine
+    has sown_site_count = NULL (deliberate, NURSERY-OPS-001.1) -- the
+    modern checkpoint transplant flow must succeed anyway, proving it never
+    consults sown_site_count and never substitutes seed_count."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    sown_count = db_session.execute(
+        text("SELECT sown_site_count FROM sowing_event_lines WHERE batch_carrier_assignment_id = :aid"),
+        {"aid": s["source_assignment_ids"][0]},
+    ).scalar_one()
+    assert sown_count is None
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"],
+        [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
+        [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
+    assert event.id is not None
+
+
+@pytest.mark.integration
+def test_source_reconciliation_mismatch_rejected(db_session, active_context_with_farm) -> None:
+    """Allocation + loss exceeding the authoritative source availability
+    (200) must be rejected -- remainder would go negative."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     with pytest.raises(TransplantValidationError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
-            [_simple_source(s["source_assignment_ids"][0], source_plant_count=201)],
-            [_simple_destination(s["destination_carriers"][0].id, assigned_plant_count=201)],
-            [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id, 201)],
+            [_simple_source(s["source_assignment_ids"][0], transplant_damage_count=10)],
+            [_simple_destination(s["destination_carriers"][0].id, assigned_plant_count=200)],
+            [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id, 200)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
 @pytest.mark.integration
-def test_in_memory_reconciliation_mismatch_rejected(db_session, active_context_with_farm) -> None:
+def test_partial_allocation_with_remainder_succeeds(db_session, active_context_with_farm) -> None:
+    """NURSERY-OPS-004A: unlike the pre-checkpoint model (where every
+    source line had to be fully consumed by destination+discarded),
+    allocating less than the full source_available_before is now legitimate
+    -- the unallocated remainder is server-derived and checkpointed, not an
+    error."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"],
+        [_simple_source(s["source_assignment_ids"][0])],
+        [_simple_destination(s["destination_carriers"][0].id, assigned_plant_count=150)],
+        [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id, 150)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
+    read = transplant_service.get_transplant_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=s["batch"].id, transplant_event_id=event.id
+    )
+    assert read.source_lines[0].remainder_after == 50
+    assignment = db_session.get(BatchCarrierAssignment, s["source_assignment_ids"][0])
+    assert assignment.released_effective_time is None
+
+
+@pytest.mark.integration
+def test_destination_line_allocation_mismatch_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     with pytest.raises(TransplantValidationError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
-            [_simple_source(s["source_assignment_ids"][0], source_plant_count=200)],
-            [_simple_destination(s["destination_carriers"][0].id, assigned_plant_count=150)],
+            [_simple_source(s["source_assignment_ids"][0])],
+            [_simple_destination(s["destination_carriers"][0].id, assigned_plant_count=200)],
             [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id, 150)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -622,7 +583,7 @@ def test_exact_transplant_retry_returns_original_event(db_session, active_contex
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     command_id = uuid.uuid4()
-    effective_time = _now()
+    effective_time = s["entry_time"] + timedelta(hours=2)
     source_lines = [_simple_source(s["source_assignment_ids"][0])]
     destination_lines = [_simple_destination(s["destination_carriers"][0].id)]
     allocations = [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)]
@@ -649,14 +610,14 @@ def test_reused_command_id_different_payload_rejected(db_session, active_context
         db_session, tenant, farm, user, s["batch"], [_simple_source(s["source_assignment_ids"][0])],
         [_simple_destination(s["destination_carriers"][0].id)],
         [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
-        client_command_id=command_id,
+        client_command_id=command_id, effective_time=s["entry_time"] + timedelta(hours=2),
     )
     with pytest.raises(TransplantCommandReusedWithDifferentPayloadError):
         _transplant(
             db_session, tenant, farm, user, s["batch"], [_simple_source(s["source_assignment_ids"][1])],
             [_simple_destination(s["destination_carriers"][1].id)],
             [_simple_allocation(s["source_assignment_ids"][1], s["destination_carriers"][1].id)],
-            client_command_id=command_id,
+            client_command_id=command_id, effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -665,7 +626,7 @@ def test_retry_after_stage_progression_returns_original_event(db_session, active
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     command_id = uuid.uuid4()
-    effective_time = _now()
+    effective_time = s["entry_time"] + timedelta(hours=2)
     source_lines = [_simple_source(s["source_assignment_ids"][0])]
     destination_lines = [_simple_destination(s["destination_carriers"][0].id)]
     allocations = [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)]
@@ -675,8 +636,8 @@ def test_retry_after_stage_progression_returns_original_event(db_session, active
     )
     crop_batch_service.transition_stage(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
-        client_command_id=uuid.uuid4(), configured_transition_id=s["transitions"]["t2"].id, effective_time=_now(),
-        reason=None,
+        client_command_id=uuid.uuid4(), configured_transition_id=s["transitions"]["t2"].id,
+        effective_time=effective_time + timedelta(hours=1), reason=None,
     )
     retry = _transplant(
         db_session, tenant, farm, user, s["batch"], source_lines, destination_lines, allocations,
@@ -696,6 +657,7 @@ def test_transplant_event_direct_sql_update_and_delete_rejected(db_session, acti
         db_session, tenant, farm, user, s["batch"], [_simple_source(s["source_assignment_ids"][0])],
         [_simple_destination(s["destination_carriers"][0].id)],
         [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
     )
     with pytest.raises(DBAPIError):
         db_session.execute(text("UPDATE transplant_events SET note = 'x' WHERE id = :id"), {"id": event.id})
@@ -715,6 +677,7 @@ def test_batch_carrier_assignment_cannot_reopen(db_session, active_context_with_
         db_session, tenant, farm, user, s["batch"], [_simple_source(s["source_assignment_ids"][0])],
         [_simple_destination(s["destination_carriers"][0].id)],
         [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
     )
     with pytest.raises(DBAPIError):
         db_session.execute(
@@ -749,6 +712,7 @@ def test_cross_tenant_transplant_rejected(db_session, active_context_with_farm) 
             db_session, tenant_b, farm, user_b, s["batch"], [_simple_source(s["source_assignment_ids"][0])],
             [_simple_destination(s["destination_carriers"][0].id)],
             [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
         )
 
 
@@ -764,9 +728,13 @@ def test_transplant_api_smoke(client, active_context_with_farm, db_session) -> N
     resp = client.post(
         f"/farms/{farm.id}/crop-batches/{s['batch'].id}/transplants", headers=headers,
         json={
-            "client_command_id": str(uuid.uuid4()), "effective_time": datetime.now(timezone.utc).isoformat(),
+            "client_command_id": str(uuid.uuid4()),
+            "effective_time": (s["entry_time"] + timedelta(hours=2)).isoformat(),
             "source_lines": [
-                {"source_assignment_id": str(aid), "source_plant_count": 200, "discarded_plant_count": 0}
+                {
+                    "source_assignment_id": str(aid), "transplant_damage_count": 0, "qc_rejection_count": 0,
+                    "sample_count": 0, "other_loss_count": 0,
+                }
                 for aid in s["source_assignment_ids"]
             ],
             "destination_lines": [
@@ -782,14 +750,15 @@ def test_transplant_api_smoke(client, active_context_with_farm, db_session) -> N
             ],
         },
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
     event = resp.json()
     assert len(event["source_lines"]) == 4
     assert len(event["destination_lines"]) == 4
     assert len(event["allocations"]) == 4
-    assert event["total_source_plant_count"] == 800
+    assert event["total_source_available_before"] == 800
     assert event["total_destination_plant_count"] == 800
     assert event["total_discarded_plant_count"] == 0
+    assert event["total_remainder_after"] == 0
 
     list_resp = client.get(f"/farms/{farm.id}/crop-batches/{s['batch'].id}/transplants", headers=headers)
     assert list_resp.status_code == 200

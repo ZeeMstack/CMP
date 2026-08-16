@@ -128,7 +128,15 @@ class SeedlingBiologicalTrayRead(BaseModel):
     """Section 54/57: the dedicated Seedling-page read -- per Tray that has
     a `SeedlingEntry`, the frozen start, the derived current balance, and
     enough context to drive both the record and correction UI without a
-    second round-trip."""
+    second round-trip.
+
+    NURSERY-OPS-004A section 27/28: `current_living_seedling_count` keeps
+    its UNCHANGED 003B meaning -- all living plants ever accounted for by
+    this Tray's disposition history, checkpoint-unaware. It does NOT mean
+    "still available to transplant" once any checkpoint exists.
+    `current_source_available_count` is the new, checkpoint/transplant-
+    aware figure operators must use to decide how many plants remain
+    transplantable right now."""
 
     batch_id: uuid.UUID
     batch_code: str
@@ -143,6 +151,11 @@ class SeedlingBiologicalTrayRead(BaseModel):
     total_reduction_magnitude: int
     total_reversal_magnitude: int
     current_living_seedling_count: int
+    current_source_available_count: int
+    checkpoint_count: int
+    latest_checkpoint_id: uuid.UUID | None
+    latest_checkpoint_effective_time: datetime | None
+    latest_checkpoint_remainder_after: int | None
     is_depleted: bool
     event_count: int
     seedling_table_id: uuid.UUID | None
