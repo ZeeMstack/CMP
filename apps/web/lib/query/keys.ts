@@ -68,4 +68,12 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "trays"] as const,
   availableSeedlingTables: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "tables", "available"] as const,
+
+  // --- NURSERY-OPS-003B -----------------------------------------------------
+  seedlingDispositionReasons: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "disposition-reasons"] as const,
+  seedlingBiologicalTrays: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "biological-trays"] as const,
+  seedlingDispositionHistory: (tenantId: string, farmId: string, seedlingEntryId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "dispositions", seedlingEntryId] as const,
 };

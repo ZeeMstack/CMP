@@ -67,6 +67,18 @@ class Permission(StrEnum):
     # read via asset.read/carrier.read's own nested endpoints).
     MOVEMENT_MANAGE = "movement.manage"
 
+    # NURSERY-OPS-003B: a biological quantity-REDUCING action is materially
+    # more consequential than a descriptive Observation (which
+    # OBSERVATION_ENTRY_MANAGE already covers) -- deliberately split,
+    # mirroring AUTHZ-002B1's own precedent of splitting a permission
+    # exactly when two "recording" actions carry different authority
+    # levels. No standalone read counterpart: Seedling balance/disposition-
+    # history reads reuse SOWING_READ, matching NURSERY-OPS-003A's own
+    # precedent for `list_seedling_candidate_trays` (see
+    # ROLE_PERMISSION_POLICY_PROPOSAL.md discussion pattern for
+    # OBSERVATION_ENTRY_MANAGE/OBSERVATION_DEFINITION_MANAGE).
+    BIOLOGICAL_DISPOSITION_MANAGE = "biological_disposition.manage"
+
     CROP_READ = "crop.read"
     CROP_MANAGE = "crop.manage"
 
@@ -242,6 +254,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
@@ -265,6 +278,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
     }),

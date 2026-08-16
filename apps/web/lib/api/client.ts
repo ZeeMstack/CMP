@@ -54,6 +54,14 @@ export type SeedlingEntryCreate = components["schemas"]["SeedlingEntryCreate"];
 export type SeedlingEntryRead = components["schemas"]["SeedlingEntryRead"];
 export type AvailableSeedlingTableRead = components["schemas"]["AvailableSeedlingTableRead"];
 export type SeedlingCandidateTrayRead = components["schemas"]["SeedlingCandidateTrayRead"];
+export type SeedlingDispositionReasonRead = components["schemas"]["SeedlingDispositionReasonRead"];
+export type SeedlingBiologicalTrayRead = components["schemas"]["SeedlingBiologicalTrayRead"];
+export type SeedlingDispositionHistoryRead = components["schemas"]["SeedlingDispositionHistoryRead"];
+export type SeedlingDispositionEventRead = components["schemas"]["SeedlingDispositionEventRead"];
+export type RecordSeedlingDispositionCreate = components["schemas"]["RecordSeedlingDispositionCreate"];
+export type SeedlingDispositionRecordResult = components["schemas"]["SeedlingDispositionRecordResult"];
+export type CorrectSeedlingDispositionCreate = components["schemas"]["CorrectSeedlingDispositionCreate"];
+export type SeedlingDispositionCorrectResult = components["schemas"]["SeedlingDispositionCorrectResult"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -370,4 +378,54 @@ export function listSeedlingCandidateTrays(
   signal?: AbortSignal,
 ): Promise<SeedlingCandidateTrayRead[]> {
   return getJson<SeedlingCandidateTrayRead[]>(`/farms/${farmId}/nursery/seedling/trays`, signal);
+}
+
+// --- NURSERY-OPS-003B ------------------------------------------------------
+// Seedling Biological Dispositions -- immutable, insert-only quantity-
+// reducing facts recorded AFTER SeedlingEntry (weak/disease/pest/physical
+// damage, mortality, QC rejection, sample, other). Distinct from Movement
+// and from Observation/Quality holds; see docs/domain/OBSERVATION_QUALITY_MODEL.md.
+
+export function listSeedlingDispositionReasons(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<SeedlingDispositionReasonRead[]> {
+  return getJson<SeedlingDispositionReasonRead[]>(`/farms/${farmId}/nursery/seedling/disposition-reasons`, signal);
+}
+
+export function listSeedlingBiologicalTrays(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<SeedlingBiologicalTrayRead[]> {
+  return getJson<SeedlingBiologicalTrayRead[]>(`/farms/${farmId}/nursery/seedling/biological-trays`, signal);
+}
+
+export function getSeedlingDispositionHistory(
+  farmId: string,
+  seedlingEntryId: string,
+  signal?: AbortSignal,
+): Promise<SeedlingDispositionHistoryRead> {
+  return getJson<SeedlingDispositionHistoryRead>(
+    `/farms/${farmId}/nursery/seedling/dispositions?seedling_entry_id=${encodeURIComponent(seedlingEntryId)}`,
+    signal,
+  );
+}
+
+export function recordSeedlingDisposition(
+  farmId: string,
+  payload: RecordSeedlingDispositionCreate,
+  signal?: AbortSignal,
+): Promise<SeedlingDispositionRecordResult> {
+  return postJson<SeedlingDispositionRecordResult>(`/farms/${farmId}/nursery/seedling/dispositions`, payload, signal);
+}
+
+export function correctSeedlingDisposition(
+  farmId: string,
+  eventId: string,
+  payload: CorrectSeedlingDispositionCreate,
+  signal?: AbortSignal,
+): Promise<SeedlingDispositionCorrectResult> {
+  return postJson<SeedlingDispositionCorrectResult>(
+    `/farms/${farmId}/nursery/seedling/dispositions/${eventId}/correct`, payload, signal,
+  );
 }

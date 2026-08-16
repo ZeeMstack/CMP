@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
 import type {
+  CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  RecordSeedlingDispositionCreate,
   SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
@@ -439,6 +441,78 @@ export function useSowNewBatch(farmId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.availableSeedTrays(tenantId, farmId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.operationalSummary(tenantId, farmId, "active") });
       queryClient.invalidateQueries({ queryKey: queryKeys.operationalSummary(tenantId, farmId, "all") });
+    },
+  });
+}
+
+// --- NURSERY-OPS-003B -------------------------------------------------------
+// Seedling Biological Dispositions -- immutable, insert-only quantity-
+// reducing facts recorded AFTER SeedlingEntry. Distinct from Movement and
+// from Observation/Quality holds. Reads reuse SOWING_READ (see api/seedling.py).
+
+export function useSeedlingDispositionReasons(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedlingDispositionReasons(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSeedlingDispositionReasons(farmId, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useSeedlingBiologicalTrays(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedlingBiologicalTrays(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSeedlingBiologicalTrays(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useSeedlingDispositionHistory(farmId: string, seedlingEntryId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedlingDispositionHistory(tenantId ?? "", farmId, seedlingEntryId ?? ""),
+    queryFn: ({ signal }) => api.getSeedlingDispositionHistory(farmId, seedlingEntryId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(seedlingEntryId),
+  });
+}
+
+/** Idempotency key (`client_command_id`) lives in the payload itself, same
+ * replay-safe pattern as every other command here. Recording a disposition
+ * only changes the derived current-balance read for this Tray/Seedling
+ * entry -- the biological-trays list and that entry's own event history are
+ * invalidated; no physical Movement or occupancy read is affected (section
+ * 0.5/62 -- disposition is Movement-independent). */
+export function useRecordSeedlingDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordSeedlingDispositionCreate) => api.recordSeedlingDisposition(farmId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.seedlingDispositionHistory(tenantId, farmId, result.seedling_entry_id),
+      });
+    },
+  });
+}
+
+export function useCorrectSeedlingDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, payload }: { eventId: string; payload: CorrectSeedlingDispositionCreate }) =>
+      api.correctSeedlingDisposition(farmId, eventId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.seedlingDispositionHistory(tenantId, farmId, result.seedling_entry_id),
+      });
     },
   });
 }

@@ -758,3 +758,75 @@ class SeedlingEntryPhysicalChronologyError(DomainError):
     unmapped."""
 
     pass
+
+
+class NoSeedlingEntryError(DomainError):
+    """NURSERY-OPS-003B: the referenced assignment has no SeedlingEntry yet
+    -- a biological disposition can only be recorded against a Tray that has
+    genuinely entered Seedling operations (NURSERY-OPS-003A)."""
+
+    pass
+
+
+class SeedlingDispositionValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidSeedlingDispositionReasonError(DomainError):
+    """NURSERY-OPS-003B: the reason_code is not one of the platform-seeded,
+    Seedling-stage-approved codes (explicitly excludes NON_GERMINATION and
+    TRANSPLANT_DAMAGE, which belong to Germination and future transplant
+    reconciliation respectively -- never Seedling disposition)."""
+
+    pass
+
+
+class SeedlingDispositionAssignmentReleasedError(DomainError):
+    """NURSERY-OPS-003B section 0.E/29: a NEW disposition or correction
+    command is only permitted while the source BatchCarrierAssignment is
+    still currently active -- a deliberate, temporary MVP safeguard until a
+    future Seedling->InterSalads/InterVines handoff ticket freezes its own
+    downstream input quantity. Exact replay of an already-successful command
+    remains valid regardless (checked before this validation)."""
+
+    pass
+
+
+class InvalidSeedlingDispositionEffectiveTimeError(DomainError):
+    pass
+
+
+class SeedlingDispositionBalanceError(DomainError):
+    """NURSERY-OPS-003B: the proposed event would drive the chronological
+    running balance for this SeedlingEntry below zero or above the frozen
+    starting quantity at some effective-time point -- checked service-side
+    for a clean domain error; independently re-verified by the DB trigger
+    (`enforce_seedling_disposition_event_insert_integrity`) as defense in
+    depth against a direct-SQL bypass."""
+
+    pass
+
+
+class SeedlingDispositionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class SeedlingDispositionEventNotFoundError(DomainError):
+    pass
+
+
+class SeedlingDispositionNotReductionError(DomainError):
+    """NURSERY-OPS-003B section 21/22: only a REDUCTION event may ever be
+    the target of a correction/reversal -- a REVERSAL can never itself be
+    corrected (chain stays flat)."""
+
+    pass
+
+
+class SeedlingDispositionAlreadyCorrectedError(DomainError):
+    """NURSERY-OPS-003B section 21: a REDUCTION may be reversed/corrected at
+    most once, ever."""
+
+    pass
