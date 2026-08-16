@@ -15,7 +15,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.services import operational_read_service
+from app.services import operational_read_service, transplant_service
 from app.services.lineage_traversal import _snapshot_connection
 from tests._operational_read_scenario import (
     batch_id_by_code,
@@ -33,9 +33,9 @@ from tests._operational_read_scenario import (
     sow_batch,
     split,
     transition,
-    transplant_to_plate,
 )
 from tests._traceability_scenario import cleanup_traceability_scenario
+from tests._transplant_scenario import build_transplant_ready_scenario
 
 
 @pytest.mark.integration
@@ -289,32 +289,54 @@ def test_transplant_releases_source_assignment_and_places_destination(test_engin
     the destination carrier remains active) -- included to prove placement
     resolution follows the currently-active assignment, not stale ones.
     The genuine mixed-placement case (two concurrently active carriers,
-    only one placed) is exercised separately below."""
+    only one placed) is exercised separately below.
+
+    NURSERY-OPS-004A modernized `record_transplant` to require a real,
+    SeedlingEntry-anchored source (never a bare field-sown assignment with
+    only `sown_site_count`) -- so this test's own transplant leg is built
+    via the shared `build_transplant_ready_scenario` helper (sow ->
+    Germination -> SeedlingEntry), the same one every NURSERY-OPS-004A
+    transplant test uses, rather than the simpler field-sown
+    `build_transplant_workflow_scaffold` this file's other tests use for
+    scenarios that never transplant."""
     from tests._operational_read_scenario import build_greenhouse_tree
 
     tenant_id = None
     try:
-        t0 = now() - timedelta(minutes=30)
         with committed_connection(test_engine) as session:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
-            scaffold = build_transplant_workflow_scaffold(session, tenant, user, farm)
-            sown = sow_batch(session, tenant, user, farm, scaffold, effective_time=t0)
-            transition(
-                session, tenant, user, farm, batch_id=sown["batch"].id,
-                configured_transition_id=scaffold["t_seed_to_transplant"].id, effective_time=minutes_after(t0, 1),
-            )
-            transplanted = transplant_to_plate(
-                session, tenant, user, farm, batch_id=sown["batch"].id,
-                source_assignment_id=sown["assignment_id"], effective_time=minutes_after(t0, 2),
+            s = build_transplant_ready_scenario(session, tenant, user, farm, tray_count=1)
+            source_assignment_id = s["source_assignment_ids"][0]
+            destination = s["destination_carriers"][0]
+            transplant_effective_time = s["entry_time"] + timedelta(hours=1)
+            transplant_service.record_transplant(
+                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],
+                client_command_id=uuid.uuid4(), effective_time=transplant_effective_time, note=None,
+                source_lines=[
+                    {
+                        "source_assignment_id": source_assignment_id, "transplant_damage_count": 0,
+                        "qc_rejection_count": 0, "sample_count": 0, "other_loss_count": 0, "other_loss_note": None,
+                        "note": None,
+                    }
+                ],
+                destination_lines=[
+                    {"destination_carrier_id": destination.id, "assigned_plant_count": s["starting"], "note": None}
+                ],
+                allocations=[
+                    {
+                        "source_assignment_id": source_assignment_id, "destination_carrier_id": destination.id,
+                        "allocated_plant_count": s["starting"],
+                    }
+                ],
             )
             tree = build_greenhouse_tree(session, tenant, user, farm, position_count=1)
             place_carrier(
-                session, tenant, user, farm, carrier_id=transplanted["plate"].id,
-                location_id=tree["positions"][0].id, effective_time=minutes_after(t0, 3),
+                session, tenant, user, farm, carrier_id=destination.id,
+                location_id=tree["positions"][0].id, effective_time=transplant_effective_time + timedelta(hours=1),
             )
             session.commit()
-            batch_id, farm_id = sown["batch"].id, farm.id
+            batch_id, farm_id = s["batch_id"], farm.id
 
         with _snapshot_connection(test_engine) as conn:
             [ctx] = operational_read_service.get_batch_operational_contexts(

@@ -479,6 +479,16 @@ class TooManyTransplantLinesError(DomainError):
     pass
 
 
+class SourceAssignmentHasNoSeedlingEntryError(DomainError):
+    """NURSERY-OPS-004A section 5/21: modern transplant source authority
+    derives entirely from SeedlingEntry + SeedlingDispositionEvents +
+    SeedlingSourceCheckpoints -- a source assignment with no SeedlingEntry
+    at all has no authoritative source quantity 004A can derive, and is
+    rejected outright (never bounded against `sown_site_count`, never
+    substituted with `seed_count`)."""
+    pass
+
+
 class BatchDerivationEventNotFoundError(DomainError):
     pass
 
@@ -822,6 +832,20 @@ class SeedlingDispositionNotReductionError(DomainError):
     the target of a correction/reversal -- a REVERSAL can never itself be
     corrected (chain stays flat)."""
 
+    pass
+
+
+class SeedlingDispositionPredatesCheckpointError(DomainError):
+    """NURSERY-OPS-004A section 6/25: a disposition event whose own
+    `effective_time` is at or before the latest `SeedlingSourceCheckpoint`
+    for its `seedling_entry_id` has already been consumed into a
+    downstream, immutable transplant handoff -- it may never be newly
+    corrected (a REVERSAL sharing that event's own effective_time would
+    retroactively change an already-frozen checkpoint boundary). Deliberately
+    distinct from `SeedlingDispositionAssignmentReleasedError` -- the
+    assignment may still be fully active (partial transplant, remainder >
+    0); the reason this correction is blocked is that the fact itself
+    predates a checkpoint, not that the assignment is released."""
     pass
 
 

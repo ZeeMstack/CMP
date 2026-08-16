@@ -18,7 +18,6 @@ from app.services import (
     production_system_service,
     quality_hold_service,
     sowing_service,
-    transplant_service,
     workflow_service,
 )
 from tests._traceability_scenario import (  # noqa: F401  re-exported for test files
@@ -272,24 +271,6 @@ def transition(db: Session, tenant, user, farm, *, batch_id, configured_transiti
         client_command_id=uuid.uuid4(), configured_transition_id=configured_transition_id,
         effective_time=effective_time, reason=None,
     )
-
-
-def transplant_to_plate(db: Session, tenant, user, farm, *, batch_id, source_assignment_id, effective_time, plate_suffix=None):
-    plate_suffix = plate_suffix or uuid.uuid4().hex[:8]
-    plate = carrier_service.register_carrier(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="cultivation_plate", code=f"PLATE-{plate_suffix}", issued_date=None,
-    )
-    transplant_service.record_transplant(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
-        client_command_id=uuid.uuid4(), effective_time=effective_time, note=None,
-        source_lines=[{"source_assignment_id": source_assignment_id, "source_plant_count": 10, "discarded_plant_count": 0, "note": None}],
-        destination_lines=[{"destination_carrier_id": plate.id, "assigned_plant_count": 10, "note": None}],
-        allocations=[{"source_assignment_id": source_assignment_id, "destination_carrier_id": plate.id, "allocated_plant_count": 10}],
-    )
-    assignments = sowing_service.list_batch_carriers(db, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch_id)
-    new_assignment_id = next(a.id for a in assignments if a.carrier.id == plate.id)
-    return {"plate": plate, "assignment_id": new_assignment_id}
 
 
 def build_greenhouse_tree(db: Session, tenant, user, farm, *, suffix=None, position_count=2):

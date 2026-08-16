@@ -277,6 +277,13 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         # seedling_entries/germination_outcome_snapshots -- a bare DELETE
         # against a table that doesn't exist at that schema revision would
         # raise UndefinedTable and mask the test's own assertion.
+        # NURSERY-OPS-004A: seedling_source_checkpoints is new to this
+        # shared cleanup -- 004A's own transplant concurrency tests are the
+        # first scenarios to commit real (test_engine-backed) checkpoint
+        # rows. Must precede BOTH seedling_entries (below) and
+        # transplant_source_lines (further below) -- it references both.
+        if conn.execute(text("SELECT to_regclass('seedling_source_checkpoints')")).scalar() is not None:
+            conn.execute(text("DELETE FROM seedling_source_checkpoints WHERE tenant_id = :tid"), {"tid": tenant_id})
         # NURSERY-OPS-003B: seedling_disposition_events/_commands are new to
         # this shared cleanup -- 003B's own concurrency tests are the first
         # scenarios to commit real (test_engine-backed) disposition rows.
@@ -334,6 +341,19 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM varieties WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM crops WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # NURSERY-OPS-004A: assets/asset_positions were a genuine, pre-
+        # existing gap in this shared cleanup -- any Nursery scenario that
+        # registers a germination trolley (asset) + positions (e.g.
+        # test_seedling_disposition.py's own concurrency tests, and now
+        # NURSERY-OPS-004A's transplant concurrency tests) leaked these
+        # rows into cmp_test with no downstream check ever catching it,
+        # unlike the workflow_stages leak that broke a downgrade guard.
+        # asset_positions must precede assets (FK).
+        conn.execute(
+            text("DELETE FROM asset_positions WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :tid)"),
+            {"tid": tenant_id},
+        )
+        conn.execute(text("DELETE FROM assets WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM locations WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})

@@ -61,6 +61,13 @@ class SeedlingEntry(Base):
         UniqueConstraint(
             "tenant_id", "client_command_id", name="ux_seedling_entries_tenant_client_command_id"
         ),
+        # NURSERY-OPS-004A: needed as the FK target for
+        # seedling_source_checkpoints' (tenant_id, farm_id, seedling_entry_id)
+        # composite FK. Added via a new migration (ALTER TABLE) -- the
+        # historical migration that created this table is untouched.
+        UniqueConstraint(
+            "tenant_id", "farm_id", "id", name="uq_seedling_entries_tenant_farm_id"
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "batch_id"],
             ["crop_batches.tenant_id", "crop_batches.farm_id", "crop_batches.id"],

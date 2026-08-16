@@ -29,7 +29,7 @@ moment of the call (via the committed data that exists at that instant),
 and the evidence is torn down immediately afterward, exactly like any other
 committed-connection test in this suite."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -40,6 +40,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
+from tests._traceability_scenario import cleanup_traceability_scenario
+from tests._transplant_scenario import build_transplant_ready_scenario
 
 API_ROOT = Path(__file__).resolve().parent.parent
 # Never hardcode "current head" — later tickets (e.g. CMP-012) add revisions
@@ -222,15 +224,14 @@ def test_migration_downgrade_blocked_when_transplanting_stage_exists_without_tra
 
 @pytest.mark.integration
 def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine, alembic_head_restore) -> None:
-    from app.services import (
-        carrier_service,
-        crop_batch_service,
-        crop_service,
-        production_system_service,
-        sowing_service,
-        transplant_service,
-        workflow_service,
-    )
+    """NURSERY-OPS-004A: modern transplant requires a real, SeedlingEntry-
+    anchored Nursery scenario -- built via the shared
+    `build_transplant_ready_scenario` helper (sow -> Germination ->
+    SeedlingEntry), matching every other 004A test's own setup. Cleaned up
+    via the shared `cleanup_traceability_scenario` (covers the Nursery/
+    checkpoint tables this scenario touches that this file's own minimal
+    `_cleanup_scenario` never needed to know about)."""
+    from app.services import transplant_service
 
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -239,109 +240,39 @@ def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine,
     try:
         tenant, user, farm = _create_minimal_tenant_farm(session, code_suffix=f"hist-{suffix}")
         tenant_id = tenant.id
-        crop = crop_service.register_crop(
-            session, tenant_id=tenant.id, actor_user_id=user.id, code=f"CROP-H-{suffix}",
-            common_name="History Crop", scientific_name=None, crop_category="leafy_green",
-        )
-        variety = crop_service.register_variety(
-            session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, code=f"VAR-H-{suffix}",
-            name="History Variety", supplier_reference=None,
-        )
-        ps = production_system_service.register_production_system(
-            session, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-H-{suffix}", name="History System",
-            description=None,
-        )
-        workflow = workflow_service.register_workflow(
-            session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
-            production_system_id=ps.id, code=f"WF-H-{suffix}", name="History Workflow",
-        )
-        version = workflow_service.create_draft_version(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
-        )
-        seeding = workflow_service.add_stage(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
-            expected_duration_minutes=None, permitted_location_type_code=None,
-            required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
-        )
-        transplanting = workflow_service.add_stage(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            code="TRANSPLANTING", name="Transplanting", display_order=1, stage_category="transplanting",
-            expected_duration_minutes=None, permitted_location_type_code=None,
-            required_carrier_type_code="cultivation_plate", is_start=False, is_terminal=False,
-        )
-        complete = workflow_service.add_stage(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            code="COMPLETE", name="Complete", display_order=2, stage_category="completed",
-            expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
-            is_start=False, is_terminal=True,
-        )
-        transition = workflow_service.add_transition(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            from_stage_id=seeding.id, to_stage_id=transplanting.id, code="ADVANCE-1", name="Advance",
-        )
-        workflow_service.add_transition(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            from_stage_id=transplanting.id, to_stage_id=complete.id, code="ADVANCE-2", name="Advance 2",
-        )
-        workflow_service.publish_version(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
-        )
-        batch = crop_batch_service.create_batch(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-            code=f"BATCH-H-{suffix}", workflow_id=workflow.id, effective_time=_now(),
-        )
-        seed_lot = sowing_service.register_seed_lot(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-            variety_id=variety.id, code=f"LOT-H-{suffix}", supplier_name=None, supplier_lot_reference=None,
-            received_date=None, expiry_date=None,
-        )
-        source_carrier = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-H-{suffix}", issued_date=None,
-        )
-        sowing_service.sow_batch(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-            client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
-            lines=[
-                {
-                    "carrier_id": source_carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": 100,
-                    "seed_count": 100, "line_note": None,
-                }
-            ],
-        )
-        source_assignment_id = sowing_service.list_batch_carriers(
-            session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
-        )[0].id
-        crop_batch_service.transition_stage(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-            client_command_id=uuid.uuid4(), configured_transition_id=transition.id, effective_time=_now(),
-            reason=None,
-        )
-        destination_carrier = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="cultivation_plate", code=f"CP-H-{suffix}", issued_date=None,
-        )
+        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=1)
+        session.commit()
+
+        source_assignment_id = s["source_assignment_ids"][0]
+        destination_carrier = s["destination_carriers"][0]
         event = transplant_service.record_transplant(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-            client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],
+            client_command_id=uuid.uuid4(), effective_time=s["entry_time"] + timedelta(hours=2), note=None,
             source_lines=[
                 {
-                    "source_assignment_id": source_assignment_id, "source_plant_count": 100,
-                    "discarded_plant_count": 0, "note": None,
+                    "source_assignment_id": source_assignment_id, "transplant_damage_count": 0,
+                    "qc_rejection_count": 0, "sample_count": 0, "other_loss_count": 0, "other_loss_note": None,
+                    "note": None,
                 }
             ],
-            destination_lines=[{"destination_carrier_id": destination_carrier.id, "assigned_plant_count": 100, "note": None}],
+            destination_lines=[{"destination_carrier_id": destination_carrier.id, "assigned_plant_count": 200, "note": None}],
             allocations=[
                 {
                     "source_assignment_id": source_assignment_id, "destination_carrier_id": destination_carrier.id,
-                    "allocated_plant_count": 100,
+                    "allocated_plant_count": 200,
                 }
             ],
         )
+        session.commit()
         event_id = event.id
 
-        with pytest.raises(RuntimeError, match="transplant events"):
+        # NURSERY-OPS-004A's own migration now sits above CMP-011's in the
+        # chain -- its own guard (checkpoint history) fires FIRST for any
+        # modern transplant, before the downgrade walk ever reaches
+        # CMP-011's original "transplant events exist" guard further down.
+        # Same shadowing pattern already established for NURSERY-OPS-003B's
+        # own guard shadowing an even-older one.
+        with pytest.raises(RuntimeError, match="seedling_source_checkpoints"):
             command.downgrade(_cfg(), _PRE_CMP011_REVISION)
 
         _assert_at_head(test_engine)
@@ -363,4 +294,102 @@ def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine,
         session.close()
         conn.close()
         if tenant_id is not None:
-            _cleanup_scenario(test_engine, tenant_id)
+            cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_migration_downgrade_blocked_when_multi_event_source_assignment_exists(test_engine, alembic_head_restore) -> None:
+    """NURSERY-OPS-004A section 39: even with zero checkpoints left (so the
+    migration's OWN checkpoint-history guard is silenced), the old lifetime-
+    once `UNIQUE(source_batch_carrier_assignment_id)` constraint cannot be
+    restored once a source assignment has genuinely appeared in more than
+    one transplant event -- exactly what a partial/sequential transplant of
+    the same Tray produces. Reaching this SPECIFIC guard (rather than the
+    checkpoint-history guard, which always fires first and would otherwise
+    shadow it -- the same shadowing pattern proven in the test above)
+    requires deleting the checkpoint rows directly, bypassing the append-
+    only trigger via `session_replication_role`, while deliberately leaving
+    the duplicate `transplant_source_lines` rows in place."""
+    from app.services import transplant_service
+
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    suffix = uuid.uuid4().hex[:8]
+    tenant_id = None
+    try:
+        tenant, user, farm = _create_minimal_tenant_farm(session, code_suffix=f"multi-{suffix}")
+        tenant_id = tenant.id
+        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=1, normal=100)
+        session.commit()
+
+        source_assignment_id = s["source_assignment_ids"][0]
+        destination_carriers = s["destination_carriers"]
+
+        def _source_line(damage=0):
+            return [
+                {
+                    "source_assignment_id": source_assignment_id, "transplant_damage_count": damage,
+                    "qc_rejection_count": 0, "sample_count": 0, "other_loss_count": 0, "other_loss_note": None,
+                    "note": None,
+                }
+            ]
+
+        transplant_service.record_transplant(
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],
+            client_command_id=uuid.uuid4(), effective_time=s["entry_time"] + timedelta(hours=1), note=None,
+            source_lines=_source_line(), destination_lines=[
+                {"destination_carrier_id": destination_carriers[0].id, "assigned_plant_count": 40, "note": None}
+            ],
+            allocations=[
+                {
+                    "source_assignment_id": source_assignment_id, "destination_carrier_id": destination_carriers[0].id,
+                    "allocated_plant_count": 40,
+                }
+            ],
+        )
+        session.commit()
+        # Second, sequential transplant against the SAME (still-active,
+        # remainder=60) source assignment -- fully consumes it, producing a
+        # second transplant_source_lines row sharing source_batch_carrier_
+        # assignment_id with the first.
+        transplant_service.record_transplant(
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],
+            client_command_id=uuid.uuid4(), effective_time=s["entry_time"] + timedelta(hours=2), note=None,
+            source_lines=_source_line(), destination_lines=[
+                {"destination_carrier_id": destination_carriers[1].id, "assigned_plant_count": 60, "note": None}
+            ],
+            allocations=[
+                {
+                    "source_assignment_id": source_assignment_id, "destination_carrier_id": destination_carriers[1].id,
+                    "allocated_plant_count": 60,
+                }
+            ],
+        )
+        session.commit()
+
+        with test_engine.connect() as guard_conn:
+            guard_conn.execute(text("SET session_replication_role = replica"))
+            guard_conn.execute(
+                text("DELETE FROM seedling_source_checkpoints WHERE tenant_id = :tid"), {"tid": tenant.id}
+            )
+            guard_conn.execute(text("SET session_replication_role = DEFAULT"))
+            guard_conn.commit()
+
+        with pytest.raises(RuntimeError, match="appears in"):
+            command.downgrade(_cfg(), _PRE_CMP011_REVISION)
+
+        _assert_at_head(test_engine)
+        with test_engine.connect() as verify_conn:
+            line_count = verify_conn.execute(
+                text(
+                    "SELECT count(*) FROM transplant_source_lines "
+                    "WHERE source_batch_carrier_assignment_id = :aid"
+                ),
+                {"aid": source_assignment_id},
+            ).scalar_one()
+        assert line_count == 2, "a blocked downgrade must leave both source lines intact"
+    finally:
+        session.close()
+        conn.close()
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)

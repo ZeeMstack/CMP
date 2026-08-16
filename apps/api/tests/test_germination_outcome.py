@@ -18,16 +18,25 @@ from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
 from app.models.movement import Movement
 from app.schemas.germination_outcome import GerminationOutcomeCommandCreate, GerminationOutcomeIn
-from app.schemas.farm_setup import GreenhouseSetupCreate, NurserySectionConfig, NurserySetupConfig
+from app.schemas.farm_setup import (
+    GerminationChamberSetupConfig,
+    GreenhouseSetupCreate,
+    NurserySectionConfig,
+    NurserySetupConfig,
+    TableGeneratorConfig,
+)
 from app.services import (
+    asset_service,
     carrier_service,
     crop_batch_service,
     crop_service,
     farm_setup_service,
     germination_outcome_service,
+    germination_service,
     nursery_service,
     observation_service,
     production_system_service,
+    seedling_entry_service,
     sowing_service,
     workflow_service,
 )
@@ -211,7 +220,21 @@ def _build_legacy_scenario(db_session, tenant, user, farm, *, suffix=None, seed_
 def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
     """A Batch that advances Seeding -> Transplanting -> real
     `transplant_service.record_transplant`, releasing the source
-    assignment -- used only by the temporal-assignment-validation tests."""
+    assignment -- used only by the temporal-assignment-validation tests.
+
+    NURSERY-OPS-004A modernized `record_transplant` to require a real,
+    SeedlingEntry-anchored source. To keep `sow_time + 2 days` ("mid_time",
+    used by `test_historical_outcome_before_release_accepted_even_when_
+    now_released`) a valid moment for a caller to record a fresh
+    PROVISIONAL Germination outcome, this scenario's own internal
+    Germination pipeline (needed only to satisfy `record_transplant`'s new
+    precondition) is deliberately timed to complete AFTER mid_time -- a
+    provisional outcome at or before an assignment's own latest COMPLETED
+    outcome time is fine (`observation_service.record_observation` only
+    rejects a provisional recorded AFTER a completed one), but one strictly
+    after it is not, so the internal outcome/SeedlingEntry pipeline here
+    runs at sow_time+3d/+4d, strictly after mid_time (sow_time+2d) and
+    strictly before release_time (sow_time+5d, unchanged)."""
     suffix = suffix or uuid.uuid4().hex[:8]
     from app.services import transplant_service
 
@@ -263,36 +286,96 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
     workflow_service.publish_version(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
     )
-    sow_time = _now() - timedelta(days=10)
-    batch_created_time = sow_time - timedelta(hours=1)
-    batch = crop_batch_service.create_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=batch_created_time,
-    )
     seed_lot = sowing_service.register_seed_lot(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
         variety_id=variety.id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
+
+    setup = farm_setup_service.create_greenhouse_setup(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        payload=GreenhouseSetupCreate(
+            code=f"NUR-{suffix}", name="Nursery", classification="nursery", client_command_id=uuid.uuid4(),
+            nursery=NurserySetupConfig(
+                seeding_station=NurserySectionConfig(code=f"SEED-{suffix}"),
+                germination_chamber=GerminationChamberSetupConfig(code=f"GC-{suffix}", trolley_capacity=None),
+                seedling_tables=TableGeneratorConfig(
+                    code_prefix=f"ST{suffix[:4]}", start=1, end=1, pad_width=2, capacity=1
+                ),
+            ),
+        ),
+    )
+    structure = farm_setup_service.get_greenhouse_structure(
+        db_session.connection(), tenant_id=tenant.id, farm_id=farm.id, greenhouse_id=setup.greenhouse_id,
+    )
+    seeding_station_id = structure.nursery_seeding_stations[0].id
+    chamber_id = structure.nursery_germination_chamber.id
+    table_id = structure.nursery_seedling.tables[0].id
+
+    trolley = asset_service.register_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code=f"GT-{suffix}", name="Trolley", commissioned_date=None,
+    )
+    asset_service.generate_positions(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id,
+        shelf_count=1, slots_per_shelf=1, shelf_prefix=f"SH-{suffix}-", slot_prefix="SL-",
+        shelf_pad_width=2, slot_pad_width=2,
+    )
+    slot_id = db_session.execute(
+        text("SELECT id FROM asset_positions WHERE asset_id = :aid AND position_kind = 'slot' ORDER BY code"),
+        {"aid": trolley.id},
+    ).scalar_one()
+
     carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="seed_tray", code=f"ST-{suffix}-0001", issued_date=None,
     )
-    sowing_service.sow_batch(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), effective_time=sow_time, note=None,
-        lines=[
-            {"carrier_id": carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": 200, "seed_count": 200, "line_note": None},
-        ],
+
+    sow_time = _now() - timedelta(days=10)
+    event = nursery_service.sow_new_batch(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        seed_lot_id=seed_lot.id, seeding_station_id=seeding_station_id, seeding_machine_id=None,
+        effective_time=sow_time, note=None, trays=[{"carrier_id": carrier.id, "seeds_sown": 200}],
     )
+    batch_id = event.batch_id
     assignments = sowing_service.list_batch_carriers(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch_id
     )
     assignment_id = assignments[0].id
 
+    germination_time = sow_time + timedelta(days=1)
+    germination_service.place_trolley_in_chamber(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        trolley_id=trolley.id, chamber_id=chamber_id, effective_time=germination_time, reason=None,
+    )
+    germination_service.place_tray_in_slot(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        tray_id=carrier.id, trolley_id=trolley.id, slot_id=slot_id, effective_time=germination_time, reason=None,
+    )
+
+    # Strictly AFTER mid_time (sow_time+2d) -- see the docstring above.
+    outcome_time = sow_time + timedelta(days=3)
+    germination_outcome_service.record_germination_outcomes(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
+        client_command_id=uuid.uuid4(), effective_time=outcome_time, note=None,
+        outcomes=[
+            {
+                "batch_carrier_assignment_id": assignment_id, "normal_seedling_count": 190,
+                "abnormal_seedling_count": 6, "assessment_complete": True, "note": None,
+            }
+        ],
+    )
+
+    entry_time = sow_time + timedelta(days=4)
+    seedling_entry_service.record_seedling_entry(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        batch_carrier_assignment_id=assignment_id, destination_seedling_table_id=table_id,
+        effective_time=entry_time, reason=None,
+    )
+
     crop_batch_service.transition_stage(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=sow_time + timedelta(days=1),
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
+        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=entry_time + timedelta(hours=1),
         reason=None,
     )
     destination_carrier = carrier_service.register_carrier(
@@ -301,14 +384,26 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
     )
     release_time = sow_time + timedelta(days=5)
     transplant_service.record_transplant(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_id,
         client_command_id=uuid.uuid4(), effective_time=release_time, note=None,
-        source_lines=[{"source_assignment_id": assignment_id, "source_plant_count": 200, "discarded_plant_count": 0, "note": None}],
-        destination_lines=[{"destination_carrier_id": destination_carrier.id, "assigned_plant_count": 200, "note": None}],
-        allocations=[{"source_assignment_id": assignment_id, "destination_carrier_id": destination_carrier.id, "allocated_plant_count": 200}],
+        source_lines=[
+            {
+                "source_assignment_id": assignment_id, "transplant_damage_count": 0, "qc_rejection_count": 0,
+                "sample_count": 0, "other_loss_count": 0, "other_loss_note": None, "note": None,
+            }
+        ],
+        destination_lines=[
+            {"destination_carrier_id": destination_carrier.id, "assigned_plant_count": 196, "note": None}
+        ],
+        allocations=[
+            {
+                "source_assignment_id": assignment_id, "destination_carrier_id": destination_carrier.id,
+                "allocated_plant_count": 196,
+            }
+        ],
     )
     return {
-        "batch_id": batch.id, "assignment_id": assignment_id, "sow_time": sow_time, "release_time": release_time,
+        "batch_id": batch_id, "assignment_id": assignment_id, "sow_time": sow_time, "release_time": release_time,
     }
 
 

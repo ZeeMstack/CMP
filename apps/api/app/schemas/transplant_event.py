@@ -27,22 +27,31 @@ def _blank_to_none(v: str | None) -> str | None:
 
 
 class TransplantSourceLineIn(BaseModel):
+    """NURSERY-OPS-004A: the operator supplies only the transplant-boundary
+    reconciliation facts for a source Tray -- never `source_plant_count`
+    (the authoritative `source_available_before`) and never
+    `discarded_plant_count` (the server-computed aggregate of the four
+    categorized counts below). Both are always server-derived (section 5/12)."""
+
     model_config = ConfigDict(extra="forbid")
 
     source_assignment_id: uuid.UUID
-    source_plant_count: int = Field(gt=0)
-    discarded_plant_count: int = Field(ge=0)
+    transplant_damage_count: int = Field(ge=0, default=0)
+    qc_rejection_count: int = Field(ge=0, default=0)
+    sample_count: int = Field(ge=0, default=0)
+    other_loss_count: int = Field(ge=0, default=0)
+    other_loss_note: str | None = None
     note: str | None = None
 
-    @field_validator("note")
+    @field_validator("other_loss_note", "note")
     @classmethod
-    def validate_note(cls, v: str | None) -> str | None:
+    def validate_notes(cls, v: str | None) -> str | None:
         return _blank_to_none(v)
 
     @model_validator(mode="after")
-    def validate_discard(self) -> "TransplantSourceLineIn":
-        if self.discarded_plant_count > self.source_plant_count:
-            raise ValueError("discarded_plant_count cannot exceed source_plant_count")
+    def validate_other_loss_note(self) -> "TransplantSourceLineIn":
+        if self.other_loss_count > 0 and not self.other_loss_note:
+            raise ValueError("other_loss_note is required when other_loss_count > 0")
         return self
 
 
@@ -112,19 +121,16 @@ class TransplantEventCreate(BaseModel):
             if allocation.destination_carrier_id not in dest_id_set:
                 raise ValueError("allocation references an undeclared destination_carrier_id")
 
+        # NURSERY-OPS-004A: unlike the pre-checkpoint model, a destination
+        # line lacking any allocation is no longer structurally impossible
+        # to reconcile (a source's leftover could -- degenerately -- become
+        # 100% remainder), but a destination line the operator explicitly
+        # declared and that received nothing is still almost certainly a
+        # mistake, so this check is kept.
         allocated_dest_ids = {a.destination_carrier_id for a in self.allocations}
         unused_destinations = dest_id_set - allocated_dest_ids
         if unused_destinations:
             raise ValueError("every destination line must receive at least one allocation")
-
-        allocated_source_ids = {a.source_assignment_id for a in self.allocations}
-        lines_by_source = {line.source_assignment_id: line for line in self.source_lines}
-        for source_id in source_id_set - allocated_source_ids:
-            line = lines_by_source[source_id]
-            if line.discarded_plant_count != line.source_plant_count:
-                raise ValueError(
-                    f"source_assignment_id {source_id} has no allocations and is not fully discarded"
-                )
         return self
 
 
@@ -134,9 +140,16 @@ class TransplantSourceLineRead(BaseModel):
     carrier: CarrierSummary
     seed_lot: SeedLotSummary
     sowing_event_id: uuid.UUID
-    source_plant_count: int
+    source_available_before: int
+    successful_transferred_count: int
+    transplant_damage_count: int
+    qc_rejection_count: int
+    sample_count: int
+    other_loss_count: int
+    other_loss_note: str | None
     discarded_plant_count: int
-    allocated_plant_count: int
+    remainder_after: int
+    checkpoint_id: uuid.UUID
     note: str | None
 
 
@@ -172,6 +185,7 @@ class TransplantEventRead(BaseModel):
     source_lines: list[TransplantSourceLineRead]
     destination_lines: list[TransplantDestinationLineRead]
     allocations: list[TransplantAllocationRead]
-    total_source_plant_count: int
+    total_source_available_before: int
     total_destination_plant_count: int
     total_discarded_plant_count: int
+    total_remainder_after: int
