@@ -132,7 +132,7 @@ def _find_existing_transplant_event(
 # --- Command ------------------------------------------------------------------------
 
 
-def record_transplant(
+def _record_transplant_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
@@ -145,18 +145,46 @@ def record_transplant(
     source_lines: list[dict],
     destination_lines: list[dict],
     allocations: list[dict],
-) -> TransplantEvent:
-    """NURSERY-OPS-004A: modernized -- source authority is entirely
-    server-derived from SeedlingEntry + SeedlingDispositionEvents +
-    SeedlingSourceCheckpoints (never caller-supplied, never bounded by
-    `sown_site_count`/`seed_count`). Each source line's `source_plant_count`
-    becomes the authoritative `source_available_before`; `remainder_after`
-    is server-computed and persisted as an immutable `SeedlingSourceCheckpoint`
-    chained to any prior checkpoint for the same Tray. A source assignment
-    is released iff its own `remainder_after == 0`; otherwise it remains
-    active for a future, sequential partial transplant. Same CropBatch
-    throughout -- never calls `batch_derivation_service`, never creates a
-    child Batch."""
+) -> tuple[TransplantEvent, bool]:
+    """NURSERY-OPS-004B.0: the validate+lock+write core of `record_transplant`,
+    with no commit and no refresh -- extracted so a future composite
+    orchestration (NURSERY-OPS-004B: transplant + destination Movement/
+    Occupancy in one outer transaction) can call this directly, exactly the
+    same extraction pattern `movement_service._execute_movement_core` and
+    `seedling_entry_service`'s own composition of it already established.
+    Returns `(event, is_new)` -- `is_new=False` whenever `event` is an
+    already-committed row returned by an idempotency short-circuit (exact
+    replay before any lock, exact replay after the CropBatch lock, or a
+    concurrent-race replay recovered from a flush-time IntegrityError); the
+    caller must skip `db.commit()`/`db.refresh()` in that case, since
+    nothing new was written this call. `is_new=True` only when this call
+    itself created the TransplantEvent and its full write set below.
+
+    NURSERY-OPS-004A: source authority is entirely server-derived from
+    SeedlingEntry + SeedlingDispositionEvents + SeedlingSourceCheckpoints
+    (never caller-supplied, never bounded by `sown_site_count`/`seed_count`).
+    Each source line's `source_plant_count` becomes the authoritative
+    `source_available_before`; `remainder_after` is server-computed and
+    persisted as an immutable `SeedlingSourceCheckpoint` chained to any
+    prior checkpoint for the same Tray. A source assignment is released iff
+    its own `remainder_after == 0`; otherwise it remains active for a
+    future, sequential partial transplant. Same CropBatch throughout --
+    never calls `batch_derivation_service`, never creates a child Batch.
+
+    Deliberately carries no blanket `except Exception: db.rollback()` --
+    only the flush-time `IntegrityError` branch below calls `db.rollback()`,
+    because Postgres has already forced that transaction into an aborted
+    state by that point regardless (the same constraint
+    `_execute_movement_core`'s own docstring documents, made explicit here
+    rather than engineered away). A non-DB exception raised inside this
+    core (e.g. from `append_audit_event`) is NOT caught here -- rollback
+    ownership for that case belongs to whichever caller owns the outer
+    transaction (the public `record_transplant` wrapper below, or a future
+    composite orchestration), never to this reusable core. A caller
+    composing this core with earlier writes of its own in the SAME
+    transaction must therefore call this core FIRST, before any write it
+    cannot afford to lose to the IntegrityError-triggered rollback below --
+    exactly the same caveat already accepted for `_execute_movement_core`."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if effective_time > datetime.now(timezone.utc):
@@ -184,7 +212,7 @@ def record_transplant(
     existing = _find_existing_transplant_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:
         if existing.request_fingerprint == fingerprint:
-            return existing
+            return existing, False
         raise TransplantCommandReusedWithDifferentPayloadError(str(client_command_id))
 
     batch = db.execute(
@@ -198,7 +226,7 @@ def record_transplant(
     existing = _find_existing_transplant_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:
         if existing.request_fingerprint == fingerprint:
-            return existing
+            return existing, False
         raise TransplantCommandReusedWithDifferentPayloadError(str(client_command_id))
 
     if batch.state != "active":
@@ -518,20 +546,54 @@ def record_transplant(
                 "total_remainder_after": total_remainder,
             },
         )
-        db.commit()
     except IntegrityError as exc:
         db.rollback()
         constraint = _constraint_name(exc)
         if constraint == "ux_transplant_events_tenant_client_command_id":
             replay = _find_existing_transplant_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
             if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
+                return replay, False
             raise TransplantCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
         raise
+    return event, True
+
+
+def record_transplant(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    effective_time: datetime,
+    note: str | None,
+    source_lines: list[dict],
+    destination_lines: list[dict],
+    allocations: list[dict],
+) -> TransplantEvent:
+    """Public entry point: runs `_record_transplant_core` then owns the
+    transaction boundary (commit + refresh) itself, exactly as before this
+    function was split -- every existing caller's behavior is unchanged.
+    `db.rollback()` on any exception from the core (not just IntegrityError)
+    preserves this function's own long-standing contract that no partial
+    write ever survives a failed transplant command, exactly as the
+    combined function did before NURSERY-OPS-004B.0's extraction -- this is
+    deliberately kept here, on the public wrapper that owns the transaction,
+    rather than inside the reusable core (see `_record_transplant_core`'s
+    own docstring)."""
+    try:
+        event, is_new = _record_transplant_core(
+            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+            client_command_id=client_command_id, effective_time=effective_time, note=note,
+            source_lines=source_lines, destination_lines=destination_lines, allocations=allocations,
+        )
     except Exception:
         db.rollback()
         raise
-    db.refresh(event)
+    if is_new:
+        db.commit()
+        db.refresh(event)
     return event
 
 
