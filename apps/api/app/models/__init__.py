@@ -37,6 +37,9 @@ from app.models.recall import (
     RecallScopeProduceLot,
 )
 from app.models.seed_lot import SeedLot
+from app.models.seedling_disposition_command import SeedlingDispositionCommand
+from app.models.seedling_disposition_event import SeedlingDispositionEvent
+from app.models.seedling_disposition_reason import SeedlingDispositionReason
 from app.models.seedling_entry import SeedlingEntry
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
@@ -89,6 +92,9 @@ __all__ = [
     "RecallScopeFinishedGoodsLot",
     "RecallScopeProduceLot",
     "SeedLot",
+    "SeedlingDispositionCommand",
+    "SeedlingDispositionEvent",
+    "SeedlingDispositionReason",
     "SeedlingEntry",
     "SowingEvent",
     "SowingEventLine",

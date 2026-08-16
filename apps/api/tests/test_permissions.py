@@ -93,6 +93,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
@@ -109,6 +110,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
     }),
@@ -222,7 +224,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
 }
 
 _EXPECTED_COUNTS = {
-    "farm_manager": 25, "head_grower": 25, "production_supervisor": 24, "operator": 16,
+    "farm_manager": 25, "head_grower": 25, "production_supervisor": 25, "operator": 17,
     "storekeeper": 6, "qc_officer": 19, "packing_supervisor": 12, "cold_store_supervisor": 11,
     "dispatch_officer": 11, "auditor": 20, "read_only": 20,
 }
@@ -231,7 +233,7 @@ _EXPECTED_COUNTS = {
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
-    assert len(_ALL_PERMISSIONS) == 42
+    assert len(_ALL_PERMISSIONS) == 43
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -380,9 +382,9 @@ def test_dispatch_officer_negative_grants() -> None:
     assert Permission.FINISHED_GOODS_STORAGE_MANAGE not in granted
 
 
-def test_tenant_admin_has_all_42() -> None:
+def test_tenant_admin_has_all_43() -> None:
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 42
+    assert len(granted) == 43
     assert granted == _ALL_PERMISSIONS
 
 

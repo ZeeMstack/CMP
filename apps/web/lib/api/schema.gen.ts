@@ -1464,6 +1464,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/nursery/seedling/dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Seedling Disposition History */
+        get: operations["get_seedling_disposition_history_farms__farm_id__nursery_seedling_dispositions_get"];
+        put?: never;
+        /** Record Seedling Disposition */
+        post: operations["record_seedling_disposition_farms__farm_id__nursery_seedling_dispositions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seedling/dispositions/{event_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Seedling Disposition */
+        post: operations["correct_seedling_disposition_farms__farm_id__nursery_seedling_dispositions__event_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seedling/disposition-reasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Seedling Disposition Reasons */
+        get: operations["list_seedling_disposition_reasons_farms__farm_id__nursery_seedling_disposition_reasons_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/seedling/biological-trays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Seedling Biological Trays */
+        get: operations["list_seedling_biological_trays_farms__farm_id__nursery_seedling_biological_trays_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/quality-holds": {
         parameters: {
             query?: never;
@@ -2658,6 +2727,34 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /**
+         * CorrectSeedlingDispositionCreate
+         * @description Section 18/0.B: `corrected=None` means VOID (reversal only, no
+         *     replacement); a populated `corrected` means replace the original with a
+         *     corrected biological fact. One atomic command either way (section 0.A).
+         */
+        CorrectSeedlingDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            corrected?: components["schemas"]["CorrectedDispositionIn"] | null;
+        };
+        /** CorrectedDispositionIn */
+        CorrectedDispositionIn: {
+            /** Quantity */
+            quantity: number;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
         };
         /** CropBatchCreate */
         CropBatchCreate: {
@@ -5033,6 +5130,35 @@ export interface components {
             /** Package Count */
             package_count: number;
         };
+        /**
+         * RecordSeedlingDispositionCreate
+         * @description Section 17: the operator supplies only physical/biological command
+         *     facts -- a positive `quantity`, never a signed delta, never a current
+         *     or starting balance.
+         */
+        RecordSeedlingDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Quantity */
+            quantity: number;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+        };
         /** ResolvedLocationRead */
         ResolvedLocationRead: {
             occupant: components["schemas"]["OccupantRef"];
@@ -5233,6 +5359,65 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * SeedlingBiologicalTrayRead
+         * @description Section 54/57: the dedicated Seedling-page read -- per Tray that has
+         *     a `SeedlingEntry`, the frozen start, the derived current balance, and
+         *     enough context to drive both the record and correction UI without a
+         *     second round-trip.
+         */
+        SeedlingBiologicalTrayRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Tray Id
+             * Format: uuid
+             */
+            tray_id: string;
+            /** Tray Code */
+            tray_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Name */
+            variety_name: string;
+            /** Seed Lot Code */
+            seed_lot_code: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Seedling Entry Id
+             * Format: uuid
+             */
+            seedling_entry_id: string;
+            /** Starting Living Seedling Count */
+            starting_living_seedling_count: number;
+            /** Total Reduction Magnitude */
+            total_reduction_magnitude: number;
+            /** Total Reversal Magnitude */
+            total_reversal_magnitude: number;
+            /** Current Living Seedling Count */
+            current_living_seedling_count: number;
+            /** Is Depleted */
+            is_depleted: boolean;
+            /** Event Count */
+            event_count: number;
+            /** Seedling Table Id */
+            seedling_table_id: string | null;
+            /** Seedling Table Code */
+            seedling_table_code: string | null;
+            /** Assignment Active */
+            assignment_active: boolean;
+            /** Assignment Released Effective Time */
+            assignment_released_effective_time: string | null;
+        };
         /** SeedlingCandidateTrayRead */
         SeedlingCandidateTrayRead: {
             /**
@@ -5259,6 +5444,127 @@ export interface components {
              * @enum {string}
              */
             state: "no_completed_handoff" | "ready_for_seedling" | "in_seedling" | "in_seedling_unanchored" | "elsewhere";
+        };
+        /** SeedlingDispositionCorrectResult */
+        SeedlingDispositionCorrectResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Seedling Entry Id
+             * Format: uuid
+             */
+            seedling_entry_id: string;
+            target_event: components["schemas"]["SeedlingDispositionEventRead"];
+            reversal_event: components["schemas"]["SeedlingDispositionEventRead"];
+            replacement_event: components["schemas"]["SeedlingDispositionEventRead"] | null;
+            /** Previous Living Seedling Count */
+            previous_living_seedling_count: number;
+            /** Resulting Living Seedling Count */
+            resulting_living_seedling_count: number;
+        };
+        /** SeedlingDispositionEventRead */
+        SeedlingDispositionEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Seedling Entry Id
+             * Format: uuid
+             */
+            seedling_entry_id: string;
+            /**
+             * Event Kind
+             * @enum {string}
+             */
+            event_kind: "REDUCTION" | "REVERSAL";
+            /** Reason Code */
+            reason_code: string;
+            /** Quantity Delta */
+            quantity_delta: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note: string | null;
+            /** Reverses Event Id */
+            reverses_event_id: string | null;
+            /** Corrects Event Id */
+            corrects_event_id: string | null;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /**
+         * SeedlingDispositionHistoryRead
+         * @description Full, un-collapsed event history for one Tray -- section 55: never
+         *     hides original erroneous facts; corrections are visible as their own
+         *     rows with explicit linkage.
+         */
+        SeedlingDispositionHistoryRead: {
+            /**
+             * Seedling Entry Id
+             * Format: uuid
+             */
+            seedling_entry_id: string;
+            /** Starting Living Seedling Count */
+            starting_living_seedling_count: number;
+            /** Current Living Seedling Count */
+            current_living_seedling_count: number;
+            /** Events */
+            events: components["schemas"]["SeedlingDispositionEventRead"][];
+        };
+        /** SeedlingDispositionReasonRead */
+        SeedlingDispositionReasonRead: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** SeedlingDispositionRecordResult */
+        SeedlingDispositionRecordResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Seedling Entry Id
+             * Format: uuid
+             */
+            seedling_entry_id: string;
+            event: components["schemas"]["SeedlingDispositionEventRead"];
+            /** Previous Living Seedling Count */
+            previous_living_seedling_count: number;
+            /** Quantity Delta */
+            quantity_delta: number;
+            /** Resulting Living Seedling Count */
+            resulting_living_seedling_count: number;
         };
         /**
          * SeedlingEntryCreate
@@ -10558,6 +10864,197 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SeedlingCandidateTrayRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_seedling_disposition_history_farms__farm_id__nursery_seedling_dispositions_get: {
+        parameters: {
+            query: {
+                seedling_entry_id: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingDispositionHistoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_seedling_disposition_farms__farm_id__nursery_seedling_dispositions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordSeedlingDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingDispositionRecordResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_seedling_disposition_farms__farm_id__nursery_seedling_dispositions__event_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectSeedlingDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingDispositionCorrectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seedling_disposition_reasons_farms__farm_id__nursery_seedling_disposition_reasons_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingDispositionReasonRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seedling_biological_trays_farms__farm_id__nursery_seedling_biological_trays_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedlingBiologicalTrayRead"][];
                 };
             };
             /** @description Validation Error */

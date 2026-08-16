@@ -277,6 +277,17 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         # seedling_entries/germination_outcome_snapshots -- a bare DELETE
         # against a table that doesn't exist at that schema revision would
         # raise UndefinedTable and mask the test's own assertion.
+        # NURSERY-OPS-003B: seedling_disposition_events/_commands are new to
+        # this shared cleanup -- 003B's own concurrency tests are the first
+        # scenarios to commit real (test_engine-backed) disposition rows.
+        # Without these deletes, leftover rows survive into later tests in
+        # the same session and trip the NURSERY-OPS-003B downgrade guard
+        # (which counts live seedling_disposition_events rows) for every
+        # subsequent migration-downgrade test. Must precede seedling_entries
+        # below (events/commands both reference it).
+        for table in ("seedling_disposition_events", "seedling_disposition_commands"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         for table in (
             "seedling_entries", "germination_outcome_snapshots", "germination_checks",
             "observation_values", "observation_events",
