@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MoveTrayForm } from "@/components/nursery/MoveTrayForm";
 import { PlaceTrolleyForm } from "@/components/nursery/PlaceTrolleyForm";
+import { RecordOutcomeForm } from "@/components/nursery/RecordOutcomeForm";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import type { GerminationTrayRead } from "@/lib/api/client";
@@ -32,7 +33,7 @@ function errorMessage(error: unknown): string {
 
 export default function GerminationPage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | null>(null);
+  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | "outcome" | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const traysQuery = useGerminationTrays(farmId);
@@ -70,9 +71,16 @@ export default function GerminationPage() {
               <button
                 type="button"
                 onClick={() => setActiveAction("tray")}
-                className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
+                className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
               >
                 Move Tray to Germination
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveAction("outcome")}
+                className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
+              >
+                Record Outcome
               </button>
             </div>
           )
@@ -109,6 +117,10 @@ export default function GerminationPage() {
             });
           }}
         />
+      )}
+
+      {activeAction === "outcome" && (
+        <RecordOutcomeForm farmId={farmId} onSuccess={closeAction} onCancel={closeAction} />
       )}
 
       {activeAction === null && (

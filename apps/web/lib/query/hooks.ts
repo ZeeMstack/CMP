@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
 import type {
+  GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
@@ -336,6 +337,35 @@ export function usePlaceTray(farmId: string) {
         queryKey: queryKeys.trolleySlots(tenantId, farmId, variables.trolley_id),
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
+    },
+  });
+}
+
+// --- NURSERY-OPS-002B -------------------------------------------------------
+// Modern, INDIVIDUAL-SEEDLING-based Germination outcome.
+
+export function useCurrentGerminationOutcomes(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.currentGerminationOutcomes(tenantId ?? "", farmId, batchId),
+    queryFn: ({ signal }) => api.getCurrentGerminationOutcomes(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+/** Idempotency key (`client_command_id`) lives in the payload itself, same
+ * replay-safe pattern as every other command here. Recording an outcome
+ * never changes physical placement/occupancy -- only the Batch's own
+ * current-outcome read is invalidated. */
+export function useRecordGerminationOutcomes(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GerminationOutcomeCommandCreate) => api.recordGerminationOutcomes(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.currentGerminationOutcomes(tenantId, farmId, batchId) });
     },
   });
 }

@@ -42,6 +42,14 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
       if (url.includes("/germination/trays")) return jsonResponse(overrides.trays ?? TRAYS);
       if (url.includes("/germination/chambers/available")) return jsonResponse(overrides.chambers ?? []);
       if (url.includes("/germination/trolleys/available")) return jsonResponse(overrides.trolleys ?? []);
+      if (url.includes("/germination-outcomes/current")) {
+        return jsonResponse(
+          overrides.currentOutcomes ?? {
+            batch_id: "batch-1", batch_code: "CB-0001", trays: [], authoritative_living_seedling_total: 0,
+            completed_tray_count: 0, unresolved_tray_count: 0, all_resolved: false,
+          },
+        );
+      }
       if (url.includes("/assets")) return jsonResponse(overrides.assets ?? []);
       return jsonResponse([]);
     }),
@@ -91,6 +99,16 @@ describe("GerminationPage", () => {
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Move Tray to Germination" }));
+    await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByText("Place Trolley")).toBeInTheDocument());
+  });
+
+  it("opens the Record Outcome form and returns to the list on cancel", async () => {
+    stubFetch();
+    render(withQueryClient(<GerminationPage />));
+    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Record Outcome" }));
     await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByText("Place Trolley")).toBeInTheDocument());
