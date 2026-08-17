@@ -25,6 +25,10 @@ Core promise: complete forward and backward traceability from supplier lot to cu
 
 A table, gutter, or cold room may have both a location record for occupancy and a linked asset record for maintenance.
 
+A Carrier itself layers into three tiers. **CarrierType** is the platform-defined physical/operational role — seed tray, nursery cultivation plate, production cultivation plate, grow cube, grow bag, harvest crate — never defined by tenants. **CarrierSpecification** is a tenant-configured, reusable physical design for a CarrierType, recording facts such as dimensions and biological position count; not every CarrierType requires one, and Carriers registered before a specification existed (or of a CarrierType that does not yet require one) carry none. **Carrier** remains the individually traceable, farm-scoped physical instance with its own permanent identity, optionally built to one CarrierSpecification.
+
+A CarrierType may be marked as requiring a specification before a new Carrier of that type can be registered; seed tray does not require one yet. A specification's biological position count is a physical capacity fact, not an operational biological quantity — it is not the same as seed count, and it does not currently enforce Sowing or Transplant capacity.
+
 ## 3. Company and Farm Map
 
 Administrative hierarchy:

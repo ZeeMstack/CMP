@@ -10,6 +10,7 @@ from sqlalchemy import engine_from_config, pool, text
 
 import app.models  # noqa: F401  (registers models on Base.metadata)
 from app.core.db import Base
+from app.core.settings import settings
 
 config = context.config
 
@@ -188,6 +189,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"connect_timeout": settings.db_connect_timeout_seconds},
     )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

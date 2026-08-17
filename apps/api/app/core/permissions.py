@@ -61,6 +61,15 @@ class Permission(StrEnum):
     CARRIER_READ = "carrier.read"
     CARRIER_MANAGE = "carrier.manage"
 
+    # CARRIER-CONFIG-001: deliberately separate from CARRIER_MANAGE (which
+    # governs registering an individual physical Carrier) -- redefining the
+    # reusable physical DESIGN every Carrier of a type is built from is a
+    # materially different, more consequential authority, mirroring the
+    # same entry-vs-definition split AUTHZ-002B1 already established for
+    # OBSERVATION_ENTRY_MANAGE/OBSERVATION_DEFINITION_MANAGE.
+    CARRIER_SPECIFICATION_READ = "carrier_specification.read"
+    CARRIER_SPECIFICATION_MANAGE = "carrier_specification.manage"
+
     # Occupant relocation (asset/carrier -> location/asset_position) is its
     # own cross-entity command, not owned by asset or carrier alone -- no
     # standalone "movements" read endpoint exists (movement history is
@@ -192,6 +201,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ, Permission.LOCATION_MANAGE,
         Permission.ASSET_READ, Permission.ASSET_MANAGE,
         Permission.CARRIER_READ, Permission.CARRIER_MANAGE,
+        Permission.CARRIER_SPECIFICATION_READ, Permission.CARRIER_SPECIFICATION_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -219,6 +229,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.CROP_READ, Permission.CROP_MANAGE,
         Permission.PRODUCTION_SYSTEM_READ, Permission.PRODUCTION_SYSTEM_MANAGE,
         Permission.WORKFLOW_READ, Permission.WORKFLOW_MANAGE,
@@ -244,6 +255,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
@@ -272,6 +284,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -294,6 +307,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.SEED_LOT_READ, Permission.SEED_LOT_MANAGE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
@@ -308,6 +322,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.CROP_READ,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -332,6 +347,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.CROP_BATCH_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
@@ -348,6 +364,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
@@ -364,6 +381,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
@@ -382,6 +400,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -406,6 +425,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.LOCATION_READ,
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
+        Permission.CARRIER_SPECIFICATION_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,

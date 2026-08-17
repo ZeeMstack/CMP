@@ -487,6 +487,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/carrier-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Carrier Types */
+        get: operations["list_carrier_types_carrier_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/carriers": {
         parameters: {
             query?: never;
@@ -584,6 +601,92 @@ export interface paths {
         get: operations["get_carrier_resolved_location_farms__farm_id__carriers__carrier_id__resolved_location_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/carrier-specifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Carrier Specifications */
+        get: operations["list_carrier_specifications_carrier_specifications_get"];
+        put?: never;
+        /** Create Carrier Specification */
+        post: operations["create_carrier_specification_carrier_specifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/carrier-specifications/{specification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Carrier Specification */
+        get: operations["get_carrier_specification_carrier_specifications__specification_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/carrier-specifications/{specification_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Carrier Specification */
+        post: operations["update_carrier_specification_carrier_specifications__specification_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/carrier-specifications/{specification_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate Carrier Specification */
+        post: operations["deactivate_carrier_specification_carrier_specifications__specification_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/carrier-specifications/{specification_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate Carrier Specification */
+        post: operations["reactivate_carrier_specification_carrier_specifications__specification_id__reactivate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2618,7 +2721,9 @@ export interface components {
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
             /** Carrier Type Code */
-            carrier_type_code: string;
+            carrier_type_code?: string | null;
+            /** Specification Id */
+            specification_id?: string | null;
             /** Code Prefix */
             code_prefix: string;
             /** Start */
@@ -2631,7 +2736,9 @@ export interface components {
         /** CarrierCreate */
         CarrierCreate: {
             /** Carrier Type Code */
-            carrier_type_code: string;
+            carrier_type_code?: string | null;
+            /** Specification Id */
+            specification_id?: string | null;
             /** Code */
             code: string;
             /** Issued Date */
@@ -2667,6 +2774,9 @@ export interface components {
             issued_date: string | null;
             /** Retired Date */
             retired_date: string | null;
+            /** Specification Id */
+            specification_id: string | null;
+            specification?: components["schemas"]["CarrierSpecificationSummary"] | null;
         };
         /** CarrierRefSummary */
         CarrierRefSummary: {
@@ -2678,6 +2788,105 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** CarrierSpecificationCreate */
+        CarrierSpecificationCreate: {
+            /** Carrier Type Code */
+            carrier_type_code: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Length Mm */
+            length_mm?: number | null;
+            /** Width Mm */
+            width_mm?: number | null;
+            /** Height Mm */
+            height_mm?: number | null;
+            /** Biological Position Count */
+            biological_position_count?: number | null;
+        };
+        /** CarrierSpecificationRead */
+        CarrierSpecificationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Carrier Type Id
+             * Format: uuid
+             */
+            carrier_type_id: string;
+            /** Carrier Type Code */
+            carrier_type_code: string;
+            /** Biological Position Label */
+            biological_position_label: string | null;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Length Mm */
+            length_mm: number | null;
+            /** Width Mm */
+            width_mm: number | null;
+            /** Height Mm */
+            height_mm: number | null;
+            /** Biological Position Count */
+            biological_position_count: number | null;
+            /** Status */
+            status: string;
+            /** Is Structurally Locked */
+            is_structurally_locked: boolean;
+        };
+        /**
+         * CarrierSpecificationSummary
+         * @description Small, nested summary for embedding inside `CarrierRead` -- avoids
+         *     flattening every dimension field onto every Carrier list result while
+         *     still avoiding N+1 (resolved via one join in the same list/get query).
+         */
+        CarrierSpecificationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Biological Position Count */
+            biological_position_count: number | null;
+        };
+        /**
+         * CarrierSpecificationUpdate
+         * @description Full-body update, not a partial PATCH -- the server diffs every
+         *     field against the current row and enforces the structural-freeze rule
+         *     (section 14) field-by-field. `name` always applies; a structural field
+         *     (`carrier_type_code`, `code`, dimensions, `biological_position_count`)
+         *     that actually differs from the current value is rejected once any
+         *     Carrier already references this specification.
+         */
+        CarrierSpecificationUpdate: {
+            /** Carrier Type Code */
+            carrier_type_code: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Length Mm */
+            length_mm?: number | null;
+            /** Width Mm */
+            width_mm?: number | null;
+            /** Height Mm */
+            height_mm?: number | null;
+            /** Biological Position Count */
+            biological_position_count?: number | null;
+        };
         /** CarrierSummary */
         CarrierSummary: {
             /**
@@ -2688,6 +2897,22 @@ export interface components {
             /** Code */
             code: string;
             carrier_type: components["schemas"]["CarrierTypeSummary"];
+        };
+        /** CarrierTypeRead */
+        CarrierTypeRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Requires Specification */
+            requires_specification: boolean;
+            /** Biological Position Label */
+            biological_position_label: string | null;
         };
         /** CarrierTypeSummary */
         CarrierTypeSummary: {
@@ -8452,6 +8677,40 @@ export interface operations {
             };
         };
     };
+    list_carrier_types_carrier_types_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierTypeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_carriers_farms__farm_id__carriers_get: {
         parameters: {
             query?: {
@@ -8705,6 +8964,229 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolvedLocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_carrier_specifications_carrier_specifications_get: {
+        parameters: {
+            query?: {
+                carrier_type?: string | null;
+                status?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_carrier_specification_carrier_specifications_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CarrierSpecificationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_carrier_specification_carrier_specifications__specification_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                specification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_carrier_specification_carrier_specifications__specification_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                specification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CarrierSpecificationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_carrier_specification_carrier_specifications__specification_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                specification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_carrier_specification_carrier_specifications__specification_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                specification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CarrierSpecificationRead"];
                 };
             };
             /** @description Validation Error */

@@ -530,4 +530,21 @@ Matrix B's `observation_entry.manage` cells for `production_supervisor`, `operat
 - Matrix B (External Commercial V1) is still only a proposal — nothing in it beyond what Matrix A already specifies is active.
 - `farm_manager`'s `dispatch.manage` "broader pilot" cell (`G*`) was deliberately left inactive.
 - None of the P1/P2 gaps in §13 (farm-scoped role assignment, quality-hold place/release split, recall open/close split, missing Input/Store module, `audit.read`) were addressed — activation only closed gap #2.
+
+---
+
+## 14. CARRIER-CONFIG-001 addendum — `carrier_specification.read` / `carrier_specification.manage`
+
+CARRIER-CONFIG-001 (implementation ticket, post-dates AUTHZ-002B2) added the `CarrierType → CarrierSpecification → Carrier` configuration layer and, with it, two new permissions kept deliberately separate from `carrier.read`/`carrier.manage` — a tenant's reusable carrier *design* catalog is a distinct authority from registering/reading individual physical carrier instances, mirroring the existing `observation_entry.manage`/`observation_definition.manage` split (§5A).
+
+Grants activated directly by that ticket (not merely proposed):
+
+- **`carrier_specification.read`** — every one of the 11 non-`tenant_admin` roles that already holds `carrier.read`, i.e. all 11 (`farm_manager`, `head_grower`, `production_supervisor`, `operator`, `storekeeper`, `qc_officer`, `packing_supervisor`, `cold_store_supervisor`, `dispatch_officer`, `auditor`, `read_only`).
+- **`carrier_specification.manage`** — `farm_manager` only, mirroring that role's existing sole ownership of `carrier.manage` (farm-level equipment/fleet setup, §12 row `carrier.manage | G — owns carrier-fleet setup for their site`).
+
+`tenant_admin` receives both automatically (holds every defined permission).
+
+Updated grant totals: TA **45**, FM **27**, HG **26**, PS **26**, OP **18**, SK **7**, QC **20**, PK **13**, CS **12**, DO **12**, AU **21**, RO **21** — each is the pre-addendum Matrix A total (§12) plus 1 (`carrier_specification.read`), plus a further 1 for `farm_manager` (`carrier_specification.manage`). `tests/test_permissions.py`'s `EXPECTED_ROLE_GRANTS`/`_EXPECTED_COUNTS` pin was updated to match these totals in the same change.
+
+This addendum does not otherwise alter Matrix A/B, does not reopen any §13 gap, and does not change any `carrier.*` grant.
 - Is the design/policy record for the now-active Imperial Pilot policy, and remains the proposal artifact for whatever future, explicitly-scoped ticket takes on External Commercial V1 hardening.

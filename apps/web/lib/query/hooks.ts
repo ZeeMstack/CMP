@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
 import type {
+  CarrierSpecificationCreate,
+  CarrierSpecificationUpdate,
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
@@ -513,6 +515,81 @@ export function useCorrectSeedlingDisposition(farmId: string) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.seedlingDispositionHistory(tenantId, farmId, result.seedling_entry_id),
       });
+    },
+  });
+}
+
+// --- CARRIER-CONFIG-001 -----------------------------------------------------
+// Tenant-scoped, never farm-scoped -- see lib/api/client.ts's own note.
+
+export function useCarrierTypes() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.carrierTypes(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listCarrierTypes(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCarrierSpecifications() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.carrierSpecifications(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listCarrierSpecifications(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateCarrierSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CarrierSpecificationCreate) => api.createCarrierSpecification(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
+    },
+  });
+}
+
+export function useUpdateCarrierSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ specificationId, payload }: { specificationId: string; payload: CarrierSpecificationUpdate }) =>
+      api.updateCarrierSpecification(specificationId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecification(tenantId, result.id) });
+    },
+  });
+}
+
+export function useDeactivateCarrierSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (specificationId: string) => api.deactivateCarrierSpecification(specificationId),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecification(tenantId, result.id) });
+    },
+  });
+}
+
+export function useReactivateCarrierSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (specificationId: string) => api.reactivateCarrierSpecification(specificationId),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecification(tenantId, result.id) });
     },
   });
 }

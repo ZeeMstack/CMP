@@ -6,18 +6,47 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
-from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead
+from app.schemas.carrier import CarrierBulkCreate, CarrierCreate, CarrierRead, CarrierTypeRead
 from app.schemas.movement import MovementRead
 from app.schemas.occupancy import OccupancyRead, ResolvedLocationRead
 from app.services import carrier_service, movement_service
 from app.services.errors import (
     CarrierNotFoundError,
+    CarrierSpecificationInactiveError,
+    CarrierSpecificationNotFoundError,
+    CarrierSpecificationRequiredError,
+    CarrierSpecificationTypeMismatchError,
     CarrierTypeNotFoundError,
     DuplicateCarrierCodeError,
     FarmNotFoundError,
 )
 
 router = APIRouter(tags=["carriers"])
+
+_SPECIFICATION_RESOLUTION_ERRORS = (
+    CarrierSpecificationNotFoundError,
+    CarrierSpecificationInactiveError,
+    CarrierSpecificationRequiredError,
+    CarrierSpecificationTypeMismatchError,
+)
+
+
+def _specification_resolution_detail(exc: Exception) -> str:
+    if isinstance(exc, CarrierSpecificationNotFoundError):
+        return "Specification not found"
+    if isinstance(exc, CarrierSpecificationInactiveError):
+        return "Specification is inactive"
+    if isinstance(exc, CarrierSpecificationRequiredError):
+        return "This carrier type requires a specification_id"
+    return str(exc)
+
+
+@router.get("/carrier-types", response_model=list[CarrierTypeRead])
+def list_carrier_types(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.CARRIER_READ)),
+) -> list[CarrierTypeRead]:
+    return [CarrierTypeRead.model_validate(t) for t in carrier_service.list_carrier_types(db)]
 
 
 @router.post("/farms/{farm_id}/carriers", response_model=CarrierRead, status_code=status.HTTP_201_CREATED)
@@ -34,6 +63,7 @@ def register_carrier(
             farm_id=farm_id,
             actor_user_id=ctx.user_id,
             carrier_type_code=payload.carrier_type_code,
+            specification_id=payload.specification_id,
             code=payload.code,
             issued_date=payload.issued_date,
         )
@@ -45,7 +75,11 @@ def register_carrier(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Carrier code already exists in this tenant"
         ) from exc
-    return CarrierRead.model_validate(carrier)
+    except _SPECIFICATION_RESOLUTION_ERRORS as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=_specification_resolution_detail(exc)
+        ) from exc
+    return carrier_service._hydrate_carrier_reads(db, [carrier])[0]
 
 
 @router.post(
@@ -64,6 +98,7 @@ def bulk_register_carriers(
             farm_id=farm_id,
             actor_user_id=ctx.user_id,
             carrier_type_code=payload.carrier_type_code,
+            specification_id=payload.specification_id,
             code_prefix=payload.code_prefix,
             start=payload.start,
             end=payload.end,
@@ -77,7 +112,11 @@ def bulk_register_carriers(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="One or more generated carrier codes already exist"
         ) from exc
-    return [CarrierRead.model_validate(carrier) for carrier in created]
+    except _SPECIFICATION_RESOLUTION_ERRORS as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=_specification_resolution_detail(exc)
+        ) from exc
+    return carrier_service._hydrate_carrier_reads(db, created)
 
 
 @router.get("/farms/{farm_id}/carriers/{carrier_id}", response_model=CarrierRead)
@@ -93,7 +132,7 @@ def get_carrier(
         )
     except (FarmNotFoundError, CarrierNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    return CarrierRead.model_validate(carrier)
+    return carrier_service._hydrate_carrier_reads(db, [carrier])[0]
 
 
 @router.get("/farms/{farm_id}/carriers", response_model=list[CarrierRead])
@@ -111,7 +150,7 @@ def list_carriers(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
     except CarrierTypeNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown carrier type") from exc
-    return [CarrierRead.model_validate(carrier) for carrier in carriers]
+    return carrier_service._hydrate_carrier_reads(db, carriers)
 
 
 @router.get("/farms/{farm_id}/carriers/{carrier_id}/occupancy", response_model=OccupancyRead | None)
