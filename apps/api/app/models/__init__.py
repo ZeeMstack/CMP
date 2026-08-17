@@ -6,6 +6,7 @@ from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
 from app.models.batch_stage_transition import BatchStageTransition
 from app.models.carrier import Carrier
+from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
@@ -65,6 +66,7 @@ __all__ = [
     "BatchStageRun",
     "BatchStageTransition",
     "Carrier",
+    "CarrierSpecification",
     "CarrierType",
     "Crop",
     "CropBatch",

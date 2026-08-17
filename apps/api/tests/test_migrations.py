@@ -919,7 +919,6 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
     from sqlalchemy.orm import Session
 
     from app.services import (
-        carrier_service,
         crop_batch_service,
         crop_service,
         farm_service,
@@ -970,12 +969,36 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
     version = workflow_service.create_draft_version(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
     )
-    seeding = workflow_service.add_stage(
-        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
-        expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    # CARRIER-CONFIG-001 added `requires_specification`/`biological_position_label`
+    # to `carrier_types` -- absent at this deliberately-downgraded (CMP-013)
+    # schema level, so the CURRENT `workflow_service.add_stage` (whose ORM
+    # model always selects those columns to resolve `required_carrier_type_code`)
+    # cannot be used for the SEEDING stage here. A NULL required type is not
+    # an option either -- `enforce_sowing_event_insert_integrity` (a DB
+    # trigger, not bypassable from the service layer alone) rejects a sowing
+    # event whose current stage has no required carrier type configured, and
+    # that trigger fires even though this test's own carrier ASSIGNMENT is
+    # otherwise built via raw SQL below. Built directly via SQL instead,
+    # matching the same established pattern used elsewhere in this function
+    # -- the carrier registered below reuses this same resolved id.
+    seeding_carrier_type_id = session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    seeding_stage_id = uuid.uuid4()
+    session.execute(
+        text(
+            "INSERT INTO workflow_stages "
+            "(id, tenant_id, workflow_version_id, code, name, display_order, stage_category, "
+            "required_carrier_type_id, is_start, is_terminal) VALUES "
+            "(:id, :tid, :vid, 'SEEDING', 'Seeding', 0, 'seeding', :ctid, true, false)"
+        ),
+        {"id": seeding_stage_id, "tid": tenant.id, "vid": version.id, "ctid": seeding_carrier_type_id},
     )
+
+    class _StageRef:
+        id = seeding_stage_id
+
+    seeding = _StageRef()
     harvesting = workflow_service.add_stage(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         code="HARVESTING", name="Harvesting", display_order=1, stage_category="harvesting",
@@ -996,8 +1019,19 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         from_stage_id=harvesting.id, to_stage_id=complete.id, code="ADV-2", name="Advance 2",
     )
-    workflow_service.publish_version(
-        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
+    # `publish_version`'s own publication-graph validation re-resolves every
+    # stage's `required_carrier_type_id` via `db.get(CarrierType, ...)` --
+    # broken at this deliberately-downgraded schema level for the same
+    # reason as the SEEDING stage's own insert above.
+    # `crop_batch_service.create_batch` only ever checks
+    # `WorkflowVersion.state == 'published'` as a plain row read (confirmed
+    # from source), so publishing directly via SQL is a faithful, minimal
+    # substitute -- no previous published version exists yet to retire, and
+    # no audit event is needed for what this test actually verifies (harvest
+    # ledger backfill).
+    session.execute(
+        text("UPDATE workflow_versions SET state = 'published', published_at = now() WHERE id = :vid"),
+        {"vid": version.id},
     )
     batch = crop_batch_service.create_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
@@ -1008,9 +1042,18 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         variety_id=variety.id, code=f"lot-{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
-    carrier = carrier_service.register_carrier(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
-        code=f"tray-{suffix}", issued_date=None,
+    # Same rationale as the SEEDING stage above -- reuses the already-
+    # resolved `seeding_carrier_type_id` rather than a second broken ORM query.
+    carrier_id = uuid.uuid4()
+    session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status) "
+            "VALUES (:id, :tid, :fid, :type_id, :code, 'active')"
+        ),
+        {
+            "id": carrier_id, "tid": tenant.id, "fid": farm.id, "type_id": seeding_carrier_type_id,
+            "code": f"tray-{suffix}",
+        },
     )
     # NURSERY-OPS-001 added `seeding_station_id`/`seeding_machine_id` to
     # `sowing_events` -- absent at this deliberately-downgraded (CMP-013)
@@ -1047,7 +1090,7 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
             "(:id, :tid, :fid, :bid, :cid, :run_id, :eff, NULL, :eid, :uid)"
         ),
         {
-            "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier.id,
+            "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier_id,
             "run_id": seeding_run_id, "eff": sow_effective_time, "eid": sowing_event_id, "uid": user.id,
         },
     )
@@ -1060,7 +1103,7 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         ),
         {
             "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": sowing_event_id, "aid": assignment_id,
-            "cid": carrier.id, "lid": seed_lot.id, "site": 20, "seed": 20,
+            "cid": carrier_id, "lid": seed_lot.id, "site": 20, "seed": 20,
         },
     )
     assignment = type("_Assignment", (), {"id": assignment_id})()
@@ -1099,7 +1142,7 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         ),
         {
             "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": assignment.id,
-            "cid": carrier.id, "w": Decimal("6.750"), "c": 22,
+            "cid": carrier_id, "w": Decimal("6.750"), "c": 22,
         },
     )
     lot_id = uuid.uuid4()
@@ -2652,7 +2695,7 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
     from datetime import datetime, timezone
 
     from app.services import (
-        carrier_service, crop_batch_service, crop_service, farm_service, membership_service,
+        crop_batch_service, crop_service, farm_service, membership_service,
         production_system_service, sowing_service, tenant_service, user_service, workflow_service,
     )
 
@@ -2682,11 +2725,36 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
         production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
     )
     version = workflow_service.create_draft_version(session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id)
-    seeding = workflow_service.add_stage(
-        session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding", expected_duration_minutes=None,
-        permitted_location_type_code=None, required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    # CARRIER-CONFIG-001 added `requires_specification`/`biological_position_label`
+    # to `carrier_types` -- absent at this deliberately-downgraded schema
+    # level, so the CURRENT `workflow_service.add_stage` (whose ORM model
+    # always selects those columns to resolve `required_carrier_type_code`)
+    # cannot be used for the SEEDING stage here. Built directly via SQL
+    # instead, matching the same established pattern used elsewhere in this
+    # file for a schema-evolved table -- `sowing_service.sow_batch` below
+    # still needs a real, non-NULL `required_carrier_type_id` on this stage,
+    # so (unlike the harvest-ledger test's own carrier fix) this cannot
+    # simply pass `required_carrier_type_code=None` instead.
+    from sqlalchemy import text as _seeding_text
+
+    seeding_carrier_type_id = session.execute(
+        _seeding_text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    seeding_stage_id = uuid_module.uuid4()
+    session.execute(
+        _seeding_text(
+            "INSERT INTO workflow_stages "
+            "(id, tenant_id, workflow_version_id, code, name, display_order, stage_category, "
+            "required_carrier_type_id, is_start, is_terminal) VALUES "
+            "(:id, :tid, :vid, 'SEEDING', 'Seeding', 0, 'seeding', :ctid, true, false)"
+        ),
+        {"id": seeding_stage_id, "tid": tenant.id, "vid": version.id, "ctid": seeding_carrier_type_id},
     )
+
+    class _StageRef:
+        id = seeding_stage_id
+
+    seeding = _StageRef()
     complete = workflow_service.add_stage(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         code="COMPLETE", name="Complete", display_order=1, stage_category="completed", expected_duration_minutes=None,
@@ -2696,7 +2764,20 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         from_stage_id=seeding.id, to_stage_id=complete.id, code="ADVANCE", name="Advance",
     )
-    workflow_service.publish_version(session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id)
+    # `workflow_service.publish_version`'s own publication-graph validation
+    # re-resolves every stage's `required_carrier_type_id` via
+    # `db.get(CarrierType, ...)` -- broken at this deliberately-downgraded
+    # schema level for the same reason as the SEEDING stage's own insert
+    # above. `crop_batch_service.create_batch` only ever checks
+    # `WorkflowVersion.state == 'published'` as a plain row read (confirmed
+    # from source), so publishing directly via SQL is a faithful, minimal
+    # substitute -- no previous published version exists yet to retire, and
+    # no audit event is needed for what this test actually verifies
+    # (legacy GerminationCheck row preservation).
+    session.execute(
+        _seeding_text("UPDATE workflow_versions SET state = 'published', published_at = now() WHERE id = :vid"),
+        {"vid": version.id},
+    )
     batch = crop_batch_service.create_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid_module.uuid4(),
         code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=datetime.now(timezone.utc),
@@ -2705,21 +2786,74 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
         code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None, received_date=None, expiry_date=None,
     )
-    carrier = carrier_service.register_carrier(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
-        code=f"ST-{suffix}-0001", issued_date=None,
+    # Same rationale as the SEEDING stage above -- reuses the same already-
+    # resolved `seeding_carrier_type_id` rather than a second broken ORM query.
+    carrier_id = uuid_module.uuid4()
+    session.execute(
+        _seeding_text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status) "
+            "VALUES (:id, :tid, :fid, :type_id, :code, 'active')"
+        ),
+        {
+            "id": carrier_id, "tid": tenant.id, "fid": farm.id, "type_id": seeding_carrier_type_id,
+            "code": f"ST-{suffix}-0001",
+        },
     )
-    sowing_service.sow_batch(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc), note=None,
-        lines=[
-            {
-                "carrier_id": carrier.id, "seed_lot_id": seed_lot.id, "sown_site_count": sown_site_count,
-                "seed_count": 200, "line_note": None,
-            }
-        ],
+
+    # `sowing_service.sow_batch` locks `Carrier` rows via
+    # `select(Carrier).with_for_update()` (ORM, always selects the new
+    # `specification_id` column) and `list_batch_carriers` joins `Carrier`/
+    # `CarrierType` the same way -- both broken at this deliberately-
+    # downgraded schema level. Built directly via SQL instead, mirroring the
+    # exact same established pattern
+    # `test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reupgrade`
+    # already uses for its own sowing_events/batch_carrier_assignments/
+    # sowing_event_lines rows.
+    seeding_run_id = session.execute(
+        _seeding_text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": batch.id},
+    ).scalar_one()
+    sowing_event_id = uuid_module.uuid4()
+    assignment_id = uuid_module.uuid4()
+    sow_effective_time = datetime.now(timezone.utc)
+    session.execute(
+        _seeding_text(
+            "INSERT INTO sowing_events "
+            "(id, tenant_id, farm_id, batch_id, seed_lot_id, active_batch_stage_run_id, effective_time, "
+            "actor_user_id, client_command_id, request_fingerprint, note) VALUES "
+            "(:id, :tid, :fid, :bid, :lid, :run_id, :eff, :uid, :cmd, :fp, NULL)"
+        ),
+        {
+            "id": sowing_event_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "lid": seed_lot.id,
+            "run_id": seeding_run_id, "eff": sow_effective_time, "uid": user.id, "cmd": uuid_module.uuid4(),
+            "fp": "pre-existing-carrier-config-001-schema-sowing",
+        },
     )
-    assignment = sowing_service.list_batch_carriers(session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id)[0]
+    session.execute(
+        _seeding_text(
+            "INSERT INTO batch_carrier_assignments "
+            "(id, tenant_id, farm_id, batch_id, carrier_id, batch_stage_run_id, assigned_effective_time, "
+            "released_effective_time, opening_sowing_event_id, actor_user_id) VALUES "
+            "(:id, :tid, :fid, :bid, :cid, :run_id, :eff, NULL, :eid, :uid)"
+        ),
+        {
+            "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier_id,
+            "run_id": seeding_run_id, "eff": sow_effective_time, "eid": sowing_event_id, "uid": user.id,
+        },
+    )
+    session.execute(
+        _seeding_text(
+            "INSERT INTO sowing_event_lines "
+            "(id, tenant_id, farm_id, sowing_event_id, batch_carrier_assignment_id, carrier_id, seed_lot_id, "
+            "sown_site_count, seed_count, line_note) VALUES "
+            "(:id, :tid, :fid, :eid, :aid, :cid, :lid, :site, :seed, NULL)"
+        ),
+        {
+            "id": uuid_module.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": sowing_event_id,
+            "aid": assignment_id, "cid": carrier_id, "lid": seed_lot.id, "site": sown_site_count, "seed": 200,
+        },
+    )
+    assignment = type("_Assignment", (), {"id": assignment_id})()
     return tenant, user, farm, batch, assignment
 
 

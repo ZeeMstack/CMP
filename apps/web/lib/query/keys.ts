@@ -76,4 +76,12 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "biological-trays"] as const,
   seedlingDispositionHistory: (tenantId: string, farmId: string, seedlingEntryId: string) =>
     ["tenant", tenantId, "farms", farmId, "nursery", "seedling", "dispositions", seedlingEntryId] as const,
+
+  // --- CARRIER-CONFIG-001 ----------------------------------------------------
+  // Tenant-scoped, never farm-scoped -- one CarrierSpecification is reusable
+  // across every farm this tenant has.
+  carrierTypes: (tenantId: string) => ["tenant", tenantId, "carrier-types"] as const,
+  carrierSpecifications: (tenantId: string) => ["tenant", tenantId, "carrier-specifications"] as const,
+  carrierSpecification: (tenantId: string, specificationId: string) =>
+    ["tenant", tenantId, "carrier-specifications", specificationId] as const,
 };

@@ -324,7 +324,7 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
     `sowing_events.seed_lot_id` by guessing one of the two -- it must fail
     loudly instead."""
     from app.services import (
-        carrier_service, crop_service, farm_service, membership_service, production_system_service,
+        crop_service, farm_service, membership_service, production_system_service,
         sowing_service, tenant_service, user_service, workflow_service, crop_batch_service,
     )
 
@@ -363,12 +363,31 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
         version = workflow_service.create_draft_version(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
         )
-        seeding = workflow_service.add_stage(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
-            expected_duration_minutes=None, permitted_location_type_code=None,
-            required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+        # CARRIER-CONFIG-001 added `carrier_types.requires_specification`/
+        # `biological_position_label` -- absent at this deliberately-
+        # downgraded (pre-NURSERY-OPS-001) schema level, so the CURRENT
+        # `workflow_service.add_stage` (whose ORM model always selects
+        # those columns to resolve `required_carrier_type_code`) cannot be
+        # used for the SEEDING stage here. Built directly via SQL instead,
+        # matching the same established pattern `test_migrations.py` already
+        # uses for its own equivalent SEEDING-stage fixtures -- the carrier
+        # registration below reuses this same resolved id.
+        seeding_carrier_type_id = session.execute(
+            text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+        ).scalar_one()
+        seeding_stage_id = uuid.uuid4()
+        session.execute(
+            text(
+                "INSERT INTO workflow_stages "
+                "(id, tenant_id, workflow_version_id, code, name, display_order, stage_category, "
+                "required_carrier_type_id, is_start, is_terminal) VALUES "
+                "(:id, :tid, :vid, 'SEEDING', 'Seeding', 0, 'seeding', :ctid, true, false)"
+            ),
+            {"id": seeding_stage_id, "tid": tenant.id, "vid": version.id, "ctid": seeding_carrier_type_id},
         )
+        # COMPLETE has no required carrier type, so `add_stage` never
+        # queries `carrier_types` for it -- safe to build via the normal
+        # ORM path.
         complete = workflow_service.add_stage(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
             code="COMPLETE", name="Complete", display_order=1, stage_category="completed",
@@ -377,10 +396,23 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
         )
         workflow_service.add_transition(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
-            from_stage_id=seeding.id, to_stage_id=complete.id, code="ADV", name="Advance",
+            from_stage_id=seeding_stage_id, to_stage_id=complete.id, code="ADV", name="Advance",
         )
-        workflow_service.publish_version(
-            session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
+        # `publish_version`'s own publication-graph validation re-resolves
+        # every stage's `required_carrier_type_id` via `db.get(CarrierType,
+        # ...)` -- broken at this deliberately-downgraded schema level for
+        # the same reason as the SEEDING stage's own insert above.
+        # `crop_batch_service.create_batch` only ever checks
+        # `WorkflowVersion.state == 'published'` as a plain row read
+        # (confirmed from source, matching `test_migrations.py`'s own
+        # established rationale for this exact substitution), so publishing
+        # directly via SQL is a faithful, minimal substitute -- no previous
+        # published version exists yet to retire, and no audit event is
+        # needed for what this test actually verifies (the mixed-Seed-Lot
+        # upgrade guard).
+        session.execute(
+            text("UPDATE workflow_versions SET state = 'published', published_at = now() WHERE id = :vid"),
+            {"vid": version.id},
         )
         seed_lot_a = sowing_service.register_seed_lot(
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
@@ -396,14 +428,18 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
             code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),
         )
-        carrier_a = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
-            code=f"ST-A-{suffix}", issued_date=None,
-        )
-        carrier_b = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
-            code=f"ST-B-{suffix}", issued_date=None,
-        )
+        # Reuses `seeding_carrier_type_id` (resolved above) rather than a
+        # second, redundant `carrier_types` lookup.
+        carrier_a_id = uuid.uuid4()
+        carrier_b_id = uuid.uuid4()
+        for cid, code in ((carrier_a_id, f"ST-A-{suffix}"), (carrier_b_id, f"ST-B-{suffix}")):
+            session.execute(
+                text(
+                    "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, issued_date, "
+                    "retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL)"
+                ),
+                {"id": cid, "tid": tenant.id, "fid": farm.id, "ctid": seeding_carrier_type_id, "code": code},
+            )
         # Legal under the pre-NURSERY-OPS-001.1 trigger: two lines of one
         # event, two different Seed Lots of the same crop/variety. Built
         # via raw SQL, NOT `sowing_service.sow_batch` -- the CURRENT
@@ -431,7 +467,7 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
                 "eff": sow_time, "uid": user.id, "cmd": uuid.uuid4(), "fp": "pre-nursery-ops-001-1-mixed-lot",
             },
         )
-        for carrier, seed_lot, sown in ((carrier_a, seed_lot_a, 50), (carrier_b, seed_lot_b, 50)):
+        for carrier_id, seed_lot, sown in ((carrier_a_id, seed_lot_a, 50), (carrier_b_id, seed_lot_b, 50)):
             assignment_id = uuid.uuid4()
             session.execute(
                 text(
@@ -441,7 +477,7 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
                     "(:id, :tid, :fid, :bid, :cid, :run_id, :eff, NULL, :eid, :uid)"
                 ),
                 {
-                    "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier.id,
+                    "id": assignment_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "cid": carrier_id,
                     "run_id": active_run_id, "eff": sow_time, "eid": event_id, "uid": user.id,
                 },
             )
@@ -454,7 +490,7 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
                 ),
                 {
                     "id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": assignment_id,
-                    "cid": carrier.id, "lid": seed_lot.id, "site": sown, "seed": sown,
+                    "cid": carrier_id, "lid": seed_lot.id, "site": sown, "seed": sown,
                 },
             )
         session.commit()

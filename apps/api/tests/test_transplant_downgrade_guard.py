@@ -375,6 +375,21 @@ def test_migration_downgrade_blocked_when_multi_event_source_assignment_exists(t
             guard_conn.execute(text("SET session_replication_role = DEFAULT"))
             guard_conn.commit()
 
+        # CARRIER-CONFIG-001: `tenant.id` above is an attribute read on an
+        # already-committed (and therefore expired) ORM object, which
+        # SQLAlchemy services with an implicit reload against `session`'s
+        # own connection -- silently reopening a transaction there that
+        # holds an AccessShareLock on `tenants` until the next commit.
+        # Harmless against every OLDER migration's downgrade(), but
+        # CARRIER-CONFIG-001's own downgrade() now does `DROP TABLE
+        # carrier_specifications` as its very first step, and dropping any
+        # table with a `tenant_id` FK requires an AccessExclusiveLock on
+        # `tenants` itself (to remove that FK's referenced-side enforcement
+        # trigger) -- which deadlocks against the lock above until Postgres
+        # times it out. An explicit commit here ends that stray read
+        # transaction (and its lock) before the downgrade attempt.
+        session.commit()
+
         with pytest.raises(RuntimeError, match="appears in"):
             command.downgrade(_cfg(), _PRE_CMP011_REVISION)
 

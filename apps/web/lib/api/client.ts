@@ -62,6 +62,10 @@ export type RecordSeedlingDispositionCreate = components["schemas"]["RecordSeedl
 export type SeedlingDispositionRecordResult = components["schemas"]["SeedlingDispositionRecordResult"];
 export type CorrectSeedlingDispositionCreate = components["schemas"]["CorrectSeedlingDispositionCreate"];
 export type SeedlingDispositionCorrectResult = components["schemas"]["SeedlingDispositionCorrectResult"];
+export type CarrierTypeRead = components["schemas"]["CarrierTypeRead"];
+export type CarrierSpecificationRead = components["schemas"]["CarrierSpecificationRead"];
+export type CarrierSpecificationCreate = components["schemas"]["CarrierSpecificationCreate"];
+export type CarrierSpecificationUpdate = components["schemas"]["CarrierSpecificationUpdate"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -428,4 +432,53 @@ export function correctSeedlingDisposition(
   return postJson<SeedlingDispositionCorrectResult>(
     `/farms/${farmId}/nursery/seedling/dispositions/${eventId}/correct`, payload, signal,
   );
+}
+
+// --- CARRIER-CONFIG-001 ---------------------------------------------------
+// Tenant-scoped, deliberately never under /farms/{farmId} -- the same
+// reusable physical Carrier Specification (e.g. "200 Cell Tray") may be
+// used by Carriers across several of this tenant's farms.
+
+export function listCarrierTypes(signal?: AbortSignal): Promise<CarrierTypeRead[]> {
+  return getJson<CarrierTypeRead[]>("/carrier-types", signal);
+}
+
+export function listCarrierSpecifications(signal?: AbortSignal): Promise<CarrierSpecificationRead[]> {
+  return getJson<CarrierSpecificationRead[]>("/carrier-specifications", signal);
+}
+
+export function getCarrierSpecification(
+  specificationId: string,
+  signal?: AbortSignal,
+): Promise<CarrierSpecificationRead> {
+  return getJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}`, signal);
+}
+
+export function createCarrierSpecification(
+  payload: CarrierSpecificationCreate,
+  signal?: AbortSignal,
+): Promise<CarrierSpecificationRead> {
+  return postJson<CarrierSpecificationRead>("/carrier-specifications", payload, signal);
+}
+
+export function updateCarrierSpecification(
+  specificationId: string,
+  payload: CarrierSpecificationUpdate,
+  signal?: AbortSignal,
+): Promise<CarrierSpecificationRead> {
+  return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/update`, payload, signal);
+}
+
+export function deactivateCarrierSpecification(
+  specificationId: string,
+  signal?: AbortSignal,
+): Promise<CarrierSpecificationRead> {
+  return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/deactivate`, {}, signal);
+}
+
+export function reactivateCarrierSpecification(
+  specificationId: string,
+  signal?: AbortSignal,
+): Promise<CarrierSpecificationRead> {
+  return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/reactivate`, {}, signal);
 }

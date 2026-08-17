@@ -66,6 +66,40 @@ class DuplicateCarrierCodeError(DomainError):
     pass
 
 
+class CarrierSpecificationNotFoundError(DomainError):
+    pass
+
+
+class DuplicateCarrierSpecificationCodeError(DomainError):
+    pass
+
+
+class CarrierSpecificationTypeMismatchError(DomainError):
+    """Raised when a `carrier_type_code` and a `specification_id` are both
+    supplied to Carrier registration but resolve to different CarrierTypes,
+    or when a specification update's `carrier_type_code` disagrees with its
+    own current `carrier_type_id`."""
+
+
+class CarrierSpecificationInactiveError(DomainError):
+    pass
+
+
+class CarrierSpecificationRequiredError(DomainError):
+    pass
+
+
+class CarrierSpecificationStructurallyLockedError(DomainError):
+    """Raised when a structural field (carrier_type, code, dimensions,
+    biological_position_count) would change on a CarrierSpecification that
+    at least one Carrier already references."""
+
+
+class CarrierSpecificationValidationError(DomainError):
+    """Raised when a specification-required CarrierType's specification is
+    missing its minimum required dimensions/biological_position_count."""
+
+
 class PositionsNotSupportedError(DomainError):
     pass
 

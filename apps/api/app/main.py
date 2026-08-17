@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.batch_derivations import router as batch_derivations_router
+from app.api.carrier_specifications import router as carrier_specifications_router
 from app.api.carriers import router as carriers_router
 from app.api.crop_batches import router as crop_batches_router
 from app.api.crops import router as crops_router
@@ -49,6 +50,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(farm_setup_router)
     api.include_router(assets_router)
     api.include_router(carriers_router)
+    api.include_router(carrier_specifications_router)
     api.include_router(movements_router)
     api.include_router(crops_router)
     api.include_router(production_systems_router)
