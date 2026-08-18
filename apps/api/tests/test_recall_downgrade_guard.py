@@ -367,7 +367,12 @@ def test_downgrade_blocked_by_recall_case_history(test_engine, alembic_head_rest
         with committed_connection(test_engine) as session:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
-            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+            # CARRIER-CONFIG-001A: recall history existence is unrelated to
+            # carrier type -- grow_bag keeps the scenario free of a
+            # carrier_specifications row, which would otherwise
+            # unconditionally block via e5b8c3a72f04's own, earlier-in-chain
+            # guard before CMP-020's own guard is ever reached.
+            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1, carrier_type_code="grow_bag")
             session.commit()
             open_case(session, tenant, farm, user, crop_batch_id=scaffold["batch"].id)
             session.commit()
@@ -389,7 +394,12 @@ def test_downgrade_blocked_even_after_case_closed(test_engine, alembic_head_rest
         with committed_connection(test_engine) as session:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
-            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
+            # CARRIER-CONFIG-001A: recall history existence is unrelated to
+            # carrier type -- grow_bag keeps the scenario free of a
+            # carrier_specifications row, which would otherwise
+            # unconditionally block via e5b8c3a72f04's own, earlier-in-chain
+            # guard before CMP-020's own guard is ever reached.
+            scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1, carrier_type_code="grow_bag")
             session.commit()
             case = open_case(session, tenant, farm, user, crop_batch_id=scaffold["batch"].id)
             session.commit()
@@ -582,7 +592,7 @@ def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_s
             with committed_connection(test_engine) as session:
                 tenant, user, farm = build_committed_tenant_farm(session)
                 tenant_id2 = tenant.id
-                scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=2)
+                scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=2, carrier_type_code="grow_bag")
                 session.commit()
                 batch_id = scaffold["batch"].id
                 open_case(session, tenant, farm, user, crop_batch_id=batch_id)

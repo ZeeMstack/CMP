@@ -25,6 +25,7 @@ from tests._traceability_scenario import (  # noqa: F401  re-exported for test f
     committed_connection,
     now,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def build_transplant_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
@@ -241,10 +242,20 @@ def sow_batch(
         variety_id=scaffold["variety"].id, code=f"SEED-{code_suffix}", supplier_name=None,
         supplier_lot_reference=None, received_date=None, expiry_date=None,
     )
+    # CARRIER-CONFIG-001A: only `seed_tray` (the default) requires a
+    # specification; `cultivation_plate` (the only other type this helper
+    # is ever called with, per test_batch_operational_context.py /
+    # test_location_subtree_occupancy.py) stays requires_specification=false
+    # and keeps using the legacy carrier_type_code path unchanged.
+    seed_tray_spec_id = (
+        ensure_seed_tray_specification(db, tenant_id=tenant.id, actor_user_id=user.id).id
+        if carrier_type_code == "seed_tray" else None
+    )
     trays = [
         carrier_service.register_carrier(
             db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code=carrier_type_code, code=f"TRAY-{code_suffix}-{n}", issued_date=None,
+            specification_id=seed_tray_spec_id, carrier_type_code=None if seed_tray_spec_id else carrier_type_code,
+            code=f"TRAY-{code_suffix}-{n}", issued_date=None,
         )
         for n in range(carrier_count)
     ]

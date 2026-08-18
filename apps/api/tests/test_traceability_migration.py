@@ -38,7 +38,12 @@ def _resolve_head_revision(cfg: Config) -> str:
 @pytest.mark.integration
 def test_migration_creates_exactly_three_indexes_downgrade_removes_them_reupgrade_restores(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this test's downgrade must succeed cleanly --
+    # grow_bag keeps the scenario free of a carrier_specifications row,
+    # which would otherwise unconditionally block via e5b8c3a72f04's own,
+    # earlier-in-chain guard before CMP-019's own (index-only) downgrade
+    # is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     from sqlalchemy.orm import Session
     from decimal import Decimal
 

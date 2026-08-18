@@ -88,9 +88,17 @@ def test_harvest_acceptance_flow(client, active_context, db_session) -> None:
         json={"crop_id": crop["id"], "variety_id": variety["id"], "code": f"lot-{suffix}"},
     ).json()
 
+    seed_tray_spec = client.post(
+        "/carrier-specifications", headers=headers,
+        json={
+            "carrier_type_code": "seed_tray", "code": f"ST-SPEC-{suffix}", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    ).json()
+
     # 3. Four active carrier assignments via sowing.
     carriers = [
-        client.post(f"/farms/{farm_id}/carriers", headers=headers, json={"carrier_type_code": "seed_tray", "code": f"tray-{suffix}-{n}"}).json()
+        client.post(f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"tray-{suffix}-{n}"}).json()
         for n in range(4)
     ]
     sow_resp = client.post(

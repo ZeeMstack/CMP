@@ -107,10 +107,17 @@ def test_core_observation_quality_acceptance_flow(client, active_context, db_ses
         f"/farms/{farm_id}/seed-lots", headers=headers,
         json={"crop_id": crop["id"], "variety_id": variety["id"], "code": "LOT-OBSQ-0001"},
     ).json()
+    seed_tray_spec = client.post(
+        "/carrier-specifications", headers=headers,
+        json={
+            "carrier_type_code": "seed_tray", "code": "ST-SPEC-OBSQ-0001", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    ).json()
     carriers = [
         client.post(
             f"/farms/{farm_id}/carriers", headers=headers,
-            json={"carrier_type_code": "seed_tray", "code": f"ST-OBSQ-{n:04d}"},
+            json={"specification_id": seed_tray_spec["id"], "code": f"ST-OBSQ-{n:04d}"},
         ).json()
         for n in range(1, 5)
     ]

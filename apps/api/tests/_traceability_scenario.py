@@ -29,6 +29,7 @@ from app.services import (
     workflow_service,
 )
 from tests._packing_scenario import require_cmp_test
+from tests.conftest import ensure_seed_tray_specification
 
 
 @contextmanager
@@ -67,12 +68,20 @@ def build_committed_tenant_farm(db: Session, *, suffix=None):
     return tenant, user, farm
 
 
-def build_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
+def build_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None, carrier_type_code="seed_tray"):
     """Crop/variety/production-system/workflow (SEEDING -> HARVESTING ->
     COMPLETE) -- published, ready for batches. Returns a dict reusable by
     `sow_new_batch` for one or more independent batches sharing the same
     workflow/version (required for `merge_batches`, which rejects sources
-    that don't share workflow, version, and current stage)."""
+    that don't share workflow, version, and current stage).
+
+    CARRIER-CONFIG-001A: `carrier_type_code` defaults to "seed_tray"
+    (unchanged behavior for every existing caller). A few downgrade-guard
+    callers whose scenario needs "some sown carrier" as purely incidental
+    setup (the guard under test never inspects carrier type) pass
+    "grow_bag" instead, to avoid a committed carrier_specifications row
+    that would otherwise make e5b8c3a72f04's own, unconditional, and
+    correct guard fire before the guard they actually mean to exercise."""
     suffix = suffix or uuid.uuid4().hex[:8]
     crop = crop_service.register_crop(
         db, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
@@ -94,7 +103,7 @@ def build_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
         db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
         expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+        required_carrier_type_code=carrier_type_code, is_start=True, is_terminal=False,
     )
     harvesting = workflow_service.add_stage(
         db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
@@ -117,12 +126,16 @@ def build_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
         from_stage_id=harvesting.id, to_stage_id=complete.id, code="ADV-2", name="Advance 2",
     )
     workflow_service.publish_version(db, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id)
-    return {"crop": crop, "variety": variety, "workflow": workflow, "version": version, "transition_1": t1}
+    return {
+        "crop": crop, "variety": variety, "workflow": workflow, "version": version, "transition_1": t1,
+        "carrier_type_code": carrier_type_code,
+    }
 
 
 def sow_new_batch(db: Session, tenant, user, farm, scaffold: dict, *, carrier_count=2, suffix=None):
     suffix = suffix or uuid.uuid4().hex[:8]
     crop, variety, workflow, t1 = scaffold["crop"], scaffold["variety"], scaffold["workflow"], scaffold["transition_1"]
+    carrier_type_code = scaffold.get("carrier_type_code", "seed_tray")
     batch = crop_batch_service.create_batch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=now(),
@@ -132,13 +145,23 @@ def sow_new_batch(db: Session, tenant, user, farm, scaffold: dict, *, carrier_co
         variety_id=variety.id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
-    carriers = [
-        carrier_service.register_carrier(
-            db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, carrier_count + 1)
-    ]
+    if carrier_type_code == "seed_tray":
+        seed_tray_spec = ensure_seed_tray_specification(db, tenant_id=tenant.id, actor_user_id=user.id)
+        carriers = [
+            carrier_service.register_carrier(
+                db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+                specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            )
+            for n in range(1, carrier_count + 1)
+        ]
+    else:
+        carriers = [
+            carrier_service.register_carrier(
+                db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+                carrier_type_code=carrier_type_code, code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            )
+            for n in range(1, carrier_count + 1)
+        ]
     sowing_service.sow_batch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=now(), note=None,
@@ -157,11 +180,11 @@ def sow_new_batch(db: Session, tenant, user, farm, scaffold: dict, *, carrier_co
     }
 
 
-def build_batch_with_assignments(db: Session, tenant, user, farm, *, carrier_count=2, suffix=None):
+def build_batch_with_assignments(db: Session, tenant, user, farm, *, carrier_count=2, suffix=None, carrier_type_code="seed_tray"):
     """Convenience wrapper: a fresh workflow scaffold plus one batch sown
     under it -- the common single-batch case."""
     suffix = suffix or uuid.uuid4().hex[:8]
-    scaffold = build_workflow_scaffold(db, tenant, user, farm, suffix=suffix)
+    scaffold = build_workflow_scaffold(db, tenant, user, farm, suffix=suffix, carrier_type_code=carrier_type_code)
     return sow_new_batch(db, tenant, user, farm, scaffold, carrier_count=carrier_count, suffix=suffix)
 
 
@@ -326,6 +349,8 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         # FK); both must precede carriers/locations.
         conn.execute(text("DELETE FROM occupancies WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM movements WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})

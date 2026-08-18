@@ -139,7 +139,12 @@ def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_
     reconstructible-projection model, not CMP-015's unconditional block.
     Re-upgrade must backfill a byte-identical receipt row."""
     require_cmp_test(test_engine)
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -192,7 +197,12 @@ def test_downgrade_blocked_by_missing_receipt(test_engine, alembic_head_restore)
     """A finished-goods lot whose receipt was hard-deleted (bypassing the
     append-only trigger via `replica`) must block downgrade — the lot ->
     receipt LEFT JOIN finds no matching row (`r.id IS NULL`)."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -227,7 +237,12 @@ def test_downgrade_blocked_by_extra_receipt_without_valid_lot(test_engine, alemb
     finished-goods lot at all is invisible to the lot-driven LEFT JOIN
     (there is no lot row to walk it from) and can only be caught by the
     dedicated receipt -> lot orphan check added during CMP-016 hardening."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -289,7 +304,9 @@ def test_downgrade_blocked_by_orphan_receipt_missing_packing_event(test_engine, 
     event field mismatch — proving the same real-world state (a receipt
     that cannot be tied back to a genuine packing event) is blocked
     regardless of which specific guard clause fires."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None)
+    # CARRIER-CONFIG-001A: see comment on the other build_committed_scenario
+    # calls in this file -- grow_bag avoids masking this guard.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     ids = _pack_two(scenario, session)
@@ -322,7 +339,12 @@ def test_downgrade_blocked_by_duplicate_receipt_for_lot(test_engine, alembic_hea
     literal duplicate (byte-identical to the original, so the field-
     mismatch predicate stays silent), isolating the dedicated per-lot
     cardinality check added during CMP-016 hardening."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -415,7 +437,9 @@ def test_downgrade_blocked_by_duplicate_receipt_for_packing_event(test_engine, a
     that event — proving the same real-world state (one event, two
     receipts) is blocked, alongside the dedicated per-event cardinality
     check added during CMP-016 hardening."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None)
+    # CARRIER-CONFIG-001A: see comment on the other build_committed_scenario
+    # calls in this file -- grow_bag avoids masking this guard.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     ids = _pack_two(scenario, session)
@@ -473,7 +497,12 @@ def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine, alembic_hea
     """`id` diverging from `finished_goods_lot_id` is unreachable without
     dropping the deterministic-id CHECK first — the same "drop CHECK,
     mutate, restore" discipline the unknown-entry-kind test below uses."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -557,7 +586,12 @@ def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate, alembi
     via pytest's own parametrize identity. None of these columns are
     guarded by a same-row CHECK, so a plain `replica`-bypassed UPDATE is
     enough to construct each state — no constraint needs dropping."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -586,7 +620,12 @@ def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate, alembi
 def test_downgrade_blocked_by_non_null_note(test_engine, alembic_head_restore) -> None:
     """`note` diverging from NULL is unreachable without dropping the
     note-null CHECK first."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)
@@ -646,7 +685,12 @@ def test_downgrade_blocked_by_non_null_note(test_engine, alembic_head_restore) -
 
 @pytest.mark.integration
 def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_restore) -> None:
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
+    # reconstructibility, unrelated to carrier type -- grow_bag keeps the
+    # scenario free of a carrier_specifications row, which would otherwise
+    # unconditionally block via e5b8c3a72f04's own, earlier-in-chain guard
+    # before this guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id = _pack_one(scenario, session)

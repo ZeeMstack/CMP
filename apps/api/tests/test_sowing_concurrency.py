@@ -28,6 +28,7 @@ from app.services.errors import (
     CarrierAlreadyAssignedError,
     SowingCommandReusedWithDifferentPayloadError,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -98,10 +99,11 @@ def _build_committed_scenario(test_engine, *, carrier_count=4):
         variety_id=variety.id, code=f"lot-{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
+    seed_tray_spec = ensure_seed_tray_specification(session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers = [
         carrier_service.register_carrier(
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
         )
         for n in range(1, carrier_count + 1)
     ]
@@ -124,6 +126,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})

@@ -59,9 +59,18 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
     )
 
     # 6: Register seed tray.
+    seed_tray_spec_resp = client.post(
+        "/carrier-specifications", headers=headers_a,
+        json={
+            "carrier_type_code": "seed_tray", "code": "ST-SPEC-0001", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    )
+    assert seed_tray_spec_resp.status_code == 201
+    seed_tray_spec_id = seed_tray_spec_resp.json()["id"]
     tray_resp = client.post(
         f"/farms/{farm.id}/carriers", headers=headers_a,
-        json={"carrier_type_code": "seed_tray", "code": "ST-0001"},
+        json={"specification_id": seed_tray_spec_id, "code": "ST-0001"},
     )
     assert tray_resp.status_code == 201
     tray_id = tray_resp.json()["id"]

@@ -46,10 +46,17 @@ def test_core_sowing_acceptance_flow(client, active_context, db_session) -> None
     assert seed_lot["status"] == "active"
 
     # 4. Create seed-tray carriers ST-0001..ST-0004.
+    seed_tray_spec = client.post(
+        "/carrier-specifications", headers=headers,
+        json={
+            "carrier_type_code": "seed_tray", "code": "ST-SPEC-0001", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    ).json()
     carriers = [
         client.post(
             f"/farms/{farm_id}/carriers", headers=headers,
-            json={"carrier_type_code": "seed_tray", "code": f"ST-{n:04d}"},
+            json={"specification_id": seed_tray_spec["id"], "code": f"ST-{n:04d}"},
         ).json()
         for n in range(1, 5)
     ]

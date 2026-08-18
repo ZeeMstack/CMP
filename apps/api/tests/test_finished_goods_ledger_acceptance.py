@@ -84,8 +84,15 @@ def test_finished_goods_ledger_acceptance_flow(client, active_context, db_sessio
         f"/farms/{farm_id}/seed-lots", headers=headers,
         json={"crop_id": crop["id"], "variety_id": variety["id"], "code": f"lot-{suffix}"},
     ).json()
+    seed_tray_spec = client.post(
+        "/carrier-specifications", headers=headers,
+        json={
+            "carrier_type_code": "seed_tray", "code": f"ST-SPEC-{suffix}", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    ).json()
     carrier = client.post(
-        f"/farms/{farm_id}/carriers", headers=headers, json={"carrier_type_code": "seed_tray", "code": f"tray-{suffix}"},
+        f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"tray-{suffix}"},
     ).json()
     sow_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,

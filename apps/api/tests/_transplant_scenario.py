@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
+from app.models.carrier import Carrier
 from app.schemas.farm_setup import (
     GerminationChamberSetupConfig,
     GreenhouseSetupCreate,
@@ -34,6 +35,7 @@ from app.services import (
     sowing_service,
     workflow_service,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def now():
@@ -42,14 +44,30 @@ def now():
 
 def build_transplant_ready_scenario(
     db_session, tenant, user, farm, *, suffix=None, tray_count=4, normal=200, abnormal=0,
-    transplanting_required_type="cultivation_plate",
+    transplanting_required_type="cultivation_plate", legacy_seed_tray_no_specification=False,
 ):
     """A Batch with `tray_count` Seed Trays, each sown, germinated, and
     entered through SeedlingEntry (frozen `starting_living_seedling_count =
     normal + abnormal`), workflow already advanced into a TRANSPLANTING-
     category stage. Also returns `destination_carriers` (4 pre-registered
     `transplanting_required_type` carriers, reusable across tests) and the
-    configured stage/transition ids `transplant_service` itself checks."""
+    configured stage/transition ids `transplant_service` itself checks.
+
+    Sows via `nursery_service.sow_new_batch`, which hard-requires the
+    workflow's SEEDING stage to use `seed_tray` (see nursery_service.
+    SEED_TRAY_CARRIER_TYPE_CODE) -- seed_tray is not a free choice here the
+    way it is in other domains' scenario builders.
+
+    CARRIER-CONFIG-001A: `legacy_seed_tray_no_specification=True` (default
+    False, unchanged behavior for every existing caller) constructs the
+    seed_tray Carriers via a direct raw-SQL INSERT (specification_id column
+    omitted, defaulting NULL) instead of `carrier_service.register_carrier`,
+    which at head schema correctly requires a specification for seed_tray.
+    This models a genuinely valid, still-supported historical Carrier state
+    (a pre-001A seed_tray row) for the handful of downgrade-guard callers
+    that need a real seed_tray without ever creating a committed
+    carrier_specifications row (which would otherwise make e5b8c3a72f04's
+    own, unconditional guard fire before the older guard under test)."""
     suffix = suffix or uuid.uuid4().hex[:8]
 
     crop = crop_service.register_crop(
@@ -147,13 +165,31 @@ def build_transplant_ready_scenario(
         shelf_pad_width=2, slot_pad_width=2,
     )
 
-    carriers = [
-        carrier_service.register_carrier(
-            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
-        )
-        for n in range(1, tray_count + 1)
-    ]
+    if legacy_seed_tray_no_specification:
+        seed_tray_type_id = db_session.execute(
+            text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+        ).scalar_one()
+        carriers = []
+        for n in range(1, tray_count + 1):
+            carrier_id = uuid.uuid4()
+            code = f"ST-{suffix}-{n:04d}"
+            db_session.execute(
+                text(
+                    "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, issued_date, "
+                    "retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL)"
+                ),
+                {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id, "code": code},
+            )
+            carriers.append(db_session.get(Carrier, carrier_id))
+    else:
+        seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
+        carriers = [
+            carrier_service.register_carrier(
+                db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+                specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            )
+            for n in range(1, tray_count + 1)
+        ]
 
     sow_time = now() - timedelta(days=5)
     event = nursery_service.sow_new_batch(

@@ -57,7 +57,11 @@ def _assert_at_head(test_engine) -> None:
 
 
 def _build_placed_scenario(test_engine):
-    s = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: storage-movement history is unrelated to carrier
+    # type -- grow_bag keeps the scenario free of a carrier_specifications
+    # row, which would otherwise unconditionally block via e5b8c3a72f04's
+    # own, earlier-in-chain guard before this guard is ever reached.
+    s = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(s, session, package_count=10, packed_output_weight_kg=Decimal("8.000"))
@@ -93,7 +97,11 @@ def test_downgrade_blocked_even_when_net_placed_balance_is_zero(test_engine, ale
     balance at that position, but both rows still exist as independent
     operational history -- the guard counts rows, not net balance, so
     downgrade must still be blocked."""
-    s = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: storage-movement history is unrelated to carrier
+    # type -- grow_bag keeps the scenario free of a carrier_specifications
+    # row, which would otherwise unconditionally block via e5b8c3a72f04's
+    # own, earlier-in-chain guard before this guard is ever reached.
+    s = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(s, session, package_count=10, packed_output_weight_kg=Decimal("8.000"))
@@ -144,7 +152,9 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
     identical, proving the constraint drop/recreate never touches
     `locations` data, only its own catalog entry."""
     require_cmp_test(test_engine)
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this test's downgrade must succeed cleanly --
+    # grow_bag keeps the scenario free of a carrier_specifications row.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(scenario, session, package_count=3, packed_output_weight_kg=Decimal("2.000"))

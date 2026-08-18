@@ -24,6 +24,7 @@ from app.services.errors import (
     TargetNotOccupiableError,
     TargetOccupiedError,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -156,9 +157,10 @@ def test_removal(db_session, placed_trolley_and_tray) -> None:
 @pytest.mark.integration
 def test_removal_with_nothing_to_remove_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     tray = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code="ST-9999", issued_date=None,
+        specification_id=seed_tray_spec.id, code="ST-9999", issued_date=None,
     )
     with pytest.raises(NothingToRemoveError):
         movement_service.execute_movement(

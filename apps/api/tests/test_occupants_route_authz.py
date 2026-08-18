@@ -30,6 +30,7 @@ from app.services import (
     tenant_service,
     user_service,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -131,9 +132,10 @@ def test_position_occupants_route_readable_by_every_role_holding_asset_read(clie
     trolley, slot = _build_slot(db_session, tenant, farm, user, capacity=1)
     from app.services import carrier_service
 
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     tray = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code=f"ST-{uuid.uuid4().hex[:8]}", issued_date=None,
+        specification_id=seed_tray_spec.id, code=f"ST-{uuid.uuid4().hex[:8]}", issued_date=None,
     )
     _place(db_session, tenant, farm, user, occupant_kind="carrier", occupant_id=tray.id, target_kind="asset_position", target_id=slot.id)
     db_session.commit()
@@ -227,9 +229,10 @@ def test_position_occupants_cross_tenant_lookup_is_404_not_leaked(client, db_ses
     trolley_a, slot_a = _build_slot(db_session, tenant_a, farm_a, user_a, capacity=1)
     from app.services import carrier_service
 
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant_a.id, actor_user_id=user_a.id)
     tray = carrier_service.register_carrier(
         db_session, tenant_id=tenant_a.id, farm_id=farm_a.id, actor_user_id=user_a.id,
-        carrier_type_code="seed_tray", code=f"ST-{uuid.uuid4().hex[:8]}", issued_date=None,
+        specification_id=seed_tray_spec.id, code=f"ST-{uuid.uuid4().hex[:8]}", issued_date=None,
     )
     _place(db_session, tenant_a, farm_a, user_a, occupant_kind="carrier", occupant_id=tray.id, target_kind="asset_position", target_id=slot_a.id)
     db_session.commit()

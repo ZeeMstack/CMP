@@ -20,7 +20,7 @@ EXPECTED_CODES = {
 # label metadata plus the two new role-specific Plate types -- every
 # pre-existing type (including seed_tray itself) deliberately stays
 # requires_specification=False, see the ticket's own final report.
-EXPECTED_REQUIRES_SPECIFICATION = {"nursery_cultivation_plate", "production_cultivation_plate"}
+EXPECTED_REQUIRES_SPECIFICATION = {"seed_tray", "nursery_cultivation_plate", "production_cultivation_plate"}
 EXPECTED_BIOLOGICAL_POSITION_LABELS = {
     "seed_tray": "Cells",
     "nursery_cultivation_plate": "Holes",

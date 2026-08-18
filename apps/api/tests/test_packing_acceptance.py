@@ -90,10 +90,17 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/seed-lots", headers=headers,
         json={"crop_id": crop["id"], "variety_id": variety["id"], "code": f"lot-{suffix}"},
     ).json()
+    seed_tray_spec = client.post(
+        "/carrier-specifications", headers=headers,
+        json={
+            "carrier_type_code": "seed_tray", "code": f"ST-SPEC-{suffix}", "name": "Test Seed Tray Specification",
+            "length_mm": 300, "width_mm": 200, "height_mm": 50, "biological_position_count": 500,
+        },
+    ).json()
     carriers = [
         client.post(
             f"/farms/{farm_id}/carriers", headers=headers,
-            json={"carrier_type_code": "seed_tray", "code": f"tray-{suffix}-{n}"},
+            json={"specification_id": seed_tray_spec["id"], "code": f"tray-{suffix}-{n}"},
         ).json()
         for n in range(3)
     ]
@@ -309,7 +316,7 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
         json={"crop_id": crop["id"], "variety_id": other_variety["id"], "code": f"olot-{suffix}"},
     ).json()
     other_carrier = client.post(
-        f"/farms/{farm_id}/carriers", headers=headers, json={"carrier_type_code": "seed_tray", "code": f"otray-{suffix}"},
+        f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"otray-{suffix}"},
     ).json()
     client.post(
         f"/farms/{farm_id}/crop-batches/{other_batch['id']}/sowings", headers=headers,

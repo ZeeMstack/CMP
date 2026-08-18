@@ -64,7 +64,11 @@ def _assert_at_head(test_engine) -> None:
 
 
 def _build_dispatched_scenario(test_engine):
-    s = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: dispatch history is what this guard blocks on --
+    # the carrier type used to grow/harvest the underlying lot is incidental,
+    # so grow_bag avoids creating a carrier_specifications row that would
+    # otherwise make e5b8c3a72f04's own, earlier-in-chain guard fire first.
+    s = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(s, session, package_count=10, packed_output_weight_kg=Decimal("8.000"))
@@ -147,7 +151,9 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
     no dispatch_events/dispatch_lines/dispatch_issue rows exist at all —
     constructed against an ordinary CMP-016 receipt row, with the three
     kind-dependent CHECKs temporarily dropped to allow the mutation."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: see _build_dispatched_scenario's own comment --
+    # grow_bag keeps this scenario free of a carrier_specifications row.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(scenario, session, package_count=1, packed_output_weight_kg=Decimal("1.000"))
@@ -355,7 +361,12 @@ def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp01
     CHECK bodies and trigger attachment, preserve every existing packing
     receipt untouched, and re-upgrade must reattach the v2 trigger."""
     require_cmp_test(test_engine)
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this test's downgrade must succeed cleanly (no
+    # dispatch history) -- grow_bag keeps the scenario free of a
+    # carrier_specifications row, which would otherwise unconditionally
+    # block via e5b8c3a72f04's own guard before this test's own downgrade
+    # is even attempted.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     fg_lot_id, _ = pack_one(scenario, session, package_count=3, packed_output_weight_kg=Decimal("2.000"))
