@@ -25,6 +25,7 @@ from app.services.errors import (
     BatchDerivationValidationError,
     QualityHoldOpenError,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -90,10 +91,11 @@ def _build_batch_with_assignments(db_session, tenant, user, farm, *, carrier_cou
         variety_id=variety.id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers = [
         carrier_service.register_carrier(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
         )
         for n in range(1, carrier_count + 1)
     ]
@@ -274,7 +276,9 @@ def test_superseded_source_batch_rejects_new_sowing(db_session, active_context_w
 
     extra_carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code=f"ST-extra-{suffix}", issued_date=None,
+        specification_id=ensure_seed_tray_specification(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id,
+        ).id, code=f"ST-extra-{suffix}", issued_date=None,
     )
     with pytest.raises(BatchAlreadySownError):
         sowing_service.sow_batch(
@@ -304,10 +308,11 @@ def test_merge_creates_one_output_and_supersedes_both_sources(db_session, active
         variety_id=s1["variety"].id, code=f"LOT-b{suffix}", supplier_name=None, supplier_lot_reference=None,
         received_date=None, expiry_date=None,
     )
+    seed_tray_spec2 = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers2 = [
         carrier_service.register_carrier(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-b{suffix}-{n:04d}", issued_date=None,
+            specification_id=seed_tray_spec2.id, code=f"ST-b{suffix}-{n:04d}", issued_date=None,
         )
         for n in range(1, 3)
     ]
@@ -382,7 +387,9 @@ def test_merge_open_hold_blocks_and_release_unblocks(db_session, active_context_
     )
     carrier2 = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code=f"ST-b{suffix}", issued_date=None,
+        specification_id=ensure_seed_tray_specification(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id,
+        ).id, code=f"ST-b{suffix}", issued_date=None,
     )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch2.id,

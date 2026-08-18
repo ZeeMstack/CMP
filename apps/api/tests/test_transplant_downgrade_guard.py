@@ -127,6 +127,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
@@ -240,7 +242,17 @@ def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine,
     try:
         tenant, user, farm = _create_minimal_tenant_farm(session, code_suffix=f"hist-{suffix}")
         tenant_id = tenant.id
-        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=1)
+        # CARRIER-CONFIG-001A: this scenario genuinely needs a real
+        # seed_tray (nursery_service.sow_new_batch hard-requires it) but
+        # this guard is about transplant history, not carrier
+        # specifications -- legacy_seed_tray_no_specification models a
+        # valid pre-001A seed_tray Carrier (specification_id=NULL) via raw
+        # SQL, never creating a carrier_specifications row that would
+        # otherwise make e5b8c3a72f04's own, earlier-in-chain guard fire
+        # first.
+        s = build_transplant_ready_scenario(
+            session, tenant, user, farm, suffix=suffix, tray_count=1, legacy_seed_tray_no_specification=True,
+        )
         session.commit()
 
         source_assignment_id = s["source_assignment_ids"][0]
@@ -319,7 +331,12 @@ def test_migration_downgrade_blocked_when_multi_event_source_assignment_exists(t
     try:
         tenant, user, farm = _create_minimal_tenant_farm(session, code_suffix=f"multi-{suffix}")
         tenant_id = tenant.id
-        s = build_transplant_ready_scenario(session, tenant, user, farm, suffix=suffix, tray_count=1, normal=100)
+        # CARRIER-CONFIG-001A: see comment on the other build_transplant_
+        # ready_scenario call in this file.
+        s = build_transplant_ready_scenario(
+            session, tenant, user, farm, suffix=suffix, tray_count=1, normal=100,
+            legacy_seed_tray_no_specification=True,
+        )
         session.commit()
 
         source_assignment_id = s["source_assignment_ids"][0]

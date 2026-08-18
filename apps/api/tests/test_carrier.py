@@ -14,6 +14,7 @@ from app.services.errors import (
     DuplicateCarrierCodeError,
     FarmNotFoundError,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
@@ -52,6 +53,16 @@ def _register(db_session, tenant, farm, user, **overrides):
         code="ST-00001",
         issued_date=None,
     )
+    # CARRIER-CONFIG-001A: only swap in a resolved seed_tray specification
+    # when the caller is actually using the seed_tray default -- a caller
+    # overriding carrier_type_code (e.g. to "grow_bag"/"not_a_type") must
+    # not also inherit a seed_tray specification_id, which would collide
+    # with CarrierSpecificationTypeMismatchError.
+    if "carrier_type_code" not in overrides:
+        defaults["carrier_type_code"] = None
+        defaults["specification_id"] = ensure_seed_tray_specification(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id,
+        ).id
     defaults.update(overrides)
     return carrier_service.register_carrier(db_session, **defaults)
 
@@ -89,9 +100,10 @@ def test_same_carrier_code_allowed_in_different_tenants(db_session, active_conte
         db_session, tenant_id=other_tenant.id, actor_user_id=None, code="other-farm", name="Other Farm",
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
+    other_spec = ensure_seed_tray_specification(db_session, tenant_id=other_tenant.id, actor_user_id=None)
     carrier_b = carrier_service.register_carrier(
         db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
-        carrier_type_code="seed_tray", code="ST-00001", issued_date=None,
+        specification_id=other_spec.id, code="ST-00001", issued_date=None,
     )
     assert carrier_a.code == carrier_b.code
     assert carrier_a.tenant_id != carrier_b.tenant_id

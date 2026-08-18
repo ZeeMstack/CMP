@@ -89,6 +89,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})
@@ -149,11 +151,16 @@ def _build_harvest(test_engine, *, suffix: str):
     version = workflow_service.create_draft_version(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
     )
+    # CARRIER-CONFIG-001A: this shared harvest scenario is used by
+    # downgrade-guard tests unrelated to seed_tray/carrier specifications
+    # -- uses grow_bag (still requires_specification=false) so downgrading
+    # never trips e5b8c3a72f04's own, stricter, later-in-chain guard before
+    # reaching whatever guard each test actually means to exercise.
     seeding = workflow_service.add_stage(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
         expected_duration_minutes=None, permitted_location_type_code=None,
-        required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+        required_carrier_type_code="grow_bag", is_start=True, is_terminal=False,
     )
     harvesting = workflow_service.add_stage(
         session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
@@ -188,7 +195,8 @@ def _build_harvest(test_engine, *, suffix: str):
         received_date=None, expiry_date=None,
     )
     carrier = carrier_service.register_carrier(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        carrier_type_code="grow_bag",
         code=f"TRAY-{suffix}", issued_date=None,
     )
     sowing_service.sow_batch(

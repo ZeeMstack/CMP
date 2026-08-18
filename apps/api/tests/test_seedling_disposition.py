@@ -50,7 +50,7 @@ from app.services.errors import (
     SeedlingDispositionValidationError,
 )
 from tests._traceability_scenario import cleanup_traceability_scenario
-from tests.conftest import migrations_alembic_config, resolve_dynamic_alembic_head
+from tests.conftest import ensure_seed_tray_specification, migrations_alembic_config, resolve_dynamic_alembic_head
 
 
 def _now():
@@ -150,10 +150,11 @@ def _build_entered_scenario(
         shelf_pad_width=2, slot_pad_width=2,
     )
 
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers = [
         carrier_service.register_carrier(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
         )
         for n in range(1, tray_count + 1)
     ]
@@ -1541,8 +1542,19 @@ def test_migration_downgrade_blocked_when_disposition_events_exist(test_engine, 
         session.close()
         conn.close()
 
+    # CARRIER-CONFIG-001A: _build_entered_scenario uses nursery_service.
+    # sow_new_batch, which requires a workflow whose SEEDING stage's
+    # required_carrier_type is exactly seed_tray (see nursery_service.
+    # SEED_TRAY_CARRIER_TYPE_CODE), so this scenario cannot avoid
+    # registering a seed_tray Carrier -- which, since 001A, always carries
+    # a carrier_specifications row. e5b8c3a72f04 (CARRIER-CONFIG-001) sits
+    # between head and _PRE_003B_REVISION in the migration chain and its
+    # own downgrade guard unconditionally blocks on ANY carrier_specifications
+    # row -- it now always fires before NURSERY-OPS-003B's own guard is
+    # ever reached, making this the correct, permanent expectation rather
+    # than the original NURSERY-OPS-003B-specific message.
     cfg = migrations_alembic_config()
-    with pytest.raises(Exception, match="Cannot downgrade past NURSERY-OPS-003B"):
+    with pytest.raises(Exception, match="Cannot downgrade past CARRIER-CONFIG-001"):
         command.downgrade(cfg, _PRE_003B_REVISION)
 
     with test_engine.connect() as check_conn:

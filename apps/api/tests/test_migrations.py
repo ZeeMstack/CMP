@@ -1377,7 +1377,12 @@ def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event
     _assert_operating_on_cmp_test_database(test_engine)
     require_cmp_test(test_engine)
 
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: this backfill-validation guard is unrelated to
+    # carrier type -- grow_bag keeps the scenario free of a
+    # carrier_specifications row, which would otherwise unconditionally
+    # block via e5b8c3a72f04's own, earlier-in-chain guard before the
+    # downgrade to a91f4c7b2e58 this test needs even happens.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     event = packing_service.record_packing(

@@ -98,15 +98,18 @@ def test_other_legacy_types_unaffected(db_session) -> None:
 
 
 @pytest.mark.integration
-def test_seed_tray_label_seeded_but_not_yet_required(db_session) -> None:
-    """Deliberate, explicit product decision (see the CARRIER-CONFIG-001
-    final report): flipping seed_tray to requires_specification=true is
-    deferred to a dedicated follow-up so this ticket does not have to
-    rewrite the dozens of pre-existing, unrelated-domain test scenario
-    helpers that register seed_tray carriers as incidental setup."""
+def test_seed_tray_label_seeded_and_now_required(db_session) -> None:
+    """CARRIER-CONFIG-001 seeded `biological_position_label='Cells'` for
+    seed_tray but deliberately deferred flipping `requires_specification`
+    to a dedicated follow-up (see that ticket's final report), so it would
+    not also have to rewrite the dozens of pre-existing, unrelated-domain
+    test scenario helpers that register seed_tray carriers as incidental
+    setup. CARRIER-CONFIG-001A is that follow-up: it flips the flag to
+    True (migration d9a417c5e832) once every one of those helpers was
+    updated to supply a specification_id."""
     seed_tray = db_session.execute(select(CarrierType).where(CarrierType.code == "seed_tray")).scalar_one()
     assert seed_tray.biological_position_label == "Cells"
-    assert seed_tray.requires_specification is False
+    assert seed_tray.requires_specification is True
 
 
 # --- Specification create/read ------------------------------------------------------
@@ -308,10 +311,15 @@ def test_specification_required_type_rejects_neither_supplied(db_session, active
 def test_legacy_non_required_type_registration_still_works_without_spec(
     db_session, active_context_with_farm
 ) -> None:
+    # CARRIER-CONFIG-001A flipped seed_tray.requires_specification to true,
+    # so seed_tray is no longer a valid example of a non-required type here
+    # -- grow_bag (untouched by either ticket) now illustrates the same
+    # general rule this test's name/purpose is actually about: a CarrierType
+    # that does NOT require a specification still registers fine without one.
     tenant, user, _headers, farm = active_context_with_farm
     carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code="ST-LEGACY", issued_date=None,
+        carrier_type_code="grow_bag", code="GB-LEGACY", issued_date=None,
     )
     assert carrier.specification_id is None
 

@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import settings
 from app.models.carrier import Carrier
+from app.models.carrier_specification import CarrierSpecification
 from app.models.crop_batch import CropBatch
 from app.models.location import Location
 from app.models.seed_lot import SeedLot
@@ -46,6 +47,7 @@ from app.models.workflow_version import WorkflowVersion
 from app.services import (
     batch_derivation_service,
     carrier_service,
+    carrier_specification_service,
     crop_batch_service,
     location_service,
     movement_service,
@@ -268,13 +270,37 @@ SEED_TRAY_COUNT = 7  # one per originally-sown batch (LOT-001..007)
 CULTIVATION_PLATE_COUNT = 5  # LOT-004,005,006 (1 each) + LOT-007 (2, split into 007A/007B)
 
 
+def get_or_create_seed_tray_specification(db: Session) -> uuid.UUID:
+    # CARRIER-CONFIG-001A: seed_tray now requires_specification -- this
+    # pilot demo scenario needs one reusable specification to register its
+    # seed trays against, following the same idempotent lookup-then-create
+    # pattern as every other pilot catalog/config step in this script.
+    existing = db.execute(
+        select(CarrierSpecification).where(
+            CarrierSpecification.tenant_id == TENANT_ID,
+            CarrierSpecification.code == "PILOT-SEED-TRAY-SPEC",
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing.id
+    spec = carrier_specification_service.register_carrier_specification(
+        db, tenant_id=TENANT_ID, actor_user_id=ACTOR_USER_ID, carrier_type_code="seed_tray",
+        code="PILOT-SEED-TRAY-SPEC", name="Pilot Demo Seed Tray Specification",
+        length_mm=300, width_mm=200, height_mm=50, biological_position_count=104,
+    )
+    db.commit()
+    print(f"  seed_tray specification PILOT-SEED-TRAY-SPEC -> {spec.id}")
+    return spec.id
+
+
 def get_or_create_carriers(db: Session) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
     print("Carriers...")
     existing_trays = list(db.execute(select(Carrier).where(Carrier.tenant_id == TENANT_ID, Carrier.farm_id == FARM_ID, Carrier.code.like("PILOT-TRAY-%")).order_by(Carrier.code)).scalars())
     if existing_trays:
         trays = [c.id for c in existing_trays]
     else:
-        created = carrier_service.bulk_register_carriers(db, tenant_id=TENANT_ID, farm_id=FARM_ID, actor_user_id=ACTOR_USER_ID, carrier_type_code="seed_tray", code_prefix="PILOT-TRAY-", start=1, end=SEED_TRAY_COUNT, pad_width=2)
+        seed_tray_spec_id = get_or_create_seed_tray_specification(db)
+        created = carrier_service.bulk_register_carriers(db, tenant_id=TENANT_ID, farm_id=FARM_ID, actor_user_id=ACTOR_USER_ID, specification_id=seed_tray_spec_id, code_prefix="PILOT-TRAY-", start=1, end=SEED_TRAY_COUNT, pad_width=2)
         db.commit()
         trays = [c.id for c in created]
         print(f"  {SEED_TRAY_COUNT}x seed_tray created")

@@ -65,7 +65,12 @@ def _pack_one(scenario, db) -> None:
 
 @pytest.mark.integration
 def test_downgrade_blocked_when_packing_history_exists(test_engine, alembic_head_restore) -> None:
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: packing history existence is unrelated to
+    # carrier type -- grow_bag keeps the scenario free of a
+    # carrier_specifications row, which would otherwise unconditionally
+    # block via e5b8c3a72f04's own, earlier-in-chain guard before this
+    # guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     _pack_one(scenario, session)
@@ -157,7 +162,12 @@ def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_
     separately proven in test_finished_goods_ledger_downgrade_guard.py)
     orphan-receipt guard first, since CMP-016 now sits above CMP-015 in the
     downgrade cascade."""
-    scenario = build_committed_scenario(test_engine, lot_a_count=None)
+    # CARRIER-CONFIG-001A: packing history existence is unrelated to
+    # carrier type -- grow_bag keeps the scenario free of a
+    # carrier_specifications row, which would otherwise unconditionally
+    # block via e5b8c3a72f04's own, earlier-in-chain guard before this
+    # guard is ever reached.
+    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
     _pack_one(scenario, session)

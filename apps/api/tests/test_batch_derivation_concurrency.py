@@ -26,6 +26,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import BatchDerivationValidationError, CropBatchClosedError
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -99,10 +100,11 @@ def _build_committed_scenario(test_engine, *, source_batch_count=1, carriers_per
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
             code=f"batch-{suffix}-{b}", workflow_id=workflow.id, effective_time=_now(),
         )
+        seed_tray_spec = ensure_seed_tray_specification(session, tenant_id=tenant.id, actor_user_id=user.id)
         carriers = [
             carrier_service.register_carrier(
                 session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-                carrier_type_code="seed_tray", code=f"tray-{suffix}-{b}-{n}", issued_date=None,
+                specification_id=seed_tray_spec.id, code=f"tray-{suffix}-{b}-{n}", issued_date=None,
             )
             for n in range(carriers_per_batch)
         ]
@@ -150,6 +152,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_transitions WHERE tenant_id = :tid"), {"tid": tenant_id})

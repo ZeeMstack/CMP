@@ -236,8 +236,56 @@ def active_context_with_farm(active_context, db_session):
     return tenant, user, headers, farm
 
 
+def ensure_seed_tray_specification(db_session, *, tenant_id, actor_user_id, code="ST-TEST-DEFAULT"):
+    """CARRIER-CONFIG-001A: idempotent within one tenant -- returns the
+    tenant's existing `code`-named `seed_tray` `CarrierSpecification` if one
+    was already registered in this test/session (safe to call more than
+    once for the same tenant), or registers a fresh one otherwise. A plain
+    function (not a fixture) so it is directly callable from local
+    file-scoped scenario helpers, which cannot consume a pytest fixture --
+    `seed_tray_specification` below is a thin fixture wrapper over this same
+    function for test functions that want it directly. Always goes through
+    the real `carrier_specification_service.register_carrier_specification`
+    -- no raw SQL, no service-layer bypass.
+
+    The dimension/`biological_position_count` values below are literal TEST
+    FIXTURE DATA only, sized to comfortably exceed every existing test's
+    carrier_count/sown_site_count usage -- they are NOT a production
+    business default. CARRIER-CONFIG-001B (out of scope here) is what would
+    ever give this number real behavioral meaning against Sowing."""
+    from sqlalchemy import func, select
+
+    from app.models.carrier_specification import CarrierSpecification
+    from app.services import carrier_specification_service
+
+    existing = db_session.execute(
+        select(CarrierSpecification).where(
+            CarrierSpecification.tenant_id == tenant_id,
+            func.lower(CarrierSpecification.code) == code.lower(),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    return carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant_id, actor_user_id=actor_user_id, carrier_type_code="seed_tray",
+        code=code, name="Test Seed Tray Specification",
+        length_mm=300, width_mm=200, height_mm=50, biological_position_count=500,
+    )
+
+
 @pytest.fixture
-def placed_trolley_and_tray(active_context_with_farm, db_session):
+def seed_tray_specification(active_context_with_farm, db_session):
+    """Thin fixture wrapper over `ensure_seed_tray_specification` for test
+    functions that register a Seed Tray Carrier directly (no local scenario
+    helper involved). Function-scoped: a fresh tenant per test via
+    `active_context_with_farm`, so this never depends on execution order or
+    any ambient/global data."""
+    tenant, user, _headers, _farm = active_context_with_farm
+    return ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
+
+
+@pytest.fixture
+def placed_trolley_and_tray(active_context_with_farm, seed_tray_specification, db_session):
     """Builds the CMP-006 core scenario (topology corrected by DOMAIN-FARM-001
     to the authoritative Nursery shape, then again by NURSERY-OPS-002A to the
     FROZEN direct-occupancy model -- no chamber_position: a Germination
@@ -284,7 +332,7 @@ def placed_trolley_and_tray(active_context_with_farm, db_session):
 
     tray = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code="ST-0001", issued_date=None,
+        specification_id=seed_tray_specification.id, code="ST-0001", issued_date=None,
     )
 
     now = datetime.now(timezone.utc)

@@ -32,6 +32,7 @@ from app.services.errors import (
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
 )
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -114,10 +115,11 @@ def _build_scenario(
         ).first()
         seeding_machine_id = row[0]
 
+    seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers = [
         carrier_service.register_carrier(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{n:04d}", issued_date=None,
+            specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{n:04d}", issued_date=None,
         )
         for n in range(1, tray_count + 1)
     ]
@@ -338,9 +340,10 @@ def test_invalid_wrong_farm_tray_rejected(db_session, active_context_with_farm) 
         db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{uuid.uuid4().hex[:8]}",
         name="Other Farm", country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
+    other_farm_seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     other_farm_carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=other_farm.id, actor_user_id=user.id,
-        carrier_type_code="seed_tray", code=f"ST-OTHERFARM-{uuid.uuid4().hex[:8]}", issued_date=None,
+        specification_id=other_farm_seed_tray_spec.id, code=f"ST-OTHERFARM-{uuid.uuid4().hex[:8]}", issued_date=None,
     )
     from app.services.errors import CarrierNotFoundError
 
@@ -367,9 +370,12 @@ def test_invalid_wrong_tenant_tray_rejected(db_session, active_context_with_farm
         db_session, tenant_id=other_tenant.id, actor_user_id=other_user.id, code=f"farm-{suffix}", name="Other Farm",
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
+    other_tenant_seed_tray_spec = ensure_seed_tray_specification(
+        db_session, tenant_id=other_tenant.id, actor_user_id=other_user.id
+    )
     other_tenant_carrier = carrier_service.register_carrier(
         db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=other_user.id,
-        carrier_type_code="seed_tray", code=f"ST-OTHERTENANT-{suffix}", issued_date=None,
+        specification_id=other_tenant_seed_tray_spec.id, code=f"ST-OTHERTENANT-{suffix}", issued_date=None,
     )
     with pytest.raises(CarrierNotFoundError):
         _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": other_tenant_carrier.id, "seeds_sown": 100}])

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.services import asset_service, farm_service, location_service, membership_service, tenant_service, user_service
 from app.services.errors import TargetOccupiedError
+from tests.conftest import ensure_seed_tray_specification
 
 
 def _now():
@@ -71,10 +72,11 @@ def _build_committed_scenario(test_engine, *, location_capacity: int, position_c
 
     from app.services import carrier_service
 
+    seed_tray_spec = ensure_seed_tray_specification(session, tenant_id=tenant.id, actor_user_id=user.id)
     trays = [
         carrier_service.register_carrier(
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-            carrier_type_code="seed_tray", code=f"ST-{suffix}-{i}", issued_date=None,
+            specification_id=seed_tray_spec.id, code=f"ST-{suffix}-{i}", issued_date=None,
         )
         for i in range(num_trays)
     ]
@@ -96,6 +98,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("SET session_replication_role = replica"))
         conn.execute(text("DELETE FROM occupancies WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM movements WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM asset_positions WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :tid)"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM assets WHERE tenant_id = :tid"), {"tid": tenant_id})

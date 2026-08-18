@@ -525,7 +525,12 @@ _DEDICATED_STATES = [
 
 
 def _new_scenario(test_engine):
-    return build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None)
+    # CARRIER-CONFIG-001A: CMP-014 receipt-reconstructibility is unrelated
+    # to carrier type -- grow_bag keeps the scenario free of a
+    # carrier_specifications row, which would otherwise unconditionally
+    # block via e5b8c3a72f04's own, earlier-in-chain guard before this
+    # guard is ever reached.
+    return build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None, carrier_type_code="grow_bag")
 
 
 @pytest.mark.integration

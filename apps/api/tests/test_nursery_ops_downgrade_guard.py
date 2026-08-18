@@ -61,6 +61,8 @@ def _cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM seed_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('carrier_specifications')")).scalar() is not None:
+            conn.execute(text("DELETE FROM carrier_specifications WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM assets WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
@@ -175,8 +177,11 @@ def test_migration_downgrade_blocked_when_seeding_provenance_exists(test_engine,
         structure = farm_setup_service.get_greenhouse_structure(
             session.connection(), tenant_id=tenant.id, farm_id=farm.id, greenhouse_id=setup.greenhouse_id,
         )
+        from tests.conftest import ensure_seed_tray_specification
+        seed_tray_spec = ensure_seed_tray_specification(session, tenant_id=tenant.id, actor_user_id=user.id)
         carrier = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            specification_id=seed_tray_spec.id,
             code=f"ST-{suffix}", issued_date=None,
         )
         event = nursery_service.sow_new_batch(
@@ -187,7 +192,18 @@ def test_migration_downgrade_blocked_when_seeding_provenance_exists(test_engine,
         )
         event_id = event.id
 
-        with pytest.raises(RuntimeError, match="Cannot downgrade past NURSERY-OPS-001"):
+        # CARRIER-CONFIG-001A: nursery_service.sow_new_batch requires a
+        # workflow whose SEEDING stage's required_carrier_type is exactly
+        # seed_tray (see nursery_service.SEED_TRAY_CARRIER_TYPE_CODE), so
+        # this scenario cannot avoid registering a seed_tray Carrier --
+        # which, since 001A, always carries a carrier_specifications row.
+        # e5b8c3a72f04 (CARRIER-CONFIG-001) sits between head and
+        # _PRE_NURSERY_OPS_REVISION in the migration chain and its own
+        # downgrade guard unconditionally blocks on ANY carrier_specifications
+        # row -- it now always fires before NURSERY-OPS-001's own guard is
+        # ever reached, making this the correct, permanent expectation
+        # rather than the original NURSERY-OPS-001-specific message.
+        with pytest.raises(RuntimeError, match="Cannot downgrade past CARRIER-CONFIG-001"):
             command.downgrade(_cfg(), _PRE_NURSERY_OPS_REVISION)
 
         _assert_at_head(test_engine)
@@ -261,11 +277,19 @@ def test_migration_downgrade_blocked_when_sown_site_count_unrecorded(test_engine
         version = workflow_service.create_draft_version(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id
         )
+        # CARRIER-CONFIG-001A: this test exercises NURSERY-OPS-001.1's own
+        # sown_site_count guard via the generic sowing_service.sow_batch
+        # path (unlike the seeding-provenance test above, this one does not
+        # need nursery_service.sow_new_batch), so it uses grow_bag (still
+        # requires_specification=false) to avoid ever creating a
+        # carrier_specifications row -- otherwise e5b8c3a72f04's own,
+        # stricter, later-in-chain guard would fire first and mask the
+        # NURSERY-OPS-001.1 guard this test is actually about.
         seeding = workflow_service.add_stage(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
             code="SEEDING", name="Seeding", display_order=0, stage_category="seeding",
             expected_duration_minutes=None, permitted_location_type_code=None,
-            required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+            required_carrier_type_code="grow_bag", is_start=True, is_terminal=False,
         )
         complete = workflow_service.add_stage(
             session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
@@ -290,7 +314,8 @@ def test_migration_downgrade_blocked_when_sown_site_count_unrecorded(test_engine
             code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),
         )
         carrier = carrier_service.register_carrier(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            carrier_type_code="grow_bag",
             code=f"ST-{suffix}", issued_date=None,
         )
         sowing_service.sow_batch(
