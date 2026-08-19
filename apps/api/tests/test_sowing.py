@@ -14,6 +14,7 @@ from app.models.sowing_event_line import SowingEventLine
 from app.schemas.sowing_event import SowingEventCreate, SowingEventLineIn
 from app.services import (
     carrier_service,
+    carrier_specification_service,
     crop_batch_service,
     crop_service,
     production_system_service,
@@ -26,6 +27,7 @@ from app.services.errors import (
     CropBatchClosedError,
     InvalidSowingEffectiveTimeError,
     MixedSeedLotInSowingCommandError,
+    SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
     TooManySowingLinesError,
@@ -189,6 +191,56 @@ def _simple_line(carrier, seed_lot, **overrides):
     )
     defaults.update(overrides)
     return defaults
+
+
+# --- CARRIER-CONFIG-001B: seed tray sowing capacity (legacy/general path) ----------
+#
+# The capacity rule lives in the SHARED `sowing_service._sow_batch_core`, already
+# exhaustively tested via the modern Nursery Sowing path in test_nursery_ops.py
+# (below/equal/above capacity, seed_count independence, legacy NULL-specification
+# and NULL-capacity compatibility, multi-line atomicity). These two tests exist
+# only to prove the same shared enforcement point genuinely also covers this
+# legacy/general route -- not to duplicate that full matrix.
+
+
+@pytest.mark.integration
+def test_sow_batch_sown_site_count_at_capacity_succeeds(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-CAP-{uuid.uuid4().hex[:8]}", name="Capacity Test Tray",
+        length_mm=300, width_mm=200, height_mm=50, biological_position_count=200,
+    )
+    carrier = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        specification_id=spec.id, code=f"ST-CAP-{uuid.uuid4().hex[:8]}", issued_date=None,
+    )
+    event = _sow(
+        db_session, tenant, user, farm, s["batch"],
+        [_simple_line(carrier, s["seed_lot"], sown_site_count=200, seed_count=200)],
+    )
+    assert event.id is not None
+
+
+@pytest.mark.integration
+def test_sow_batch_sown_site_count_exceeds_capacity_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-CAP-{uuid.uuid4().hex[:8]}", name="Capacity Test Tray",
+        length_mm=300, width_mm=200, height_mm=50, biological_position_count=200,
+    )
+    carrier = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        specification_id=spec.id, code=f"ST-CAP-{uuid.uuid4().hex[:8]}", issued_date=None,
+    )
+    with pytest.raises(SowingCapacityExceededError):
+        _sow(
+            db_session, tenant, user, farm, s["batch"],
+            [_simple_line(carrier, s["seed_lot"], sown_site_count=201, seed_count=201)],
+        )
 
 
 # --- Core sowing behavior ----------------------------------------------------------

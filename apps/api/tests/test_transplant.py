@@ -501,17 +501,22 @@ def test_future_effective_time_rejected(db_session, active_context_with_farm) ->
 
 @pytest.mark.integration
 def test_sown_site_count_never_consulted_for_modern_source(db_session, active_context_with_farm) -> None:
-    """NURSERY-OPS-004A section 61: the source Tray's own SowingEventLine
-    has sown_site_count = NULL (deliberate, NURSERY-OPS-001.1) -- the
-    modern checkpoint transplant flow must succeed anyway, proving it never
-    consults sown_site_count and never substitutes seed_count."""
+    """NURSERY-OPS-004A section 61: the modern checkpoint transplant flow
+    must succeed regardless of the source Tray's own SowingEventLine
+    sown_site_count, proving it never consults that field and never
+    substitutes seed_count for it. CARRIER-CONFIG-001B: sown_site_count is
+    now always recorded (non-NULL) for a genuinely new Sowing command --
+    this is in fact a STRONGER proof of the original claim than the
+    pre-001B NULL case this test used to exercise: transplant succeeds
+    identically whether sown_site_count is populated or NULL, because it
+    is never read either way."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     sown_count = db_session.execute(
         text("SELECT sown_site_count FROM sowing_event_lines WHERE batch_carrier_assignment_id = :aid"),
         {"aid": s["source_assignment_ids"][0]},
     ).scalar_one()
-    assert sown_count is None
+    assert sown_count == 200
     event = _transplant(
         db_session, tenant, farm, user, s["batch"],
         [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],

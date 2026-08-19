@@ -164,7 +164,7 @@ def _build_scenario(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         seed_lot_id=seed_lot.id, seeding_station_id=seeding_station_id, seeding_machine_id=None,
         effective_time=sow_time, note=None,
-        trays=[{"carrier_id": c.id, "seeds_sown": 200} for c in carriers],
+        trays=[{"carrier_id": c.id, "sown_site_count": 200, "seeds_sown": 200} for c in carriers],
     )
 
     germination_service.place_trolley_in_chamber(

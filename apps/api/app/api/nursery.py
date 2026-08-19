@@ -19,6 +19,7 @@ from app.services.errors import (
     SeedingMachineInvalidError,
     SeedingStationInvalidError,
     SeedLotNotFoundError,
+    SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
     TooManySowingLinesError,
@@ -44,7 +45,10 @@ def sow_new_batch(
     structural configuration change (Farm Setup's `location.manage`/
     `asset.manage` do not apply -- the Seeding Station/Seeding Machine are
     being USED here, not created)."""
-    trays = [{"carrier_id": t.carrier_id, "seeds_sown": t.seeds_sown} for t in payload.trays]
+    trays = [
+        {"carrier_id": t.carrier_id, "sown_site_count": t.sown_site_count, "seeds_sown": t.seeds_sown}
+        for t in payload.trays
+    ]
     try:
         event = nursery_service.sow_new_batch(
             db,
@@ -70,6 +74,7 @@ def sow_new_batch(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (
         SowingValidationError,
+        SowingCapacityExceededError,
         TooManySowingLinesError,
         SeedingStationInvalidError,
         SeedingMachineInvalidError,

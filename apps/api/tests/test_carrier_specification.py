@@ -193,6 +193,70 @@ def test_specification_missing_required_dimensions_rejected(db_session, active_c
 
 
 @pytest.mark.integration
+def test_new_seed_tray_specification_missing_biological_position_count_rejected(
+    db_session, active_context_with_farm
+) -> None:
+    """CARRIER-CONFIG-001B section 5: from this ticket onward, a NEW
+    seed_tray CarrierSpecification must carry a positive
+    biological_position_count. seed_tray already requires_specification=
+    true (CARRIER-CONFIG-001A), so this is enforced by the SAME generic
+    `_require_minimum_fields_if_specification_required` rule that
+    `test_specification_missing_required_dimensions_rejected` above already
+    proves for nursery_cultivation_plate -- this test proves it holds for
+    seed_tray specifically, with no new production code required."""
+    tenant, user, _headers, farm = active_context_with_farm
+    with pytest.raises(CarrierSpecificationValidationError):
+        carrier_specification_service.register_carrier_specification(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+            code=f"ST-NOCAP-{uuid.uuid4().hex[:8]}", name="X", length_mm=300, width_mm=200, height_mm=None,
+            biological_position_count=None,
+        )
+
+
+@pytest.mark.integration
+def test_new_seed_tray_specification_with_positive_biological_position_count_succeeds(
+    db_session, active_context_with_farm
+) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-CAP-{uuid.uuid4().hex[:8]}", name="200 Cell Tray", length_mm=300, width_mm=200, height_mm=50,
+        biological_position_count=200,
+    )
+    assert spec.biological_position_count == 200
+
+
+@pytest.mark.integration
+def test_unreferenced_seed_tray_specification_update_to_null_biological_position_count_rejected(
+    db_session, active_context_with_farm
+) -> None:
+    """CARRIER-CONFIG-001B pre-commit audit follow-up: an UPDATE, not just
+    CREATE, must re-enforce the seed_tray minimum-field invariant. The
+    specification stays unreferenced by any Carrier so this exercises
+    `_require_minimum_fields_if_specification_required` specifically, not
+    `CarrierSpecificationStructurallyLockedError` (see
+    test_structural_edit_after_first_carrier_rejected_service above for
+    that separate rule)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-NULLIFY-{uuid.uuid4().hex[:8]}", name="200 Cell Tray", length_mm=300, width_mm=200, height_mm=50,
+        biological_position_count=200,
+    )
+    with pytest.raises(CarrierSpecificationValidationError):
+        carrier_specification_service.update_carrier_specification(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, specification_id=spec.id,
+            carrier_type_code="seed_tray", code=spec.code, name=spec.name,
+            length_mm=spec.length_mm, width_mm=spec.width_mm, height_mm=spec.height_mm,
+            biological_position_count=None,
+        )
+    unchanged = carrier_specification_service.get_carrier_specification(
+        db_session, tenant_id=tenant.id, specification_id=spec.id
+    )
+    assert unchanged.biological_position_count == 200
+
+
+@pytest.mark.integration
 def test_specification_optional_type_allows_fully_unset_dimensions(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     spec = carrier_specification_service.register_carrier_specification(
