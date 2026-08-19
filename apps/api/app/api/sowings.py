@@ -18,6 +18,7 @@ from app.services.errors import (
     InvalidSowingEffectiveTimeError,
     MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
+    SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingEventNotFoundError,
     SowingValidationError,
@@ -72,6 +73,7 @@ def sow_batch(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (
         SowingValidationError,
+        SowingCapacityExceededError,
         InvalidSowingEffectiveTimeError,
         TooManySowingLinesError,
         MixedSeedLotInSowingCommandError,

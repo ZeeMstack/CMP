@@ -11,6 +11,7 @@ from app.models.asset import Asset
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
 from app.models.carrier import Carrier
+from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
@@ -50,6 +51,7 @@ from app.services.errors import (
     MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
     SeedLotValidationError,
+    SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingEventNotFoundError,
     SowingValidationError,
@@ -391,6 +393,29 @@ def _sow_batch_core(
             )
         ).scalars()
     )
+
+    # CARRIER-CONFIG-001B: seed-tray capacity enforcement. One batched query
+    # for every distinct specification_id present among the locked carriers
+    # -- never a query per carrier. A carrier with no specification (legacy,
+    # pre-CARRIER-CONFIG-001A) or a specification with no
+    # biological_position_count recorded skips this check entirely: CMP has
+    # no physical capacity fact to compare against, so nothing is enforced,
+    # nothing is fabricated. `seed_count` is never compared against
+    # biological_position_count -- multiple seeds may legitimately occupy
+    # one planting position (see CarrierSpecification's own docstring).
+    specification_ids = {
+        c.specification_id for c in carriers_by_id.values() if c.specification_id is not None
+    }
+    specifications_by_id: dict[uuid.UUID, CarrierSpecification] = {}
+    if specification_ids:
+        specifications_by_id = {
+            s.id: s
+            for s in db.execute(
+                select(CarrierSpecification).where(CarrierSpecification.id.in_(specification_ids))
+            ).scalars()
+        }
+    line_by_carrier_id = {line["carrier_id"]: line for line in lines}
+
     for cid in sorted_carrier_ids:
         carrier = carriers_by_id[cid]
         if carrier.status != "active":
@@ -399,6 +424,16 @@ def _sow_batch_core(
             raise SowingValidationError(f"carrier {cid} does not match the stage's required carrier type")
         if cid in active_assignment_carrier_ids:
             raise CarrierAlreadyAssignedError(str(cid))
+        specification = (
+            specifications_by_id.get(carrier.specification_id) if carrier.specification_id is not None else None
+        )
+        if specification is not None and specification.biological_position_count is not None:
+            sown_site_count = line_by_carrier_id[cid]["sown_site_count"]
+            if sown_site_count is not None and sown_site_count > specification.biological_position_count:
+                raise SowingCapacityExceededError(
+                    f"carrier {cid}: sown_site_count ({sown_site_count}) exceeds its specification's "
+                    f"biological_position_count ({specification.biological_position_count})"
+                )
 
     local_sow_date = effective_time.astimezone(ZoneInfo(farm.timezone)).date()
     for sid in sorted_seed_lot_ids:

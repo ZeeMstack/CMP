@@ -324,6 +324,18 @@ class TooManySowingLinesError(DomainError):
     pass
 
 
+class SowingCapacityExceededError(DomainError):
+    """CARRIER-CONFIG-001B: raised when a Sowing line's `sown_site_count`
+    exceeds its Carrier's CarrierSpecification.biological_position_count.
+    Only ever raised when both facts are actually known (a NULL
+    specification_id or a NULL biological_position_count skips this check
+    entirely -- see `sowing_service._sow_batch_core`)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class BatchCarrierAssignmentNotFoundError(DomainError):
     pass
 

@@ -2309,6 +2309,9 @@ export interface components {
             /** Code */
             code: string;
             carrier_type: components["schemas"]["CarrierTypeSummary"];
+            /** Specification Id */
+            specification_id: string | null;
+            specification: components["schemas"]["CarrierSpecificationSummary"] | null;
         };
         /** AvailableSeedlingTableRead */
         AvailableSeedlingTableRead: {
@@ -6004,6 +6007,8 @@ export interface components {
              * Format: uuid
              */
             carrier_id: string;
+            /** Sown Site Count */
+            sown_site_count: number;
             /** Seeds Sown */
             seeds_sown: number;
         };

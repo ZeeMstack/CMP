@@ -118,7 +118,7 @@ def _sow_worker(test_engine, results, name, *, tenant_id, farm_id, user_id, clie
             session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id,
             client_command_id=client_command_id, seed_lot_id=seed_lot_id, seeding_station_id=seeding_station_id,
             seeding_machine_id=None, effective_time=effective_time, note=None,
-            trays=[{"carrier_id": cid, "seeds_sown": 100} for cid in carrier_ids],
+            trays=[{"carrier_id": cid, "sown_site_count": 100, "seeds_sown": 100} for cid in carrier_ids],
         )
         results[name] = ("ok", event.batch_id)
     except SowingCommandReusedWithDifferentPayloadError as exc:

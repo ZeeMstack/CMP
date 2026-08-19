@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.models.asset import Asset
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.carrier import Carrier
+from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.models.crop_batch import CropBatch
 from app.models.location import Location
@@ -46,6 +47,7 @@ from app.models.sowing_event import SowingEvent
 from app.models.workflow import Workflow
 from app.models.workflow_stage import WorkflowStage
 from app.models.workflow_version import WorkflowVersion
+from app.schemas.carrier_specification import CarrierSpecificationSummary
 from app.schemas.nursery import AvailableSeedTrayRead
 from app.schemas.sowing_event import CarrierTypeSummary
 from app.services import asset_service, crop_batch_service, farm_service, location_service, sowing_service
@@ -95,7 +97,7 @@ def _compute_sow_new_batch_fingerprint(
         note or "",
     ]
     for tray in sorted_trays:
-        parts.extend([str(tray["carrier_id"]), str(tray["seeds_sown"])])
+        parts.extend([str(tray["carrier_id"]), str(tray["sown_site_count"]), str(tray["seeds_sown"])])
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -212,7 +214,38 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
         ).scalars()
     )
     carrier_type_summary = CarrierTypeSummary(id=seed_tray_type.id, code=seed_tray_type.code, name=seed_tray_type.name)
-    return [AvailableSeedTrayRead(id=c.id, code=c.code, carrier_type=carrier_type_summary) for c in carriers]
+
+    # CARRIER-CONFIG-001B: one batched query for every distinct
+    # specification_id present -- never a query per tray (mirrors
+    # carrier_service._hydrate_carrier_reads' own N+1-avoiding pattern).
+    specification_ids = {c.specification_id for c in carriers if c.specification_id is not None}
+    specifications_by_id: dict[uuid.UUID, CarrierSpecification] = {}
+    if specification_ids:
+        specifications_by_id = {
+            s.id: s
+            for s in db.execute(
+                select(CarrierSpecification).where(CarrierSpecification.id.in_(specification_ids))
+            ).scalars()
+        }
+
+    reads: list[AvailableSeedTrayRead] = []
+    for c in carriers:
+        specification = specifications_by_id.get(c.specification_id) if c.specification_id else None
+        reads.append(
+            AvailableSeedTrayRead(
+                id=c.id, code=c.code, carrier_type=carrier_type_summary,
+                specification_id=c.specification_id,
+                specification=(
+                    CarrierSpecificationSummary(
+                        id=specification.id, code=specification.code, name=specification.name,
+                        biological_position_count=specification.biological_position_count,
+                    )
+                    if specification is not None
+                    else None
+                ),
+            )
+        )
+    return reads
 
 
 def sow_new_batch(
@@ -273,15 +306,15 @@ def sow_new_batch(
     local_date = effective_time.astimezone(ZoneInfo(farm.timezone)).date()
     code = _generate_batch_code(db, tenant_id=tenant_id, local_date=local_date)
 
-    # NURSERY-OPS-001.1: Seeds Sown is the only quantity the operator
-    # supplies here -- "sown site/cell count" is a separate,
-    # separately-observed fact this command never asks for, so it is
-    # recorded as unknown (NULL), never fabricated as equal to seed_count
-    # (see SEED_SOWING_MODEL.md).
+    # CARRIER-CONFIG-001B: the operator now supplies sown_site_count
+    # directly (superseding NURSERY-OPS-001.1's deliberate NULL -- see
+    # SEED_SOWING_MODEL.md's addendum for this ticket). Seed-tray capacity
+    # enforcement against CarrierSpecification.biological_position_count
+    # happens in the shared `sowing_service._sow_batch_core`, not here.
     lines = [
         {
             "carrier_id": tray["carrier_id"], "seed_lot_id": seed_lot_id,
-            "sown_site_count": None, "seed_count": tray["seeds_sown"], "line_note": None,
+            "sown_site_count": tray["sown_site_count"], "seed_count": tray["seeds_sown"], "line_note": None,
         }
         for tray in trays
     ]
@@ -329,6 +362,13 @@ def sow_new_batch(
 
     try:
         sorted_carrier_ids = sorted({t["carrier_id"] for t in trays})
+        # A genuinely new command always supplies sown_site_count (schema-
+        # enforced), but direct service-layer callers simulating historical
+        # pre-CARRIER-CONFIG-001B data may still pass None per tray -- mirror
+        # sowing_service.sow_batch's own defensive total here rather than
+        # crashing or silently treating unknown as zero.
+        site_counts = [t["sown_site_count"] for t in trays]
+        total_sown_site_count = sum(site_counts) if all(c is not None for c in site_counts) else None
         append_audit_event(
             db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=ACTION,
             entity_type="sowing_event", entity_id=event.id,
@@ -340,6 +380,7 @@ def sow_new_batch(
                 "effective_time": effective_time.isoformat(), "client_command_id": str(client_command_id),
                 "tray_count": len(sorted_carrier_ids), "carrier_ids": [str(c) for c in sorted_carrier_ids],
                 "total_seeds_sown": sum(t["seeds_sown"] for t in trays),
+                "total_sown_site_count": total_sown_site_count,
             },
         )
         db.commit()

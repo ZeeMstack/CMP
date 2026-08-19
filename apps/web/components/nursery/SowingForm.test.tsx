@@ -33,8 +33,16 @@ const SEED_LOTS = [
   },
 ];
 const AVAILABLE_TRAYS = [
-  { id: "tray-1", code: "ST-0001", carrier_type: { id: "ct-1", code: "seed_tray", name: "Seed Tray" } },
-  { id: "tray-2", code: "ST-0002", carrier_type: { id: "ct-1", code: "seed_tray", name: "Seed Tray" } },
+  {
+    id: "tray-1", code: "ST-0001", carrier_type: { id: "ct-1", code: "seed_tray", name: "Seed Tray" },
+    specification_id: "spec-1",
+    specification: { id: "spec-1", code: "ST-SPEC-200", name: "200 Cell Tray", biological_position_count: 200 },
+  },
+  {
+    id: "tray-2", code: "ST-0002", carrier_type: { id: "ct-1", code: "seed_tray", name: "Seed Tray" },
+    specification_id: null,
+    specification: null,
+  },
 ];
 
 function stubFetch(overrides: Record<string, unknown> = {}) {
@@ -119,6 +127,7 @@ describe("SowingForm", () => {
     fireEvent.change(stationSelect, { target: { value: "station-2" } });
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
@@ -143,6 +152,7 @@ describe("SowingForm", () => {
     expect(optionValues).not.toContain("tray-1");
     expect(optionValues).toContain("tray-2");
 
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
     await waitFor(() => expect(screen.getByText(/200 total/i)).toBeInTheDocument());
   });
@@ -163,7 +173,21 @@ describe("SowingForm", () => {
     await selectNurseryAndSeedLot();
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "0" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText(/must be at least 1/i)).toBeInTheDocument());
+  });
+
+  it("rejects zero sown site count", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "150" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText(/must be at least 1/i)).toBeInTheDocument());
@@ -176,6 +200,7 @@ describe("SowingForm", () => {
     await selectNurseryAndSeedLot();
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-14" } });
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
@@ -193,7 +218,7 @@ describe("SowingForm", () => {
     expect(payload.seed_lot_id).toBe("lot-1");
     expect(payload.seeding_station_id).toBe("station-1");
     expect(payload.seeding_machine_id).toBeNull();
-    expect(payload.trays).toEqual([{ carrier_id: "tray-1", seeds_sown: 200 }]);
+    expect(payload.trays).toEqual([{ carrier_id: "tray-1", sown_site_count: 150, seeds_sown: 200 }]);
   });
 
   it("returns to configure via Back without submitting", async () => {
@@ -203,6 +228,7 @@ describe("SowingForm", () => {
     await selectNurseryAndSeedLot();
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
@@ -225,6 +251,7 @@ describe("SowingForm", () => {
     await selectNurseryAndSeedLot();
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
 
@@ -238,6 +265,7 @@ describe("SowingForm", () => {
     await selectNurseryAndSeedLot();
     fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
@@ -255,5 +283,97 @@ describe("SowingForm", () => {
     render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByText("NUR-01")).toBeInTheDocument());
     expect(screen.queryByText(/germinat/i)).not.toBeInTheDocument();
+  });
+
+  // --- CARRIER-CONFIG-001B: seed tray sowing capacity ------------------------
+
+  it("displays a selected tray's known biological-position capacity", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    expect(screen.getByText("Capacity: 200")).toBeInTheDocument();
+  });
+
+  it("shows unknown capacity for a legacy tray with no specification, and still allows sowing it", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-2" } });
+    await waitFor(() => expect(screen.getByText("ST-0002")).toBeInTheDocument());
+    expect(screen.getByText("Capacity unknown")).toBeInTheDocument();
+
+    // No known capacity to violate -- a large sown_site_count is not
+    // client-side blocked for this tray.
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0002/i), { target: { value: "9999" } });
+    fireEvent.change(screen.getByLabelText(/seeds sown for st-0002/i), { target: { value: "9999" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].trays).toEqual([
+      { carrier_id: "tray-2", sown_site_count: 9999, seeds_sown: 9999 },
+    ]);
+  });
+
+  it("prevents submitting a sown site count above the tray's known capacity", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "201" } });
+    fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "201" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText(/exceeds this tray's known capacity/i)).toBeInTheDocument());
+    expect(screen.queryByText("Review before sowing")).not.toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("allows seeds sown to exceed known capacity, provided sown sites stays within it and the seeds/sites relationship holds", async () => {
+    // Multiple seeds may legitimately occupy one planting position -- this
+    // must never be rejected on capacity grounds.
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "250" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].trays).toEqual([
+      { carrier_id: "tray-1", sown_site_count: 200, seeds_sown: 250 },
+    ]);
+  });
+
+  it("renders a backend capacity-exceeded error clearly on the review step", async () => {
+    stubFetch();
+    render(
+      withQueryClient(
+        <SowingForm
+          farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false}
+          serverError="carrier tray-1: sown_site_count (200) exceeds its specification's biological_position_count (200)"
+        />,
+      ),
+    );
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
+    fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/exceeds its specification/i));
   });
 });

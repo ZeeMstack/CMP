@@ -58,10 +58,13 @@ def _now():
 # =====================================================================
 
 
-def _build_modern_scenario(db_session, tenant, user, farm, *, suffix=None, tray_count=3):
-    """Modern NURSERY-OPS-001 operator Sowing flow -- `sown_site_count`
-    is always NULL, `seed_count` is always populated. This is the shape
-    the frozen product decision requires the modern outcome to work with."""
+def _build_modern_scenario(db_session, tenant, user, farm, *, suffix=None, tray_count=3, sown_site_count=200):
+    """Modern NURSERY-OPS-001 operator Sowing flow. `seed_count` is always
+    populated. CARRIER-CONFIG-001B: `sown_site_count` is now also always
+    populated for a genuinely new command (default here, matching the
+    schema-level requirement) -- `sown_site_count=None` remains an
+    explicitly reachable state only for simulating pre-CARRIER-CONFIG-001B
+    historical rows, never for a real new command."""
     suffix = suffix or uuid.uuid4().hex[:8]
     crop = crop_service.register_crop(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}",
@@ -129,7 +132,7 @@ def _build_modern_scenario(db_session, tenant, user, farm, *, suffix=None, tray_
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         seed_lot_id=seed_lot.id, seeding_station_id=seeding_station_id, seeding_machine_id=None,
         effective_time=_now(), note=None,
-        trays=[{"carrier_id": c.id, "seeds_sown": 200} for c in carriers],
+        trays=[{"carrier_id": c.id, "sown_site_count": sown_site_count, "seeds_sown": 200} for c in carriers],
     )
     assignments = sowing_service.list_batch_carriers(
         db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id
@@ -341,7 +344,8 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
     event = nursery_service.sow_new_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         seed_lot_id=seed_lot.id, seeding_station_id=seeding_station_id, seeding_machine_id=None,
-        effective_time=sow_time, note=None, trays=[{"carrier_id": carrier.id, "seeds_sown": 200}],
+        effective_time=sow_time, note=None,
+        trays=[{"carrier_id": carrier.id, "sown_site_count": 200, "seeds_sown": 200}],
     )
     batch_id = event.batch_id
     assignments = sowing_service.list_batch_carriers(
@@ -448,7 +452,11 @@ def test_modern_sowing_flow_allows_germination_outcome(db_session, active_contex
 @pytest.mark.integration
 def test_legacy_site_check_on_modern_tray_gets_truthful_distinct_error(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    s = _build_modern_scenario(db_session, tenant, user, farm)
+    # CARRIER-CONFIG-001B: a genuinely new command always records
+    # sown_site_count now -- this scenario specifically simulates a
+    # pre-001B historical modern-path row (sown_site_count still NULL) to
+    # keep exercising this real, still-reachable legacy-data error path.
+    s = _build_modern_scenario(db_session, tenant, user, farm, sown_site_count=None)
     with pytest.raises(ObservationValidationError, match="requires a recorded sown_site_count"):
         observation_service.record_observation(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],

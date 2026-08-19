@@ -15,6 +15,7 @@ from app.models.sowing_event import SowingEvent
 from app.schemas.farm_setup import GreenhouseSetupCreate, NurserySectionConfig, NurserySetupConfig, SeedingMachineSetupConfig
 from app.services import (
     carrier_service,
+    carrier_specification_service,
     crop_service,
     farm_setup_service,
     nursery_service,
@@ -29,6 +30,7 @@ from app.services.errors import (
     SeedingMachineInvalidError,
     SeedingStationInvalidError,
     SeedLotNotFoundError,
+    SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
 )
@@ -138,7 +140,7 @@ def _sow(db_session, tenant, user, farm, s, *, trays=None, **overrides):
         seeding_machine_id=s.get("seeding_machine_id"), effective_time=_now(), note=None,
     )
     defaults.update(overrides)
-    trays = trays if trays is not None else [{"carrier_id": c.id, "seeds_sown": 200} for c in s["carriers"]]
+    trays = trays if trays is not None else [{"carrier_id": c.id, "sown_site_count": 200, "seeds_sown": 200} for c in s["carriers"]]
     return nursery_service.sow_new_batch(db_session, trays=trays, **defaults)
 
 
@@ -155,9 +157,9 @@ def test_acceptance_scenario_one_batch_one_seed_lot_one_event_three_trays(db_ses
     event = _sow(
         db_session, tenant, user, farm, s,
         trays=[
-            {"carrier_id": s["carriers"][0].id, "seeds_sown": 200},
-            {"carrier_id": s["carriers"][1].id, "seeds_sown": 200},
-            {"carrier_id": s["carriers"][2].id, "seeds_sown": 180},
+            {"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200},
+            {"carrier_id": s["carriers"][1].id, "sown_site_count": 200, "seeds_sown": 200},
+            {"carrier_id": s["carriers"][2].id, "sown_site_count": 180, "seeds_sown": 180},
         ],
     )
 
@@ -182,10 +184,12 @@ def test_acceptance_scenario_one_batch_one_seed_lot_one_event_three_trays(db_ses
     assert full.seeding_station is not None
     assert full.seeding_station.id == s["seeding_station_id"]
     assert all(line.seed_lot.id == s["seed_lot"].id for line in full.lines)
-    # NURSERY-OPS-001.1 section 8: Seeds Sown (seed_count) is the only
-    # authoritative quantity here -- sown_site_count is honestly unknown
-    # (NULL), never silently fabricated as equal to Seeds Sown.
-    assert all(line.sown_site_count is None for line in full.lines)
+    # CARRIER-CONFIG-001B: sown_site_count is now always captured on this
+    # path (superseding NURSERY-OPS-001.1's deliberate NULL) -- Seeds Sown
+    # and Sown Sites remain two genuinely separate, independently recorded
+    # facts, never conflated with each other.
+    assert sorted(line.sown_site_count for line in full.lines) == [180, 200, 200]
+    assert sum(line.sown_site_count for line in full.lines) == 580
 
 
 @pytest.mark.integration
@@ -200,11 +204,11 @@ def test_second_sowing_run_same_seed_lot_same_date_creates_different_batch(db_se
 
     first = _sow(
         db_session, tenant, user, farm, s, effective_time=effective_time,
-        trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}],
+        trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}],
     )
     second = _sow(
         db_session, tenant, user, farm, s, effective_time=effective_time,
-        trays=[{"carrier_id": s["carriers"][1].id, "seeds_sown": 200}],
+        trays=[{"carrier_id": s["carriers"][1].id, "sown_site_count": 200, "seeds_sown": 200}],
     )
 
     assert first.batch_id != second.batch_id
@@ -263,6 +267,194 @@ def test_valid_batch_code_is_server_generated_sequential_per_tenant_per_day(db_s
 
 
 # =====================================================================
+# CARRIER-CONFIG-001B: seed tray sowing capacity
+# =====================================================================
+
+
+def _register_capacity_spec_and_carrier(db_session, tenant, user, farm, *, biological_position_count):
+    suffix = uuid.uuid4().hex[:8]
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="seed_tray",
+        code=f"ST-CAP-{suffix}", name="Capacity Test Tray",
+        length_mm=300, width_mm=200, height_mm=50, biological_position_count=biological_position_count,
+    )
+    carrier = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        specification_id=spec.id, code=f"ST-CAP-{suffix}", issued_date=None,
+    )
+    return spec, carrier
+
+
+@pytest.mark.integration
+def test_sown_site_count_below_capacity_succeeds(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    _spec, carrier = _register_capacity_spec_and_carrier(db_session, tenant, user, farm, biological_position_count=200)
+    event = _sow(
+        db_session, tenant, user, farm, s,
+        trays=[{"carrier_id": carrier.id, "sown_site_count": 180, "seeds_sown": 180}],
+    )
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    assert full.lines[0].sown_site_count == 180
+
+
+@pytest.mark.integration
+def test_sown_site_count_equal_to_capacity_succeeds(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    _spec, carrier = _register_capacity_spec_and_carrier(db_session, tenant, user, farm, biological_position_count=200)
+    event = _sow(
+        db_session, tenant, user, farm, s,
+        trays=[{"carrier_id": carrier.id, "sown_site_count": 200, "seeds_sown": 200}],
+    )
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    assert full.lines[0].sown_site_count == 200
+
+
+@pytest.mark.integration
+def test_sown_site_count_above_capacity_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    _spec, carrier = _register_capacity_spec_and_carrier(db_session, tenant, user, farm, biological_position_count=200)
+    with pytest.raises(SowingCapacityExceededError):
+        _sow(
+            db_session, tenant, user, farm, s,
+            trays=[{"carrier_id": carrier.id, "sown_site_count": 201, "seeds_sown": 201}],
+        )
+    # Nothing partially persisted: no batch, no sowing event, no assignment.
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.tenant_id == tenant.id)
+    ).scalar_one() == 0
+
+
+@pytest.mark.integration
+def test_seed_count_above_capacity_still_succeeds_when_sown_site_count_valid(db_session, active_context_with_farm) -> None:
+    """Multiple seeds may legitimately occupy one planting position --
+    seed_count/seeds_sown is never compared against biological_position_count."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    _spec, carrier = _register_capacity_spec_and_carrier(db_session, tenant, user, farm, biological_position_count=200)
+    event = _sow(
+        db_session, tenant, user, farm, s,
+        trays=[{"carrier_id": carrier.id, "sown_site_count": 180, "seeds_sown": 400}],
+    )
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    assert full.lines[0].sown_site_count == 180
+    assert full.lines[0].seed_count == 400
+
+
+@pytest.mark.integration
+def test_legacy_null_specification_carrier_remains_sowable(db_session, active_context_with_farm) -> None:
+    """CARRIER-CONFIG-001A intentionally preserved historical Seed Tray
+    Carriers with specification_id = NULL. Since seed_tray now requires a
+    specification at registration, a new one can no longer be produced via
+    the service layer -- constructed via raw SQL instead, modeling a
+    genuinely valid pre-001A historical Carrier state (matches the
+    established historical-fixture pattern in the downgrade-guard suite)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    seed_tray_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    carrier_id = uuid.uuid4()
+    suffix = uuid.uuid4().hex[:8]
+    db_session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, issued_date, "
+            "retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL)"
+        ),
+        {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id, "code": f"ST-LEGACY-{suffix}"},
+    )
+    db_session.flush()
+
+    event = _sow(
+        db_session, tenant, user, farm, s,
+        trays=[{"carrier_id": carrier_id, "sown_site_count": 9999, "seeds_sown": 9999}],
+    )
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    # No capacity fact exists for this carrier -- the rule is skipped, not
+    # fabricated; an arbitrarily large sown_site_count is not rejected.
+    assert full.lines[0].sown_site_count == 9999
+
+
+@pytest.mark.integration
+def test_specification_with_null_capacity_does_not_block_sowing(db_session, active_context_with_farm) -> None:
+    """A historical CarrierSpecification with biological_position_count =
+    NULL (can no longer be created for seed_tray going forward -- see
+    test_carrier_specification.py's own new-specification-quality tests --
+    but must remain valid if it already exists) must not block Sowing
+    solely because capacity is unknown. Constructed via raw SQL, since the
+    service layer now refuses to create one for a specification-required
+    type (section 5 of this ticket)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=0)
+    seed_tray_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    suffix = uuid.uuid4().hex[:8]
+    spec_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO carrier_specifications (id, tenant_id, carrier_type_id, code, name, length_mm, "
+            "width_mm, height_mm, biological_position_count, status) VALUES "
+            "(:id, :tid, :ctid, :code, :name, 300, 200, 50, NULL, 'active')"
+        ),
+        {"id": spec_id, "tid": tenant.id, "ctid": seed_tray_type_id, "code": f"ST-NOCAP-{suffix}", "name": "No Capacity Recorded"},
+    )
+    db_session.flush()
+    carrier = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        specification_id=spec_id, code=f"ST-NOCAP-{suffix}", issued_date=None,
+    )
+
+    event = _sow(
+        db_session, tenant, user, farm, s,
+        trays=[{"carrier_id": carrier.id, "sown_site_count": 9999, "seeds_sown": 9999}],
+    )
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    assert full.lines[0].sown_site_count == 9999
+
+
+@pytest.mark.integration
+def test_multi_tray_one_capacity_violation_rejects_entire_command(db_session, active_context_with_farm) -> None:
+    """Section 8: one capacity-invalid tray in a multi-tray command fails
+    the whole Sowing atomically -- no partial batch/event/assignment/line
+    state, exactly like every other multi-tray rejection reason."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    _spec, capacity_carrier = _register_capacity_spec_and_carrier(
+        db_session, tenant, user, farm, biological_position_count=200
+    )
+    with pytest.raises(SowingCapacityExceededError):
+        _sow(
+            db_session, tenant, user, farm, s,
+            trays=[
+                {"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100},
+                {"carrier_id": capacity_carrier.id, "sown_site_count": 201, "seeds_sown": 201},
+            ],
+        )
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.tenant_id == tenant.id)
+    ).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(BatchCarrierAssignment.tenant_id == tenant.id)
+    ).scalar_one() == 0
+    assert db_session.execute(
+        select(func.count()).select_from(CropBatch).where(CropBatch.tenant_id == tenant.id)
+    ).scalar_one() == 0
+
+
+# =====================================================================
 # INVALID cases (section 42)
 # =====================================================================
 
@@ -283,8 +475,8 @@ def test_invalid_duplicate_tray_in_payload_rejected(db_session, active_context_w
         _sow(
             db_session, tenant, user, farm, s,
             trays=[
-                {"carrier_id": s["carriers"][0].id, "seeds_sown": 100},
-                {"carrier_id": s["carriers"][0].id, "seeds_sown": 50},
+                {"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100},
+                {"carrier_id": s["carriers"][0].id, "sown_site_count": 50, "seeds_sown": 50},
             ],
         )
 
@@ -296,7 +488,7 @@ def test_invalid_seeds_sown_zero_rejected_at_schema_level() -> None:
     from app.schemas.nursery import SowNewBatchTrayIn
 
     with pytest.raises(ValidationError):
-        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), seeds_sown=0)
+        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), sown_site_count=1, seeds_sown=0)
 
 
 @pytest.mark.integration
@@ -306,7 +498,29 @@ def test_invalid_seeds_sown_negative_rejected_at_schema_level() -> None:
     from app.schemas.nursery import SowNewBatchTrayIn
 
     with pytest.raises(ValidationError):
-        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), seeds_sown=-5)
+        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), sown_site_count=1, seeds_sown=-5)
+
+
+@pytest.mark.integration
+def test_invalid_sown_site_count_zero_rejected_at_schema_level() -> None:
+    from pydantic import ValidationError
+
+    from app.schemas.nursery import SowNewBatchTrayIn
+
+    with pytest.raises(ValidationError):
+        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), sown_site_count=0, seeds_sown=100)
+
+
+@pytest.mark.integration
+def test_invalid_sown_site_count_exceeding_seeds_sown_rejected_at_schema_level() -> None:
+    """CARRIER-CONFIG-001B: seed_count/seeds_sown must remain >= sown_site_count
+    -- unchanged rule, now enforced on this path's own schema too."""
+    from pydantic import ValidationError
+
+    from app.schemas.nursery import SowNewBatchTrayIn
+
+    with pytest.raises(ValidationError):
+        SowNewBatchTrayIn(carrier_id=uuid.uuid4(), sown_site_count=100, seeds_sown=50)
 
 
 @pytest.mark.integration
@@ -318,16 +532,16 @@ def test_invalid_non_seed_tray_carrier_rejected(db_session, active_context_with_
         carrier_type_code="cultivation_plate", code=f"CP-{uuid.uuid4().hex[:8]}", issued_date=None,
     )
     with pytest.raises(SowingValidationError):
-        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": wrong_carrier.id, "seeds_sown": 100}])
+        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": wrong_carrier.id, "sown_site_count": 100, "seeds_sown": 100}])
 
 
 @pytest.mark.integration
 def test_invalid_tray_already_active_in_another_batch_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
-    _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 100}])
+    _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100}])
     with pytest.raises(CarrierAlreadyAssignedError):
-        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 100}])
+        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100}])
 
 
 @pytest.mark.integration
@@ -348,7 +562,7 @@ def test_invalid_wrong_farm_tray_rejected(db_session, active_context_with_farm) 
     from app.services.errors import CarrierNotFoundError
 
     with pytest.raises(CarrierNotFoundError):
-        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": other_farm_carrier.id, "seeds_sown": 100}])
+        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": other_farm_carrier.id, "sown_site_count": 100, "seeds_sown": 100}])
 
 
 @pytest.mark.integration
@@ -378,7 +592,7 @@ def test_invalid_wrong_tenant_tray_rejected(db_session, active_context_with_farm
         specification_id=other_tenant_seed_tray_spec.id, code=f"ST-OTHERTENANT-{suffix}", issued_date=None,
     )
     with pytest.raises(CarrierNotFoundError):
-        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": other_tenant_carrier.id, "seeds_sown": 100}])
+        _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": other_tenant_carrier.id, "sown_site_count": 100, "seeds_sown": 100}])
 
 
 @pytest.mark.integration
@@ -590,15 +804,15 @@ def test_atomic_rollback_on_mid_command_tray_conflict(db_session, active_context
     succeeded first."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=3)
-    _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][2].id, "seeds_sown": 100}])
+    _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][2].id, "sown_site_count": 100, "seeds_sown": 100}])
 
     with pytest.raises(CarrierAlreadyAssignedError):
         _sow(
             db_session, tenant, user, farm, s,
             trays=[
-                {"carrier_id": s["carriers"][0].id, "seeds_sown": 100},
-                {"carrier_id": s["carriers"][1].id, "seeds_sown": 100},
-                {"carrier_id": s["carriers"][2].id, "seeds_sown": 100},  # already assigned
+                {"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100},
+                {"carrier_id": s["carriers"][1].id, "sown_site_count": 100, "seeds_sown": 100},
+                {"carrier_id": s["carriers"][2].id, "sown_site_count": 100, "seeds_sown": 100},  # already assigned
             ],
         )
 
@@ -633,7 +847,7 @@ def test_idempotent_exact_retry_returns_same_batch_and_event(db_session, active_
     s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
     ccid = uuid.uuid4()
     effective_time = _now()
-    trays = [{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}]
+    trays = [{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}]
 
     first = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=effective_time, trays=trays)
     second = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=effective_time, trays=trays)
@@ -656,9 +870,9 @@ def test_idempotent_same_command_id_different_payload_rejected(db_session, activ
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
     ccid = uuid.uuid4()
-    _sow(db_session, tenant, user, farm, s, client_command_id=ccid, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}])
+    _sow(db_session, tenant, user, farm, s, client_command_id=ccid, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}])
     with pytest.raises(SowingCommandReusedWithDifferentPayloadError):
-        _sow(db_session, tenant, user, farm, s, client_command_id=ccid, trays=[{"carrier_id": s["carriers"][1].id, "seeds_sown": 200}])
+        _sow(db_session, tenant, user, farm, s, client_command_id=ccid, trays=[{"carrier_id": s["carriers"][1].id, "sown_site_count": 200, "seeds_sown": 200}])
 
 
 @pytest.mark.integration
@@ -674,7 +888,7 @@ def test_idempotent_exact_replay_resolved_before_mutable_state_validation(db_ses
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
     ccid = uuid.uuid4()
     effective_time = _now()
-    trays = [{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}]
+    trays = [{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}]
 
     first = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=effective_time, trays=trays)
 
@@ -739,7 +953,7 @@ def test_replay_does_not_rerun_workflow_resolution_and_stays_on_original_workflo
     s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
     ccid = uuid.uuid4()
     effective_time = _now()
-    trays = [{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}]
+    trays = [{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}]
 
     first = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=effective_time, trays=trays)
     original_batch = db_session.get(CropBatch, first.batch_id)
@@ -775,7 +989,7 @@ def test_new_command_after_workflow_config_change_uses_current_rules_not_frozen_
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
     first = _sow(
         db_session, tenant, user, farm, s, client_command_id=uuid.uuid4(),
-        trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 200}],
+        trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}],
     )
     assert first is not None
 
@@ -784,7 +998,7 @@ def test_new_command_after_workflow_config_change_uses_current_rules_not_frozen_
     with pytest.raises(AmbiguousSowingWorkflowError):
         _sow(
             db_session, tenant, user, farm, s, client_command_id=uuid.uuid4(),
-            trays=[{"carrier_id": s["carriers"][1].id, "seeds_sown": 200}],
+            trays=[{"carrier_id": s["carriers"][1].id, "sown_site_count": 200, "seeds_sown": 200}],
         )
 
 
@@ -803,7 +1017,7 @@ def test_direct_sql_second_sowing_event_for_same_batch_rejected(db_session, acti
 
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
-    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 100}])
+    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100}])
 
     with pytest.raises(DBAPIError):
         db_session.execute(
@@ -834,7 +1048,7 @@ def test_direct_sql_mixed_seed_lot_lines_rejected(db_session, active_context_wit
 
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
-    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 100}])
+    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100}])
 
     other_seed_lot = sowing_service.register_seed_lot(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=s["crop"].id,
@@ -932,7 +1146,7 @@ def test_sow_new_batch_http_requires_sowing_manage_storekeeper_denied(client, db
         json={
             "client_command_id": str(uuid.uuid4()), "seed_lot_id": str(uuid.uuid4()),
             "seeding_station_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
-            "trays": [{"carrier_id": str(uuid.uuid4()), "seeds_sown": 100}],
+            "trays": [{"carrier_id": str(uuid.uuid4()), "sown_site_count": 100, "seeds_sown": 100}],
         },
     )
     assert resp.status_code == 403
@@ -977,7 +1191,7 @@ def test_available_seed_trays_http_requires_carrier_read(client, db_session) -> 
 def test_seed_lot_reverse_lookup_lists_batches_sown_from_it(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=2)
-    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "seeds_sown": 100}])
+    event = _sow(db_session, tenant, user, farm, s, trays=[{"carrier_id": s["carriers"][0].id, "sown_site_count": 100, "seeds_sown": 100}])
 
     batches = sowing_service.list_batches_for_seed_lot(
         db_session, tenant_id=tenant.id, farm_id=farm.id, seed_lot_id=s["seed_lot"].id

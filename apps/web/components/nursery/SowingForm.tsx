@@ -11,6 +11,7 @@ import {
   buildSowingPayload,
   sowingFormSchema,
   totalSeedsSown,
+  totalSownSiteCount,
   type SowingFormValues,
 } from "@/lib/validation/nursery";
 
@@ -90,6 +91,7 @@ export function SowingForm({
     const selectedSeedingStation = seedingStations.find((s) => s.id === values.seeding_station_id);
     const machine = seedingMachinesQuery.data?.find((m) => m.id === values.seeding_machine_id);
     const total = totalSeedsSown(values.trays);
+    const totalSites = totalSownSiteCount(values.trays);
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
@@ -136,6 +138,10 @@ export function SowingForm({
               <dd className="font-medium text-ink">{values.trays.length}</dd>
             </div>
             <div>
+              <dt className="text-ink-muted">Total sown sites</dt>
+              <dd className="font-medium text-ink">{totalSites.toLocaleString()}</dd>
+            </div>
+            <div>
               <dt className="text-ink-muted">Total seeds sown</dt>
               <dd className="font-medium text-ink">{total.toLocaleString()}</dd>
             </div>
@@ -144,7 +150,9 @@ export function SowingForm({
             {values.trays.map((tray) => (
               <li key={tray.carrier_id} className="flex items-center justify-between py-1.5">
                 <span className="text-ink">{tray.code}</span>
-                <span className="text-ink-muted">{tray.seeds_sown} seeds</span>
+                <span className="text-ink-muted">
+                  {tray.sown_site_count} sites · {tray.seeds_sown} seeds
+                </span>
               </li>
             ))}
           </ul>
@@ -298,7 +306,15 @@ export function SowingForm({
             value=""
             onChange={(e) => {
               const tray = selectableTrays.find((t) => t.id === e.target.value);
-              if (tray) append({ carrier_id: tray.id, code: tray.code, seeds_sown: 0 });
+              if (tray) {
+                append({
+                  carrier_id: tray.id,
+                  code: tray.code,
+                  biological_position_count: tray.specification?.biological_position_count ?? null,
+                  sown_site_count: 0,
+                  seeds_sown: 0,
+                });
+              }
             }}
           >
             <option value="">Select an available Seed Tray…</option>
@@ -312,19 +328,40 @@ export function SowingForm({
         {fields.length > 0 && (
           <ul className="divide-y divide-border-subtle">
             {fields.map((field, index) => (
-              <li key={field.id} className="flex items-center gap-3 py-2">
-                <span className="min-w-24 text-sm font-medium text-ink">{field.code}</span>
-                <div className="flex-1">
-                  <input
-                    type="number"
-                    {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
-                    className={inputClass}
-                    placeholder="Seeds sown"
-                    aria-label={`Seeds sown for ${field.code}`}
-                  />
-                  {errors.trays?.[index]?.seeds_sown && (
-                    <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
-                  )}
+              <li key={field.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start sm:gap-3">
+                <div className="min-w-24">
+                  <span className="text-sm font-medium text-ink">{field.code}</span>
+                  <p className="text-xs text-ink-muted">
+                    {field.biological_position_count != null
+                      ? `Capacity: ${field.biological_position_count.toLocaleString()}`
+                      : "Capacity unknown"}
+                  </p>
+                </div>
+                <div className="flex flex-1 gap-3">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      {...register(`trays.${index}.sown_site_count`, { valueAsNumber: true })}
+                      className={inputClass}
+                      placeholder="Sown sites"
+                      aria-label={`Sown sites for ${field.code}`}
+                    />
+                    {errors.trays?.[index]?.sown_site_count && (
+                      <span className={errorClass}>{errors.trays[index]?.sown_site_count?.message}</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
+                      className={inputClass}
+                      placeholder="Seeds sown"
+                      aria-label={`Seeds sown for ${field.code}`}
+                    />
+                    {errors.trays?.[index]?.seeds_sown && (
+                      <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"

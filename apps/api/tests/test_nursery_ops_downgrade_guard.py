@@ -188,7 +188,7 @@ def test_migration_downgrade_blocked_when_seeding_provenance_exists(test_engine,
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
             seed_lot_id=seed_lot.id, seeding_station_id=structure.nursery_seeding_stations[0].id,
             seeding_machine_id=None, effective_time=_now(), note=None,
-            trays=[{"carrier_id": carrier.id, "seeds_sown": 100}],
+            trays=[{"carrier_id": carrier.id, "sown_site_count": 100, "seeds_sown": 100}],
         )
         event_id = event.id
 

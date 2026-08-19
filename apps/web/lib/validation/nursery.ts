@@ -44,11 +44,28 @@ export function buildSeedLotPayload(values: SeedLotFormValues): SeedLotCreate {
 
 // --- Sowing -----------------------------------------------------------------
 
-const trayEntrySchema = z.object({
-  carrier_id: z.string(),
-  code: z.string(),
-  seeds_sown: z.number({ error: "Seeds sown is required" }).int("Must be a whole number").min(1, "Must be at least 1"),
-});
+const trayEntrySchema = z
+  .object({
+    carrier_id: z.string(),
+    code: z.string(),
+    // CARRIER-CONFIG-001B: known physical capacity for this tray's own
+    // CarrierSpecification, or null when the tray is legacy/unspecified --
+    // never fabricated, carried only for client-side display/prevalidation.
+    biological_position_count: z.number().nullable(),
+    sown_site_count: z
+      .number({ error: "Sown site count is required" })
+      .int("Must be a whole number")
+      .min(1, "Must be at least 1"),
+    seeds_sown: z.number({ error: "Seeds sown is required" }).int("Must be a whole number").min(1, "Must be at least 1"),
+  })
+  .refine((t) => t.seeds_sown >= t.sown_site_count, {
+    message: "Seeds sown must be greater than or equal to sown site count",
+    path: ["seeds_sown"],
+  })
+  .refine((t) => t.biological_position_count == null || t.sown_site_count <= t.biological_position_count, {
+    message: "Sown site count exceeds this tray's known capacity",
+    path: ["sown_site_count"],
+  });
 
 export const sowingFormSchema = z
   .object({
@@ -88,10 +105,18 @@ export function buildSowingPayload(values: SowingFormValues, clientCommandId: st
     seeding_machine_id: values.seeding_machine_id || null,
     effective_time: effectiveTime,
     note: values.note.trim() || null,
-    trays: values.trays.map((t) => ({ carrier_id: t.carrier_id, seeds_sown: t.seeds_sown })),
+    trays: values.trays.map((t) => ({
+      carrier_id: t.carrier_id,
+      sown_site_count: t.sown_site_count,
+      seeds_sown: t.seeds_sown,
+    })),
   };
 }
 
 export function totalSeedsSown(trays: { seeds_sown: number }[]): number {
   return trays.reduce((sum, t) => sum + (Number.isFinite(t.seeds_sown) ? t.seeds_sown : 0), 0);
+}
+
+export function totalSownSiteCount(trays: { sown_site_count: number }[]): number {
+  return trays.reduce((sum, t) => sum + (Number.isFinite(t.sown_site_count) ? t.sown_site_count : 0), 0);
 }

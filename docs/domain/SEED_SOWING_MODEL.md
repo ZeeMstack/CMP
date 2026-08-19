@@ -83,3 +83,81 @@ A Sown Seed Tray has a `batch_carrier_assignment` (this document, above) but -- 
 ## NURSERY-OPS-002B addendum: Seeds vs. Sites, extended to the biological outcome
 
 `seed_count` (this document, CMP-009) and `sown_site_count` (NURSERY-OPS-001.1 addendum, above) remain exactly as documented -- two genuinely separate, optionally-independent facts; `sown_site_count` may still be `NULL`, and the example `Seeds Sown = 210, Sown Sites = 200` remains valid. NURSERY-OPS-002B does not change either column or their relationship. It adds a **third**, independent axis: the modern biological Germination outcome (`germination_outcome_snapshots`, see `OBSERVATION_QUALITY_MODEL.md`'s own addendum for full semantics) anchors to `seed_count` specifically -- never `sown_site_count` -- because the frozen product decision is that operators count individual emerged seedlings, a fact `seed_count` already represents at Sowing time; `sown_site_count`, being a site/cell count, is not the right unit for a seedling-based observation and is shown to the operator only as separate, honestly-nullable context. The legacy `germination_checks` table continues to anchor to `sown_site_count` exclusively, as it always has -- neither model borrows the other's denominator.
+
+## CARRIER-CONFIG-001B addendum: Seed Tray sowing capacity
+
+Three genuinely distinct quantities are now all in play at Sowing time:
+
+```text
+CarrierSpecification.biological_position_count -- physical design capacity
+                                                     (see CMP_MASTER_SPEC.md §2;
+                                                     the reusable Seed Tray DESIGN's
+                                                     physical cell/hole count)
+SowingEventLine.sown_site_count                 -- physical sites actually used
+                                                     in THIS Sowing
+SowingEventLine.seed_count                       -- seeds actually placed in
+                                                     THIS Sowing
+```
+
+**`sown_site_count` is now always captured on the operator-facing command,
+superseding the NURSERY-OPS-001.1 addendum's deliberate `NULL`.** The
+Nursery Sowing command (`POST /farms/{farm_id}/nursery/sowings`,
+`SowNewBatchTrayIn`) now requires a positive `sown_site_count` per tray, in
+addition to the existing `seeds_sown` (`seed_count`) -- both fields are
+independently, honestly operator-supplied, never one fabricated from the
+other. The general/legacy route's own request schema
+(`SowingEventLineIn.sown_site_count`) is unchanged -- it already required
+this field since CMP-009. Every Sowing Event Line recorded *before* this
+ticket via the Nursery command keeps its historical `sown_site_count =
+NULL` untouched -- this is not backfilled, matching this document's own
+immutable-history discipline throughout.
+
+**Capacity enforcement: `sown_site_count <= biological_position_count`,
+when both facts are known.** Enforced once, in the shared
+`sowing_service._sow_batch_core` (used by both the legacy/general and the
+Nursery Sowing command), immediately alongside the existing
+carrier-type-match check -- never duplicated between the two entry
+points. A violation raises `SowingCapacityExceededError` (HTTP 422) before
+any row is written, so a capacity-invalid tray in a multi-tray command
+fails the whole command atomically, exactly like every other Sowing
+rejection reason.
+
+**`seed_count`/`seeds_sown` is never compared against
+`biological_position_count`.** Multiple seeds may legitimately occupy one
+planting position (e.g. `biological_position_count = 200, sown_site_count
+= 200, seed_count = 250` is valid) -- this ticket introduces no such
+comparison, anywhere.
+
+**The rule is skipped, never fabricated, whenever CMP has no physical
+capacity fact to compare against:**
+
+- a Carrier with `specification_id IS NULL` -- every historical (pre-
+  CARRIER-CONFIG-001A) Seed Tray Carrier, intentionally preserved as
+  still-valid by that ticket, remains fully sowable; capacity enforcement
+  is simply not reachable for it.
+- a `CarrierSpecification` with `biological_position_count IS NULL` --
+  can no longer be produced for a NEW `seed_tray` specification (see
+  below), but a historical one, if it exists, remains a valid record and
+  does not block Sowing.
+
+**New Seed Tray Carrier Specifications must define a positive
+`biological_position_count`.** `seed_tray.requires_specification = true`
+since CARRIER-CONFIG-001A, so this is enforced by the SAME existing,
+generic, CarrierType-driven service-layer rule
+(`carrier_specification_service._require_minimum_fields_if_specification_required`)
+that already required `length_mm`/`width_mm`/`biological_position_count`
+for any specification-required CarrierType -- no new production code, no
+database trigger; this ticket only adds explicit `seed_tray`-specific test
+coverage of a rule that already existed. Unrelated CarrierTypes are
+untouched: a type that does not require a specification still allows a
+fully unset `biological_position_count`, exactly as before.
+
+**Frontend.** The Nursery Sowing operator screen now shows each selected
+Seed Tray's known capacity (via the extended
+`GET /farms/{farm_id}/nursery/seed-trays/available` response, which now
+carries `specification_id`/`specification.biological_position_count`
+alongside the existing `carrier_type`), collects `sown_site_count`
+alongside `seeds_sown`, and client-side prevents submitting a
+`sown_site_count` above a known capacity -- a convenience check only; the
+backend remains authoritative. A legacy tray with unknown capacity shows
+"Capacity unknown" and is never blocked on that basis alone.
