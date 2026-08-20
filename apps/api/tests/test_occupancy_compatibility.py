@@ -28,6 +28,12 @@ EXPECTED_RULES = {
     # rule (carrier:seed_tray -> position:slot, for the Germination Trolley
     # slot) is untouched.
     ("carrier", "seed_tray", "location", "seedling_table"),
+    # NURSERY-OPS-004B.1: the authoritative Nursery InterSalads topology
+    # likewise stops at intersalads_table itself (no table position beneath
+    # it) -- the Nursery Cultivation Plate carrier must be able to occupy
+    # the table directly. production_cultivation_plate -> grow_table is
+    # deliberately NOT added here (a separate, later ticket's scope).
+    ("carrier", "nursery_cultivation_plate", "location", "intersalads_table"),
 }
 
 
