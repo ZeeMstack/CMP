@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.models.audit_event import AuditEvent
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.carrier import Carrier
 from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.transplant_allocation import TransplantAllocation
 from app.models.transplant_destination_line import TransplantDestinationLine
@@ -20,6 +21,7 @@ from app.schemas.transplant_event import (
 )
 from app.services import (
     carrier_service,
+    carrier_specification_service,
     crop_batch_service,
     transplant_service,
 )
@@ -29,6 +31,7 @@ from app.services.errors import (
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
     SourceAssignmentHasNoSeedlingEntryError,
+    TransplantCapacityExceededError,
     TransplantCommandReusedWithDifferentPayloadError,
     TransplantValidationError,
 )
@@ -777,12 +780,509 @@ def test_transplant_api_smoke(client, active_context_with_farm, db_session) -> N
 
 @pytest.mark.integration
 def test_transplant_routes_exactly_three_no_mutation_and_no_lineage_route() -> None:
+    """NURSERY-OPS-004B.1 added a genuinely new, deliberately-scoped
+    composite route (`/intersalads-transplants`) -- this guard now scopes
+    itself to the plain generic `/transplants` surface specifically (by
+    exact path, not merely the "transplant" substring) so it keeps proving
+    its original intent (no accidental extra mutation/lineage route on the
+    generic surface) without being broken by that intentional addition."""
     from app.main import app
 
     schema = app.openapi()
-    transplant_paths = {p: ops for p, ops in schema["paths"].items() if "transplant" in p}
+    transplant_paths = {
+        p: ops for p, ops in schema["paths"].items()
+        if "transplant" in p and "intersalads-transplants" not in p
+    }
     ops_count = sum(len(ops) for ops in transplant_paths.values())
     assert ops_count == 3, transplant_paths
     methods = {method.upper() for ops in transplant_paths.values() for method in ops}
     assert methods == {"GET", "POST"}
     assert not any("lineage" in p for p in transplant_paths)
+
+
+@pytest.mark.integration
+def test_intersalads_transplant_route_exactly_one_post_only(active_context_with_farm) -> None:
+    """Section 15/24: no correction/void route, no GET/list route -- the
+    composite command exposes exactly one POST, nothing else, in this
+    ticket."""
+    from app.main import app
+
+    schema = app.openapi()
+    composite_paths = {p: ops for p, ops in schema["paths"].items() if "intersalads-transplants" in p}
+    assert len(composite_paths) == 1
+    ops = next(iter(composite_paths.values()))
+    assert set(ops) == {"post"}
+
+
+# =====================================================================
+# NURSERY-OPS-004B.1: destination biological capacity (shared core --
+# reachable from BOTH the plain /transplants endpoint used here AND the
+# InterSalads composite command; test_intersalads_transplant.py adds only
+# the handful of composite-specific proofs, not a duplicate matrix)
+# =====================================================================
+
+
+def _register_nursery_plate_spec(db_session, tenant, user, *, biological_position_count=200, suffix=None):
+    suffix = suffix or uuid.uuid4().hex[:8]
+    return carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="nursery_cultivation_plate",
+        code=f"CAP-{suffix}", name="Capacity Test Plate", length_mm=500, width_mm=300, height_mm=60,
+        biological_position_count=biological_position_count,
+    )
+
+
+@pytest.mark.integration
+def test_assigned_plant_count_below_capacity_succeeds(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=200)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    aid = s["source_assignment_ids"][0]
+    plate = s["destination_carriers"][0]
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], [_simple_source(aid)], [_simple_destination(plate.id, assigned_plant_count=150)],
+        [_simple_allocation(aid, plate.id, 150)], effective_time=s["entry_time"] + timedelta(hours=2),
+    )
+    assert db_session.execute(
+        select(TransplantDestinationLine.assigned_plant_count).where(
+            TransplantDestinationLine.transplant_event_id == event.id
+        )
+    ).scalar_one() == 150
+
+
+@pytest.mark.integration
+def test_assigned_plant_count_at_exact_capacity_succeeds(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=200)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    aid = s["source_assignment_ids"][0]
+    plate = s["destination_carriers"][0]
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], [_simple_source(aid)], [_simple_destination(plate.id, assigned_plant_count=200)],
+        [_simple_allocation(aid, plate.id, 200)], effective_time=s["entry_time"] + timedelta(hours=2),
+    )
+    assert db_session.execute(
+        select(TransplantDestinationLine.assigned_plant_count).where(
+            TransplantDestinationLine.transplant_event_id == event.id
+        )
+    ).scalar_one() == 200
+
+
+@pytest.mark.integration
+def test_assigned_plant_count_above_capacity_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=200)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    aid = s["source_assignment_ids"][0]
+    plate = s["destination_carriers"][0]
+    with pytest.raises(TransplantCapacityExceededError):
+        _transplant(
+            db_session, tenant, farm, user, s["batch"], [_simple_source(aid)],
+            [_simple_destination(plate.id, assigned_plant_count=201)], [_simple_allocation(aid, plate.id, 201)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
+        )
+
+
+@pytest.mark.integration
+def test_required_specification_destination_with_no_specification_rejected_safely(
+    db_session, active_context_with_farm
+) -> None:
+    """nursery_cultivation_plate has required_specification=True since its
+    own inception -- a Carrier with no specification_id is structurally
+    unreachable via `carrier_service.register_carrier` (it refuses to
+    create one), so this historical-shaped state must be constructed via
+    raw SQL, matching the established pattern for other structurally-
+    frozen legacy scenarios."""
+    tenant, user, _headers, farm = active_context_with_farm
+    # `destination_specification_id` must be a valid spec so the scenario
+    # builder's own destination-carrier auto-registration (unused by this
+    # test) doesn't itself fail -- the actual carrier under test is a
+    # separate, deliberately spec-less raw-SQL row constructed below.
+    throwaway_spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=200)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=throwaway_spec.id,
+    )
+    plate_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'nursery_cultivation_plate'")
+    ).scalar_one()
+    carrier_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, specification_id, "
+            "issued_date, retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL, NULL)"
+        ),
+        {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": plate_type_id, "code": f"NOSPEC-{uuid.uuid4().hex[:8]}"},
+    )
+    plate = db_session.get(Carrier, carrier_id)
+    aid = s["source_assignment_ids"][0]
+    with pytest.raises(TransplantValidationError):
+        _transplant(
+            db_session, tenant, farm, user, s["batch"], [_simple_source(aid)],
+            [_simple_destination(plate.id, assigned_plant_count=100)], [_simple_allocation(aid, plate.id, 100)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
+        )
+
+
+@pytest.mark.integration
+def test_non_required_specification_type_with_capacity_still_enforces_it(db_session, active_context_with_farm) -> None:
+    """Section 4: 'If a Carrier Type does NOT require a specification: if a
+    specification/capacity exists, use it.' The generic `cultivation_plate`
+    type does not require one, but a Carrier that voluntarily references a
+    specification with a real capacity is still capacity-checked."""
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="cultivation_plate",
+        code=f"GEN-{uuid.uuid4().hex[:8]}", name="Generic Plate With Capacity", length_mm=400, width_mm=300,
+        height_mm=None, biological_position_count=100,
+    )
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    aid = s["source_assignment_ids"][0]
+    plate = s["destination_carriers"][0]
+    with pytest.raises(TransplantCapacityExceededError):
+        _transplant(
+            db_session, tenant, farm, user, s["batch"], [_simple_source(aid)],
+            [_simple_destination(plate.id, assigned_plant_count=101)], [_simple_allocation(aid, plate.id, 101)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
+        )
+
+
+@pytest.mark.integration
+def test_non_required_specification_type_without_capacity_not_invented(db_session, active_context_with_farm) -> None:
+    """Section 4: 'if no biological-position capacity exists, do not invent
+    one.' The default `cultivation_plate` scenario carriers have no
+    specification at all -- capacity must not block them (this is also
+    already proven implicitly by every other passing test in this file
+    using the default scenario; asserted explicitly here for the record)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    aid = s["source_assignment_ids"][0]
+    plate = s["destination_carriers"][0]
+    event = _transplant(
+        db_session, tenant, farm, user, s["batch"], [_simple_source(aid)],
+        [_simple_destination(plate.id, assigned_plant_count=200)], [_simple_allocation(aid, plate.id, 200)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
+    assert db_session.execute(
+        select(TransplantDestinationLine.assigned_plant_count).where(
+            TransplantDestinationLine.transplant_event_id == event.id
+        )
+    ).scalar_one() == 200
+
+
+@pytest.mark.integration
+def test_direct_sql_capacity_violation_rejected_by_db_backstop(db_session, active_context_with_farm) -> None:
+    """Migration b7e2f4a9c1d6's `enforce_transplant_destination_capacity`
+    trigger -- unreachable via the normal application path (the service
+    check above already blocks it before any insert), proven here exactly
+    like DOMAIN-FARM-002's own capacity trigger test precedent: a direct,
+    fully self-consistent INSERT bypassing the service layer entirely.
+    `DEFERRABLE INITIALLY DEFERRED` triggers fire at real transaction
+    COMMIT, not at savepoint release or flush -- `SET CONSTRAINTS ALL
+    IMMEDIATE` forces the check to run inside this nested savepoint so the
+    test can observe it without ever committing the outer transaction."""
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=50)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    aid = s["source_assignment_ids"][0]
+    source_carrier_id = s["source_carriers"][0].id
+    plate = s["destination_carriers"][0]
+    active_run_id = db_session.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": s["batch"].id},
+    ).scalar_one()
+    effective_time = s["entry_time"] + timedelta(hours=2)
+
+    with pytest.raises(DBAPIError):
+        with db_session.begin_nested():
+            event_id, source_line_id, dest_assignment_id, dest_line_id = (
+                uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_events (id, tenant_id, farm_id, batch_id, "
+                    "active_batch_stage_run_id, effective_time, actor_user_id, client_command_id, "
+                    "request_fingerprint, note) VALUES (:id, :tid, :fid, :bid, :run_id, :et, :uid, "
+                    "gen_random_uuid(), 'direct-sql-test', NULL)"
+                ),
+                {
+                    "id": event_id, "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id, "run_id": active_run_id,
+                    "et": effective_time, "uid": user.id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_source_lines (id, tenant_id, farm_id, transplant_event_id, "
+                    "source_batch_carrier_assignment_id, source_carrier_id, source_plant_count, "
+                    "discarded_plant_count, transplant_damage_count, qc_rejection_count, sample_count, "
+                    "other_loss_count) VALUES (:id, :tid, :fid, :eid, :aid, :cid, 999, 0, 0, 0, 0, 0)"
+                ),
+                {
+                    "id": source_line_id, "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": aid,
+                    "cid": source_carrier_id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO batch_carrier_assignments (id, tenant_id, farm_id, batch_id, carrier_id, "
+                    "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, actor_user_id) "
+                    "VALUES (:id, :tid, :fid, :bid, :cid, :run_id, :et, :eid, :uid)"
+                ),
+                {
+                    "id": dest_assignment_id, "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id,
+                    "cid": plate.id, "run_id": active_run_id, "et": effective_time, "eid": event_id,
+                    "uid": user.id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_destination_lines (id, tenant_id, farm_id, transplant_event_id, "
+                    "destination_batch_carrier_assignment_id, destination_carrier_id, assigned_plant_count) "
+                    "VALUES (:id, :tid, :fid, :eid, :daid, :cid, 999)"
+                ),
+                {
+                    "id": dest_line_id, "tid": tenant.id, "fid": farm.id, "eid": event_id,
+                    "daid": dest_assignment_id, "cid": plate.id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_allocations (id, tenant_id, farm_id, transplant_event_id, "
+                    "source_line_id, destination_line_id, allocated_plant_count) "
+                    "VALUES (gen_random_uuid(), :tid, :fid, :eid, :sid, :did, 999)"
+                ),
+                {"tid": tenant.id, "fid": farm.id, "eid": event_id, "sid": source_line_id, "did": dest_line_id},
+            )
+            db_session.execute(
+                text(
+                    "UPDATE batch_carrier_assignments SET released_effective_time = :et, "
+                    "released_by_transplant_event_id = :eid WHERE id = :aid"
+                ),
+                {"et": effective_time, "eid": event_id, "aid": aid},
+            )
+            db_session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+
+
+@pytest.mark.integration
+def test_direct_sql_update_of_committed_destination_line_rejected(db_session, active_context_with_farm) -> None:
+    """Pre-commit audit section 5/6: the DATABASE truth, not documentation
+    or service code -- `transplant_destination_lines_no_update`
+    (BEFORE UPDATE, unconditional, immediate -- not deferred, established by
+    the original CMP-011 migration `f3a8c2e1b975`, shared `reject_append_
+    only_mutation()` function) rejects ANY UPDATE to a committed destination
+    line, including `assigned_plant_count`, before the row-level values are
+    even compared -- this is Outcome 1 from the audit's required matrix: the
+    existing immutable-history protection already covers UPDATE, so the new
+    capacity trigger's `AFTER INSERT`-only scope is sufficient; it does not
+    also need to fire on UPDATE."""
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=50)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=spec.id,
+    )
+    plate = s["destination_carriers"][0]
+    # Case A: a valid, committed line within capacity.
+    event = transplant_service.record_transplant(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
+        client_command_id=uuid.uuid4(), effective_time=s["entry_time"] + timedelta(hours=2), note=None,
+        source_lines=[_simple_source(s["source_assignment_ids"][0])],
+        destination_lines=[_simple_destination(plate.id, assigned_plant_count=40)],
+        allocations=[_simple_allocation(s["source_assignment_ids"][0], plate.id, 40)],
+    )
+    # Case B: direct SQL UPDATE attempting to push assigned_plant_count
+    # above the Plate's known capacity (50) -- must be rejected outright,
+    # by the pre-existing immutability trigger, not by the capacity trigger.
+    with pytest.raises(DBAPIError, match="append-only|append_only|cannot be updated|immutable") as exc_info:
+        with db_session.begin_nested():
+            db_session.execute(
+                text(
+                    "UPDATE transplant_destination_lines SET assigned_plant_count = 999 "
+                    "WHERE transplant_event_id = :eid"
+                ),
+                {"eid": event.id},
+            )
+    # Confirm committed state was never mutated (Outcome 3 -- the
+    # unacceptable one -- did not occur).
+    unchanged = db_session.execute(
+        select(TransplantDestinationLine.assigned_plant_count).where(
+            TransplantDestinationLine.transplant_event_id == event.id
+        )
+    ).scalar_one()
+    assert unchanged == 40
+
+
+@pytest.mark.integration
+def test_db_backstop_rejects_structurally_corrupt_null_specification_id(db_session, active_context_with_farm) -> None:
+    """Pre-commit audit section 7: a `nursery_cultivation_plate` Carrier
+    with a raw-SQL-corrupted `specification_id IS NULL` (structurally
+    unreachable via the service layer, see
+    `test_required_specification_destination_with_no_specification_rejected_safely`
+    above, which already proves the SERVICE rejects it) must ALSO be
+    rejected by the DB capacity trigger itself if that service check were
+    ever bypassed -- proven here via the same `SET CONSTRAINTS ALL
+    IMMEDIATE` technique, building a fully self-consistent fake event
+    exactly like `test_direct_sql_capacity_violation_rejected_by_db_backstop`
+    above, this time against a NULL-specification destination Carrier."""
+    tenant, user, _headers, farm = active_context_with_farm
+    throwaway_spec = _register_nursery_plate_spec(db_session, tenant, user, biological_position_count=200)
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=throwaway_spec.id,
+    )
+    plate_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'nursery_cultivation_plate'")
+    ).scalar_one()
+    corrupt_carrier_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, specification_id, "
+            "issued_date, retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL, NULL)"
+        ),
+        {"id": corrupt_carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": plate_type_id, "code": f"CORRUPT-{uuid.uuid4().hex[:8]}"},
+    )
+    aid = s["source_assignment_ids"][0]
+    source_carrier_id = s["source_carriers"][0].id
+    active_run_id = db_session.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": s["batch"].id},
+    ).scalar_one()
+    effective_time = s["entry_time"] + timedelta(hours=2)
+
+    with pytest.raises(DBAPIError, match="requires a specification"):
+        with db_session.begin_nested():
+            event_id, source_line_id, dest_assignment_id, dest_line_id = (
+                uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_events (id, tenant_id, farm_id, batch_id, "
+                    "active_batch_stage_run_id, effective_time, actor_user_id, client_command_id, "
+                    "request_fingerprint, note) VALUES (:id, :tid, :fid, :bid, :run_id, :et, :uid, "
+                    "gen_random_uuid(), 'direct-sql-test-2', NULL)"
+                ),
+                {
+                    "id": event_id, "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id, "run_id": active_run_id,
+                    "et": effective_time, "uid": user.id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_source_lines (id, tenant_id, farm_id, transplant_event_id, "
+                    "source_batch_carrier_assignment_id, source_carrier_id, source_plant_count, "
+                    "discarded_plant_count, transplant_damage_count, qc_rejection_count, sample_count, "
+                    "other_loss_count) VALUES (:id, :tid, :fid, :eid, :aid, :cid, 200, 0, 0, 0, 0, 0)"
+                ),
+                {
+                    "id": source_line_id, "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": aid,
+                    "cid": source_carrier_id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO batch_carrier_assignments (id, tenant_id, farm_id, batch_id, carrier_id, "
+                    "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, actor_user_id) "
+                    "VALUES (:id, :tid, :fid, :bid, :cid, :run_id, :et, :eid, :uid)"
+                ),
+                {
+                    "id": dest_assignment_id, "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id,
+                    "cid": corrupt_carrier_id, "run_id": active_run_id, "et": effective_time, "eid": event_id,
+                    "uid": user.id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_destination_lines (id, tenant_id, farm_id, transplant_event_id, "
+                    "destination_batch_carrier_assignment_id, destination_carrier_id, assigned_plant_count) "
+                    "VALUES (:id, :tid, :fid, :eid, :daid, :cid, 200)"
+                ),
+                {
+                    "id": dest_line_id, "tid": tenant.id, "fid": farm.id, "eid": event_id,
+                    "daid": dest_assignment_id, "cid": corrupt_carrier_id,
+                },
+            )
+            db_session.execute(
+                text(
+                    "INSERT INTO transplant_allocations (id, tenant_id, farm_id, transplant_event_id, "
+                    "source_line_id, destination_line_id, allocated_plant_count) "
+                    "VALUES (gen_random_uuid(), :tid, :fid, :eid, :sid, :did, 200)"
+                ),
+                {"tid": tenant.id, "fid": farm.id, "eid": event_id, "sid": source_line_id, "did": dest_line_id},
+            )
+            seedling_entry_id = db_session.execute(
+                text("SELECT id FROM seedling_entries WHERE batch_carrier_assignment_id = :aid"), {"aid": aid}
+            ).scalar_one()
+            db_session.execute(
+                text(
+                    "INSERT INTO seedling_source_checkpoints (id, tenant_id, farm_id, batch_id, "
+                    "seedling_entry_id, source_batch_carrier_assignment_id, transplant_source_line_id, "
+                    "previous_checkpoint_id, remainder_after, effective_time) "
+                    "VALUES (gen_random_uuid(), :tid, :fid, :bid, :seid, :aid, :slid, NULL, 0, :et)"
+                ),
+                {
+                    "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id, "seid": seedling_entry_id, "aid": aid,
+                    "slid": source_line_id, "et": effective_time,
+                },
+            )
+            db_session.execute(
+                text(
+                    "UPDATE batch_carrier_assignments SET released_effective_time = :et, "
+                    "released_by_transplant_event_id = :eid WHERE id = :aid"
+                ),
+                {"et": effective_time, "eid": event_id, "aid": aid},
+            )
+            db_session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+
+
+@pytest.mark.integration
+def test_db_backstop_layering_null_capacity_on_unreferenced_specification(db_session, active_context_with_farm) -> None:
+    """Pre-commit audit section 7, second half: a genuinely NEW
+    `carrier_specifications` row for `nursery_cultivation_plate` with
+    `biological_position_count = NULL`, raw-SQL-inserted (bypassing the
+    service layer's `_require_minimum_fields_if_specification_required`,
+    which is Python-only, not itself a DB constraint -- the column-level
+    CHECK constraint permits NULL unconditionally). No existing Carrier/
+    Specification DB constraint prevents this row from existing while
+    unreferenced (the structural-freeze trigger only engages once a Carrier
+    references it). Confirms the capacity trigger's own design is robust
+    regardless of *how* a NULL capacity was reached -- it queries the live
+    joined state at insert time, not a separately-enforced invariant."""
+    tenant, user, _headers, farm = active_context_with_farm
+    plate_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'nursery_cultivation_plate'")
+    ).scalar_one()
+    corrupt_spec_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO carrier_specifications (id, tenant_id, carrier_type_id, code, name, "
+            "biological_position_count, status) VALUES (:id, :tid, :ctid, :code, 'Corrupt Null Capacity', "
+            "NULL, 'active')"
+        ),
+        {"id": corrupt_spec_id, "tid": tenant.id, "ctid": plate_type_id, "code": f"NULLCAP-{uuid.uuid4().hex[:8]}"},
+    )
+    s = build_transplant_ready_scenario(
+        db_session, tenant, user, farm, tray_count=1, transplanting_required_type="nursery_cultivation_plate",
+        destination_specification_id=corrupt_spec_id,
+    )
+    plate = s["destination_carriers"][0]
+    aid = s["source_assignment_ids"][0]
+    with pytest.raises(TransplantValidationError):
+        _transplant(
+            db_session, tenant, farm, user, s["batch"], [_simple_source(aid)],
+            [_simple_destination(plate.id, assigned_plant_count=100)], [_simple_allocation(aid, plate.id, 100)],
+            effective_time=s["entry_time"] + timedelta(hours=2),
+        )

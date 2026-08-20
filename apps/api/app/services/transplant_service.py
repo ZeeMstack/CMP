@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
 from app.models.carrier import Carrier
+from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
@@ -43,6 +44,7 @@ from app.services.errors import (
     SourceAssignmentHasNoSeedlingEntryError,
     SourceAssignmentNotFoundError,
     TooManyTransplantLinesError,
+    TransplantCapacityExceededError,
     TransplantCommandReusedWithDifferentPayloadError,
     TransplantEventNotFoundError,
     TransplantValidationError,
@@ -296,6 +298,35 @@ def _record_transplant_core(
             )
         ).scalars()
     )
+
+    # NURSERY-OPS-004B.1: destination biological capacity. Every destination
+    # carrier in one command already shares the same `carrier_type_id` (the
+    # check just below this block enforces that), so the destination
+    # CarrierType's `requires_specification` only needs resolving once. One
+    # batched specification lookup, never a query per destination -- mirrors
+    # CARRIER-CONFIG-001B's identical pattern in
+    # `sowing_service._sow_batch_core`. Deliberately does NOT read
+    # `CarrierSpecification.status` -- an existing active Carrier whose
+    # specification has since gone inactive remains eligible (frozen product
+    # rule, section 3): a specification going inactive only blocks NEW
+    # Carrier registrations against it, never Transplant eligibility for a
+    # Carrier that already references it.
+    destination_carrier_type = db.get(CarrierType, stage.required_carrier_type_id)
+    destination_line_by_carrier_id = {line["destination_carrier_id"]: line for line in destination_lines}
+    destination_specification_ids = {
+        carriers_by_id[cid].specification_id
+        for cid in destination_carrier_ids
+        if carriers_by_id[cid].specification_id is not None
+    }
+    destination_specifications_by_id: dict[uuid.UUID, CarrierSpecification] = {}
+    if destination_specification_ids:
+        destination_specifications_by_id = {
+            s.id: s
+            for s in db.execute(
+                select(CarrierSpecification).where(CarrierSpecification.id.in_(destination_specification_ids))
+            ).scalars()
+        }
+
     for cid in destination_carrier_ids:
         carrier = carriers_by_id[cid]
         if carrier.status != "active":
@@ -306,6 +337,25 @@ def _record_transplant_core(
             )
         if cid in active_assignment_carrier_ids:
             raise DestinationCarrierAlreadyAssignedError(str(cid))
+
+        specification = (
+            destination_specifications_by_id.get(carrier.specification_id)
+            if carrier.specification_id is not None
+            else None
+        )
+        if destination_carrier_type.requires_specification:
+            if specification is None or specification.biological_position_count is None:
+                raise TransplantValidationError(
+                    f"destination carrier {cid} requires a specification with a positive "
+                    f"biological_position_count, but none is configured"
+                )
+        if specification is not None and specification.biological_position_count is not None:
+            assigned_plant_count = destination_line_by_carrier_id[cid]["assigned_plant_count"]
+            if assigned_plant_count > specification.biological_position_count:
+                raise TransplantCapacityExceededError(
+                    f"destination carrier {cid}: assigned_plant_count ({assigned_plant_count}) exceeds its "
+                    f"specification's biological_position_count ({specification.biological_position_count})"
+                )
 
     # Lock source assignments in deterministic order and re-validate under lock.
     assignments = list(

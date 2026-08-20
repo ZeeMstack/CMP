@@ -45,6 +45,7 @@ def now():
 def build_transplant_ready_scenario(
     db_session, tenant, user, farm, *, suffix=None, tray_count=4, normal=200, abnormal=0,
     transplanting_required_type="cultivation_plate", legacy_seed_tray_no_specification=False,
+    destination_specification_id=None, intersalads_table_count=0, intersalads_table_capacity=None,
 ):
     """A Batch with `tray_count` Seed Trays, each sown, germinated, and
     entered through SeedlingEntry (frozen `starting_living_seedling_count =
@@ -67,7 +68,14 @@ def build_transplant_ready_scenario(
     (a pre-001A seed_tray row) for the handful of downgrade-guard callers
     that need a real seed_tray without ever creating a committed
     carrier_specifications row (which would otherwise make e5b8c3a72f04's
-    own, unconditional guard fire before the older guard under test)."""
+    own, unconditional guard fire before the older guard under test).
+
+    NURSERY-OPS-004B.1: `destination_specification_id` (default `None`,
+    unchanged behavior for every existing caller) registers the 4
+    `destination_carriers` against that specification instead of by bare
+    `carrier_type_code` -- required for `transplanting_required_type`
+    values that `requires_specification` (e.g. `nursery_cultivation_plate`),
+    which `carrier_service.register_carrier` rejects without one."""
     suffix = suffix or uuid.uuid4().hex[:8]
 
     crop = crop_service.register_crop(
@@ -135,17 +143,26 @@ def build_transplant_ready_scenario(
         received_date=None, expiry_date=None,
     )
 
+    nursery_config_kwargs = dict(
+        seeding_station=NurserySectionConfig(code=f"SEED-{suffix}"),
+        germination_chamber=GerminationChamberSetupConfig(code=f"GC-{suffix}", trolley_capacity=None),
+        seedling_tables=TableGeneratorConfig(
+            code_prefix=f"ST{suffix[:4]}", start=1, end=2, pad_width=2, capacity=tray_count
+        ),
+    )
+    # NURSERY-OPS-004B.1: opt-in InterSalads Tables, same greenhouse -- 0
+    # (default) is unchanged behavior for every existing caller of this
+    # shared scenario builder.
+    if intersalads_table_count > 0:
+        nursery_config_kwargs["intersalads_tables"] = TableGeneratorConfig(
+            code_prefix=f"IS{suffix[:4]}", start=1, end=intersalads_table_count, pad_width=2,
+            capacity=intersalads_table_capacity,
+        )
     setup = farm_setup_service.create_greenhouse_setup(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         payload=GreenhouseSetupCreate(
             code=f"NUR-{suffix}", name="Nursery", classification="nursery", client_command_id=uuid.uuid4(),
-            nursery=NurserySetupConfig(
-                seeding_station=NurserySectionConfig(code=f"SEED-{suffix}"),
-                germination_chamber=GerminationChamberSetupConfig(code=f"GC-{suffix}", trolley_capacity=None),
-                seedling_tables=TableGeneratorConfig(
-                    code_prefix=f"ST{suffix[:4]}", start=1, end=2, pad_width=2, capacity=tray_count
-                ),
-            ),
+            nursery=NurserySetupConfig(**nursery_config_kwargs),
         ),
     )
     structure = farm_setup_service.get_greenhouse_structure(
@@ -154,6 +171,9 @@ def build_transplant_ready_scenario(
     seeding_station_id = structure.nursery_seeding_stations[0].id
     chamber_id = structure.nursery_germination_chamber.id
     table_ids = [t.id for t in structure.nursery_seedling.tables]
+    intersalads_table_ids = (
+        [t.id for t in structure.nursery_intersalads.tables] if structure.nursery_intersalads else []
+    )
 
     trolley = asset_service.register_asset(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
@@ -252,7 +272,12 @@ def build_transplant_ready_scenario(
         [
             carrier_service.register_carrier(
                 db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-                carrier_type_code=transplanting_required_type, code=f"CP-{suffix}-{n:04d}", issued_date=None,
+                **(
+                    {"specification_id": destination_specification_id}
+                    if destination_specification_id is not None
+                    else {"carrier_type_code": transplanting_required_type}
+                ),
+                code=f"CP-{suffix}-{n:04d}", issued_date=None,
             )
             for n in range(1, 5)
         ]
@@ -274,5 +299,6 @@ def build_transplant_ready_scenario(
         "batch": batch, "batch_id": batch_id, "seed_lot": seed_lot,
         "source_carriers": carriers, "source_assignment_ids": source_assignment_ids, "entry_ids": entry_ids,
         "entry_time": entry_time, "sow_time": sow_time, "starting": normal + abnormal,
-        "destination_carriers": destination_carriers,
+        "destination_carriers": destination_carriers, "intersalads_table_ids": intersalads_table_ids,
+        "seedling_table_ids": table_ids,
     }

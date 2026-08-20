@@ -535,6 +535,44 @@ class SourceAssignmentHasNoSeedlingEntryError(DomainError):
     pass
 
 
+class TransplantCapacityExceededError(DomainError):
+    """NURSERY-OPS-004B.1: raised when a Transplant destination line's
+    `assigned_plant_count` exceeds its Carrier's CarrierSpecification.
+    biological_position_count. Only ever raised when both facts are
+    actually known and positive -- see `transplant_service.
+    _record_transplant_core`. Distinct from `TransplantValidationError`,
+    which covers the adjacent but different case of a required-
+    specification destination Carrier missing/lacking a valid capacity
+    fact at all (structural registration problem, not a quantity
+    comparison)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class IntersaladsTransplantCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class IntersaladsTransplantReplayStateConflictError(DomainError):
+    """NURSERY-OPS-004B.1: raised on an exact-fingerprint replay of a
+    composite InterSalads Transplant command whose underlying, previously-
+    recorded per-destination Movement state cannot be reconstructed exactly
+    as expected (a derived Movement command id resolves to no Movement at
+    all, or to one whose occupant/destination does not match the requested
+    destination Carrier/Location). This should be unreachable in normal
+    operation -- every derived Movement id is created in the same
+    transaction as the TransplantEvent it accompanies -- and exists only so
+    a genuinely corrupted or externally-tampered-with state surfaces as a
+    clear domain error rather than a silently wrong or fabricated replay
+    response."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class BatchDerivationEventNotFoundError(DomainError):
     pass
 
