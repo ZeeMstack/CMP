@@ -50,7 +50,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
@@ -67,7 +67,7 @@ from app.schemas.seedling_disposition import (
     SeedlingDispositionReasonRead,
     SeedlingDispositionRecordResult,
 )
-from app.services import farm_service
+from app.services import farm_service, seedling_source_lineage
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
@@ -163,22 +163,26 @@ def _find_existing_command(db: Session, *, tenant_id: uuid.UUID, client_command_
 def _latest_checkpoint_anchor(
     db: Session, *, seedling_entry_id: uuid.UUID
 ) -> tuple[int, datetime] | tuple[None, None]:
-    """NURSERY-OPS-004A: `(remainder_after, effective_time)` of the latest
-    `SeedlingSourceCheckpoint` for this Tray, or `(None, None)` if no
-    transplant has ever consumed it. Ties broken by `effective_time` DESC,
-    then `recorded_at` DESC, then `id` DESC -- presentation-only tie-break,
-    matching every other chronological read in this module; checkpoint
-    `effective_time` is itself DB-enforced strictly monotonic (section 22),
-    so a genuine tie can never actually occur here."""
+    """TRANSPLANT-CORRECTION-001 section 6: `(remainder_after,
+    effective_time)` of the structural chain TIP -- the `SeedlingSource
+    Checkpoint` for this Tray that no other checkpoint names as its own
+    `previous_checkpoint_id` -- or `(None, None)` if no transplant has ever
+    consumed it. This is the single shared definition of "current
+    checkpoint" (the DB-level `enforce_seedling_source_checkpoint_insert_
+    integrity` trigger resolves its own "latest prior checkpoint" via the
+    identical NOT EXISTS shape -- never a second, competing
+    implementation). No longer `ORDER BY effective_time DESC`: once a
+    correction's REVERSAL/REPLACEMENT checkpoints may legitimately share an
+    effective_time with their predecessor, only the append-only chain
+    structure itself (not the timestamp) can tell which checkpoint is
+    actually current."""
+    successor = aliased(SeedlingSourceCheckpoint)
     row = db.execute(
         select(SeedlingSourceCheckpoint.remainder_after, SeedlingSourceCheckpoint.effective_time)
-        .where(SeedlingSourceCheckpoint.seedling_entry_id == seedling_entry_id)
-        .order_by(
-            SeedlingSourceCheckpoint.effective_time.desc(),
-            SeedlingSourceCheckpoint.recorded_at.desc(),
-            SeedlingSourceCheckpoint.id.desc(),
+        .where(
+            SeedlingSourceCheckpoint.seedling_entry_id == seedling_entry_id,
+            ~select(successor.id).where(successor.previous_checkpoint_id == SeedlingSourceCheckpoint.id).exists(),
         )
-        .limit(1)
     ).first()
     if row is None:
         return None, None
@@ -365,17 +369,25 @@ def record_disposition(
             return existing
         raise SeedlingDispositionCommandReusedWithDifferentPayloadError(str(client_command_id))
 
-    entry = db.execute(
-        select(SeedlingEntry).where(SeedlingEntry.batch_carrier_assignment_id == batch_carrier_assignment_id)
-    ).scalar_one_or_none()
+    # TRANSPLANT-CORRECTION-001 section 17/18: the caller may name either
+    # the SeedlingEntry's own original assignment or a reversal-restored
+    # descendant of it -- resolve via the shared backward-lineage walk,
+    # then confirm SOME assignment in that lineage is currently active
+    # (forward walk) rather than only the one directly resolved here.
+    entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(
+        db, assignment_id=batch_carrier_assignment_id
+    )
     if entry is None:
         raise NoSeedlingEntryError(str(batch_carrier_assignment_id))
 
-    assignment = db.execute(
-        select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == batch_carrier_assignment_id)
-    ).scalar_one()
-    if assignment.released_effective_time is not None:
+    active_assignment_id = seedling_source_lineage.resolve_active_assignment_id_in_lineage(
+        db, original_assignment_id=entry.batch_carrier_assignment_id
+    )
+    if active_assignment_id is None:
         raise SeedlingDispositionAssignmentReleasedError(str(batch_carrier_assignment_id))
+    assignment = db.execute(
+        select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == active_assignment_id)
+    ).scalar_one()
 
     reason_exists = db.execute(
         select(SeedlingDispositionReason.code).where(SeedlingDispositionReason.code == reason_code)
@@ -520,11 +532,14 @@ def correct_disposition(
     if checkpoint_time is not None and target.effective_time <= checkpoint_time:
         raise SeedlingDispositionPredatesCheckpointError(str(target_event_id))
 
-    assignment = db.execute(
-        select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == entry.batch_carrier_assignment_id)
-    ).scalar_one()
-    if assignment.released_effective_time is not None:
+    active_assignment_id = seedling_source_lineage.resolve_active_assignment_id_in_lineage(
+        db, original_assignment_id=entry.batch_carrier_assignment_id
+    )
+    if active_assignment_id is None:
         raise SeedlingDispositionAssignmentReleasedError(str(entry.batch_carrier_assignment_id))
+    assignment = db.execute(
+        select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == active_assignment_id)
+    ).scalar_one()
 
     if corrected is not None:
         reason_exists = db.execute(
@@ -703,7 +718,7 @@ def list_seedling_biological_trays(
             "SELECT cb.id AS batch_id, cb.code AS batch_code, "
             "carrier.id AS tray_id, carrier.code AS tray_code, "
             "crop.common_name AS crop_common_name, variety.name AS variety_name, sl.code AS seed_lot_code, "
-            "bca.id AS assignment_id, bca.released_effective_time, "
+            "active_bca.active_id AS assignment_id, active_bca.active_released AS released_effective_time, "
             "se.id AS seedling_entry_id, se.starting_living_seedling_count, "
             "agg.total_reduction_magnitude, agg.total_reversal_magnitude, agg.event_count, "
             "cp.id AS checkpoint_id, cp.effective_time AS checkpoint_effective_time, "
@@ -714,11 +729,32 @@ def list_seedling_biological_trays(
             "FROM seedling_entries se "
             "JOIN batch_carrier_assignments bca ON bca.id = se.batch_carrier_assignment_id "
             "JOIN crop_batches cb ON cb.id = se.batch_id "
-            "JOIN carriers carrier ON carrier.id = bca.carrier_id "
             "JOIN sowing_event_lines sel ON sel.batch_carrier_assignment_id = bca.id "
             "JOIN seed_lots sl ON sl.id = sel.seed_lot_id "
             "JOIN crops crop ON crop.id = sl.crop_id "
             "JOIN varieties variety ON variety.id = sl.variety_id "
+            # TRANSPLANT-CORRECTION-001 section 16/17: the biologically
+            # relevant Tray listing is the CURRENTLY ACTIVE assignment in
+            # this SeedlingEntry's restoration lineage (the original if
+            # never exhausted, or the latest restored descendant) -- never
+            # blindly the original `bca`, which stays permanently released
+            # once ever restored. Bounded forward walk, same physical
+            # Carrier at every hop (see the origin-integrity trigger's own
+            # identical proof), so joining `carrier` off the active id is
+            # equally correct for display.
+            "LEFT JOIN LATERAL ( "
+            "  WITH RECURSIVE lineage AS ( "
+            "    SELECT id, released_effective_time, 0 AS depth FROM batch_carrier_assignments WHERE id = bca.id "
+            "    UNION ALL "
+            "    SELECT nxt.id, nxt.released_effective_time, l.depth + 1 "
+            "    FROM batch_carrier_assignments nxt JOIN lineage l ON nxt.restored_from_batch_carrier_assignment_id = l.id "
+            "    WHERE l.depth < 50 "
+            "  ) "
+            "  SELECT id AS active_id, released_effective_time AS active_released FROM lineage "
+            "  ORDER BY (released_effective_time IS NULL) DESC, depth DESC LIMIT 1 "
+            ") active_bca ON true "
+            "JOIN carriers carrier ON carrier.id = "
+            "  (SELECT carrier_id FROM batch_carrier_assignments WHERE id = active_bca.active_id) "
             "LEFT JOIN LATERAL ( "
             "  SELECT "
             "    COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END), 0) AS total_reduction_magnitude, "
@@ -727,9 +763,10 @@ def list_seedling_biological_trays(
             "  FROM seedling_disposition_events WHERE seedling_entry_id = se.id "
             ") agg ON true "
             "LEFT JOIN LATERAL ( "
-            "  SELECT id, effective_time, remainder_after FROM seedling_source_checkpoints "
-            "  WHERE seedling_entry_id = se.id "
-            "  ORDER BY effective_time DESC, recorded_at DESC, id DESC LIMIT 1 "
+            "  SELECT c.id, c.effective_time, c.remainder_after FROM seedling_source_checkpoints c "
+            "  WHERE c.seedling_entry_id = se.id "
+            "    AND NOT EXISTS (SELECT 1 FROM seedling_source_checkpoints nxt WHERE nxt.previous_checkpoint_id = c.id) "
+            "  LIMIT 1 "
             ") cp ON true "
             "LEFT JOIN LATERAL ( "
             "  SELECT COUNT(*) AS checkpoint_count FROM seedling_source_checkpoints WHERE seedling_entry_id = se.id "

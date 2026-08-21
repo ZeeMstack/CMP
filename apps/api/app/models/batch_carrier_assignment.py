@@ -52,6 +52,12 @@ class BatchCarrierAssignment(Base):
     released_by_batch_derivation_event_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("batch_derivation_events.id"), nullable=True
     )
+    opening_transplant_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("transplant_events.id"), nullable=True
+    )
+    restored_from_batch_carrier_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batch_carrier_assignments.id"), nullable=True
+    )
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -61,7 +67,8 @@ class BatchCarrierAssignment(Base):
         CheckConstraint(
             "(CASE WHEN opening_sowing_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN opening_transplant_event_id IS NOT NULL THEN 1 ELSE 0 END "
-            "+ CASE WHEN opening_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
+            "+ CASE WHEN opening_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN opening_transplant_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_batch_carrier_assignments_exactly_one_opener",
         ),
         CheckConstraint(
@@ -73,9 +80,30 @@ class BatchCarrierAssignment(Base):
             "NOT (released_by_transplant_event_id IS NOT NULL AND released_by_batch_derivation_event_id IS NOT NULL)",
             name="ck_batch_carrier_assignments_at_most_one_releaser",
         ),
+        # TRANSPLANT-CORRECTION-001 section 14 widens the old
+        # "sowing-origin-only" rule: a reversal-restored source assignment is
+        # an equally releasable biological source lifecycle. Which
+        # TransplantEvent *kind* may actually perform the release (RECORD/
+        # REPLACEMENT exhaustion vs. REVERSAL closing the destination it
+        # opened) is a cross-table fact the closure trigger enforces -- this
+        # CHECK only proves the opener SHAPE is one of the two eligible ones.
         CheckConstraint(
-            "released_by_transplant_event_id IS NULL OR opening_sowing_event_id IS NOT NULL",
+            "released_by_transplant_event_id IS NULL "
+            "OR opening_sowing_event_id IS NOT NULL "
+            "OR opening_transplant_reversal_event_id IS NOT NULL "
+            "OR opening_transplant_event_id IS NOT NULL",
             name="ck_batch_carrier_assignments_only_sowing_origin_releasable",
+        ),
+        # TRANSPLANT-CORRECTION-001 section 12: restoration lineage is
+        # exactly co-present with the reversal opener, never a self-loop.
+        CheckConstraint(
+            "(restored_from_batch_carrier_assignment_id IS NOT NULL) = "
+            "(opening_transplant_reversal_event_id IS NOT NULL)",
+            name="ck_batch_carrier_assignments_restoration_opener_match",
+        ),
+        CheckConstraint(
+            "restored_from_batch_carrier_assignment_id IS NULL OR restored_from_batch_carrier_assignment_id <> id",
+            name="ck_batch_carrier_assignments_restoration_not_self",
         ),
         Index(
             "ux_batch_carrier_assignments_active_carrier",
@@ -86,6 +114,11 @@ class BatchCarrierAssignment(Base):
         ),
         UniqueConstraint(
             "tenant_id", "farm_id", "id", name="uq_batch_carrier_assignments_tenant_farm_id"
+        ),
+        # TRANSPLANT-CORRECTION-001: target for the new restoration-lineage
+        # composite FK below (mirrors uq_transplant_events_tenant_farm_batch_id).
+        UniqueConstraint(
+            "tenant_id", "farm_id", "batch_id", "id", name="uq_batch_carrier_assignments_tenant_farm_batch_id"
         ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "batch_id"],
@@ -131,6 +164,31 @@ class BatchCarrierAssignment(Base):
                 "transplant_events.id",
             ],
             name="fk_batch_carrier_assignments_released_by_transplant_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_id", "opening_transplant_reversal_event_id"],
+            [
+                "transplant_events.tenant_id",
+                "transplant_events.farm_id",
+                "transplant_events.batch_id",
+                "transplant_events.id",
+            ],
+            name="fk_batch_carrier_assignments_opening_reversal_event",
+        ),
+        # TRANSPLANT-CORRECTION-001 section 12/E: structurally proves
+        # tenant/farm/batch equality between a restored assignment and its
+        # immediate predecessor -- same-Carrier and released-by-target-X
+        # linkage are cross-row facts a composite FK cannot express, and are
+        # instead proven by the origin-integrity trigger.
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_id", "restored_from_batch_carrier_assignment_id"],
+            [
+                "batch_carrier_assignments.tenant_id",
+                "batch_carrier_assignments.farm_id",
+                "batch_carrier_assignments.batch_id",
+                "batch_carrier_assignments.id",
+            ],
+            name="fk_batch_carrier_assignments_restored_from",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "opening_batch_derivation_event_id"],

@@ -277,6 +277,22 @@ def test_migration_downgrade_blocked_when_transplant_history_exists(test_engine,
         )
         session.commit()
         event_id = event.id
+        # TRANSPLANT-CORRECTION-001: `event.id` above is an attribute read
+        # on an already-committed (and therefore expired) ORM object, which
+        # SQLAlchemy services with an implicit reload against `session`'s
+        # own connection -- silently reopening a read transaction there that
+        # holds an AccessShareLock on `transplant_events` until the next
+        # commit (same root cause already documented/fixed for `tenants` in
+        # this suite's CARRIER-CONFIG-001 downgrade-guard tests). Harmless
+        # against every OLDER migration's downgrade() in this chain, but
+        # TRANSPLANT-CORRECTION-001's own downgrade() now runs first (it
+        # sits above NURSERY-OPS-004A's in the chain) and its very first
+        # step drops a trigger ON `transplant_events` itself -- which
+        # requires an AccessExclusiveLock and deadlocks against the stray
+        # read lock above until Postgres times it out. An explicit commit
+        # here ends that stray read transaction (and its lock) before the
+        # downgrade attempt, exactly mirroring that established fix.
+        session.commit()
 
         # NURSERY-OPS-004A's own migration now sits above CMP-011's in the
         # chain -- its own guard (checkpoint history) fires FIRST for any

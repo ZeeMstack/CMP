@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_stage_run import BatchStageRun
@@ -31,7 +31,7 @@ from app.schemas.transplant_event import (
     TransplantEventRead,
     TransplantSourceLineRead,
 )
-from app.services import farm_service, seedling_disposition_service
+from app.services import farm_service, seedling_disposition_service, seedling_source_lineage
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -147,6 +147,8 @@ def _record_transplant_core(
     source_lines: list[dict],
     destination_lines: list[dict],
     allocations: list[dict],
+    emit_audit: bool = True,
+    corrects_transplant_event_id: uuid.UUID | None = None,
 ) -> tuple[TransplantEvent, bool]:
     """NURSERY-OPS-004B.0: the validate+lock+write core of `record_transplant`,
     with no commit and no refresh -- extracted so a future composite
@@ -186,7 +188,20 @@ def _record_transplant_core(
     composing this core with earlier writes of its own in the SAME
     transaction must therefore call this core FIRST, before any write it
     cannot afford to lose to the IntegrityError-triggered rollback below --
-    exactly the same caveat already accepted for `_execute_movement_core`."""
+    exactly the same caveat already accepted for `_execute_movement_core`.
+
+    TRANSPLANT-CORRECTION-001: `corrects_transplant_event_id`, when given,
+    makes this call a REPLACEMENT leg of a correction rather than an
+    ordinary RECORD -- the created event's `event_kind` becomes
+    'REPLACEMENT', and the source floor check is relaxed from strictly-
+    after to at-or-after ONLY for this call (never globally), since the
+    frozen correction design requires the REPLACEMENT's own checkpoint to
+    legally share its paired REVERSAL's own effective_time. `emit_audit`
+    defaults to `True` (every existing caller's behavior is byte-for-byte
+    unchanged); the correction orchestrator alone passes `False` and emits
+    its own single `crop_batch.transplant_corrected` audit event instead,
+    so a REPLACEMENT never misleadingly emits an ordinary
+    `crop_batch.transplanted` audit row."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if effective_time > datetime.now(timezone.utc):
@@ -373,17 +388,26 @@ def _record_transplant_core(
     # AFTER assignments -- section 44's chain), and resolve
     # source_available_before from the checkpoint-aware anchor formula,
     # never from sown_site_count/seed_count.
+    #
+    # TRANSPLANT-CORRECTION-001 section 17: a source_assignment_id may be a
+    # reversal-restored descendant, not the SeedlingEntry's own directly-
+    # owned assignment -- resolve via the shared backward-lineage walk
+    # (falls back to the pre-existing direct lookup automatically when the
+    # assignment was never restored) instead of a direct equality query.
+    unlocked_entries: dict[uuid.UUID, SeedlingEntry] = {}
+    for aid in source_assignment_ids:
+        entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(db, assignment_id=aid)
+        if entry is not None:
+            unlocked_entries[aid] = entry
+
+    # Deterministic SeedlingEntry.id lock order (matching the pre-existing
+    # discipline this replaces) -- never assignment_id order, which could
+    # differ between two commands that reach the SAME entry via different
+    # assignment ids (original vs. a restored descendant) and risk deadlock.
     entries_by_assignment: dict[uuid.UUID, SeedlingEntry] = {}
-    seedling_entry_rows = list(
-        db.execute(
-            select(SeedlingEntry)
-            .where(SeedlingEntry.batch_carrier_assignment_id.in_(source_assignment_ids))
-            .order_by(SeedlingEntry.id)
-            .with_for_update()
-        ).scalars()
-    )
-    for entry in seedling_entry_rows:
-        entries_by_assignment[entry.batch_carrier_assignment_id] = entry
+    for aid, entry in sorted(unlocked_entries.items(), key=lambda kv: kv[1].id):
+        db.execute(select(SeedlingEntry).where(SeedlingEntry.id == entry.id).with_for_update()).scalar_one()
+        entries_by_assignment[aid] = entry
 
     for aid in source_assignment_ids:
         assignment = assignments_by_id[aid]
@@ -415,7 +439,14 @@ def _record_transplant_core(
         anchor_value, anchor_time, has_checkpoint = seedling_disposition_service.get_source_availability_anchor(
             db, seedling_entry=entry
         )
-        floor_violated = effective_time <= anchor_time if has_checkpoint else effective_time < anchor_time
+        if corrects_transplant_event_id is not None:
+            # TRANSPLANT-CORRECTION-001 section 2/7: the paired REPLACEMENT
+            # leg is server-forced to the same effective_time as its own
+            # REVERSAL's checkpoint -- EQUAL is exactly the expected,
+            # correct case here, not a violation.
+            floor_violated = effective_time < anchor_time
+        else:
+            floor_violated = effective_time <= anchor_time if has_checkpoint else effective_time < anchor_time
         if floor_violated:
             raise InvalidTransplantEffectiveTimeError(
                 f"effective_time precedes source assignment {aid}'s currently-open balance window "
@@ -479,6 +510,8 @@ def _record_transplant_core(
             id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
             active_batch_stage_run_id=active_run.id, effective_time=effective_time, actor_user_id=actor_user_id,
             client_command_id=client_command_id, request_fingerprint=fingerprint, note=note,
+            event_kind="REPLACEMENT" if corrects_transplant_event_id is not None else "RECORD",
+            corrects_transplant_event_id=corrects_transplant_event_id,
         )
         db.add(event)
         db.flush()
@@ -542,13 +575,20 @@ def _record_transplant_core(
         # chained to the actual latest prior checkpoint for that Tray.
         for aid in source_assignment_ids:
             entry = entries_by_assignment[aid]
+            # TRANSPLANT-CORRECTION-001 section 6: chain-tip resolution
+            # (no successor references it as previous_checkpoint_id) --
+            # the same shared definition of "current checkpoint" used by
+            # `seedling_disposition_service._latest_checkpoint_anchor` and
+            # every DB trigger; never `ORDER BY effective_time DESC` once
+            # paired-correction checkpoints may legitimately tie on time.
+            _checkpoint_successor = aliased(SeedlingSourceCheckpoint)
             previous_checkpoint_id = db.execute(
                 select(SeedlingSourceCheckpoint.id)
-                .where(SeedlingSourceCheckpoint.seedling_entry_id == entry.id)
-                .order_by(
-                    SeedlingSourceCheckpoint.effective_time.desc(),
-                    SeedlingSourceCheckpoint.recorded_at.desc(),
-                    SeedlingSourceCheckpoint.id.desc(),
+                .where(
+                    SeedlingSourceCheckpoint.seedling_entry_id == entry.id,
+                    ~select(_checkpoint_successor.id)
+                    .where(_checkpoint_successor.previous_checkpoint_id == SeedlingSourceCheckpoint.id)
+                    .exists(),
                 )
                 .limit(1)
             ).scalar_one_or_none()
@@ -577,25 +617,26 @@ def _record_transplant_core(
                 assignment.released_by_transplant_event_id = event.id
         db.flush()
 
-        append_audit_event(
-            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.transplanted",
-            entity_type="transplant_event", entity_id=event.id,
-            event_data={
-                "transplant_event_id": str(event.id), "batch_id": str(batch.id),
-                "batch_stage_run_id": str(active_run.id), "effective_time": effective_time.isoformat(),
-                "client_command_id": str(client_command_id),
-                "source_assignment_ids": [str(aid) for aid in source_assignment_ids],
-                "source_carrier_ids": [str(cid) for cid in source_carrier_ids],
-                "destination_assignment_ids": [
-                    str(destination_assignment_by_carrier[cid].id) for cid in destination_carrier_ids
-                ],
-                "destination_carrier_ids": [str(cid) for cid in destination_carrier_ids],
-                "source_line_count": len(source_lines), "destination_line_count": len(destination_lines),
-                "allocation_count": len(allocations), "total_source_available_before": total_source,
-                "total_destination_plant_count": total_destination, "total_discarded_plant_count": total_discarded,
-                "total_remainder_after": total_remainder,
-            },
-        )
+        if emit_audit:
+            append_audit_event(
+                db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.transplanted",
+                entity_type="transplant_event", entity_id=event.id,
+                event_data={
+                    "transplant_event_id": str(event.id), "batch_id": str(batch.id),
+                    "batch_stage_run_id": str(active_run.id), "effective_time": effective_time.isoformat(),
+                    "client_command_id": str(client_command_id),
+                    "source_assignment_ids": [str(aid) for aid in source_assignment_ids],
+                    "source_carrier_ids": [str(cid) for cid in source_carrier_ids],
+                    "destination_assignment_ids": [
+                        str(destination_assignment_by_carrier[cid].id) for cid in destination_carrier_ids
+                    ],
+                    "destination_carrier_ids": [str(cid) for cid in destination_carrier_ids],
+                    "source_line_count": len(source_lines), "destination_line_count": len(destination_lines),
+                    "allocation_count": len(allocations), "total_source_available_before": total_source,
+                    "total_destination_plant_count": total_destination,
+                    "total_discarded_plant_count": total_discarded, "total_remainder_after": total_remainder,
+                },
+            )
     except IntegrityError as exc:
         db.rollback()
         constraint = _constraint_name(exc)
@@ -681,19 +722,53 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
     ).all():
         checkpoints_by_line[row[0]] = row[1]
 
+    # TRANSPLANT-CORRECTION-001: a REVERSAL's own TransplantSourceLine may
+    # reference a reversal-restored assignment, which is never sowing-
+    # origin itself and therefore has no SowingEventLine of its own --
+    # resolve each source line's seed-lot/crop/variety provenance through
+    # its SeedlingEntry's own (always sowing-origin) assignment instead of
+    # assuming `source_batch_carrier_assignment_id` always is one, then join
+    # SowingEventLine on the resolved sowing-origin id set separately (a
+    # direct equality join against source_batch_carrier_assignment_id would
+    # silently drop a restored source line entirely).
+    source_assignment_ids = list(
+        db.execute(
+            select(TransplantSourceLine.source_batch_carrier_assignment_id)
+            .where(TransplantSourceLine.transplant_event_id.in_(event_ids))
+            .distinct()
+        ).scalars()
+    )
+    sowing_origin_by_assignment: dict[uuid.UUID, uuid.UUID] = {}
+    for aid in source_assignment_ids:
+        entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(db, assignment_id=aid)
+        if entry is not None:
+            sowing_origin_by_assignment[aid] = entry.batch_carrier_assignment_id
+
+    provenance_by_origin: dict[uuid.UUID, tuple] = {}
+    if sowing_origin_by_assignment:
+        for row in db.execute(
+            select(
+                SowingEventLine.batch_carrier_assignment_id, SowingEventLine.sowing_event_id,
+                SeedLot, Crop, Variety,
+            )
+            .join(SeedLot, SeedLot.id == SowingEventLine.seed_lot_id)
+            .join(Crop, Crop.id == SeedLot.crop_id)
+            .join(Variety, Variety.id == SeedLot.variety_id)
+            .where(SowingEventLine.batch_carrier_assignment_id.in_(set(sowing_origin_by_assignment.values())))
+        ).all():
+            provenance_by_origin[row[0]] = (row[1], row[2], row[3], row[4])
+
     rows = db.execute(
-        select(TransplantSourceLine, Carrier, CarrierType, SeedLot, Crop, Variety, SowingEventLine.sowing_event_id)
+        select(TransplantSourceLine, Carrier, CarrierType)
         .join(Carrier, Carrier.id == TransplantSourceLine.source_carrier_id)
         .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
-        .join(SowingEventLine, SowingEventLine.batch_carrier_assignment_id == TransplantSourceLine.source_batch_carrier_assignment_id)
-        .join(SeedLot, SeedLot.id == SowingEventLine.seed_lot_id)
-        .join(Crop, Crop.id == SeedLot.crop_id)
-        .join(Variety, Variety.id == SeedLot.variety_id)
         .where(TransplantSourceLine.transplant_event_id.in_(event_ids))
         .order_by(Carrier.code, Carrier.id)
     ).all()
-    for source_line, carrier, carrier_type, seed_lot, crop, variety, sowing_event_id in rows:
+    for source_line, carrier, carrier_type in rows:
         successful = totals.get(source_line.id, 0)
+        origin_id = sowing_origin_by_assignment.get(source_line.source_batch_carrier_assignment_id)
+        sowing_event_id, seed_lot, crop, variety = provenance_by_origin[origin_id]
         grouped[source_line.transplant_event_id].append(
             TransplantSourceLineRead(
                 id=source_line.id,

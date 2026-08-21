@@ -120,6 +120,17 @@ def _derive_transferred_quantity(db: Session, assignment: BatchCarrierAssignment
                 TransplantDestinationLine.destination_batch_carrier_assignment_id == assignment.id
             )
         ).scalar_one_or_none()
+    elif assignment.opening_transplant_reversal_event_id is not None:
+        # TRANSPLANT-CORRECTION-001 section 19: a reversal-restored Seed
+        # Tray assignment must NOT be consumed by Batch Derivation in this
+        # ticket -- explicit, not an accidental fallthrough into the
+        # batch-derivation-opener branch below (which would otherwise query
+        # a BatchAssignmentTransfer row that structurally cannot exist for
+        # this opener type).
+        raise BatchDerivationValidationError(
+            f"assignment {assignment.id} was opened by a transplant correction reversal "
+            "and cannot be used as a batch derivation source"
+        )
     else:
         qty = db.execute(
             select(BatchAssignmentTransfer.transferred_plant_count).where(

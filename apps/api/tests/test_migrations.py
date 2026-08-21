@@ -2875,31 +2875,62 @@ def test_migration_upgrade_preserves_legacy_germination_check_rows(test_engine, 
 
     from sqlalchemy.orm import Session
 
-    from app.services import observation_service
-
     suffix = uuid_module.uuid4().hex[:8]
     conn = test_engine.connect()
     session = Session(bind=conn)
     tenant, user, farm, batch, assignment = _build_germination_outcome_migration_tenant(
         session, suffix=suffix, sown_site_count=200
     )
-    event = observation_service.record_observation(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
-        client_command_id=uuid_module.uuid4(), effective_time=datetime.now(timezone.utc), note=None, values=[],
-        germination_checks=[
-            {
-                "batch_carrier_assignment_id": assignment.id, "inspected_site_count": 200,
-                "normal_germinated_site_count": 180, "abnormal_germinated_site_count": 10, "failed_site_count": 5,
-            }
-        ],
-        germination_outcomes=[],
+    # TRANSPLANT-CORRECTION-001: `observation_service.record_observation`
+    # locks `batch_carrier_assignments` via the ORM (`with_for_update()`),
+    # which always selects the CURRENT head model's full column set --
+    # including this ticket's own new nullable columns, which do not exist
+    # at this deliberately-downgraded `PRE_GERMINATION_OUTCOME_REVISION`
+    # schema. Same root cause, and same established fix, as every other
+    # ORM call `_build_germination_outcome_migration_tenant` above already
+    # avoids for schema-evolved tables (carrier_types/carriers/sowing_
+    # events/batch_carrier_assignments/sowing_event_lines) -- built directly
+    # via SQL instead. This constructs the exact same two rows `record_
+    # observation` would have (one ObservationEvent header, one
+    # GerminationCheck child) with the identical values the test asserts
+    # on below; it does not change what this test proves (a pre-existing,
+    # already-valid legacy row survives the upgrade untouched).
+    active_run_id = session.execute(
+        text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
+        {"bid": batch.id},
+    ).scalar_one()
+    event_id = uuid_module.uuid4()
+    session.execute(
+        text(
+            "INSERT INTO observation_events "
+            "(id, tenant_id, farm_id, batch_id, active_batch_stage_run_id, effective_time, actor_user_id, "
+            "client_command_id, request_fingerprint, note) VALUES "
+            "(:id, :tid, :fid, :bid, :run_id, :eff, :uid, :cmd, :fp, NULL)"
+        ),
+        {
+            "id": event_id, "tid": tenant.id, "fid": farm.id, "bid": batch.id, "run_id": active_run_id,
+            "eff": datetime.now(timezone.utc), "uid": user.id, "cmd": uuid_module.uuid4(),
+            "fp": "pre-existing-legacy-germination-check-schema",
+        },
+    )
+    session.execute(
+        text(
+            "INSERT INTO germination_checks "
+            "(id, tenant_id, farm_id, observation_event_id, batch_carrier_assignment_id, inspected_site_count, "
+            "normal_germinated_site_count, abnormal_germinated_site_count, failed_site_count, note) VALUES "
+            "(:id, :tid, :fid, :eid, :aid, :inspected, :normal, :abnormal, :failed, NULL)"
+        ),
+        {
+            "id": uuid_module.uuid4(), "tid": tenant.id, "fid": farm.id, "eid": event_id, "aid": assignment.id,
+            "inspected": 200, "normal": 180, "abnormal": 10, "failed": 5,
+        },
     )
     check_row_before = conn.execute(
         text(
             "SELECT id, inspected_site_count, normal_germinated_site_count, abnormal_germinated_site_count, "
             "failed_site_count FROM germination_checks WHERE observation_event_id = :eid"
         ),
-        {"eid": event.id},
+        {"eid": event_id},
     ).mappings().first()
     session.commit()
     tenant_id = tenant.id

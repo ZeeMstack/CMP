@@ -140,6 +140,20 @@ def test_every_tenant_scoped_mutation_route_is_gated_by_require_permission() -> 
     assert unbound_permission == [], f"route(s) whose require_permission has no resolvable Permission: {unbound_permission}"
 
 
+# TRANSPLANT-CORRECTION-001 (frozen decision): the correction route is
+# deliberately gated by a permission NAMED distinctly from `.manage` --
+# `Permission.TRANSPLANT_CORRECT = "transplant.correct"` -- because holding
+# `transplant.manage` alone (the ordinary RECORD authority) is explicitly
+# insufficient for this materially more consequential command; a same-
+# domain `.manage`-suffixed name would misleadingly suggest it's covered by
+# the ordinary manage grant. This is the one intentional exception to
+# "every mutation-gating permission ends in .manage" this architecture test
+# otherwise enforces -- not a missed rename.
+_NON_MANAGE_SUFFIX_EXEMPT_PATHS = {
+    "/farms/{farm_id}/crop-batches/{batch_id}/transplants/{event_id}/correct",
+}
+
+
 def test_every_permission_bound_to_a_mutation_route_is_a_manage_permission() -> None:
     """A mutation route gated by e.g. Permission.FARM_READ instead of
     Permission.FARM_MANAGE would pass the "is gated" check above but
@@ -147,6 +161,8 @@ def test_every_permission_bound_to_a_mutation_route_is_a_manage_permission() -> 
     explicitly."""
     offenders: list[tuple[str, Permission]] = []
     for route in _tenant_scoped_mutation_routes():
+        if route.path in _NON_MANAGE_SUFFIX_EXEMPT_PATHS:
+            continue
         top_level_calls = [d.call for d in route.dependant.dependencies]
         for call in top_level_calls:
             if not _is_require_permission_dependency(call):

@@ -779,13 +779,16 @@ def test_transplant_api_smoke(client, active_context_with_farm, db_session) -> N
 
 
 @pytest.mark.integration
-def test_transplant_routes_exactly_three_no_mutation_and_no_lineage_route() -> None:
+def test_transplant_routes_exactly_four_no_lineage_route() -> None:
     """NURSERY-OPS-004B.1 added a genuinely new, deliberately-scoped
-    composite route (`/intersalads-transplants`) -- this guard now scopes
+    composite route (`/intersalads-transplants`) -- this guard scopes
     itself to the plain generic `/transplants` surface specifically (by
-    exact path, not merely the "transplant" substring) so it keeps proving
-    its original intent (no accidental extra mutation/lineage route on the
-    generic surface) without being broken by that intentional addition."""
+    exact path, not merely the "transplant" substring). TRANSPLANT-
+    CORRECTION-001 added a fourth, equally deliberate route
+    (`/transplants/{event_id}/correct`) -- this guard's own name/count was
+    updated to match rather than broadened to accept an arbitrary count, so
+    it keeps proving its original intent (no ACCIDENTAL extra mutation/
+    lineage route) without being broken by either intentional addition."""
     from app.main import app
 
     schema = app.openapi()
@@ -794,7 +797,7 @@ def test_transplant_routes_exactly_three_no_mutation_and_no_lineage_route() -> N
         if "transplant" in p and "intersalads-transplants" not in p
     }
     ops_count = sum(len(ops) for ops in transplant_paths.values())
-    assert ops_count == 3, transplant_paths
+    assert ops_count == 4, transplant_paths
     methods = {method.upper() for ops in transplant_paths.values() for method in ops}
     assert methods == {"GET", "POST"}
     assert not any("lineage" in p for p in transplant_paths)
