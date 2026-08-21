@@ -21,6 +21,7 @@ from app.services import crop_batch_service, operational_read_service
 from app.services.errors import (
     BatchCommandReusedWithDifferentPayloadError,
     BatchCreationValidationError,
+    BatchStageHasUnresolvedSeedlingRemainderError,
     ConfiguredTransitionNotFoundError,
     CropBatchClosedError,
     CropBatchNotFoundError,
@@ -178,6 +179,15 @@ def create_stage_transition(
         QualityHoldOpenError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except BatchStageHasUnresolvedSeedlingRemainderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": str(exc),
+                "unresolved_source_count": exc.unresolved_source_count,
+                "total_unresolved_living_count": exc.total_unresolved_living_count,
+            },
+        ) from exc
     except InvalidBatchEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return BatchStageTransitionRead.model_validate(transition)

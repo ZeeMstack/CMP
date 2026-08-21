@@ -172,6 +172,27 @@ def test_core_transplant_acceptance_flow(client, active_context_with_farm, db_se
     )
     assert reassign_destination_resp.status_code == 409
 
+    # WORKFLOW-INTEGRITY-001: tray 5's 200 seedlings are still living and
+    # unresolved -- resolve them (into the earlier-created, still-unused
+    # `extra_destination`) before progressing the batch, since leaving the
+    # transplanting stage with unresolved living remainder is now blocked.
+    resolve_tray5_resp = client.post(
+        f"/farms/{farm_id}/crop-batches/{batch_id}/transplants", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()),
+            "effective_time": (s["entry_time"] + timedelta(hours=3, minutes=30)).isoformat(),
+            "source_lines": [{"source_assignment_id": source_ids[tray_codes[4]]}],
+            "destination_lines": [{"destination_carrier_id": extra_destination["id"], "assigned_plant_count": 200}],
+            "allocations": [
+                {
+                    "source_assignment_id": source_ids[tray_codes[4]],
+                    "destination_carrier_id": extra_destination["id"], "allocated_plant_count": 200,
+                }
+            ],
+        },
+    )
+    assert resolve_tray5_resp.status_code == 201, resolve_tray5_resp.text
+
     # Progress the batch to GROWING; retry the original transplant command
     # and confirm it still returns the original event unchanged.
     client.post(

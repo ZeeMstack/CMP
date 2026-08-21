@@ -242,6 +242,40 @@ def get_source_available(
     return anchor_value + delta_sum
 
 
+def get_unresolved_seedling_remainder(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch_id: uuid.UUID, as_of: datetime
+) -> tuple[int, int]:
+    """WORKFLOW-INTEGRITY-001: `(unresolved_source_count, total_unresolved_
+    living_count)` across every `SeedlingEntry` belonging to this batch,
+    evaluated as of `as_of` (the caller's own requested effective_time --
+    never wall-clock now) via the SAME authoritative `get_source_available`
+    formula every other Seedling consumer already uses (structural
+    checkpoint chain-tip anchor plus applicable disposition deltas) --
+    deliberately not a second, independently-derived balance calculation.
+    A restoration lineage (A -> B -> C) never double-counts: `SeedlingEntry`
+    is the sole grouping key, and `get_source_available` is itself already
+    assignment-agnostic (`get_source_availability_anchor` keys purely by
+    `seedling_entry_id`). Correction (Transplant REVERSAL/REPLACEMENT,
+    Disposition REVERSAL/replacement) requires no special-casing here --
+    it already flows through the same chain-tip/delta authority this reuses
+    unchanged. Simple per-entry reuse of the existing helper, not a second
+    balance formula -- correct at current Nursery scale."""
+    entries = db.execute(
+        select(SeedlingEntry).where(
+            SeedlingEntry.tenant_id == tenant_id, SeedlingEntry.farm_id == farm_id,
+            SeedlingEntry.batch_id == batch_id,
+        )
+    ).scalars().all()
+    unresolved_source_count = 0
+    total_unresolved_living_count = 0
+    for entry in entries:
+        available = get_source_available(db, seedling_entry=entry, as_of=as_of)
+        if available > 0:
+            unresolved_source_count += 1
+            total_unresolved_living_count += available
+    return unresolved_source_count, total_unresolved_living_count
+
+
 def _validate_chronological_balance(
     db: Session, *, seedling_entry_id: uuid.UUID, starting: int, new_effective_time: datetime, new_delta: int,
     exclude_event_id: uuid.UUID | None = None,
