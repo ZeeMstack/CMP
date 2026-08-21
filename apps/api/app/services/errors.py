@@ -938,3 +938,68 @@ class SeedlingDispositionAlreadyCorrectedError(DomainError):
     most once, ever."""
 
     pass
+
+
+class TransplantCorrectionValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class TransplantCorrectionTargetKindNotEligibleError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 2: only a RECORD or REPLACEMENT
+    transplant event may ever be the direct target of a correction -- a
+    REVERSAL may never itself be corrected."""
+
+    pass
+
+
+class TransplantAlreadyCorrectedError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 4: a given TransplantEvent may be
+    directly corrected (reversed) at most once, ever."""
+
+    pass
+
+
+class TransplantCorrectionStageMismatchError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 20: correction is only eligible
+    while the Batch's current active BatchStageRun.id still equals the
+    target event's own active_batch_stage_run_id -- comparing only stage
+    category is not sufficient (a batch that left and later re-entered an
+    equivalent stage in another run remains ineligible)."""
+
+    pass
+
+
+class TransplantCorrectionNotChainTipError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 21: every SeedlingSourceCheckpoint
+    created by the target Transplant must still be the structural chain
+    tip for its seedling_entry_id -- a later Transplant, Seedling
+    Disposition, or other checkpoint activity on an involved source blocks
+    correction."""
+
+    pass
+
+
+class TransplantCorrectionDestinationConsumedError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 21: a target destination
+    assignment already released/consumed by another biological lifecycle
+    (e.g. Batch Derivation) blocks correction -- unless that release is
+    being performed by this very correction."""
+
+    pass
+
+
+class TransplantCorrectionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class TransplantCorrectionReplayStateConflictError(DomainError):
+    """TRANSPLANT-CORRECTION-001 section 28: an exact-fingerprint replay of
+    a correction command whose underlying, previously-recorded REVERSAL/
+    REPLACEMENT state cannot be reconstructed exactly as expected. Should
+    be unreachable in normal operation -- exists so a genuinely corrupted
+    or externally-tampered-with state surfaces as a clear domain error
+    rather than a silently wrong replay response."""
+
+    pass

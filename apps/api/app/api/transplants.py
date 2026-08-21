@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
+from app.schemas.transplant_correction import TransplantCorrectionCreate, TransplantCorrectionRead
 from app.schemas.transplant_event import TransplantEventCreate, TransplantEventRead
-from app.services import transplant_service
+from app.services import transplant_correction_service, transplant_service
 from app.services.errors import (
     CarrierNotFoundError,
     CropBatchClosedError,
@@ -19,8 +20,16 @@ from app.services.errors import (
     SourceAssignmentHasNoSeedlingEntryError,
     SourceAssignmentNotFoundError,
     TooManyTransplantLinesError,
+    TransplantAlreadyCorrectedError,
     TransplantCapacityExceededError,
     TransplantCommandReusedWithDifferentPayloadError,
+    TransplantCorrectionCommandReusedWithDifferentPayloadError,
+    TransplantCorrectionDestinationConsumedError,
+    TransplantCorrectionNotChainTipError,
+    TransplantCorrectionReplayStateConflictError,
+    TransplantCorrectionStageMismatchError,
+    TransplantCorrectionTargetKindNotEligibleError,
+    TransplantCorrectionValidationError,
     TransplantEventNotFoundError,
     TransplantValidationError,
 )
@@ -144,3 +153,112 @@ def get_transplant(
         )
     except (FarmNotFoundError, CropBatchNotFoundError, TransplantEventNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.post(
+    "/farms/{farm_id}/crop-batches/{batch_id}/transplants/{event_id}/correct",
+    response_model=TransplantCorrectionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def correct_transplant(
+    farm_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    event_id: uuid.UUID,
+    payload: TransplantCorrectionCreate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.TRANSPLANT_CORRECT)),
+) -> TransplantCorrectionRead:
+    replacement = None
+    if payload.replacement is not None:
+        replacement = {
+            "note": payload.replacement.note,
+            "source_lines": [
+                {
+                    "source_assignment_id": line.source_assignment_id,
+                    "transplant_damage_count": line.transplant_damage_count,
+                    "qc_rejection_count": line.qc_rejection_count,
+                    "sample_count": line.sample_count,
+                    "other_loss_count": line.other_loss_count,
+                    "other_loss_note": line.other_loss_note,
+                    "note": line.note,
+                }
+                for line in payload.replacement.source_lines
+            ],
+            "destination_lines": [
+                {
+                    "destination_carrier_id": line.destination_carrier_id,
+                    "assigned_plant_count": line.assigned_plant_count,
+                    "note": line.note,
+                }
+                for line in payload.replacement.destination_lines
+            ],
+            "allocations": [
+                {
+                    "source_assignment_id": a.source_assignment_id,
+                    "destination_carrier_id": a.destination_carrier_id,
+                    "allocated_plant_count": a.allocated_plant_count,
+                }
+                for a in payload.replacement.allocations
+            ],
+        }
+    try:
+        reversal = transplant_correction_service.correct_transplant(
+            db,
+            tenant_id=ctx.tenant_id,
+            farm_id=farm_id,
+            actor_user_id=ctx.user_id,
+            batch_id=batch_id,
+            target_transplant_event_id=event_id,
+            client_command_id=payload.client_command_id,
+            reason=payload.reason,
+            replacement=replacement,
+        )
+    except (FarmNotFoundError, CropBatchNotFoundError, TransplantEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except (
+        CropBatchClosedError,
+        TransplantAlreadyCorrectedError,
+        TransplantCorrectionTargetKindNotEligibleError,
+        TransplantCorrectionStageMismatchError,
+        TransplantCorrectionNotChainTipError,
+        TransplantCorrectionDestinationConsumedError,
+        TransplantCorrectionCommandReusedWithDifferentPayloadError,
+        TransplantCorrectionReplayStateConflictError,
+        DestinationCarrierAlreadyAssignedError,
+        SourceAssignmentAlreadyReleasedError,
+        TransplantCommandReusedWithDifferentPayloadError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (
+        TransplantCorrectionValidationError,
+        TransplantValidationError,
+        TransplantCapacityExceededError,
+        InvalidTransplantEffectiveTimeError,
+        TooManyTransplantLinesError,
+        SourceAssignmentHasNoSeedlingEntryError,
+        SourceAssignmentNotFoundError,
+        CarrierNotFoundError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    described = transplant_correction_service.describe_correction(
+        db, tenant_id=ctx.tenant_id, reversal_event_id=reversal.id
+    )
+    target_read = transplant_service.get_transplant_event(
+        db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id,
+        transplant_event_id=described["target_event_id"],
+    )
+    reversal_read = transplant_service.get_transplant_event(
+        db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id,
+        transplant_event_id=described["reversal_event_id"],
+    )
+    replacement_read = None
+    if described["replacement_event_id"] is not None:
+        replacement_read = transplant_service.get_transplant_event(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id,
+            transplant_event_id=described["replacement_event_id"],
+        )
+    return TransplantCorrectionRead(
+        target_event=target_read, status=described["status"], reversal_event=reversal_read,
+        replacement_event=replacement_read, reason=described["reason"],
+    )

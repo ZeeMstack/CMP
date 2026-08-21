@@ -58,7 +58,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ,
-        Permission.TRANSPLANT_READ,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
@@ -81,7 +81,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ,
-        Permission.TRANSPLANT_READ,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.OBSERVATION_DEFINITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
@@ -103,7 +103,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
-        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
@@ -244,7 +244,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
 }
 
 _EXPECTED_COUNTS = {
-    "farm_manager": 27, "head_grower": 26, "production_supervisor": 26, "operator": 18,
+    "farm_manager": 28, "head_grower": 27, "production_supervisor": 27, "operator": 18,
     "storekeeper": 7, "qc_officer": 20, "packing_supervisor": 13, "cold_store_supervisor": 12,
     "dispatch_officer": 12, "auditor": 21, "read_only": 21,
 }
@@ -253,7 +253,7 @@ _EXPECTED_COUNTS = {
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
-    assert len(_ALL_PERMISSIONS) == 45
+    assert len(_ALL_PERMISSIONS) == 46
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -405,9 +405,10 @@ def test_dispatch_officer_negative_grants() -> None:
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (45 as of CARRIER-CONFIG-001), not the literal number 43."""
+    catalog size (46 as of TRANSPLANT-CORRECTION-001), not the literal
+    number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 45
+    assert len(granted) == 46
     assert granted == _ALL_PERMISSIONS
 
 

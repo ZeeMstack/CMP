@@ -112,6 +112,15 @@ class Permission(StrEnum):
     TRANSPLANT_READ = "transplant.read"
     TRANSPLANT_MANAGE = "transplant.manage"
 
+    # TRANSPLANT-CORRECTION-001: deliberately separate from TRANSPLANT_MANAGE
+    # -- correcting/voiding an already-recorded biological Transplant fact is
+    # a materially more consequential, supervisor-level authority than
+    # recording an ordinary one (mirrors BIOLOGICAL_DISPOSITION_MANAGE's own
+    # split from OBSERVATION_ENTRY_MANAGE). Granted only to tenant_admin,
+    # farm_manager, head_grower, production_supervisor -- explicitly NOT to
+    # operator (who holds TRANSPLANT_MANAGE) or any other role.
+    TRANSPLANT_CORRECT = "transplant.correct"
+
     # Split (AUTHZ-002B1) from a single OBSERVATION_MANAGE: routine
     # observation recording and observation-definition configuration are
     # deliberately different authority levels (recording an observation
@@ -209,7 +218,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ,
-        Permission.TRANSPLANT_READ,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
@@ -237,7 +246,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ,
-        Permission.TRANSPLANT_READ,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.OBSERVATION_DEFINITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
@@ -264,7 +273,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.BATCH_DERIVATION_READ, Permission.BATCH_DERIVATION_MANAGE,
         Permission.SEED_LOT_READ,
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
-        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE,
+        Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
