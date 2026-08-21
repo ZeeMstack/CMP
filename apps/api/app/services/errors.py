@@ -1003,3 +1003,23 @@ class TransplantCorrectionReplayStateConflictError(DomainError):
     rather than a silently wrong replay response."""
 
     pass
+
+
+class BatchStageHasUnresolvedSeedlingRemainderError(DomainError):
+    """WORKFLOW-INTEGRITY-001: a CropBatch may not leave a BatchStageRun
+    whose WorkflowStage has stage_category == 'transplanting' while any
+    SeedlingEntry belonging to it still has positive current source
+    availability (the structural SeedlingSourceCheckpoint chain-tip anchor
+    plus applicable SeedlingDispositionEvent deltas, evaluated as of the
+    transition's own effective_time -- never BatchCarrierAssignment release
+    state, destination biology, or physical Movement/Occupancy). Partial
+    Transplant remains legal; only leaving the transplanting stage while
+    living remainder is unresolved is blocked."""
+
+    def __init__(self, *, unresolved_source_count: int, total_unresolved_living_count: int) -> None:
+        self.unresolved_source_count = unresolved_source_count
+        self.total_unresolved_living_count = total_unresolved_living_count
+        super().__init__(
+            "Batch cannot leave the transplanting stage while living seedling remainder remains "
+            f"unresolved ({total_unresolved_living_count} across {unresolved_source_count} source(s))"
+        )

@@ -178,9 +178,11 @@ def test_event_too_many_source_lines_rejected() -> None:
 # --- Integration helpers ----------------------------------------------------------
 
 
-def _build_scenario(db_session, tenant, user, farm, *, suffix=None, transplanting_required_type="cultivation_plate"):
+def _build_scenario(
+    db_session, tenant, user, farm, *, suffix=None, transplanting_required_type="cultivation_plate", tray_count=4,
+):
     return build_transplant_ready_scenario(
-        db_session, tenant, user, farm, suffix=suffix, tray_count=4, normal=200, abnormal=0,
+        db_session, tenant, user, farm, suffix=suffix, tray_count=tray_count, normal=200, abnormal=0,
         transplanting_required_type=transplanting_required_type,
     )
 
@@ -473,7 +475,17 @@ def test_missing_transplanting_stage_configuration_rejected(db_session, active_c
 @pytest.mark.integration
 def test_command_in_non_transplanting_stage_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    s = _build_scenario(db_session, tenant, user, farm)
+    # WORKFLOW-INTEGRITY-001: a single Tray, fully resolved by the one
+    # Transplant below, so leaving TRANSPLANTING is legitimately eligible --
+    # this test is about the destination stage-category check, not about
+    # unresolved Seedling remainder.
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    _transplant(
+        db_session, tenant, farm, user, s["batch"],
+        [_simple_source(s["source_assignment_ids"][0])], [_simple_destination(s["destination_carriers"][0].id)],
+        [_simple_allocation(s["source_assignment_ids"][0], s["destination_carriers"][0].id)],
+        effective_time=s["entry_time"] + timedelta(hours=2),
+    )
     # Advance past TRANSPLANTING into GROWING.
     crop_batch_service.transition_stage(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
@@ -632,7 +644,10 @@ def test_reused_command_id_different_payload_rejected(db_session, active_context
 @pytest.mark.integration
 def test_retry_after_stage_progression_returns_original_event(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
-    s = _build_scenario(db_session, tenant, user, farm)
+    # WORKFLOW-INTEGRITY-001: a single, fully-resolved Tray -- the batch
+    # must be legitimately eligible to leave TRANSPLANTING for this test's
+    # own concern (idempotent retry after stage progression) to be reachable.
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
     command_id = uuid.uuid4()
     effective_time = s["entry_time"] + timedelta(hours=2)
     source_lines = [_simple_source(s["source_assignment_ids"][0])]

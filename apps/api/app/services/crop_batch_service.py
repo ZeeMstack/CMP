@@ -24,11 +24,12 @@ from app.schemas.crop_batch import (
     VarietySummary,
     WorkflowSummary,
 )
-from app.services import farm_service, quality_hold_service
+from app.services import farm_service, quality_hold_service, seedling_disposition_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCommandReusedWithDifferentPayloadError,
     BatchCreationValidationError,
+    BatchStageHasUnresolvedSeedlingRemainderError,
     ConfiguredTransitionNotFoundError,
     CropBatchClosedError,
     CropBatchNotFoundError,
@@ -377,6 +378,29 @@ def transition_stage(
 
     if configured_transition.from_stage_id != active_run.workflow_stage_id:
         raise StageMismatchError(str(configured_transition_id))
+
+    # WORKFLOW-INTEGRITY-001: applies exactly when LEAVING a
+    # transplanting-category stage -- never seeding/germination/nursery/
+    # intermediate/production/etc, where the Seedling source population has
+    # not yet had any chance to be resolved by anything at all. Runs only
+    # once the transition itself is already proven configured/valid (a
+    # bad configured_transition_id or stage mismatch still surfaces its own,
+    # more specific error first). Evaluated at the transition's own
+    # requested effective_time -- never wall-clock now -- so a later
+    # biological resolution can never retroactively validate an earlier
+    # transition attempt.
+    current_stage = db.get(WorkflowStage, active_run.workflow_stage_id)
+    if current_stage.stage_category == "transplanting":
+        unresolved_source_count, total_unresolved_living_count = (
+            seedling_disposition_service.get_unresolved_seedling_remainder(
+                db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, as_of=effective_time,
+            )
+        )
+        if unresolved_source_count > 0:
+            raise BatchStageHasUnresolvedSeedlingRemainderError(
+                unresolved_source_count=unresolved_source_count,
+                total_unresolved_living_count=total_unresolved_living_count,
+            )
 
     transition = BatchStageTransition(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
