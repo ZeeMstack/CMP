@@ -72,6 +72,38 @@ def resolve_seedling_entry_for_assignment(
     return None
 
 
+def resolve_lineage_tip_assignment_id(
+    db: Session, *, original_assignment_id: uuid.UUID
+) -> uuid.UUID:
+    """SEEDLING-DISPOSITION-LIFECYCLE-001: the id of the structural chain
+    TIP in the restoration lineage rooted at `original_assignment_id` --
+    the descendant (or the original itself) that no other assignment names
+    as its own `restored_from_batch_carrier_assignment_id` -- regardless of
+    whether that tip is currently active or released. Unlike
+    `resolve_active_assignment_id_in_lineage`, this never returns `None`
+    for a lineage that has ever been exhausted; it is the "what is the
+    latest generation, active or not" question, used to decide whether a
+    correction targeting a released predecessor is reopening exactly the
+    right one. Same structural `NOT EXISTS` chain-tip pattern already
+    established for `SeedlingSourceCheckpoint`."""
+    current_id = original_assignment_id
+    hops = 0
+    while True:
+        successor = db.execute(
+            select(BatchCarrierAssignment.id).where(
+                BatchCarrierAssignment.restored_from_batch_carrier_assignment_id == current_id
+            )
+        ).scalar_one_or_none()
+        if successor is None:
+            return current_id
+        current_id = successor
+        hops += 1
+        if hops > MAX_RESTORATION_HOPS:
+            raise RestorationLineageDepthExceededError(
+                f"restoration lineage exceeds maximum depth for assignment {original_assignment_id}"
+            )
+
+
 def resolve_active_assignment_id_in_lineage(
     db: Session, *, original_assignment_id: uuid.UUID
 ) -> uuid.UUID | None:

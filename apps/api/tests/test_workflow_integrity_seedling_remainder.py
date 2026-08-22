@@ -160,14 +160,19 @@ def test_all_sources_zero_via_sequential_transplant_allows_exit(db_session, acti
     assert transition is not None
 
 
-def test_disposition_resolves_final_remainder_allows_exit_even_though_assignment_stays_active(
+def test_disposition_resolves_final_remainder_allows_exit_and_now_also_releases_assignment(
     db_session, active_context_with_farm
 ) -> None:
     """Covers matrix items 6, 7, and 22: WORKFLOW-INTEGRITY-001 protects
     biological completeness only -- it must never accidentally become a
-    Carrier-cleanup rule. The known, separate SEEDLING-DISPOSITION-
-    LIFECYCLE-001 gap (Disposition-driven exhaustion does not release the
-    BatchCarrierAssignment) must not cause a false block here."""
+    Carrier-cleanup rule; the guard's own exit approval follows biological
+    truth (current_source_available_count == 0), never assignment/release
+    administrative state. SEEDLING-DISPOSITION-LIFECYCLE-001 has since
+    closed the previously-known, separate gap this test originally proved
+    around (Disposition-driven exhaustion not releasing the
+    BatchCarrierAssignment) -- the assignment is now correctly released
+    too, but the guard's own behavior here is unchanged and would remain
+    correct even if it were not (it never inspects assignment state)."""
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
     aid = s["source_assignment_ids"][0]
@@ -179,15 +184,18 @@ def test_disposition_resolves_final_remainder_allows_exit_even_though_assignment
         effective_time=et,
     )
     # Resolve the remaining 20 entirely through Disposition -- no further Transplant.
+    disposition_effective_time = et + timedelta(minutes=30)
     seedling_disposition_service.record_disposition(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         batch_carrier_assignment_id=aid, quantity=20, reason_code="OTHER",
-        effective_time=et + timedelta(minutes=30), note="resolved via disposition, no further transplant",
+        effective_time=disposition_effective_time, note="resolved via disposition, no further transplant",
     )
 
-    # The known, separate lifecycle gap: the assignment is NOT released by Disposition.
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: exact exhaustion now releases the
+    # assignment -- no longer the "known, separate gap" this test used to
+    # document.
     assignment = db_session.get(BatchCarrierAssignment, aid)
-    assert assignment.released_effective_time is None
+    assert assignment.released_effective_time == disposition_effective_time
 
     # Stage exit must still succeed -- biological truth, not administrative state.
     transition = _leave_transplanting(db_session, tenant, farm, user, s, effective_time=et + timedelta(hours=1))

@@ -53,6 +53,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.batch_stage_run import BatchStageRun
+from app.models.carrier import Carrier
 from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.crop_batch import CropBatch
 from app.models.seedling_disposition_command import SeedlingDispositionCommand
@@ -71,6 +73,7 @@ from app.services import farm_service, seedling_source_lineage
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
+    CropBatchClosedError,
     FarmNotFoundError,
     InvalidSeedlingDispositionEffectiveTimeError,
     InvalidSeedlingDispositionReasonError,
@@ -78,7 +81,10 @@ from app.services.errors import (
     SeedlingDispositionAlreadyCorrectedError,
     SeedlingDispositionAssignmentReleasedError,
     SeedlingDispositionBalanceError,
+    SeedlingDispositionCarrierReusedError,
     SeedlingDispositionCommandReusedWithDifferentPayloadError,
+    SeedlingDispositionCorrectionStageContextUnavailableError,
+    SeedlingDispositionCorrectionStageMismatchError,
     SeedlingDispositionEventNotFoundError,
     SeedlingDispositionNotReductionError,
     SeedlingDispositionPredatesCheckpointError,
@@ -397,6 +403,15 @@ def record_disposition(
     # class fixed there.
     db.execute(select(CropBatch.id).where(CropBatch.id == assignment_batch_id).with_for_update()).scalar_one()
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 13: every NEW command
+    # records the batch's currently-active BatchStageRun -- mirrors
+    # TransplantEvent.active_batch_stage_run_id exactly.
+    active_run = db.execute(
+        select(BatchStageRun).where(
+            BatchStageRun.batch_id == assignment_batch_id, BatchStageRun.exited_effective_time.is_(None)
+        )
+    ).scalar_one()
+
     existing = _find_existing_command(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:
         if existing.request_fingerprint == fingerprint:
@@ -447,6 +462,7 @@ def record_disposition(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=entry.batch_id,
         seedling_entry_id=entry.id, operation_kind="RECORD", target_event_id=None,
         actor_user_id=actor_user_id, client_command_id=client_command_id, request_fingerprint=fingerprint,
+        active_batch_stage_run_id=active_run.id,
     )
     db.add(command)
     try:
@@ -477,14 +493,29 @@ def record_disposition(
             ) from exc
         raise
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 3: exactly-zero exhaustion
+    # releases the CURRENT active assignment (already resolved above --
+    # never the SeedlingEntry's original, historical one). Partial
+    # Disposition (available remains > 0) never releases.
+    released_assignment_id: uuid.UUID | None = None
+    available_after = get_source_available(db, seedling_entry=entry, as_of=effective_time)
+    if available_after == 0:
+        assignment.released_effective_time = effective_time
+        assignment.released_by_seedling_disposition_event_id = event.id
+        db.flush()
+        released_assignment_id = assignment.id
+
+    audit_data = {
+        "command_id": str(command.id), "client_command_id": str(client_command_id),
+        "seedling_entry_id": str(entry.id), "batch_carrier_assignment_id": str(batch_carrier_assignment_id),
+        "reason_code": reason_code, "quantity": quantity, "effective_time": effective_time.isoformat(),
+    }
+    if released_assignment_id is not None:
+        audit_data["released_assignment_id"] = str(released_assignment_id)
+
     append_audit_event(
         db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.seedling_disposition_recorded",
-        entity_type="seedling_disposition_event", entity_id=event.id,
-        event_data={
-            "command_id": str(command.id), "client_command_id": str(client_command_id),
-            "seedling_entry_id": str(entry.id), "batch_carrier_assignment_id": str(batch_carrier_assignment_id),
-            "reason_code": reason_code, "quantity": quantity, "effective_time": effective_time.isoformat(),
-        },
+        entity_type="seedling_disposition_event", entity_id=event.id, event_data=audit_data,
     )
     db.commit()
     db.refresh(command)
@@ -536,13 +567,28 @@ def correct_disposition(
     entry = db.get(SeedlingEntry, target_probe)
 
     # Section 34: CropBatch first, same discipline as RECORD.
-    db.execute(select(CropBatch.id).where(CropBatch.id == entry.batch_id).with_for_update()).scalar_one()
+    batch = db.execute(
+        select(CropBatch).where(CropBatch.id == entry.batch_id).with_for_update()
+    ).scalar_one()
 
     existing = _find_existing_command(db, tenant_id=tenant_id, client_command_id=client_command_id)
     if existing is not None:
         if existing.request_fingerprint == fingerprint:
             return existing
         raise SeedlingDispositionCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 15: correction requires an
+    # active CropBatch AND the CURRENT active BatchStageRun to still be
+    # exactly the one active when the target's own owning command was
+    # recorded -- applies to every correction, exhausting or not.
+    if batch.state != "active":
+        raise CropBatchClosedError(str(batch.id))
+
+    active_run = db.execute(
+        select(BatchStageRun).where(
+            BatchStageRun.batch_id == batch.id, BatchStageRun.exited_effective_time.is_(None)
+        )
+    ).scalar_one()
 
     target = db.execute(
         select(SeedlingDispositionEvent).where(SeedlingDispositionEvent.id == target_event_id)
@@ -555,6 +601,12 @@ def correct_disposition(
     if already_corrected is not None:
         raise SeedlingDispositionAlreadyCorrectedError(str(target_event_id))
 
+    target_command = db.get(SeedlingDispositionCommand, target.command_id)
+    if target_command.active_batch_stage_run_id is None:
+        raise SeedlingDispositionCorrectionStageContextUnavailableError(str(target_event_id))
+    if target_command.active_batch_stage_run_id != active_run.id:
+        raise SeedlingDispositionCorrectionStageMismatchError(str(target_event_id))
+
     # NURSERY-OPS-004A section 6/25: a target already consumed into a
     # transplant checkpoint may never be newly corrected -- a REVERSAL
     # sharing the target's own effective_time would retroactively rewrite
@@ -566,14 +618,35 @@ def correct_disposition(
     if checkpoint_time is not None and target.effective_time <= checkpoint_time:
         raise SeedlingDispositionPredatesCheckpointError(str(target_event_id))
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 12: refined early gate.
+    # If some assignment in the lineage is still active, this is an
+    # ordinary (non-restoring) correction -- unchanged from before this
+    # ticket. If none is active, continuation is permitted ONLY when the
+    # chain-tip predecessor was released by the EXACT target event being
+    # corrected (released by Transplant, Batch Derivation, or a DIFFERENT
+    # Disposition event remains rejected).
     active_assignment_id = seedling_source_lineage.resolve_active_assignment_id_in_lineage(
         db, original_assignment_id=entry.batch_carrier_assignment_id
     )
+    predecessor_to_restore: BatchCarrierAssignment | None = None
+    assignment: BatchCarrierAssignment | None
     if active_assignment_id is None:
-        raise SeedlingDispositionAssignmentReleasedError(str(entry.batch_carrier_assignment_id))
-    assignment = db.execute(
-        select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == active_assignment_id)
-    ).scalar_one()
+        tip_id = seedling_source_lineage.resolve_lineage_tip_assignment_id(
+            db, original_assignment_id=entry.batch_carrier_assignment_id
+        )
+        tip = db.execute(
+            select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == tip_id)
+        ).scalar_one()
+        if tip.released_by_seedling_disposition_event_id != target.id:
+            raise SeedlingDispositionAssignmentReleasedError(str(entry.batch_carrier_assignment_id))
+        predecessor_to_restore = tip
+        assignment = None
+    else:
+        assignment = db.execute(
+            select(BatchCarrierAssignment).where(BatchCarrierAssignment.id == active_assignment_id)
+        ).scalar_one()
+
+    assignment_for_floor = assignment if assignment is not None else predecessor_to_restore
 
     if corrected is not None:
         reason_exists = db.execute(
@@ -585,7 +658,7 @@ def correct_disposition(
             raise InvalidSeedlingDispositionEffectiveTimeError(
                 "effective_time precedes the SeedlingEntry's own effective_time"
             )
-        if corrected["effective_time"] < assignment.assigned_effective_time:
+        if corrected["effective_time"] < assignment_for_floor.assigned_effective_time:
             raise InvalidSeedlingDispositionEffectiveTimeError(
                 "effective_time precedes the assignment's assigned_effective_time"
             )
@@ -601,10 +674,22 @@ def correct_disposition(
             exclude_event_id=target.id,
         )
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 22/24: Carrier lock is
+    # terminal-tier, after CropBatch and all biological validation, before
+    # any write -- only needed when actually restoring (an ordinary,
+    # non-restoring correction never touches the Carrier at all).
+    if predecessor_to_restore is not None:
+        carrier = db.execute(
+            select(Carrier).where(Carrier.id == predecessor_to_restore.carrier_id).with_for_update()
+        ).scalar_one()
+        if carrier.latest_batch_carrier_assignment_id != predecessor_to_restore.id:
+            raise SeedlingDispositionCarrierReusedError(str(predecessor_to_restore.carrier_id))
+
     command = SeedlingDispositionCommand(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=entry.batch_id,
         seedling_entry_id=entry.id, operation_kind="CORRECT", target_event_id=target.id,
         actor_user_id=actor_user_id, client_command_id=client_command_id, request_fingerprint=fingerprint,
+        active_batch_stage_run_id=active_run.id,
     )
     db.add(command)
     try:
@@ -633,6 +718,23 @@ def correct_disposition(
             raise SeedlingDispositionAlreadyCorrectedError(str(target_event_id)) from exc
         raise
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 9: pure void or corrected
+    # partial/zero result alike -- a released predecessor always gets a
+    # fresh restoration assignment (never reactivated), opened by this
+    # REVERSAL, at the target's own effective_time.
+    restored_assignment_id: uuid.UUID | None = None
+    if predecessor_to_restore is not None:
+        assignment = BatchCarrierAssignment(
+            id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=entry.batch_id,
+            carrier_id=predecessor_to_restore.carrier_id, batch_stage_run_id=predecessor_to_restore.batch_stage_run_id,
+            assigned_effective_time=target.effective_time, released_effective_time=None,
+            opening_seedling_disposition_reversal_event_id=reversal.id,
+            restored_from_batch_carrier_assignment_id=predecessor_to_restore.id, actor_user_id=actor_user_id,
+        )
+        db.add(assignment)
+        db.flush()
+        restored_assignment_id = assignment.id
+
     replacement = None
     if corrected is not None:
         replacement = SeedlingDispositionEvent(
@@ -652,17 +754,36 @@ def correct_disposition(
                 ) from exc
             raise
 
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 section 10: zero->positive->zero --
+    # if the replacement itself re-exhausts the source (whether `assignment`
+    # here is the just-created restoration or the original, never-released
+    # one), release it by the replacement, uniformly. Do not optimize the
+    # restoration assignment away merely because the final result is zero.
+    replacement_released_assignment_id: uuid.UUID | None = None
+    if replacement is not None:
+        available_after = get_source_available(db, seedling_entry=entry, as_of=replacement.effective_time)
+        if available_after == 0:
+            assignment.released_effective_time = replacement.effective_time
+            assignment.released_by_seedling_disposition_event_id = replacement.id
+            db.flush()
+            replacement_released_assignment_id = assignment.id
+
+    audit_data = {
+        "command_id": str(command.id), "client_command_id": str(client_command_id),
+        "target_event_id": str(target.id), "reversal_event_id": str(reversal.id),
+        "replacement_event_id": str(replacement.id) if replacement else None,
+        "original_quantity": -target.quantity_delta, "original_reason_code": target.reason_code,
+        "corrected_quantity": corrected["quantity"] if corrected else None,
+        "corrected_reason_code": corrected["reason_code"] if corrected else None,
+    }
+    if restored_assignment_id is not None:
+        audit_data["restored_assignment_id"] = str(restored_assignment_id)
+    if replacement_released_assignment_id is not None:
+        audit_data["replacement_released_assignment_id"] = str(replacement_released_assignment_id)
+
     append_audit_event(
         db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.seedling_disposition_corrected",
-        entity_type="seedling_disposition_event", entity_id=target.id,
-        event_data={
-            "command_id": str(command.id), "client_command_id": str(client_command_id),
-            "target_event_id": str(target.id), "reversal_event_id": str(reversal.id),
-            "replacement_event_id": str(replacement.id) if replacement else None,
-            "original_quantity": -target.quantity_delta, "original_reason_code": target.reason_code,
-            "corrected_quantity": corrected["quantity"] if corrected else None,
-            "corrected_reason_code": corrected["reason_code"] if corrected else None,
-        },
+        entity_type="seedling_disposition_event", entity_id=target.id, event_data=audit_data,
     )
     db.commit()
     db.refresh(command)

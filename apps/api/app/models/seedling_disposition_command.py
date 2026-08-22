@@ -49,6 +49,18 @@ class SeedlingDispositionCommand(Base):
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: the CropBatch's currently-active
+    # BatchStageRun at the moment THIS command was inserted -- mirrors
+    # TransplantEvent.active_batch_stage_run_id exactly. Nullable only for
+    # historical (pre-this-migration) rows; every NEW command (RECORD or
+    # CORRECT alike) must populate it (DB-enforced, see the widened
+    # enforce_seedling_disposition_command_insert_integrity trigger). A
+    # replacement REDUCTION belongs to its own CORRECT command, so a later
+    # correction of THAT replacement resolves stage identity through this
+    # same column on its owning command, not the original RECORD's.
+    active_batch_stage_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("batch_stage_runs.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -71,5 +83,13 @@ class SeedlingDispositionCommand(Base):
             ["tenant_id", "farm_id", "batch_id"],
             ["crop_batches.tenant_id", "crop_batches.farm_id", "crop_batches.id"],
             name="fk_seedling_disposition_commands_tenant_farm_batch",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "batch_id", "active_batch_stage_run_id"],
+            [
+                "batch_stage_runs.tenant_id", "batch_stage_runs.farm_id",
+                "batch_stage_runs.batch_id", "batch_stage_runs.id",
+            ],
+            name="fk_seedling_disposition_commands_active_stage_run",
         ),
     )

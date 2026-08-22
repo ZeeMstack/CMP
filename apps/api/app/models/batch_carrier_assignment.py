@@ -58,6 +58,17 @@ class BatchCarrierAssignment(Base):
     restored_from_batch_carrier_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("batch_carrier_assignments.id"), nullable=True
     )
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: a third typed releaser -- the exact
+    # SeedlingDispositionEvent (REDUCTION) whose insert drove this
+    # SeedlingEntry's authoritative source availability to exactly zero.
+    # Never reuses released_by_transplant_event_id/released_by_batch_
+    # derivation_event_id (a different biological lifecycle each).
+    released_by_seedling_disposition_event_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # A restoration's opener when correcting the exhausting Disposition
+    # above restores positive biology -- the REVERSAL event that reopens the
+    # source. Always co-present with restored_from_batch_carrier_assignment_
+    # id, mirroring opening_transplant_reversal_event_id exactly.
+    opening_seedling_disposition_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -68,17 +79,34 @@ class BatchCarrierAssignment(Base):
             "(CASE WHEN opening_sowing_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN opening_transplant_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN opening_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END "
-            "+ CASE WHEN opening_transplant_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
+            "+ CASE WHEN opening_transplant_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN opening_seedling_disposition_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_batch_carrier_assignments_exactly_one_opener",
         ),
         CheckConstraint(
             "(released_effective_time IS NULL) = "
-            "(released_by_transplant_event_id IS NULL AND released_by_batch_derivation_event_id IS NULL)",
+            "(released_by_transplant_event_id IS NULL AND released_by_batch_derivation_event_id IS NULL "
+            "AND released_by_seedling_disposition_event_id IS NULL)",
             name="ck_batch_carrier_assignments_release_fields_together",
         ),
         CheckConstraint(
-            "NOT (released_by_transplant_event_id IS NOT NULL AND released_by_batch_derivation_event_id IS NOT NULL)",
+            "(CASE WHEN released_by_transplant_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN released_by_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN released_by_seedling_disposition_event_id IS NOT NULL THEN 1 ELSE 0 END) <= 1",
             name="ck_batch_carrier_assignments_at_most_one_releaser",
+        ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001: a Disposition-driven release is
+        # only ever the current active assignment in a SeedlingEntry's
+        # restoration lineage -- always sowing-origin, transplant-restored,
+        # or itself Disposition-restored, never an ordinary Transplant
+        # destination or Batch Derivation output (neither is ever
+        # SeedlingEntry-anchored).
+        CheckConstraint(
+            "released_by_seedling_disposition_event_id IS NULL "
+            "OR opening_sowing_event_id IS NOT NULL "
+            "OR opening_transplant_reversal_event_id IS NOT NULL "
+            "OR opening_seedling_disposition_reversal_event_id IS NOT NULL",
+            name="ck_batch_carrier_assignments_only_seedling_source_releasable",
         ),
         # TRANSPLANT-CORRECTION-001 section 14 widens the old
         # "sowing-origin-only" rule: a reversal-restored source assignment is
@@ -91,14 +119,16 @@ class BatchCarrierAssignment(Base):
             "released_by_transplant_event_id IS NULL "
             "OR opening_sowing_event_id IS NOT NULL "
             "OR opening_transplant_reversal_event_id IS NOT NULL "
-            "OR opening_transplant_event_id IS NOT NULL",
+            "OR opening_transplant_event_id IS NOT NULL "
+            "OR opening_seedling_disposition_reversal_event_id IS NOT NULL",
             name="ck_batch_carrier_assignments_only_sowing_origin_releasable",
         ),
         # TRANSPLANT-CORRECTION-001 section 12: restoration lineage is
         # exactly co-present with the reversal opener, never a self-loop.
         CheckConstraint(
             "(restored_from_batch_carrier_assignment_id IS NOT NULL) = "
-            "(opening_transplant_reversal_event_id IS NOT NULL)",
+            "(opening_transplant_reversal_event_id IS NOT NULL "
+            "OR opening_seedling_disposition_reversal_event_id IS NOT NULL)",
             name="ck_batch_carrier_assignments_restoration_opener_match",
         ),
         CheckConstraint(
@@ -112,6 +142,22 @@ class BatchCarrierAssignment(Base):
             unique=True,
             postgresql_where=text("released_effective_time IS NULL"),
         ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001 section 5: one REDUCTION may
+        # release at most one assignment, ever -- DB-level, unreachable via
+        # direct SQL.
+        Index(
+            "ux_batch_carrier_assignments_released_by_disposition_once",
+            "released_by_seedling_disposition_event_id",
+            unique=True,
+            postgresql_where=text("released_by_seedling_disposition_event_id IS NOT NULL"),
+        ),
+        # section 7: one REVERSAL may open at most one restored assignment.
+        Index(
+            "ux_batch_carrier_assignments_opened_by_disposition_once",
+            "opening_seedling_disposition_reversal_event_id",
+            unique=True,
+            postgresql_where=text("opening_seedling_disposition_reversal_event_id IS NOT NULL"),
+        ),
         UniqueConstraint(
             "tenant_id", "farm_id", "id", name="uq_batch_carrier_assignments_tenant_farm_id"
         ),
@@ -119,6 +165,13 @@ class BatchCarrierAssignment(Base):
         # composite FK below (mirrors uq_transplant_events_tenant_farm_batch_id).
         UniqueConstraint(
             "tenant_id", "farm_id", "batch_id", "id", name="uq_batch_carrier_assignments_tenant_farm_batch_id"
+        ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001: target for Carrier's own
+        # latest-assignment pointer FK -- proves "same Carrier" structurally
+        # rather than via a trigger.
+        UniqueConstraint(
+            "tenant_id", "farm_id", "id", "carrier_id",
+            name="uq_batch_carrier_assignments_tenant_farm_id_carrier",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "batch_id"],
@@ -207,5 +260,29 @@ class BatchCarrierAssignment(Base):
                 "batch_derivation_events.id",
             ],
             name="fk_batch_carrier_assignments_released_by_derivation_event",
+        ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001: `SeedlingDispositionEvent` has
+        # no `batch_id` column (only its owning `SeedlingDispositionCommand`
+        # does), so these two FKs use the 2-column tenant/farm form -- same
+        # batch/lineage/Carrier equality is proven by the closure and
+        # origin-integrity triggers instead, exactly as same-Carrier already
+        # is for the Transplant-reversal opener.
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "released_by_seedling_disposition_event_id"],
+            [
+                "seedling_disposition_events.tenant_id",
+                "seedling_disposition_events.farm_id",
+                "seedling_disposition_events.id",
+            ],
+            name="fk_batch_carrier_assignments_released_by_disposition_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "opening_seedling_disposition_reversal_event_id"],
+            [
+                "seedling_disposition_events.tenant_id",
+                "seedling_disposition_events.farm_id",
+                "seedling_disposition_events.id",
+            ],
+            name="fk_batch_carrier_assignments_opening_disposition_reversal_event",
         ),
     )

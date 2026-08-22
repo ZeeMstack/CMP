@@ -24,6 +24,7 @@ from app.schemas.seedling_entry import (
 from app.services import seedling_disposition_service, seedling_entry_service
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
+    CropBatchClosedError,
     FarmNotFoundError,
     InvalidSeedlingDispositionEffectiveTimeError,
     InvalidSeedlingDispositionReasonError,
@@ -34,7 +35,10 @@ from app.services.errors import (
     SeedlingDispositionAlreadyCorrectedError,
     SeedlingDispositionAssignmentReleasedError,
     SeedlingDispositionBalanceError,
+    SeedlingDispositionCarrierReusedError,
     SeedlingDispositionCommandReusedWithDifferentPayloadError,
+    SeedlingDispositionCorrectionStageContextUnavailableError,
+    SeedlingDispositionCorrectionStageMismatchError,
     SeedlingDispositionEventNotFoundError,
     SeedlingDispositionNotReductionError,
     SeedlingDispositionValidationError,
@@ -71,6 +75,10 @@ _DISPOSITION_CONFLICT = (
     SeedlingDispositionAssignmentReleasedError,
     SeedlingDispositionAlreadyCorrectedError,
     SeedlingDispositionBalanceError,
+    CropBatchClosedError,
+    SeedlingDispositionCorrectionStageContextUnavailableError,
+    SeedlingDispositionCorrectionStageMismatchError,
+    SeedlingDispositionCarrierReusedError,
 )
 
 _NOT_FOUND = (

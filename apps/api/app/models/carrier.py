@@ -30,6 +30,16 @@ class Carrier(TimestampMixin, Base):
     specification_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("carrier_specifications.id"), nullable=True
     )
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: authoritative, forward-only pointer
+    # to the most recently CREATED `BatchCarrierAssignment` for this physical
+    # Carrier -- maintained exclusively by `maintain_carrier_latest_
+    # assignment_pointer` (AFTER INSERT on batch_carrier_assignments).
+    # Release never changes it; only a NEW assignment's creation does. This
+    # is derived infrastructure (never operator-editable) proving whether a
+    # released assignment is still this Carrier's latest-ever physical use --
+    # the one question `assigned_effective_time`/`recorded_at`/restoration
+    # lineage alone cannot answer (see docs/domain/ASSET_CARRIER_MODEL.md).
+    latest_batch_carrier_assignment_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -44,5 +54,21 @@ class Carrier(TimestampMixin, Base):
             ["tenant_id", "specification_id"],
             ["carrier_specifications.tenant_id", "carrier_specifications.id"],
             name="fk_carriers_tenant_specification",
+        ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001: structurally proves the pointer
+        # (when non-null) references an assignment for THIS SAME Carrier (and
+        # tenant/farm) -- a declarative FK, not a trigger, since
+        # `batch_carrier_assignments` gains a matching
+        # (tenant_id, farm_id, id, carrier_id) unique constraint for exactly
+        # this purpose.
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "latest_batch_carrier_assignment_id", "id"],
+            [
+                "batch_carrier_assignments.tenant_id",
+                "batch_carrier_assignments.farm_id",
+                "batch_carrier_assignments.id",
+                "batch_carrier_assignments.carrier_id",
+            ],
+            name="fk_carriers_latest_assignment",
         ),
     )

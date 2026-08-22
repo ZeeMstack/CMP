@@ -1023,3 +1023,41 @@ class BatchStageHasUnresolvedSeedlingRemainderError(DomainError):
             "Batch cannot leave the transplanting stage while living seedling remainder remains "
             f"unresolved ({total_unresolved_living_count} across {unresolved_source_count} source(s))"
         )
+
+
+class SeedlingDispositionCorrectionStageContextUnavailableError(DomainError):
+    """SEEDLING-DISPOSITION-LIFECYCLE-001 section 15/19: the target
+    correction's own originating command predates this ticket's migration
+    and therefore has no recorded `active_batch_stage_run_id` -- safe
+    historical stage context is unavailable, and it is never inferred from
+    the current assignment's `batch_stage_run_id`, the batch's current
+    stage, event `effective_time`, or human stage labels. Correction is
+    rejected outright rather than fabricating certainty."""
+
+    pass
+
+
+class SeedlingDispositionCorrectionStageMismatchError(DomainError):
+    """SEEDLING-DISPOSITION-LIFECYCLE-001 section 15: correction of a
+    Seedling Disposition event is only legal while the CropBatch's current
+    active BatchStageRun is still exactly the same run active when the
+    target's own owning command was recorded -- applies to every
+    correction, exhausting or not, original or replacement. Closes the gap
+    where a Disposition exhausts biology, the Batch legitimately leaves
+    the transplanting stage (WORKFLOW-INTEGRITY-001), and a later
+    correction would otherwise silently restore living biology into a
+    stage the Batch has already left."""
+
+    pass
+
+
+class SeedlingDispositionCarrierReusedError(DomainError):
+    """SEEDLING-DISPOSITION-LIFECYCLE-001 section 17/22: the physical Seed
+    Tray Carrier this correction would restore biology onto has since been
+    assigned to a later, unrelated use (`Carrier.latest_batch_carrier_
+    assignment_id` no longer points to the released predecessor) --
+    physical continuity with the old seedlings has been broken, and this
+    remains blocked even if that later use has itself since been released
+    and the Carrier is currently free again."""
+
+    pass
