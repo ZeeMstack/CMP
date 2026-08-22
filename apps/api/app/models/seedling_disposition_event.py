@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     func,
     text,
 )
@@ -103,5 +104,11 @@ class SeedlingDispositionEvent(Base):
             ["tenant_id", "farm_id", "command_id"],
             ["seedling_disposition_commands.tenant_id", "seedling_disposition_commands.farm_id", "seedling_disposition_commands.id"],
             name="fk_seedling_disposition_events_tenant_farm_command",
+        ),
+        # SEEDLING-DISPOSITION-LIFECYCLE-001: target for
+        # BatchCarrierAssignment's new released_by_seedling_disposition_
+        # event_id / opening_seedling_disposition_reversal_event_id FKs.
+        UniqueConstraint(
+            "tenant_id", "farm_id", "id", name="uq_seedling_disposition_events_tenant_farm_id"
         ),
     )

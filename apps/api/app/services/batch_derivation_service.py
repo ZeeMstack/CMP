@@ -131,6 +131,15 @@ def _derive_transferred_quantity(db: Session, assignment: BatchCarrierAssignment
             f"assignment {assignment.id} was opened by a transplant correction reversal "
             "and cannot be used as a batch derivation source"
         )
+    elif assignment.opening_seedling_disposition_reversal_event_id is not None:
+        # SEEDLING-DISPOSITION-LIFECYCLE-001 section 31: same rejection as
+        # the Transplant-reversal case immediately above -- explicit, not an
+        # accidental fallthrough into the generic/derivation-opener branch
+        # below.
+        raise BatchDerivationValidationError(
+            f"assignment {assignment.id} was opened by a seedling disposition correction reversal "
+            "and cannot be used as a batch derivation source"
+        )
     else:
         qty = db.execute(
             select(BatchAssignmentTransfer.transferred_plant_count).where(

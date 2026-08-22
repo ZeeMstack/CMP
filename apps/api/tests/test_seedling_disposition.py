@@ -439,15 +439,55 @@ def test_quantity_exactly_remaining_reaches_zero(db_session, active_context_with
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_entered_scenario(db_session, tenant, user, farm)
     aid = s["assignment_ids"][0]
-    command = _record(db_session, tenant, user, farm, assignment_id=aid, quantity=s["starting"], effective_time=s["entry_time"] + timedelta(hours=1))
+    effective_time = s["entry_time"] + timedelta(hours=1)
+    command = _record(db_session, tenant, user, farm, assignment_id=aid, quantity=s["starting"], effective_time=effective_time)
     result = seedling_disposition_service.describe_record_result(db_session, command=command)
     assert result.resulting_living_seedling_count == 0
 
-    # No side effects: assignment untouched, batch state untouched.
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: exact exhaustion now releases the
+    # current active assignment, typed by exactly this REDUCTION.
+    assignment = db_session.execute(
+        text(
+            "SELECT released_effective_time, released_by_seedling_disposition_event_id "
+            "FROM batch_carrier_assignments WHERE id = :aid"
+        ),
+        {"aid": aid},
+    ).mappings().first()
+    assert assignment["released_effective_time"] == effective_time
+    assert assignment["released_by_seedling_disposition_event_id"] == result.event.id
+
+
+@pytest.mark.integration
+def test_partial_disposition_does_not_release(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_entered_scenario(db_session, tenant, user, farm, normal=10, abnormal=0)
+    aid = s["assignment_ids"][0]
+    _record(db_session, tenant, user, farm, assignment_id=aid, quantity=5, effective_time=s["entry_time"] + timedelta(hours=1))
     assignment = db_session.execute(
         text("SELECT released_effective_time FROM batch_carrier_assignments WHERE id = :aid"), {"aid": aid}
     ).mappings().first()
     assert assignment["released_effective_time"] is None
+
+
+@pytest.mark.integration
+def test_exact_replay_of_exhausting_record_does_not_double_release(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_entered_scenario(db_session, tenant, user, farm, normal=10, abnormal=0)
+    aid = s["assignment_ids"][0]
+    et = s["entry_time"] + timedelta(hours=1)
+    ccid = uuid.uuid4()
+    first = _record(db_session, tenant, user, farm, assignment_id=aid, quantity=10, effective_time=et, client_command_id=ccid)
+    replay = _record(db_session, tenant, user, farm, assignment_id=aid, quantity=10, effective_time=et, client_command_id=ccid)
+    assert replay.id == first.id
+
+    events = db_session.execute(
+        text("SELECT count(*) FROM seedling_disposition_events WHERE command_id = :cid"), {"cid": first.id}
+    ).scalar_one()
+    assert events == 1
+    assignment = db_session.execute(
+        text("SELECT released_effective_time FROM batch_carrier_assignments WHERE id = :aid"), {"aid": aid}
+    ).mappings().first()
+    assert assignment["released_effective_time"] == et
 
 
 @pytest.mark.integration
@@ -630,13 +670,17 @@ def test_late_reduction_after_correction_succeeds_when_truthfully_nonnegative(db
 
 
 def _raw_command(db_session, tenant, farm, s, *, operation_kind="RECORD", target_event_id=None, assignment_index=0):
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: every new command requires a valid
+    # active_batch_stage_run_id -- resolved inline via the batch's own
+    # currently-open BatchStageRun, exactly what the service layer does.
     cid = uuid.uuid4()
     db_session.execute(
         text(
             "INSERT INTO seedling_disposition_commands "
             "(id, tenant_id, farm_id, batch_id, seedling_entry_id, operation_kind, target_event_id, "
-            "actor_user_id, client_command_id, request_fingerprint) "
-            "VALUES (:id, :tid, :fid, :bid, :eid, :kind, :tgt, NULL, :ccid, 'x')"
+            "actor_user_id, client_command_id, request_fingerprint, active_batch_stage_run_id) "
+            "VALUES (:id, :tid, :fid, :bid, :eid, :kind, :tgt, NULL, :ccid, 'x', "
+            "(SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL))"
         ),
         {
             "id": cid, "tid": tenant.id, "fid": farm.id, "bid": s["batch_id"],
@@ -1075,13 +1119,16 @@ def test_record_replay_succeeds_even_when_fresh_attempt_would_now_fail_balance(d
     eff = s["entry_time"] + timedelta(hours=1)
     ccid = uuid.uuid4()
     original = _record(db_session, tenant, user, farm, assignment_id=aid, quantity=6, effective_time=eff, client_command_id=ccid)
-    # A second, independent command depletes the remaining balance to zero.
+    # A second, independent command depletes the remaining balance to zero --
+    # SEEDLING-DISPOSITION-LIFECYCLE-001: this now also releases the
+    # assignment (exact exhaustion), which is what makes the fresh attempt
+    # below impossible even before reaching the balance check.
     _record(db_session, tenant, user, farm, assignment_id=aid, quantity=4, effective_time=eff + timedelta(minutes=1))
     assert _current_balance_for_entry(db_session, s["entry_ids"][0]) == 0
 
     # A genuinely fresh command with this same payload would now fail --
     # confirms the scenario is real, not vacuous.
-    with pytest.raises(SeedlingDispositionBalanceError):
+    with pytest.raises(SeedlingDispositionAssignmentReleasedError):
         _record(db_session, tenant, user, farm, assignment_id=aid, quantity=6, effective_time=eff)
 
     replay = seedling_disposition_service.record_disposition(
@@ -1542,19 +1589,17 @@ def test_migration_downgrade_blocked_when_disposition_events_exist(test_engine, 
         session.close()
         conn.close()
 
-    # CARRIER-CONFIG-001A: _build_entered_scenario uses nursery_service.
-    # sow_new_batch, which requires a workflow whose SEEDING stage's
-    # required_carrier_type is exactly seed_tray (see nursery_service.
-    # SEED_TRAY_CARRIER_TYPE_CODE), so this scenario cannot avoid
-    # registering a seed_tray Carrier -- which, since 001A, always carries
-    # a carrier_specifications row. e5b8c3a72f04 (CARRIER-CONFIG-001) sits
-    # between head and _PRE_003B_REVISION in the migration chain and its
-    # own downgrade guard unconditionally blocks on ANY carrier_specifications
-    # row -- it now always fires before NURSERY-OPS-003B's own guard is
-    # ever reached, making this the correct, permanent expectation rather
-    # than the original NURSERY-OPS-003B-specific message.
+    # SEEDLING-DISPOSITION-LIFECYCLE-001 now sits above both CARRIER-CONFIG-001
+    # (e5b8c3a72f04) and NURSERY-OPS-003B (b4e8a1f0d6c2) in the migration
+    # chain, and its own downgrade guard unconditionally blocks whenever ANY
+    # seedling_disposition_commands row carries active_batch_stage_run_id --
+    # which every command created via the service (as above) now always
+    # does. It therefore always fires first for any downgrade attempt that
+    # crosses it, making this the correct, permanent expectation rather than
+    # the original CARRIER-CONFIG-001 message (itself the ripple-updated
+    # successor of NURSERY-OPS-003B's own original message).
     cfg = migrations_alembic_config()
-    with pytest.raises(Exception, match="Cannot downgrade past CARRIER-CONFIG-001"):
+    with pytest.raises(Exception, match="Cannot downgrade past SEEDLING-DISPOSITION-LIFECYCLE-001"):
         command.downgrade(cfg, _PRE_003B_REVISION)
 
     with test_engine.connect() as check_conn:
