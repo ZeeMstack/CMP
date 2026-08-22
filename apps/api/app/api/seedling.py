@@ -210,7 +210,7 @@ def correct_seedling_disposition(
     event_id: uuid.UUID,
     payload: CorrectSeedlingDispositionCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.BIOLOGICAL_DISPOSITION_MANAGE)),
+    ctx: TenantContext = Depends(require_permission(Permission.BIOLOGICAL_DISPOSITION_CORRECT)),
 ) -> SeedlingDispositionCorrectResult:
     corrected = (
         {

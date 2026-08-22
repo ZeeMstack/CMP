@@ -149,8 +149,22 @@ def test_every_tenant_scoped_mutation_route_is_gated_by_require_permission() -> 
 # the ordinary manage grant. This is the one intentional exception to
 # "every mutation-gating permission ends in .manage" this architecture test
 # otherwise enforces -- not a missed rename.
+#
+# BIOLOGICAL-DISPOSITION-AUTHZ-001 (frozen decision): the Seedling
+# Disposition correction route is deliberately gated by the identical
+# pattern -- `Permission.BIOLOGICAL_DISPOSITION_CORRECT =
+# "biological_disposition.correct"` -- for the same reason (correcting a
+# historical Disposition fact is more consequential than ordinary
+# recording, which `biological_disposition.manage` alone does not cover).
+# Each `.correct` exemption is added explicitly, one named path at a time,
+# never as a blanket "every .correct permission is exempt" rule -- this
+# architecture test's whole point is to catch an accidentally-wrong
+# permission suffix, so the exemption list itself must stay a deliberate,
+# reviewed enumeration, not a pattern that could silently swallow a future
+# mistake.
 _NON_MANAGE_SUFFIX_EXEMPT_PATHS = {
     "/farms/{farm_id}/crop-batches/{batch_id}/transplants/{event_id}/correct",
+    "/farms/{farm_id}/nursery/seedling/dispositions/{event_id}/correct",
 }
 
 
