@@ -11,7 +11,18 @@ section 12) was pinned below. Every role gets `carrier_specification.read`
 matching its existing `carrier.read` grant; only `farm_manager` also gets
 `carrier_specification.manage`, matching that role's existing sole ownership
 of `carrier.manage`/farm-level equipment setup. See that document's
-CARRIER-CONFIG-001 addendum (section 14) for the authorized grant."""
+CARRIER-CONFIG-001 addendum (section 14) for the authorized grant.
+
+BIOLOGICAL-DISPOSITION-AUTHZ-001 added `biological_disposition.correct`
+(deliberately separate from `biological_disposition.manage` -- see
+app/core/permissions.py), mirroring TRANSPLANT_CORRECT's own identical
+split from TRANSPLANT_MANAGE exactly: `production_supervisor` keeps both
+(same MANAGE+CORRECT pair as its existing Transplant grant); `farm_manager`/
+`head_grower` gain CORRECT only, never MANAGE (same pattern as their
+existing TRANSPLANT_CORRECT-without-TRANSPLANT_MANAGE grant); `operator`
+keeps MANAGE only, explicitly excluded from CORRECT (same pattern as its
+existing TRANSPLANT_MANAGE-without-TRANSPLANT_CORRECT grant). Catalog size
+46 -> 47."""
 
 import uuid
 
@@ -60,6 +71,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ,
+        Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
@@ -84,6 +96,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.OBSERVATION_DEFINITION_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
@@ -105,7 +118,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
-        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE, Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
@@ -244,7 +257,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
 }
 
 _EXPECTED_COUNTS = {
-    "farm_manager": 28, "head_grower": 27, "production_supervisor": 27, "operator": 18,
+    "farm_manager": 29, "head_grower": 28, "production_supervisor": 28, "operator": 18,
     "storekeeper": 7, "qc_officer": 20, "packing_supervisor": 13, "cold_store_supervisor": 12,
     "dispatch_officer": 12, "auditor": 21, "read_only": 21,
 }
@@ -253,7 +266,7 @@ _EXPECTED_COUNTS = {
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
-    assert len(_ALL_PERMISSIONS) == 46
+    assert len(_ALL_PERMISSIONS) == 47
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -348,24 +361,40 @@ def test_farm_manager_negative_grants() -> None:
     granted = get_permissions_for_role("farm_manager")
     assert Permission.TENANT_MEMBERS_MANAGE not in granted
     assert Permission.DISPATCH_MANAGE not in granted  # minimum policy: no broader-pilot backup dispatch
+    # BIOLOGICAL-DISPOSITION-AUTHZ-001: correction-only, mirrors this
+    # role's existing TRANSPLANT_CORRECT-without-TRANSPLANT_MANAGE grant.
+    assert Permission.BIOLOGICAL_DISPOSITION_CORRECT in granted
+    assert Permission.BIOLOGICAL_DISPOSITION_MANAGE not in granted
 
 
 def test_head_grower_negative_grants() -> None:
     granted = get_permissions_for_role("head_grower")
     assert Permission.OBSERVATION_DEFINITION_MANAGE in granted
     assert Permission.TENANT_MEMBERS_MANAGE not in granted
+    # BIOLOGICAL-DISPOSITION-AUTHZ-001: correction-only, same pattern as farm_manager.
+    assert Permission.BIOLOGICAL_DISPOSITION_CORRECT in granted
+    assert Permission.BIOLOGICAL_DISPOSITION_MANAGE not in granted
 
 
 def test_production_supervisor_negative_grants() -> None:
     granted = get_permissions_for_role("production_supervisor")
     assert Permission.OBSERVATION_ENTRY_MANAGE in granted
     assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
+    # BIOLOGICAL-DISPOSITION-AUTHZ-001: both ordinary recording and
+    # correction authority, mirroring this role's existing
+    # TRANSPLANT_MANAGE + TRANSPLANT_CORRECT pair.
+    assert Permission.BIOLOGICAL_DISPOSITION_MANAGE in granted
+    assert Permission.BIOLOGICAL_DISPOSITION_CORRECT in granted
 
 
 def test_operator_negative_grants() -> None:
     granted = get_permissions_for_role("operator")
     assert Permission.OBSERVATION_ENTRY_MANAGE in granted
     assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
+    # BIOLOGICAL-DISPOSITION-AUTHZ-001: routine recording only, mirrors
+    # this role's existing TRANSPLANT_MANAGE-without-TRANSPLANT_CORRECT grant.
+    assert Permission.BIOLOGICAL_DISPOSITION_MANAGE in granted
+    assert Permission.BIOLOGICAL_DISPOSITION_CORRECT not in granted
 
 
 def test_qc_officer_negative_grants() -> None:
@@ -405,10 +434,10 @@ def test_dispatch_officer_negative_grants() -> None:
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (46 as of TRANSPLANT-CORRECTION-001), not the literal
-    number 43."""
+    catalog size (47 as of BIOLOGICAL-DISPOSITION-AUTHZ-001), not the
+    literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 46
+    assert len(granted) == 47
     assert granted == _ALL_PERMISSIONS
 
 

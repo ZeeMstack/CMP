@@ -88,6 +88,15 @@ class Permission(StrEnum):
     # OBSERVATION_ENTRY_MANAGE/OBSERVATION_DEFINITION_MANAGE).
     BIOLOGICAL_DISPOSITION_MANAGE = "biological_disposition.manage"
 
+    # BIOLOGICAL-DISPOSITION-AUTHZ-001: deliberately separate from
+    # BIOLOGICAL_DISPOSITION_MANAGE -- correcting an already-recorded
+    # historical Disposition fact (potentially restoring previously-
+    # exhausted biology and its Carrier assignment) is a materially more
+    # consequential, supervisory authority than recording an ordinary one,
+    # mirroring TRANSPLANT_CORRECT's own identical split from
+    # TRANSPLANT_MANAGE.
+    BIOLOGICAL_DISPOSITION_CORRECT = "biological_disposition.correct"
+
     CROP_READ = "crop.read"
     CROP_MANAGE = "crop.manage"
 
@@ -220,6 +229,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ,
+        Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
@@ -249,6 +259,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
         Permission.OBSERVATION_DEFINITION_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
@@ -275,7 +286,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.SOWING_READ, Permission.SOWING_MANAGE,
         Permission.TRANSPLANT_READ, Permission.TRANSPLANT_MANAGE, Permission.TRANSPLANT_CORRECT,
         Permission.OBSERVATION_READ, Permission.OBSERVATION_ENTRY_MANAGE,
-        Permission.BIOLOGICAL_DISPOSITION_MANAGE,
+        Permission.BIOLOGICAL_DISPOSITION_MANAGE, Permission.BIOLOGICAL_DISPOSITION_CORRECT,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
