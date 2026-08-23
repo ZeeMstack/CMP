@@ -1723,6 +1723,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/transplants/{event_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Transplant */
+        post: operations["correct_transplant_farms__farm_id__crop_batches__batch_id__transplants__event_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/intersalads-transplants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Intersalads Transplant
+         * @description NURSERY-OPS-004B.1: one atomic operator command -- biological
+         *     Transplant onto Nursery Cultivation Plate destination(s), then physical
+         *     placement of each onto its selected InterSalads Table, one transaction.
+         *     Gated by `TRANSPLANT_MANAGE` alone (not `MOVEMENT_MANAGE` in addition):
+         *     the physical placement is an inseparable side effect of the approved
+         *     biological Transplant workflow, and the biological half -- the harder-
+         *     to-reverse, dominant operation -- is what this permission represents.
+         *     The internal cores perform no permission checks of their own, so this
+         *     route declares its own authorization dependency explicitly rather than
+         *     assuming one is inherited from `transplants.py`/`movements.py`.
+         */
+        post: operations["record_intersalads_transplant_farms__farm_id__crop_batches__batch_id__intersalads_transplants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/intersalads/available-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Intersalads Plates
+         * @description NURSERY-OPS-004B.2 section 13: narrow, read-only support for the
+         *     InterSalads Transplant operator UI's destination-Plate picker -- not a
+         *     generic Carrier-availability framework.
+         */
+        get: operations["list_available_intersalads_plates_farms__farm_id__nursery_intersalads_available_plates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/harvests": {
         parameters: {
             query?: never;
@@ -2298,6 +2366,30 @@ export interface components {
             email: string;
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * AvailableNurseryCultivationPlateRead
+         * @description NURSERY-OPS-004B.2 section 13: one row per `nursery_cultivation_plate`
+         *     Carrier currently eligible as a NEW InterSalads Transplant destination --
+         *     active status, no currently-active `BatchCarrierAssignment` (the same
+         *     eligibility `_record_transplant_core` itself enforces via
+         *     `DestinationCarrierAlreadyAssignedError`, read-only here). Deliberately
+         *     reuses `CarrierSpecificationSummary` (`carrier_specification.py`) rather
+         *     than inventing a parallel shape.
+         */
+        AvailableNurseryCultivationPlateRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Status */
+            status: string;
+            /** Specification Id */
+            specification_id: string | null;
+            specification: components["schemas"]["CarrierSpecificationSummary"] | null;
         };
         /** AvailableSeedTrayRead */
         AvailableSeedTrayRead: {
@@ -4165,6 +4257,158 @@ export interface components {
             potentially_affected_dispatched_weight_kg: string;
             /** Potentially Affected Dispatched Package Count */
             potentially_affected_dispatched_package_count: number;
+        };
+        /**
+         * IntersaladsDestinationLineIn
+         * @description One destination Nursery Cultivation Plate: the biological quantity
+         *     assigned to it (`assigned_plant_count`, reconciled by the existing
+         *     Transplant core exactly as for the generic endpoint) plus the InterSalads
+         *     Table it must be physically placed on in the same atomic command
+         *     (`destination_location_id`) -- the one genuinely new fact the generic
+         *     `TransplantDestinationLineIn` does not and must not carry.
+         */
+        IntersaladsDestinationLineIn: {
+            /**
+             * Destination Carrier Id
+             * Format: uuid
+             */
+            destination_carrier_id: string;
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * IntersaladsDestinationLineRead
+         * @description Section 19 of the ticket: the composite response must be
+         *     reconstructible identically on exact replay -- every field here is
+         *     re-derivable from already-committed TransplantDestinationLine + Movement
+         *     rows, never from in-memory-only state.
+         */
+        IntersaladsDestinationLineRead: {
+            /**
+             * Destination Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            destination_batch_carrier_assignment_id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /** Allocated Plant Count */
+            allocated_plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * IntersaladsTransplantCreate
+         * @description Mirrors `TransplantEventCreate`'s own structure and validation
+         *     intent exactly (including the established duplicate-destination-carrier
+         *     prohibition -- section 4's revalidation confirmed this is already the
+         *     generic Transplant domain's existing semantics, not a new
+         *     interpretation), substituting `IntersaladsDestinationLineIn` for
+         *     `TransplantDestinationLineIn`.
+         */
+        IntersaladsTransplantCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["TransplantSourceLineIn"][];
+            /** Destination Lines */
+            destination_lines: components["schemas"]["IntersaladsDestinationLineIn"][];
+            /** Allocations */
+            allocations: components["schemas"]["TransplantAllocationIn"][];
+        };
+        /** IntersaladsTransplantRead */
+        IntersaladsTransplantRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Workflow Version Id
+             * Format: uuid
+             */
+            workflow_version_id: string;
+            stage: components["schemas"]["StageSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["TransplantSourceLineRead"][];
+            /** Destination Lines */
+            destination_lines: components["schemas"]["IntersaladsDestinationLineRead"][];
+            /** Allocations */
+            allocations: components["schemas"]["TransplantAllocationRead"][];
+            /** Total Source Available Before */
+            total_source_available_before: number;
+            /** Total Destination Plant Count */
+            total_destination_plant_count: number;
+            /** Total Discarded Plant Count */
+            total_discarded_plant_count: number;
+            /** Total Remainder After */
+            total_remainder_after: number;
         };
         /** LeafySetupConfig */
         LeafySetupConfig: {
@@ -6438,6 +6682,43 @@ export interface components {
             destination_carrier: components["schemas"]["CarrierSummary"];
             /** Allocated Plant Count */
             allocated_plant_count: number;
+        };
+        /** TransplantCorrectionCreate */
+        TransplantCorrectionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason */
+            reason: string;
+            replacement?: components["schemas"]["TransplantCorrectionReplacementIn"] | null;
+        };
+        /** TransplantCorrectionRead */
+        TransplantCorrectionRead: {
+            target_event: components["schemas"]["TransplantEventRead"];
+            /** Status */
+            status: string;
+            reversal_event: components["schemas"]["TransplantEventRead"];
+            replacement_event: components["schemas"]["TransplantEventRead"] | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * TransplantCorrectionReplacementIn
+         * @description The normal biological Transplant payload representing the correct
+         *     facts -- no `effective_time` (server-derived from the target being
+         *     corrected) and no InterSalads/Movement fields (biology only).
+         */
+        TransplantCorrectionReplacementIn: {
+            /** Note */
+            note?: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["TransplantSourceLineIn"][];
+            /** Destination Lines */
+            destination_lines: components["schemas"]["TransplantDestinationLineIn"][];
+            /** Allocations */
+            allocations: components["schemas"]["TransplantAllocationIn"][];
         };
         /** TransplantDestinationLineIn */
         TransplantDestinationLineIn: {
@@ -11878,6 +12159,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransplantEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_transplant_farms__farm_id__crop_batches__batch_id__transplants__event_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransplantCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransplantCorrectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_intersalads_transplant_farms__farm_id__crop_batches__batch_id__intersalads_transplants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntersaladsTransplantCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntersaladsTransplantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_intersalads_plates_farms__farm_id__nursery_intersalads_available_plates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableNurseryCultivationPlateRead"][];
                 };
             };
             /** @description Validation Error */

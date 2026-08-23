@@ -9,6 +9,7 @@ import type {
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
+  IntersaladsTransplantCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   RecordSeedlingDispositionCreate,
@@ -17,6 +18,7 @@ import type {
   SowNewBatchCreate,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
+import { AppError } from "@/lib/errors/adapter";
 import { queryKeys } from "@/lib/query/keys";
 
 /** staleTime tiers -- not every resource changes at the same rate. Farm and
@@ -590,6 +592,79 @@ export function useReactivateCarrierSpecification() {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecification(tenantId, result.id) });
+    },
+  });
+}
+
+// --- NURSERY-OPS-004B.2 -----------------------------------------------------
+// InterSalads Transplant operator UI: destination-Plate eligibility read,
+// per-Table live occupancy (used only once a Table is selected -- never a
+// bulk Table-availability call), and the composite submit itself.
+
+export function useAvailableIntersaladsPlates(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableIntersaladsPlates(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableIntersaladsPlates(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** On-demand only, mirrors `useLocationSubtreeOccupancy`'s own `enabled`
+ * pattern -- fetched once a specific InterSalads Table is actually
+ * selected, never for every Table up front (section 14/15: no bulk
+ * Table-availability call). */
+export function useLocationOccupants(farmId: string, locationId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.locationOccupants(tenantId ?? "", farmId, locationId ?? ""),
+    queryFn: ({ signal }) => api.getLocationOccupants(farmId, locationId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(locationId),
+  });
+}
+
+/** Idempotency key lives in the payload itself, same replay-safe pattern as
+ * every other command here. `batchId` is passed per-call (mirrors
+ * `useCorrectSeedlingDisposition`'s `{eventId, payload}` shape) since it is
+ * only known once the operator has picked a source Tray inside the form,
+ * not at hook-creation time. Success changes source availability, Plate
+ * eligibility, and the destination Table(s)' occupancy -- all three are
+ * invalidated; the composite command performs its own physical Movement, so
+ * no separate Movement/Occupancy mutation is ever called from here (section
+ * 18/26). */
+export function useRecordIntersaladsTransplant(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: IntersaladsTransplantCreate }) =>
+      api.recordIntersaladsTransplant(farmId, batchId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableIntersaladsPlates(tenantId, farmId) });
+      for (const line of result.destination_lines) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.locationOccupants(tenantId, farmId, line.destination_location_id),
+        });
+      }
+    },
+    // Section 10 (frozen): a 409 means the state this draft was built
+    // against has changed elsewhere (a source, Plate, or Table just got
+    // used). Never auto-resubmit -- only refresh the authoritative queries
+    // the draft depends on, so the operator's next look at Configure/Review
+    // reflects current reality before they try again. The draft's own
+    // selections are left untouched here (the form component decides how
+    // to react to now-possibly-stale data, e.g. forcing back to Configure).
+    onError: (error, variables) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableIntersaladsPlates(tenantId, farmId) });
+      const tableIds = new Set(variables.payload.destination_lines.map((d) => d.destination_location_id));
+      for (const tableId of tableIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.locationOccupants(tenantId, farmId, tableId) });
+      }
     },
   });
 }

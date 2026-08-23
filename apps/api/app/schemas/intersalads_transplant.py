@@ -5,7 +5,13 @@ its `TransplantDestinationLineIn` (no location field) must remain
 independently usable and backward compatible; this composite command has a
 materially different destination-line shape (it additionally requires
 `destination_location_id`) and is a genuinely different API contract, not a
-superset applied in place."""
+superset applied in place.
+
+NURSERY-OPS-004B.2: also carries `AvailableNurseryCultivationPlateRead`, the
+narrow operator-facing read backing the InterSalads Transplant UI's
+destination-Plate picker -- co-located here (not in `app.schemas.carrier`)
+because its eligibility semantics are specific to this composite command,
+not a generic Carrier concept."""
 
 from __future__ import annotations
 
@@ -14,6 +20,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.carrier_specification import CarrierSpecificationSummary
 from app.schemas.crop_batch import StageSummary
 from app.schemas.sowing_event import CarrierSummary
 from app.schemas.transplant_event import (
@@ -157,9 +164,26 @@ class IntersaladsTransplantRead(BaseModel):
     total_remainder_after: int
 
 
+class AvailableNurseryCultivationPlateRead(BaseModel):
+    """NURSERY-OPS-004B.2 section 13: one row per `nursery_cultivation_plate`
+    Carrier currently eligible as a NEW InterSalads Transplant destination --
+    active status, no currently-active `BatchCarrierAssignment` (the same
+    eligibility `_record_transplant_core` itself enforces via
+    `DestinationCarrierAlreadyAssignedError`, read-only here). Deliberately
+    reuses `CarrierSpecificationSummary` (`carrier_specification.py`) rather
+    than inventing a parallel shape."""
+
+    id: uuid.UUID
+    code: str
+    status: str
+    specification_id: uuid.UUID | None
+    specification: CarrierSpecificationSummary | None
+
+
 __all__ = [
     "IntersaladsDestinationLineIn",
     "IntersaladsTransplantCreate",
     "IntersaladsDestinationLineRead",
     "IntersaladsTransplantRead",
+    "AvailableNurseryCultivationPlateRead",
 ]

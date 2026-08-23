@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
-from app.schemas.intersalads_transplant import IntersaladsTransplantCreate, IntersaladsTransplantRead
+from app.schemas.intersalads_transplant import (
+    AvailableNurseryCultivationPlateRead,
+    IntersaladsTransplantCreate,
+    IntersaladsTransplantRead,
+)
 from app.services import intersalads_transplant_service
 from app.services.errors import (
     AssetCannotOccupyOwnPositionError,
@@ -138,3 +142,23 @@ def record_intersalads_transplant(
         InvalidEffectiveTimeError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+@router.get(
+    "/farms/{farm_id}/nursery/intersalads/available-plates",
+    response_model=list[AvailableNurseryCultivationPlateRead],
+)
+def list_available_intersalads_plates(
+    farm_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.TRANSPLANT_READ)),
+) -> list[AvailableNurseryCultivationPlateRead]:
+    """NURSERY-OPS-004B.2 section 13: narrow, read-only support for the
+    InterSalads Transplant operator UI's destination-Plate picker -- not a
+    generic Carrier-availability framework."""
+    try:
+        return intersalads_transplant_service.list_available_intersalads_plates(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id
+        )
+    except FarmNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc

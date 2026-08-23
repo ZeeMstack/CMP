@@ -84,4 +84,10 @@ export const queryKeys = {
   carrierSpecifications: (tenantId: string) => ["tenant", tenantId, "carrier-specifications"] as const,
   carrierSpecification: (tenantId: string, specificationId: string) =>
     ["tenant", tenantId, "carrier-specifications", specificationId] as const,
+
+  // --- NURSERY-OPS-004B.2 -----------------------------------------------------
+  availableIntersaladsPlates: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "intersalads", "available-plates"] as const,
+  locationOccupants: (tenantId: string, farmId: string, locationId: string) =>
+    ["tenant", tenantId, "farms", farmId, "locations", locationId, "occupants"] as const,
 };
