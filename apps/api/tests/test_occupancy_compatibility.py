@@ -31,9 +31,12 @@ EXPECTED_RULES = {
     # NURSERY-OPS-004B.1: the authoritative Nursery InterSalads topology
     # likewise stops at intersalads_table itself (no table position beneath
     # it) -- the Nursery Cultivation Plate carrier must be able to occupy
-    # the table directly. production_cultivation_plate -> grow_table is
-    # deliberately NOT added here (a separate, later ticket's scope).
+    # the table directly.
     ("carrier", "nursery_cultivation_plate", "location", "intersalads_table"),
+    # NURSERY-OPS-005B: the Production Cultivation Plate carrier must be
+    # able to occupy a Leafy grow_table directly, closing the one
+    # compatibility gap 004B.1's own migration deliberately left open.
+    ("carrier", "production_cultivation_plate", "location", "grow_table"),
 }
 
 

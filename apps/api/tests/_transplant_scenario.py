@@ -46,7 +46,7 @@ def build_transplant_ready_scenario(
     db_session, tenant, user, farm, *, suffix=None, tray_count=4, normal=200, abnormal=0,
     transplanting_required_type="cultivation_plate", legacy_seed_tray_no_specification=False,
     destination_specification_id=None, intersalads_table_count=0, intersalads_table_capacity=None,
-    production_stage=False,
+    production_stage=False, second_transplant_required_type=None,
 ):
     """A Batch with `tray_count` Seed Trays, each sown, germinated, and
     entered through SeedlingEntry (frozen `starting_living_seedling_count =
@@ -83,7 +83,21 @@ def build_transplant_ready_scenario(
     GROWING -> PRODUCTION (stage_category="production", no required Carrier
     type) -- alongside the existing GROWING -> COMPLETE transition (t3),
     never replacing it. Returned as `stages["PRODUCTION"]`/`transitions
-    ["t4"]` (both `None` when not requested)."""
+    ["t4"]` (both `None` when not requested).
+
+    NURSERY-OPS-005B: `second_transplant_required_type` (default `None`,
+    unchanged behavior for every existing caller) adds a SECOND
+    transplanting-category stage, GROWING -> PRODUCTION_TRANSPLANT,
+    required_carrier_type_code=<given type> -- needed because a single
+    WorkflowStage's required_carrier_type_id is one column, so chaining an
+    opening transplant of one destination type and a later, differently-
+    typed destination transplant (e.g. the Leafy Production Transfer
+    composite's own production_cultivation_plate) needs two distinct
+    transplanting-category stages, exactly how a real tenant would
+    configure two sequential physical transplant operations. Returned as
+    `stages["PRODUCTION_TRANSPLANT"]`/`transitions["t2b"]` (both `None`
+    when not requested); never auto-transitioned into -- the caller must
+    call `crop_batch_service.transition_stage` explicitly."""
     suffix = suffix or uuid.uuid4().hex[:8]
 
     crop = crop_service.register_crop(
@@ -153,6 +167,49 @@ def build_transplant_ready_scenario(
         t4 = workflow_service.add_transition(
             db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
             from_stage_id=growing_stage.id, to_stage_id=production_stage_obj.id, code="ADVANCE-4", name="Advance 4",
+        )
+    # NURSERY-OPS-005B: `second_transplant_required_type` (default None,
+    # unchanged behavior for every existing caller) adds a SECOND
+    # transplanting-category stage, GROWING -> PRODUCTION_TRANSPLANT,
+    # required_carrier_type_code=<given type>. A single WorkflowStage's
+    # required_carrier_type_id is one column, so a Batch chaining a
+    # Nursery-Plate-typed opening transplant (needs the FIRST TRANSPLANTING
+    # stage's own required type) and a later, DIFFERENTLY-typed destination
+    # transplant (e.g. production_cultivation_plate, 005B's own composite)
+    # genuinely needs two distinct transplanting-category stages -- exactly
+    # how a real tenant would configure two sequential physical transplant
+    # operations. Returned as `stages["PRODUCTION_TRANSPLANT"]`/
+    # `transitions["t2b"]` (both None when not requested). The caller is
+    # responsible for explicitly transitioning into it via `crop_batch_
+    # service.transition_stage` before recording a transplant destined for
+    # it -- this helper never auto-transitions.
+    production_transplant_stage_obj = None
+    t2b = None
+    if second_transplant_required_type is not None:
+        # NOT terminal: transitioning INTO a terminal stage closes the
+        # Batch atomically (crop_batch_service's own documented behavior),
+        # which would make this stage unusable for any further command --
+        # the whole point of this stage is to host the Leafy Production
+        # Transfer composite call(s) that happen strictly AFTER entering
+        # it. Needs its own outgoing transition to satisfy workflow
+        # publication validation ("non-terminal stage must have at least
+        # one outgoing transition") -- reuses the existing `complete_stage`
+        # as a harmless, always-available target no test needs to reach.
+        production_transplant_stage_obj = workflow_service.add_stage(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+            code="PRODUCTION_TRANSPLANT", name="Production Transplant", display_order=5,
+            stage_category="transplanting", expected_duration_minutes=None, permitted_location_type_code=None,
+            required_carrier_type_code=second_transplant_required_type, is_start=False, is_terminal=False,
+        )
+        t2b = workflow_service.add_transition(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+            from_stage_id=growing_stage.id, to_stage_id=production_transplant_stage_obj.id, code="ADVANCE-2B",
+            name="Advance 2B",
+        )
+        workflow_service.add_transition(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+            from_stage_id=production_transplant_stage_obj.id, to_stage_id=complete_stage.id, code="ADVANCE-2C",
+            name="Advance 2C",
         )
     workflow_service.publish_version(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
@@ -315,8 +372,9 @@ def build_transplant_ready_scenario(
         "stages": {
             "SEEDING": seeding_stage, "TRANSPLANTING": transplanting_stage, "GROWING": growing_stage,
             "COMPLETE": complete_stage, "PRODUCTION": production_stage_obj,
+            "PRODUCTION_TRANSPLANT": production_transplant_stage_obj,
         },
-        "transitions": {"t1": t1, "t2": t2, "t3": t3, "t4": t4},
+        "transitions": {"t1": t1, "t2": t2, "t3": t3, "t4": t4, "t2b": t2b},
         "batch": batch, "batch_id": batch_id, "seed_lot": seed_lot,
         "source_carriers": carriers, "source_assignment_ids": source_assignment_ids, "entry_ids": entry_ids,
         "entry_time": entry_time, "sow_time": sow_time, "starting": normal + abnormal,

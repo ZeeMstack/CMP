@@ -115,4 +115,26 @@ describe("FilterableSelect", () => {
       expect(screen.queryByText("NP-0000")).not.toBeInTheDocument();
     });
   });
+
+  // BROWSER QA CORRECTION 2: jsdom does not paint, so it cannot prove a
+  // later sibling no longer visually overlaps an open dropdown in a real
+  // browser -- that remains a real-Chromium re-verification, not something
+  // this test can substitute for. What IS provable here, and is the
+  // narrowest thing worth proving: the open control's own container
+  // receives the elevated stacking class, and loses it again once closed
+  // (so the fix isn't a permanent, unconditional elevation of every
+  // instance on the page).
+  it("elevates its own container's stacking only while its dropdown is open", async () => {
+    render(<FilterableSelect options={OPTIONS} value="" onChange={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    const container = input.parentElement as HTMLElement;
+    expect(container.className).not.toMatch(/(?:^|\s)z-20(?:\s|$)/);
+
+    fireEvent.focus(input);
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeInTheDocument());
+    expect(container.className).toMatch(/(?:^|\s)z-20(?:\s|$)/);
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(container.className).not.toMatch(/(?:^|\s)z-20(?:\s|$)/);
+  });
 });

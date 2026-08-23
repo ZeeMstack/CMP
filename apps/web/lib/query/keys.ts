@@ -90,4 +90,12 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "nursery", "intersalads", "available-plates"] as const,
   locationOccupants: (tenantId: string, farmId: string, locationId: string) =>
     ["tenant", tenantId, "farms", farmId, "locations", locationId, "occupants"] as const,
+
+  // --- NURSERY-OPS-005B -----------------------------------------------------
+  // `batchId` is part of the key (default "" before a Batch is established)
+  // so the unfiltered and Batch-filtered source lists never collide in cache.
+  availableLeafyProductionSources: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "available-sources", batchId] as const,
+  availableProductionPlates: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "available-plates"] as const,
 };

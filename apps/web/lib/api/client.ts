@@ -69,6 +69,10 @@ export type CarrierSpecificationUpdate = components["schemas"]["CarrierSpecifica
 export type IntersaladsTransplantCreate = components["schemas"]["IntersaladsTransplantCreate"];
 export type IntersaladsTransplantRead = components["schemas"]["IntersaladsTransplantRead"];
 export type AvailableNurseryCultivationPlateRead = components["schemas"]["AvailableNurseryCultivationPlateRead"];
+export type LeafyProductionTransferCreate = components["schemas"]["LeafyProductionTransferCreate"];
+export type LeafyProductionTransferRead = components["schemas"]["LeafyProductionTransferRead"];
+export type AvailableLeafyProductionSourceRead = components["schemas"]["AvailableLeafyProductionSourceRead"];
+export type AvailableProductionCultivationPlateRead = components["schemas"]["AvailableProductionCultivationPlateRead"];
 export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
 export type OccupancyRead = components["schemas"]["OccupancyRead"];
 
@@ -510,6 +514,44 @@ export function listAvailableIntersaladsPlates(
 ): Promise<AvailableNurseryCultivationPlateRead[]> {
   return getJson<AvailableNurseryCultivationPlateRead[]>(
     `/farms/${farmId}/nursery/intersalads/available-plates`, signal,
+  );
+}
+
+// --- NURSERY-OPS-005B --------------------------------------------------------
+// Leafy Production Transfer: composite biological Transplant (Nursery
+// Cultivation Plate source) + physical Production Cultivation Plate
+// placement on a Leafy Table, one atomic command. `listAvailableLeafy
+// ProductionSources`/`listAvailableProductionPlates` are the narrow reads
+// backing the source- and destination-Plate pickers.
+
+export function recordLeafyProductionTransfer(
+  farmId: string,
+  batchId: string,
+  payload: LeafyProductionTransferCreate,
+  signal?: AbortSignal,
+): Promise<LeafyProductionTransferRead> {
+  return postJson<LeafyProductionTransferRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/leafy-production-transfers`, payload, signal,
+  );
+}
+
+export function listAvailableLeafyProductionSources(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<AvailableLeafyProductionSourceRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<AvailableLeafyProductionSourceRead[]>(
+    `/farms/${farmId}/leafy-production/available-sources${query}`, signal,
+  );
+}
+
+export function listAvailableProductionPlates(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<AvailableProductionCultivationPlateRead[]> {
+  return getJson<AvailableProductionCultivationPlateRead[]>(
+    `/farms/${farmId}/leafy-production/available-plates`, signal,
   );
 }
 
