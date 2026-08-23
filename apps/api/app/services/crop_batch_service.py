@@ -24,11 +24,12 @@ from app.schemas.crop_batch import (
     VarietySummary,
     WorkflowSummary,
 )
-from app.services import farm_service, quality_hold_service, seedling_disposition_service
+from app.services import farm_service, quality_hold_service, seedling_disposition_service, transplant_source_authority
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCommandReusedWithDifferentPayloadError,
     BatchCreationValidationError,
+    BatchStageHasUnresolvedPreProductionRemainderError,
     BatchStageHasUnresolvedSeedlingRemainderError,
     ConfiguredTransitionNotFoundError,
     CropBatchClosedError,
@@ -400,6 +401,40 @@ def transition_stage(
             raise BatchStageHasUnresolvedSeedlingRemainderError(
                 unresolved_source_count=unresolved_source_count,
                 total_unresolved_living_count=total_unresolved_living_count,
+            )
+
+    # NURSERY-OPS-005A: a HARD gate on ENTERING a production-category
+    # stage -- rejected while any supported pre-production biological
+    # source still holds an unresolved living remainder. Seed Tray (via
+    # SeedlingEntry/SeedlingSourceCheckpoint authority) and Nursery
+    # Cultivation Plate (via BatchCarrierAssignment/BatchCarrierPopulation
+    # Checkpoint authority) both count; Production Cultivation Plate
+    # population is deliberately excluded (that biology has already
+    # arrived in production), and a released/already-exhausted
+    # pre-production source never blocks (only ACTIVE assignments are ever
+    # considered by either remainder function). Distinct from, and does
+    # not replace, the leaving-transplanting guard above -- mixed Nursery+
+    # Production physical placement remains fully legal right up until
+    # this specific transition is attempted; physical transfer itself
+    # never auto-transitions the Batch's stage.
+    destination_stage_for_production_guard = db.get(WorkflowStage, configured_transition.to_stage_id)
+    if destination_stage_for_production_guard.stage_category == "production":
+        seedling_unresolved_count, seedling_unresolved_living = (
+            seedling_disposition_service.get_unresolved_seedling_remainder(
+                db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, as_of=effective_time,
+            )
+        )
+        plate_unresolved_count, plate_unresolved_living = (
+            transplant_source_authority.get_unresolved_batch_carrier_population_remainder(
+                db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, as_of=effective_time,
+            )
+        )
+        unresolved_pre_production_source_count = seedling_unresolved_count + plate_unresolved_count
+        total_unresolved_pre_production_living_count = seedling_unresolved_living + plate_unresolved_living
+        if unresolved_pre_production_source_count > 0:
+            raise BatchStageHasUnresolvedPreProductionRemainderError(
+                unresolved_source_count=unresolved_pre_production_source_count,
+                total_unresolved_living_count=total_unresolved_pre_production_living_count,
             )
 
     transition = BatchStageTransition(

@@ -38,23 +38,26 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.batch_carrier_population_checkpoint import BatchCarrierPopulationCheckpoint
 from app.models.batch_stage_run import BatchStageRun
 from app.models.carrier import Carrier
+from app.models.carrier_type import CarrierType
 from app.models.crop_batch import CropBatch
 from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
 from app.models.transplant_destination_line import TransplantDestinationLine
 from app.models.transplant_event import TransplantEvent
 from app.models.transplant_source_line import TransplantSourceLine
-from app.services import farm_service, seedling_source_lineage, transplant_service
+from app.services import farm_service, transplant_service, transplant_source_authority
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CropBatchClosedError,
     CropBatchNotFoundError,
     FarmNotFoundError,
     TransplantAlreadyCorrectedError,
+    TransplantCorrectionCarrierReusedError,
     TransplantCorrectionCommandReusedWithDifferentPayloadError,
     TransplantCorrectionDestinationConsumedError,
     TransplantCorrectionNotChainTipError,
@@ -249,17 +252,36 @@ def correct_transplant(
     )
 
     # Section 21: downstream eligibility -- every source's own checkpoint
-    # must still be the structural chain tip (no successor).
+    # must still be the structural chain tip (no successor). NURSERY-OPS-
+    # 005A: a source's checkpoint may instead live in the sibling
+    # batch_carrier_population_checkpoints table (nursery_cultivation_
+    # plate-backed sources) -- never both; whichever table actually has a
+    # row for this source line is authoritative for it.
     for line in source_lines:
-        checkpoint_id = db.execute(
+        seedling_checkpoint_id = db.execute(
             select(SeedlingSourceCheckpoint.id).where(SeedlingSourceCheckpoint.transplant_source_line_id == line.id)
+        ).scalar_one_or_none()
+        if seedling_checkpoint_id is not None:
+            has_successor = db.execute(
+                select(SeedlingSourceCheckpoint.id).where(
+                    SeedlingSourceCheckpoint.previous_checkpoint_id == seedling_checkpoint_id
+                )
+            ).scalar_one_or_none()
+            if has_successor is not None:
+                raise TransplantCorrectionNotChainTipError(str(target_transplant_event_id))
+            continue
+
+        population_checkpoint_id = db.execute(
+            select(BatchCarrierPopulationCheckpoint.id).where(
+                BatchCarrierPopulationCheckpoint.transplant_source_line_id == line.id
+            )
         ).scalar_one()
-        has_successor = db.execute(
-            select(SeedlingSourceCheckpoint.id).where(
-                SeedlingSourceCheckpoint.previous_checkpoint_id == checkpoint_id
+        has_population_successor = db.execute(
+            select(BatchCarrierPopulationCheckpoint.id).where(
+                BatchCarrierPopulationCheckpoint.previous_checkpoint_id == population_checkpoint_id
             )
         ).scalar_one_or_none()
-        if has_successor is not None:
+        if has_population_successor is not None:
             raise TransplantCorrectionNotChainTipError(str(target_transplant_event_id))
 
     source_assignment_ids = sorted({line.source_batch_carrier_assignment_id for line in source_lines})
@@ -283,11 +305,37 @@ def correct_transplant(
             raise TransplantCorrectionDestinationConsumedError(str(target_transplant_event_id))
 
     carrier_ids = sorted({a.carrier_id for a in assignments})
-    list(
-        db.execute(
+    carriers_by_id = {
+        c.id: c
+        for c in db.execute(
             select(Carrier).where(Carrier.id.in_(carrier_ids)).order_by(Carrier.id).with_for_update()
         ).scalars()
-    )
+    }
+
+    # NURSERY-OPS-005A: Carrier-reuse safety, applied consistently to every
+    # Transplant correction restoration path (Seed-Tray-backed and Nursery-
+    # Plate-backed alike -- closes a pre-existing gap this file never had).
+    # Under the Carrier lock just taken, re-read Carrier.latest_batch_
+    # carrier_assignment_id for every source about to be restored (fully
+    # exhausted by the target): if it no longer identifies the exact
+    # assignment being restored, this Carrier has since been legitimately
+    # reassigned to a later, unrelated use, and physical continuity with
+    # the biology this correction would restore has been broken --
+    # permanently blocked for this historical correction, even if that
+    # later use has itself since been released and the Carrier is
+    # currently free again (mirrors seedling_disposition_service's own
+    # proven `SeedlingDispositionCarrierReusedError` check exactly).
+    for line in source_lines:
+        original = assignments_by_id[line.source_batch_carrier_assignment_id]
+        if original.released_by_transplant_event_id == target.id:
+            carrier = carriers_by_id[original.carrier_id]
+            if carrier.latest_batch_carrier_assignment_id != original.id:
+                raise TransplantCorrectionCarrierReusedError(str(original.carrier_id))
+
+    carrier_type_ids = {c.carrier_type_id for c in carriers_by_id.values()}
+    carrier_types_by_id = {
+        ct.id: ct for ct in db.execute(select(CarrierType).where(CarrierType.id.in_(carrier_type_ids))).scalars()
+    }
 
     effective_time = target.effective_time
 
@@ -331,12 +379,23 @@ def correct_transplant(
             else:
                 active_assignment = original
 
-            entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(
-                db, assignment_id=active_assignment.id
+            # NURSERY-OPS-005A: resolve the restored assignment's own
+            # biological population authority via the ONE unified
+            # resolver -- dispatches seed_tray into the existing,
+            # unchanged SeedlingEntry path, nursery_cultivation_plate into
+            # the new BatchCarrierAssignment/BatchCarrierPopulation
+            # Checkpoint path. Reaching `None` here indicates a genuine
+            # invariant violation (the target's own original source line
+            # already proved a resolvable authority when it was recorded),
+            # not a normal caller error -- kept as the existing generic
+            # defensive error for this call site.
+            carrier_type_code = carrier_types_by_id[carriers_by_id[active_assignment.carrier_id].carrier_type_id].code
+            authority = transplant_source_authority.resolve_source_authority(
+                db, assignment_id=active_assignment.id, carrier_type_code=carrier_type_code
             )
-            if entry is None:
+            if authority is None:
                 raise TransplantCorrectionValidationError(
-                    f"source assignment {active_assignment.id} has no resolvable SeedlingEntry"
+                    f"source assignment {active_assignment.id} has no resolvable biological population authority"
                 )
 
             reversal_source_line = TransplantSourceLine(
@@ -349,24 +408,10 @@ def correct_transplant(
             db.add(reversal_source_line)
             db.flush()
 
-            successor = aliased(SeedlingSourceCheckpoint)
-            previous_checkpoint_id = db.execute(
-                select(SeedlingSourceCheckpoint.id)
-                .where(
-                    SeedlingSourceCheckpoint.seedling_entry_id == entry.id,
-                    ~select(successor.id)
-                    .where(successor.previous_checkpoint_id == SeedlingSourceCheckpoint.id)
-                    .exists(),
-                )
-                .limit(1)
-            ).scalar_one_or_none()
-            db.add(
-                SeedlingSourceCheckpoint(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
-                    seedling_entry_id=entry.id, source_batch_carrier_assignment_id=active_assignment.id,
-                    transplant_source_line_id=reversal_source_line.id, previous_checkpoint_id=previous_checkpoint_id,
-                    remainder_after=line.source_plant_count, effective_time=effective_time,
-                )
+            transplant_source_authority.append_source_consumption_checkpoint(
+                db, authority=authority, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
+                assignment_id=active_assignment.id, transplant_source_line_id=reversal_source_line.id,
+                remainder_after=line.source_plant_count, effective_time=effective_time,
             )
             db.flush()
 

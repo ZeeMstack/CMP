@@ -30,10 +30,10 @@ from app.services.errors import (
     DestinationCarrierAlreadyAssignedError,
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
-    SourceAssignmentHasNoSeedlingEntryError,
     TransplantCapacityExceededError,
     TransplantCommandReusedWithDifferentPayloadError,
     TransplantValidationError,
+    UnsupportedTransplantSourceCarrierTypeError,
 )
 from tests._transplant_scenario import build_transplant_ready_scenario, now as _now
 
@@ -321,7 +321,7 @@ def test_transplant_fully_discarded_source_succeeds(db_session, active_context_w
 
 
 @pytest.mark.integration
-def test_source_with_no_seedling_entry_rejected(db_session, active_context_with_farm) -> None:
+def test_source_with_ineligible_carrier_type_rejected(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     source_lines = [_simple_source(aid) for aid in s["source_assignment_ids"]]
@@ -334,9 +334,12 @@ def test_source_with_no_seedling_entry_rejected(db_session, active_context_with_
         effective_time=s["entry_time"] + timedelta(hours=2),
     )
 
-    # The destination assignment just opened by that transplant has no
-    # SeedlingEntry at all (it's transplant-opened, not sowing-opened) --
-    # modern source authority requires one.
+    # The destination assignment just opened by that transplant sits on a
+    # generic `cultivation_plate` carrier -- not one of the two carrier
+    # types NURSERY-OPS-005A's unified source-authority resolver treats as
+    # eligible Transplant sources (`seed_tray`, `nursery_cultivation_plate`).
+    # It must be rejected as categorically unsupported, distinct from (and
+    # checked before) any biological-population-authority check.
     destination_assignment_id = db_session.execute(
         select(BatchCarrierAssignment.id).where(
             BatchCarrierAssignment.carrier_id == s["destination_carriers"][0].id
@@ -346,7 +349,7 @@ def test_source_with_no_seedling_entry_rejected(db_session, active_context_with_
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="cultivation_plate", code="CP-FRESH-0001", issued_date=None,
     )
-    with pytest.raises(SourceAssignmentHasNoSeedlingEntryError):
+    with pytest.raises(UnsupportedTransplantSourceCarrierTypeError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
             [_simple_source(destination_assignment_id)], [_simple_destination(fresh_destination.id)],

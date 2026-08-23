@@ -1061,3 +1061,54 @@ class SeedlingDispositionCarrierReusedError(DomainError):
     and the Carrier is currently free again."""
 
     pass
+
+
+class UnsupportedTransplantSourceCarrierTypeError(DomainError):
+    """NURSERY-OPS-005A: a source assignment's Carrier is of a type not
+    currently eligible to act as a Transplant source at all -- distinct
+    from `SourceAssignmentHasNoSeedlingEntryError` (an ELIGIBLE seed_tray
+    type that happens to have no resolvable SeedlingEntry). Initially:
+    seed_tray and nursery_cultivation_plate are eligible;
+    production_cultivation_plate and every other carrier type are not
+    (having a population authority does not by itself imply Transplant-
+    source eligibility -- see `transplant_source_authority`)."""
+
+    pass
+
+
+class TransplantCorrectionCarrierReusedError(DomainError):
+    """NURSERY-OPS-005A: the physical Carrier a Transplant correction would
+    restore biology onto has since been assigned to a later, unrelated use
+    (`Carrier.latest_batch_carrier_assignment_id` no longer points to the
+    released predecessor being restored) -- the same protection
+    `SeedlingDispositionCarrierReusedError` already provides for Disposition
+    correction, applied consistently to every Transplant correction
+    restoration path (Seed-Tray-backed and Nursery-Plate-backed alike).
+    Remains blocked even if that later use has itself since been released
+    and the Carrier is currently free again."""
+
+    pass
+
+
+class BatchStageHasUnresolvedPreProductionRemainderError(DomainError):
+    """NURSERY-OPS-005A: a CropBatch may not TRANSITION INTO a
+    stage_category == 'production' stage while any supported pre-production
+    biological source still has positive current availability -- Seed Tray
+    (SeedlingEntry/SeedlingSourceCheckpoint authority) and Nursery
+    Cultivation Plate (BatchCarrierAssignment/BatchCarrierPopulation
+    Checkpoint authority) alike, evaluated as of the transition's own
+    effective_time. Production Cultivation Plate population is deliberately
+    excluded (that biology has already arrived in production); a released
+    or already-exhausted pre-production source never blocks. Distinct from,
+    and does not replace, `BatchStageHasUnresolvedSeedlingRemainderError`
+    (which guards LEAVING a transplanting-category stage) -- mixed Nursery+
+    Production physical placement remains legal right up until this
+    specific transition is attempted."""
+
+    def __init__(self, *, unresolved_source_count: int, total_unresolved_living_count: int) -> None:
+        self.unresolved_source_count = unresolved_source_count
+        self.total_unresolved_living_count = total_unresolved_living_count
+        super().__init__(
+            "Batch cannot transition into a production stage while unresolved pre-production biological "
+            f"remainder remains ({total_unresolved_living_count} across {unresolved_source_count} source(s))"
+        )
