@@ -10,6 +10,7 @@ import type {
   GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
+  LeafyProductionTransferCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   RecordSeedlingDispositionCreate,
@@ -661,6 +662,74 @@ export function useRecordIntersaladsTransplant(farmId: string) {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.availableIntersaladsPlates(tenantId, farmId) });
+      const tableIds = new Set(variables.payload.destination_lines.map((d) => d.destination_location_id));
+      for (const tableId of tableIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.locationOccupants(tenantId, farmId, tableId) });
+      }
+    },
+  });
+}
+
+// --- NURSERY-OPS-005B --------------------------------------------------------
+// Leafy Production Transfer operator UI: source-Plate eligibility read
+// (optionally Batch-filtered once a Batch is established), destination-
+// Plate eligibility read, per-Table live occupancy (reused unchanged from
+// `useLocationOccupants` above), and the composite submit itself. Mirrors
+// the InterSalads section immediately above -- same shapes, same
+// invalidation discipline, for the sibling composite.
+
+export function useAvailableLeafyProductionSources(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableLeafyProductionSources(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listAvailableLeafyProductionSources(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useAvailableProductionPlates(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableProductionPlates(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableProductionPlates(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Idempotency key lives in the payload itself, same replay-safe pattern as
+ * `useRecordIntersaladsTransplant`. Success changes source availability,
+ * Plate eligibility, and the destination Table(s)' occupancy -- the
+ * composite command performs its own physical Movement, so no separate
+ * Movement/Occupancy mutation is ever called from here. Both the
+ * unfiltered and Batch-filtered source-list cache entries are invalidated
+ * (the exact Batch id used for this command, since the UI always narrows
+ * to it once established). */
+export function useRecordLeafyProductionTransfer(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: LeafyProductionTransferCreate }) =>
+      api.recordLeafyProductionTransfer(farmId, batchId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableLeafyProductionSources(tenantId, farmId, "") });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.availableLeafyProductionSources(tenantId, farmId, result.batch_id),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableProductionPlates(tenantId, farmId) });
+      for (const line of result.destination_lines) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.locationOccupants(tenantId, farmId, line.destination_location_id),
+        });
+      }
+    },
+    onError: (error, variables) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableLeafyProductionSources(tenantId, farmId, "") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableLeafyProductionSources(tenantId, farmId, variables.batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableProductionPlates(tenantId, farmId) });
       const tableIds = new Set(variables.payload.destination_lines.map((d) => d.destination_location_id));
       for (const tableId of tableIds) {
         queryClient.invalidateQueries({ queryKey: queryKeys.locationOccupants(tenantId, farmId, tableId) });

@@ -1112,3 +1112,22 @@ class BatchStageHasUnresolvedPreProductionRemainderError(DomainError):
             "Batch cannot transition into a production stage while unresolved pre-production biological "
             f"remainder remains ({total_unresolved_living_count} across {unresolved_source_count} source(s))"
         )
+
+
+class LeafyProductionTransferReplayStateConflictError(DomainError):
+    """NURSERY-OPS-005B: raised on an exact-fingerprint replay of a
+    composite Leafy Production Transfer command whose underlying,
+    previously-recorded per-destination Movement state cannot be
+    reconstructed exactly as expected (a derived Movement command id
+    resolves to no Movement at all, or to one whose occupant/destination
+    does not match the requested destination Carrier/Location) -- the exact
+    same semantic state `IntersaladsTransplantReplayStateConflictError`
+    already covers for its own composite, kept as a distinct class only
+    because it names a genuinely different command. This should be
+    unreachable in normal operation and exists only so a genuinely
+    corrupted or externally-tampered-with state surfaces as a clear domain
+    error rather than a silently wrong or fabricated replay response."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

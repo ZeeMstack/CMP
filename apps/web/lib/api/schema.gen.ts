@@ -1791,6 +1791,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/leafy-production-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Leafy Production Transfer
+         * @description NURSERY-OPS-005B: one atomic operator command -- biological
+         *     Transplant off Nursery Cultivation Plate source(s) (NURSERY-OPS-005A's
+         *     unified source authority, unchanged) onto Production Cultivation Plate
+         *     destination(s), then physical placement of each onto its selected Leafy
+         *     Production Table, one transaction. Gated by `TRANSPLANT_MANAGE` alone,
+         *     mirroring the InterSalads composite's identical rationale: the physical
+         *     placement is an inseparable side effect of the approved biological
+         *     Transplant, the harder-to-reverse, dominant operation. Never transitions
+         *     the Batch's stage -- NURSERY-OPS-005A's own guards remain the Batch's
+         *     only stage gates.
+         */
+        post: operations["record_leafy_production_transfer_farms__farm_id__crop_batches__batch_id__leafy_production_transfers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/available-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Leafy Production Sources
+         * @description NURSERY-OPS-005B: narrow, read-only support for the Leafy Production
+         *     Transfer operator UI's source-Plate picker -- not a generic "all BCAs
+         *     with population" framework. Optional `batch_id` narrows to sources
+         *     already established as belonging to the same Batch as a prior
+         *     selection; omitted before that first selection is made.
+         */
+        get: operations["list_available_leafy_production_sources_farms__farm_id__leafy_production_available_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/available-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Production Plates
+         * @description NURSERY-OPS-005B: narrow, read-only support for the Leafy Production
+         *     Transfer operator UI's destination-Plate picker.
+         */
+        get: operations["list_available_production_plates_farms__farm_id__leafy_production_available_plates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/harvests": {
         parameters: {
             query?: never;
@@ -2368,6 +2442,39 @@ export interface components {
             display_name: string;
         };
         /**
+         * AvailableLeafyProductionSourceRead
+         * @description NURSERY-OPS-005B: one row per `nursery_cultivation_plate`-typed
+         *     BatchCarrierAssignment currently eligible as a Leafy Production
+         *     Transfer source -- active (unreleased) assignment, positive
+         *     authoritative available population resolved through `transplant_
+         *     source_authority.get_source_available` only (never a client-side or
+         *     hand-summed reconstruction of historical events). Restoration lineage
+         *     is handled for free: an assignment query scoped to `released_effective_
+         *     time IS NULL` structurally can never return a historical, superseded
+         *     generation -- only whichever generation (original or restored) is
+         *     currently active is ever a candidate row.
+         */
+        AvailableLeafyProductionSourceRead: {
+            /**
+             * Source Assignment Id
+             * Format: uuid
+             */
+            source_assignment_id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /** Authoritative Available Count */
+            authoritative_available_count: number;
+            current_location: components["schemas"]["LeafyProductionCurrentLocationSummary"] | null;
+        };
+        /**
          * AvailableNurseryCultivationPlateRead
          * @description NURSERY-OPS-004B.2 section 13: one row per `nursery_cultivation_plate`
          *     Carrier currently eligible as a NEW InterSalads Transplant destination --
@@ -2378,6 +2485,33 @@ export interface components {
          *     than inventing a parallel shape.
          */
         AvailableNurseryCultivationPlateRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Status */
+            status: string;
+            /** Specification Id */
+            specification_id: string | null;
+            specification: components["schemas"]["CarrierSpecificationSummary"] | null;
+        };
+        /**
+         * AvailableProductionCultivationPlateRead
+         * @description NURSERY-OPS-005B: one row per `production_cultivation_plate` Carrier
+         *     currently eligible as a NEW Leafy Production Transfer destination --
+         *     active status, no currently-active `BatchCarrierAssignment` -- the same
+         *     eligibility `_record_transplant_core` itself enforces via
+         *     `DestinationCarrierAlreadyAssignedError`, read-only here. Deliberately
+         *     does NOT require "no active Occupancy": Movement legitimately relocates
+         *     a Carrier and closes its prior Occupancy as part of the same atomic
+         *     move, so a Production Plate already sitting somewhere physically
+         *     remains eligible. Mirrors `AvailableNurseryCultivationPlateRead`'s
+         *     exact shape, reusing `CarrierSpecificationSummary`.
+         */
+        AvailableProductionCultivationPlateRead: {
             /**
              * Id
              * Format: uuid
@@ -4399,6 +4533,180 @@ export interface components {
             source_lines: components["schemas"]["TransplantSourceLineRead"][];
             /** Destination Lines */
             destination_lines: components["schemas"]["IntersaladsDestinationLineRead"][];
+            /** Allocations */
+            allocations: components["schemas"]["TransplantAllocationRead"][];
+            /** Total Source Available Before */
+            total_source_available_before: number;
+            /** Total Destination Plant Count */
+            total_destination_plant_count: number;
+            /** Total Discarded Plant Count */
+            total_discarded_plant_count: number;
+            /** Total Remainder After */
+            total_remainder_after: number;
+        };
+        /**
+         * LeafyProductionCurrentLocationSummary
+         * @description The source Plate's current physical Occupancy target, if any --
+         *     operator context only, never a biological-eligibility fact (NURSERY-
+         *     OPS-005B section 3: physical InterSalads location is informational,
+         *     the authoritative source_assignment_id/authoritative_available_count
+         *     above are what make a Plate a valid source).
+         */
+        LeafyProductionCurrentLocationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Location Type Code */
+            location_type_code: string;
+        };
+        /**
+         * LeafyProductionDestinationLineIn
+         * @description One destination Production Cultivation Plate: the biological
+         *     quantity assigned to it (`assigned_plant_count`, reconciled by the
+         *     existing Transplant core exactly as for the generic endpoint) plus the
+         *     Leafy Production Table it must be physically placed on in the same
+         *     atomic command (`destination_location_id` -- the Table itself, the only
+         *     write-authoritative location identifier; Greenhouse/Zone/Span ids are
+         *     frontend-only UX state for narrowing the picker, never sent here since
+         *     backend semantics need only the final Table).
+         */
+        LeafyProductionDestinationLineIn: {
+            /**
+             * Destination Carrier Id
+             * Format: uuid
+             */
+            destination_carrier_id: string;
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * LeafyProductionDestinationLineRead
+         * @description Every field here is re-derivable from already-committed
+         *     TransplantDestinationLine + Movement rows, never in-memory-only state --
+         *     the composite's response stays identical on exact replay, mirroring
+         *     `IntersaladsDestinationLineRead`'s own proven shape.
+         */
+        LeafyProductionDestinationLineRead: {
+            /**
+             * Destination Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            destination_batch_carrier_assignment_id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /** Allocated Plant Count */
+            allocated_plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * LeafyProductionTransferCreate
+         * @description Mirrors `IntersaladsTransplantCreate`'s own structure and validation
+         *     intent exactly, substituting `LeafyProductionDestinationLineIn` for
+         *     `IntersaladsDestinationLineIn` -- same duplicate-id/undeclared-reference/
+         *     every-destination-allocated invariants, proven correct by that
+         *     precedent, not reinvented here.
+         */
+        LeafyProductionTransferCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["TransplantSourceLineIn"][];
+            /** Destination Lines */
+            destination_lines: components["schemas"]["LeafyProductionDestinationLineIn"][];
+            /** Allocations */
+            allocations: components["schemas"]["TransplantAllocationIn"][];
+        };
+        /** LeafyProductionTransferRead */
+        LeafyProductionTransferRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Workflow Version Id
+             * Format: uuid
+             */
+            workflow_version_id: string;
+            stage: components["schemas"]["StageSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["TransplantSourceLineRead"][];
+            /** Destination Lines */
+            destination_lines: components["schemas"]["LeafyProductionDestinationLineRead"][];
             /** Allocations */
             allocations: components["schemas"]["TransplantAllocationRead"][];
             /** Total Source Available Before */
@@ -12278,6 +12586,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvailableNurseryCultivationPlateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_leafy_production_transfer_farms__farm_id__crop_batches__batch_id__leafy_production_transfers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeafyProductionTransferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeafyProductionTransferRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_leafy_production_sources_farms__farm_id__leafy_production_available_sources_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableLeafyProductionSourceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_production_plates_farms__farm_id__leafy_production_available_plates_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableProductionCultivationPlateRead"][];
                 };
             };
             /** @description Validation Error */

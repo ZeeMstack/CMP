@@ -109,16 +109,20 @@ export function FilterableSelect({
   }
 
   return (
-    // `isolate` establishes a fresh stacking context here: without it,
-    // the open list's own `z-10` (below) only wins against elements that
-    // share the SAME ancestor stacking context, which is not guaranteed
-    // once this control is nested a few levels deep in a longer form
-    // (e.g. one destination card's source-allocation row inside a list
-    // inside a card inside the page) -- a later DOM sibling well outside
-    // this component's own subtree could otherwise still intercept
-    // pointer events over the open list. `isolate` makes this
-    // component's own z-index scope authoritative regardless of nesting.
-    <div ref={containerRef} className="relative isolate">
+    // BROWSER QA CORRECTION 2: `isolate` alone only scopes the open list's
+    // `z-10` (below) against elements INSIDE this same wrapper -- it does
+    // NOT lift the wrapper itself above a later DOM sibling (e.g. the next
+    // form field/FilterableSelect rendered after this one in the same
+    // form). Two `position: relative` siblings with no explicit z-index
+    // both default to `z-index: auto`, which paints in DOM order -- so a
+    // later field could still paint over an earlier one's open dropdown
+    // even though the dropdown's own internal stacking was "correct" in
+    // isolation. Real Chromium QA caught exactly this: Zone/Span painting
+    // over an open Plate dropdown. `z-20` only while `open` gives the
+    // wrapper itself elevated priority over its siblings for as long as
+    // its menu is showing, without permanently altering paint order for
+    // every other closed instance on the page.
+    <div ref={containerRef} className={`relative isolate ${open ? "z-20" : ""}`}>
       <input
         role="combobox"
         aria-expanded={open}
