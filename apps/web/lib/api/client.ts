@@ -66,6 +66,11 @@ export type CarrierTypeRead = components["schemas"]["CarrierTypeRead"];
 export type CarrierSpecificationRead = components["schemas"]["CarrierSpecificationRead"];
 export type CarrierSpecificationCreate = components["schemas"]["CarrierSpecificationCreate"];
 export type CarrierSpecificationUpdate = components["schemas"]["CarrierSpecificationUpdate"];
+export type IntersaladsTransplantCreate = components["schemas"]["IntersaladsTransplantCreate"];
+export type IntersaladsTransplantRead = components["schemas"]["IntersaladsTransplantRead"];
+export type AvailableNurseryCultivationPlateRead = components["schemas"]["AvailableNurseryCultivationPlateRead"];
+export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
+export type OccupancyRead = components["schemas"]["OccupancyRead"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -481,4 +486,37 @@ export function reactivateCarrierSpecification(
   signal?: AbortSignal,
 ): Promise<CarrierSpecificationRead> {
   return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/reactivate`, {}, signal);
+}
+
+// --- NURSERY-OPS-004B.1/004B.2 ----------------------------------------------
+// InterSalads Transplant: composite biological Transplant + physical Plate
+// placement, one atomic command. `listAvailableIntersaladsPlates` is the
+// narrow 004B.2 read backing the destination-Plate picker.
+
+export function recordIntersaladsTransplant(
+  farmId: string,
+  batchId: string,
+  payload: IntersaladsTransplantCreate,
+  signal?: AbortSignal,
+): Promise<IntersaladsTransplantRead> {
+  return postJson<IntersaladsTransplantRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/intersalads-transplants`, payload, signal,
+  );
+}
+
+export function listAvailableIntersaladsPlates(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<AvailableNurseryCultivationPlateRead[]> {
+  return getJson<AvailableNurseryCultivationPlateRead[]>(
+    `/farms/${farmId}/nursery/intersalads/available-plates`, signal,
+  );
+}
+
+export function getLocationOccupants(
+  farmId: string,
+  locationId: string,
+  signal?: AbortSignal,
+): Promise<TargetOccupantsRead> {
+  return getJson<TargetOccupantsRead>(`/farms/${farmId}/locations/${locationId}/occupants`, signal);
 }

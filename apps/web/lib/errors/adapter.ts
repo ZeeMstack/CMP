@@ -76,3 +76,41 @@ export const ERROR_KIND_COPY: Record<AppErrorKind, { title: string; action: stri
     action: "Contact an administrator if you believe this is a mistake.",
   },
 };
+
+const UUID_ONLY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Classifies purely on `error.status`/`error.kind` -- both structured,
+ * never a regex over backend prose -- and returns copy appropriate for a
+ * command-style mutation (e.g. InterSalads Transplant). Several distinct
+ * domain errors legitimately share one HTTP status with no further
+ * backend-supplied discriminator (e.g. "source released", "Plate already
+ * assigned", and "Table full" are all plain 409s), so this intentionally
+ * does not fabricate per-case wording it cannot honestly back -- it names
+ * the class of problem and the correct recovery action instead. The one
+ * exception: `error.message` is shown verbatim only when it is not a bare
+ * UUID (some backend exceptions carry only a raw id as their message,
+ * e.g. `DestinationCarrierAlreadyAssignedError(str(carrier_id))` -- a raw
+ * id is never operator-facing regardless of kind). This is a structural
+ * check (does the string look like a UUID), not a semantic parse of the
+ * message's wording. */
+export function friendlyMutationErrorMessage(error: AppError): string {
+  switch (error.kind) {
+    case "permission_error":
+      return "You don't have permission to do this. Contact an administrator if you believe this is a mistake.";
+    case "not_found":
+      return "One of the items in this transaction could no longer be found. Refresh and try again.";
+    case "conflict":
+      return "This conflicts with a change made elsewhere -- a source, Plate, or Table involved may have just been used. Review the refreshed information below before submitting again.";
+    case "invalid_request":
+      return UUID_ONLY.test(error.message.trim())
+        ? "This transaction isn't valid -- check quantities, Plate capacity, and that the Batch is still open."
+        : error.message;
+    case "identity_error":
+      return "You are not signed in, or your session has expired.";
+    case "network_error":
+      return "Could not reach the server. Check your connection and try again.";
+    case "server_error":
+    default:
+      return "Something went wrong on the server. Try again, or contact an administrator if this continues.";
+  }
+}

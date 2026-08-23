@@ -68,14 +68,21 @@ entirely in the composite orchestration layer."""
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models.location import Location
 from app.models.movement import Movement
-from app.services import movement_service, transplant_service
+from app.services import carrier_service, movement_service, transplant_service
 from app.services.errors import IntersaladsTransplantReplayStateConflictError
-from app.schemas.intersalads_transplant import IntersaladsDestinationLineRead, IntersaladsTransplantRead
+from app.schemas.carrier_specification import CarrierSpecificationSummary
+from app.schemas.intersalads_transplant import (
+    AvailableNurseryCultivationPlateRead,
+    IntersaladsDestinationLineRead,
+    IntersaladsTransplantRead,
+)
+
+NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE = "nursery_cultivation_plate"
 
 
 def _lock_destination_locations_in_order(
@@ -237,3 +244,51 @@ def record_intersalads_transplant(
         db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id, transplant_event_id=event.id,
         movements_by_carrier_id=movements_by_carrier_id,
     )
+
+
+def list_available_intersalads_plates(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
+) -> list[AvailableNurseryCultivationPlateRead]:
+    """NURSERY-OPS-004B.2 section 13: every `nursery_cultivation_plate`
+    Carrier in this Farm eligible as a NEW InterSalads Transplant
+    destination right now -- active status, and no currently-active
+    `BatchCarrierAssignment` (`released_effective_time IS NULL`), the exact
+    same eligibility `transplant_service._record_transplant_core` itself
+    enforces via `DestinationCarrierAlreadyAssignedError`/`carrier.status !=
+    "active"`, reproduced here read-only for the picker -- never a
+    generalized "available Carrier" framework, and never touching
+    `production_cultivation_plate`/the historical generic
+    `cultivation_plate` type. One query, no N+1 (mirrors
+    `seedling_entry_service.list_available_seedling_tables`'s own shape)."""
+    carrier_service._require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    rows = db.execute(
+        text(
+            "SELECT c.id, c.code, c.status, c.specification_id, "
+            "spec.id AS spec_id, spec.code AS spec_code, spec.name AS spec_name, "
+            "spec.biological_position_count "
+            "FROM carriers c "
+            "JOIN carrier_types ct ON ct.id = c.carrier_type_id AND ct.code = :plate_type_code "
+            "LEFT JOIN carrier_specifications spec ON spec.id = c.specification_id "
+            "WHERE c.tenant_id = :tid AND c.farm_id = :fid AND c.status = 'active' "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM batch_carrier_assignments bca "
+            "  WHERE bca.carrier_id = c.id AND bca.released_effective_time IS NULL"
+            ") "
+            "ORDER BY c.code"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "plate_type_code": NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE},
+    ).mappings().all()
+    return [
+        AvailableNurseryCultivationPlateRead(
+            id=r["id"], code=r["code"], status=r["status"], specification_id=r["specification_id"],
+            specification=(
+                CarrierSpecificationSummary(
+                    id=r["spec_id"], code=r["spec_code"], name=r["spec_name"],
+                    biological_position_count=r["biological_position_count"],
+                )
+                if r["specification_id"] is not None
+                else None
+            ),
+        )
+        for r in rows
+    ]
