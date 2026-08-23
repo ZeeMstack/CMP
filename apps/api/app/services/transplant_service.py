@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.batch_carrier_population_checkpoint import BatchCarrierPopulationCheckpoint
 from app.models.batch_stage_run import BatchStageRun
 from app.models.carrier import Carrier
 from app.models.carrier_specification import CarrierSpecification
@@ -31,7 +32,7 @@ from app.schemas.transplant_event import (
     TransplantEventRead,
     TransplantSourceLineRead,
 )
-from app.services import farm_service, seedling_disposition_service, seedling_source_lineage
+from app.services import farm_service, seedling_source_lineage, transplant_source_authority
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -48,6 +49,7 @@ from app.services.errors import (
     TransplantCommandReusedWithDifferentPayloadError,
     TransplantEventNotFoundError,
     TransplantValidationError,
+    UnsupportedTransplantSourceCarrierTypeError,
 )
 
 MAX_SOURCE_LINES = 200
@@ -383,31 +385,51 @@ def _record_transplant_core(
     )
     assignments_by_id = {a.id: a for a in assignments}
 
-    # Section 5/21: modern source authority is SeedlingEntry-anchored --
-    # lock each source's SeedlingEntry too (deterministic id order,
-    # AFTER assignments -- section 44's chain), and resolve
-    # source_available_before from the checkpoint-aware anchor formula,
-    # never from sown_site_count/seed_count.
-    #
+    # NURSERY-OPS-005A: resolve each source's biological population
+    # authority via the ONE unified resolver -- seed_tray dispatches into
+    # the existing, unchanged SeedlingEntry/SeedlingSourceCheckpoint path
+    # (section 5/21: modern source authority is SeedlingEntry-anchored;
     # TRANSPLANT-CORRECTION-001 section 17: a source_assignment_id may be a
-    # reversal-restored descendant, not the SeedlingEntry's own directly-
-    # owned assignment -- resolve via the shared backward-lineage walk
-    # (falls back to the pre-existing direct lookup automatically when the
-    # assignment was never restored) instead of a direct equality query.
+    # reversal-restored descendant, resolved via the shared backward-
+    # lineage walk); nursery_cultivation_plate dispatches into the new
+    # BatchCarrierAssignment/BatchCarrierPopulationCheckpoint path (no
+    # lineage walk needed -- the assignment itself IS that authority's
+    # identity). Anything else resolves to no authority at all here,
+    # caught below in the per-assignment validation loop alongside every
+    # other per-assignment eligibility check, never raised early.
+    source_carrier_type_ids = {
+        carriers_by_id[unlocked_by_id[aid].carrier_id].carrier_type_id for aid in source_assignment_ids
+    }
+    source_carrier_types_by_id = {
+        ct.id: ct
+        for ct in db.execute(select(CarrierType).where(CarrierType.id.in_(source_carrier_type_ids))).scalars()
+    }
+
     unlocked_entries: dict[uuid.UUID, SeedlingEntry] = {}
+    authorities_by_assignment: dict[uuid.UUID, transplant_source_authority.SourceAuthority] = {}
     for aid in source_assignment_ids:
-        entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(db, assignment_id=aid)
-        if entry is not None:
-            unlocked_entries[aid] = entry
+        carrier_type_code = source_carrier_types_by_id[
+            carriers_by_id[unlocked_by_id[aid].carrier_id].carrier_type_id
+        ].code
+        authority = transplant_source_authority.resolve_source_authority(
+            db, assignment_id=aid, carrier_type_code=carrier_type_code
+        )
+        if authority is None:
+            continue
+        authorities_by_assignment[aid] = authority
+        if authority.kind == "seedling_entry":
+            assert authority.seedling_entry is not None
+            unlocked_entries[aid] = authority.seedling_entry
 
     # Deterministic SeedlingEntry.id lock order (matching the pre-existing
     # discipline this replaces) -- never assignment_id order, which could
     # differ between two commands that reach the SAME entry via different
     # assignment ids (original vs. a restored descendant) and risk deadlock.
-    entries_by_assignment: dict[uuid.UUID, SeedlingEntry] = {}
+    # A batch_carrier_population authority needs no separate lock here --
+    # its own BatchCarrierAssignment (already locked just above) IS its
+    # lock target.
     for aid, entry in sorted(unlocked_entries.items(), key=lambda kv: kv[1].id):
         db.execute(select(SeedlingEntry).where(SeedlingEntry.id == entry.id).with_for_update()).scalar_one()
-        entries_by_assignment[aid] = entry
 
     for aid in source_assignment_ids:
         assignment = assignments_by_id[aid]
@@ -415,13 +437,16 @@ def _record_transplant_core(
             raise SourceAssignmentNotFoundError(str(aid))
         if assignment.released_effective_time is not None:
             raise SourceAssignmentAlreadyReleasedError(str(aid))
-        if aid not in entries_by_assignment:
+        carrier = carriers_by_id[assignment.carrier_id]
+        carrier_type_code = source_carrier_types_by_id[carrier.carrier_type_id].code
+        if carrier_type_code not in transplant_source_authority.ELIGIBLE_SOURCE_CARRIER_TYPE_CODES:
+            raise UnsupportedTransplantSourceCarrierTypeError(carrier_type_code)
+        if aid not in authorities_by_assignment:
             raise SourceAssignmentHasNoSeedlingEntryError(str(aid))
         if effective_time < assignment.assigned_effective_time:
             raise InvalidTransplantEffectiveTimeError(
                 f"effective_time precedes source assignment {aid}'s assigned_effective_time"
             )
-        carrier = carriers_by_id[assignment.carrier_id]
         if carrier.status != "active":
             raise TransplantValidationError(f"source carrier {assignment.carrier_id} is not active")
 
@@ -435,9 +460,9 @@ def _record_transplant_core(
     # transplant AT the SeedlingEntry's own effective_time is still valid.
     source_available_before: dict[uuid.UUID, int] = {}
     for aid in source_assignment_ids:
-        entry = entries_by_assignment[aid]
-        anchor_value, anchor_time, has_checkpoint = seedling_disposition_service.get_source_availability_anchor(
-            db, seedling_entry=entry
+        authority = authorities_by_assignment[aid]
+        anchor_value, anchor_time, has_checkpoint = transplant_source_authority.get_source_availability_anchor(
+            db, authority=authority, assignment_id=aid
         )
         if corrects_transplant_event_id is not None:
             # TRANSPLANT-CORRECTION-001 section 2/7: the paired REPLACEMENT
@@ -452,8 +477,8 @@ def _record_transplant_core(
                 f"effective_time precedes source assignment {aid}'s currently-open balance window "
                 f"(anchor at {anchor_time.isoformat()})"
             )
-        source_available_before[aid] = seedling_disposition_service.get_source_available(
-            db, seedling_entry=entry, as_of=effective_time
+        source_available_before[aid] = transplant_source_authority.get_source_available(
+            db, authority=authority, assignment_id=aid, as_of=effective_time
         )
 
     # --- Per-source reconciliation (section 16/17) ---------------------------------
@@ -569,37 +594,18 @@ def _record_transplant_core(
             )
         db.flush()
 
-        # Section 10/22: exactly one checkpoint per modern source line,
-        # inserted LAST (after allocations exist, so the DB trigger can
-        # verify remainder arithmetic against real allocation sums),
-        # chained to the actual latest prior checkpoint for that Tray.
+        # Section 10/22: exactly one checkpoint per source line, inserted
+        # LAST (after allocations exist, so the DB trigger can verify
+        # remainder arithmetic against real allocation sums), chained to
+        # the actual latest prior checkpoint for that source's own
+        # authority. NURSERY-OPS-005A: dispatched through the one unified
+        # resolver -- never two independent checkpoint-arithmetic
+        # implementations here.
         for aid in source_assignment_ids:
-            entry = entries_by_assignment[aid]
-            # TRANSPLANT-CORRECTION-001 section 6: chain-tip resolution
-            # (no successor references it as previous_checkpoint_id) --
-            # the same shared definition of "current checkpoint" used by
-            # `seedling_disposition_service._latest_checkpoint_anchor` and
-            # every DB trigger; never `ORDER BY effective_time DESC` once
-            # paired-correction checkpoints may legitimately tie on time.
-            _checkpoint_successor = aliased(SeedlingSourceCheckpoint)
-            previous_checkpoint_id = db.execute(
-                select(SeedlingSourceCheckpoint.id)
-                .where(
-                    SeedlingSourceCheckpoint.seedling_entry_id == entry.id,
-                    ~select(_checkpoint_successor.id)
-                    .where(_checkpoint_successor.previous_checkpoint_id == SeedlingSourceCheckpoint.id)
-                    .exists(),
-                )
-                .limit(1)
-            ).scalar_one_or_none()
-            db.add(
-                SeedlingSourceCheckpoint(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
-                    seedling_entry_id=entry.id, source_batch_carrier_assignment_id=aid,
-                    transplant_source_line_id=source_line_by_assignment[aid].id,
-                    previous_checkpoint_id=previous_checkpoint_id,
-                    remainder_after=remainder_by_source[aid], effective_time=effective_time,
-                )
+            transplant_source_authority.append_source_consumption_checkpoint(
+                db, authority=authorities_by_assignment[aid], tenant_id=tenant_id, farm_id=farm_id,
+                batch_id=batch.id, assignment_id=aid, transplant_source_line_id=source_line_by_assignment[aid].id,
+                remainder_after=remainder_by_source[aid], effective_time=effective_time,
             )
         db.flush()
 
@@ -705,6 +711,65 @@ def _transplant_event_header_query():
     )
 
 
+def _resolve_source_line_seed_lot_origin(
+    db: Session, *, assignment_id: uuid.UUID, hops: int = 0
+) -> uuid.UUID | None:
+    """The sowing-origin assignment id (a SeedlingEntry's own directly-owned
+    assignment) whose SowingEventLine gives a source line's display
+    provenance. Direct for a seed_tray-backed assignment. NURSERY-OPS-005A:
+    for a nursery_cultivation_plate-backed assignment, resolved by walking
+    back to the TransplantEvent that opened it (through its own restoration
+    lineage first, if this exact generation has no TransplantDestinationLine
+    of its own -- a restored BatchCarrierAssignment never has one, see
+    `BatchCarrierPopulationCheckpoint`'s own docstring) and inspecting the
+    distinct sowing-origin(s) that fed it, recursively. Returns `None` if no
+    single, unambiguous origin exists (fed by zero or more than one distinct
+    Seed Lot) -- callers must not silently guess which one to display."""
+    entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(db, assignment_id=assignment_id)
+    if entry is not None:
+        return entry.batch_carrier_assignment_id
+    if hops > seedling_source_lineage.MAX_RESTORATION_HOPS:
+        return None
+
+    current_id: uuid.UUID | None = assignment_id
+    destination_line_id: uuid.UUID | None = None
+    walk_hops = 0
+    while current_id is not None:
+        destination_line_id = db.execute(
+            select(TransplantDestinationLine.id).where(
+                TransplantDestinationLine.destination_batch_carrier_assignment_id == current_id
+            )
+        ).scalar_one_or_none()
+        if destination_line_id is not None:
+            break
+        walk_hops += 1
+        if walk_hops > seedling_source_lineage.MAX_RESTORATION_HOPS:
+            return None
+        current_id = db.execute(
+            select(BatchCarrierAssignment.restored_from_batch_carrier_assignment_id).where(
+                BatchCarrierAssignment.id == current_id
+            )
+        ).scalar_one_or_none()
+    if destination_line_id is None:
+        return None
+
+    feeding_assignment_ids = set(
+        db.execute(
+            select(TransplantSourceLine.source_batch_carrier_assignment_id)
+            .join(TransplantAllocation, TransplantAllocation.source_line_id == TransplantSourceLine.id)
+            .where(TransplantAllocation.destination_line_id == destination_line_id)
+        ).scalars()
+    )
+    origins = {
+        _resolve_source_line_seed_lot_origin(db, assignment_id=fid, hops=hops + 1)
+        for fid in feeding_assignment_ids
+    }
+    origins.discard(None)
+    if len(origins) != 1:
+        return None
+    return origins.pop()
+
+
 def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, list]:
     grouped: dict[uuid.UUID, list] = {eid: [] for eid in event_ids}
     if not event_ids:
@@ -721,6 +786,12 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
         select(SeedlingSourceCheckpoint.transplant_source_line_id, SeedlingSourceCheckpoint.id)
     ).all():
         checkpoints_by_line[row[0]] = row[1]
+    # NURSERY-OPS-005A: a nursery_cultivation_plate-backed source line's
+    # checkpoint lives in the sibling table instead -- never both.
+    for row in db.execute(
+        select(BatchCarrierPopulationCheckpoint.transplant_source_line_id, BatchCarrierPopulationCheckpoint.id)
+    ).all():
+        checkpoints_by_line[row[0]] = row[1]
 
     # TRANSPLANT-CORRECTION-001: a REVERSAL's own TransplantSourceLine may
     # reference a reversal-restored assignment, which is never sowing-
@@ -730,7 +801,9 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
     # assuming `source_batch_carrier_assignment_id` always is one, then join
     # SowingEventLine on the resolved sowing-origin id set separately (a
     # direct equality join against source_batch_carrier_assignment_id would
-    # silently drop a restored source line entirely).
+    # silently drop a restored source line entirely). NURSERY-OPS-005A:
+    # `_resolve_source_line_seed_lot_origin` extends this same idea one
+    # level further, for a nursery_cultivation_plate-backed source line.
     source_assignment_ids = list(
         db.execute(
             select(TransplantSourceLine.source_batch_carrier_assignment_id)
@@ -740,9 +813,9 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
     )
     sowing_origin_by_assignment: dict[uuid.UUID, uuid.UUID] = {}
     for aid in source_assignment_ids:
-        entry = seedling_source_lineage.resolve_seedling_entry_for_assignment(db, assignment_id=aid)
-        if entry is not None:
-            sowing_origin_by_assignment[aid] = entry.batch_carrier_assignment_id
+        origin_id = _resolve_source_line_seed_lot_origin(db, assignment_id=aid)
+        if origin_id is not None:
+            sowing_origin_by_assignment[aid] = origin_id
 
     provenance_by_origin: dict[uuid.UUID, tuple] = {}
     if sowing_origin_by_assignment:
@@ -768,6 +841,13 @@ def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.
     for source_line, carrier, carrier_type in rows:
         successful = totals.get(source_line.id, 0)
         origin_id = sowing_origin_by_assignment.get(source_line.source_batch_carrier_assignment_id)
+        if origin_id is None or origin_id not in provenance_by_origin:
+            raise RuntimeError(
+                f"transplant source line {source_line.id} (assignment "
+                f"{source_line.source_batch_carrier_assignment_id}) has no single, unambiguous Seed Lot "
+                "origin to display -- fed by zero or more than one distinct Seed Lot; this read model "
+                "cannot represent that case"
+            )
         sowing_event_id, seed_lot, crop, variety = provenance_by_origin[origin_id]
         grouped[source_line.transplant_event_id].append(
             TransplantSourceLineRead(

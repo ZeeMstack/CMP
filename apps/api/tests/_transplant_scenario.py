@@ -46,6 +46,7 @@ def build_transplant_ready_scenario(
     db_session, tenant, user, farm, *, suffix=None, tray_count=4, normal=200, abnormal=0,
     transplanting_required_type="cultivation_plate", legacy_seed_tray_no_specification=False,
     destination_specification_id=None, intersalads_table_count=0, intersalads_table_capacity=None,
+    production_stage=False,
 ):
     """A Batch with `tray_count` Seed Trays, each sown, germinated, and
     entered through SeedlingEntry (frozen `starting_living_seedling_count =
@@ -75,7 +76,14 @@ def build_transplant_ready_scenario(
     `destination_carriers` against that specification instead of by bare
     `carrier_type_code` -- required for `transplanting_required_type`
     values that `requires_specification` (e.g. `nursery_cultivation_plate`),
-    which `carrier_service.register_carrier` rejects without one."""
+    which `carrier_service.register_carrier` rejects without one.
+
+    NURSERY-OPS-005A: `production_stage=True` (default False, unchanged
+    behavior for every existing caller) adds one extra stage/transition --
+    GROWING -> PRODUCTION (stage_category="production", no required Carrier
+    type) -- alongside the existing GROWING -> COMPLETE transition (t3),
+    never replacing it. Returned as `stages["PRODUCTION"]`/`transitions
+    ["t4"]` (both `None` when not requested)."""
     suffix = suffix or uuid.uuid4().hex[:8]
 
     crop = crop_service.register_crop(
@@ -133,6 +141,19 @@ def build_transplant_ready_scenario(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
         from_stage_id=growing_stage.id, to_stage_id=complete_stage.id, code="ADVANCE-3", name="Advance 3",
     )
+    production_stage_obj = None
+    t4 = None
+    if production_stage:
+        production_stage_obj = workflow_service.add_stage(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+            code="PRODUCTION", name="Production", display_order=4, stage_category="production",
+            expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+            is_start=False, is_terminal=True,
+        )
+        t4 = workflow_service.add_transition(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id,
+            from_stage_id=growing_stage.id, to_stage_id=production_stage_obj.id, code="ADVANCE-4", name="Advance 4",
+        )
     workflow_service.publish_version(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=version.id
     )
@@ -293,9 +314,9 @@ def build_transplant_ready_scenario(
         "crop": crop, "variety": variety, "workflow": workflow,
         "stages": {
             "SEEDING": seeding_stage, "TRANSPLANTING": transplanting_stage, "GROWING": growing_stage,
-            "COMPLETE": complete_stage,
+            "COMPLETE": complete_stage, "PRODUCTION": production_stage_obj,
         },
-        "transitions": {"t1": t1, "t2": t2, "t3": t3},
+        "transitions": {"t1": t1, "t2": t2, "t3": t3, "t4": t4},
         "batch": batch, "batch_id": batch_id, "seed_lot": seed_lot,
         "source_carriers": carriers, "source_assignment_ids": source_assignment_ids, "entry_ids": entry_ids,
         "entry_time": entry_time, "sow_time": sow_time, "starting": normal + abnormal,

@@ -3,6 +3,7 @@ from app.models.asset_position import AssetPosition
 from app.models.asset_type import AssetType
 from app.models.audit_event import AuditEvent
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.batch_carrier_population_checkpoint import BatchCarrierPopulationCheckpoint
 from app.models.batch_stage_run import BatchStageRun
 from app.models.batch_stage_transition import BatchStageTransition
 from app.models.carrier import Carrier
@@ -63,6 +64,7 @@ __all__ = [
     "AssetType",
     "AuditEvent",
     "BatchCarrierAssignment",
+    "BatchCarrierPopulationCheckpoint",
     "BatchStageRun",
     "BatchStageTransition",
     "Carrier",
