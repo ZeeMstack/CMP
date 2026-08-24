@@ -330,6 +330,13 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         for table in ("seedling_disposition_events", "seedling_disposition_commands"):
             if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
                 conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # LEAFY-OPS-001: production_disposition_events/_commands are new to
+        # this shared cleanup, mirroring seedling_disposition_events/
+        # _commands immediately above exactly -- must precede batch_carrier_
+        # assignments below (both reference it).
+        for table in ("production_disposition_events", "production_disposition_commands"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         for table in (
             "seedling_entries", "germination_outcome_snapshots", "germination_checks",
             "observation_values", "observation_events",

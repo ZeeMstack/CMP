@@ -559,11 +559,24 @@ def _record_transplant_core(
         destination_assignment_by_carrier: dict[uuid.UUID, BatchCarrierAssignment] = {}
         for line in destination_lines:
             cid = line["destination_carrier_id"]
+            destination_assignment_id = uuid.uuid4()
             destination_assignment = BatchCarrierAssignment(
-                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, carrier_id=cid,
+                id=destination_assignment_id, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id,
+                carrier_id=cid,
                 batch_stage_run_id=active_run.id, assigned_effective_time=effective_time,
                 released_effective_time=None, opening_sowing_event_id=None,
                 opening_transplant_event_id=event.id, released_by_transplant_event_id=None,
+                # LEAFY-OPS-001: every transplant-destination BCA is the
+                # root of its own population lineage until/unless a later
+                # Production Disposition correction restores it into a new
+                # generation (which then copies this value forward) --
+                # self-referencing here is what lets a Production
+                # Cultivation Plate's authoritative living population be
+                # resolved as one flat SUM keyed by this id, with no
+                # per-query lineage walk, ever. Applies uniformly to every
+                # transplant destination (Nursery and Production Cultivation
+                # Plate alike) -- never carrier-type-specific.
+                population_root_batch_carrier_assignment_id=destination_assignment_id,
                 actor_user_id=actor_user_id,
             )
             db.add(destination_assignment)

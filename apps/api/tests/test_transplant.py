@@ -1216,8 +1216,9 @@ def test_db_backstop_rejects_structurally_corrupt_null_specification_id(db_sessi
             db_session.execute(
                 text(
                     "INSERT INTO batch_carrier_assignments (id, tenant_id, farm_id, batch_id, carrier_id, "
-                    "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, actor_user_id) "
-                    "VALUES (:id, :tid, :fid, :bid, :cid, :run_id, :et, :eid, :uid)"
+                    "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, "
+                    "population_root_batch_carrier_assignment_id, actor_user_id) "
+                    "VALUES (:id, :tid, :fid, :bid, :cid, :run_id, :et, :eid, :id, :uid)"
                 ),
                 {
                     "id": dest_assignment_id, "tid": tenant.id, "fid": farm.id, "bid": s["batch"].id,

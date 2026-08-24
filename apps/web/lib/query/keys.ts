@@ -98,4 +98,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "leafy-production", "available-sources", batchId] as const,
   availableProductionPlates: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "leafy-production", "available-plates"] as const,
+  activeProductionPlates: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "active-plates", batchId] as const,
+  productionDispositionHistory: (tenantId: string, farmId: string, batchCarrierAssignmentId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "dispositions", batchCarrierAssignmentId, batchId] as const,
 };

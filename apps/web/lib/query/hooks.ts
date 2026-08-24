@@ -6,6 +6,7 @@ import * as api from "@/lib/api/client";
 import type {
   CarrierSpecificationCreate,
   CarrierSpecificationUpdate,
+  CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
   GreenhouseSetupCreate,
@@ -13,6 +14,7 @@ import type {
   LeafyProductionTransferCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  RecordProductionDispositionCreate,
   RecordSeedlingDispositionCreate,
   SeedlingEntryCreate,
   SeedLotCreate,
@@ -734,6 +736,75 @@ export function useRecordLeafyProductionTransfer(farmId: string) {
       for (const tableId of tableIds) {
         queryClient.invalidateQueries({ queryKey: queryKeys.locationOccupants(tenantId, farmId, tableId) });
       }
+    },
+  });
+}
+
+// --- LEAFY-OPS-001 -------------------------------------------------------------
+// Production Biological Disposition: Active Production Plates / Plant Loss
+// History workspace reads, and the record/correct commands. Mirrors the
+// NURSERY-OPS-005B section's own invalidation discipline exactly.
+
+export function useActiveProductionPlates(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.activeProductionPlates(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listActiveProductionPlates(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useProductionDispositionHistory(
+  farmId: string, params: { batchCarrierAssignmentId?: string; batchId?: string } = {},
+) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.productionDispositionHistory(
+      tenantId ?? "", farmId, params.batchCarrierAssignmentId ?? "", params.batchId ?? "",
+    ),
+    queryFn: ({ signal }) => api.listProductionDispositionHistory(farmId, params, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+function _invalidateProductionDisposition(
+  queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string,
+) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.activeProductionPlates(tenantId, farmId, "") });
+  queryClient.invalidateQueries({ queryKey: queryKeys.productionDispositionHistory(tenantId, farmId, "", "") });
+}
+
+export function useRecordProductionDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordProductionDispositionCreate) => api.recordProductionDisposition(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateProductionDisposition(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateProductionDisposition(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useCorrectProductionDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, payload }: { eventId: string; payload: CorrectProductionDispositionCreate }) =>
+      api.correctProductionDisposition(farmId, eventId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateProductionDisposition(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateProductionDisposition(queryClient, tenantId, farmId);
     },
   });
 }

@@ -1865,6 +1865,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/leafy-production/dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Production Disposition History */
+        get: operations["list_production_disposition_history_farms__farm_id__leafy_production_dispositions_get"];
+        put?: never;
+        /** Record Production Disposition */
+        post: operations["record_production_disposition_farms__farm_id__leafy_production_dispositions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/dispositions/{event_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Production Disposition */
+        post: operations["correct_production_disposition_farms__farm_id__leafy_production_dispositions__event_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/active-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Active Production Plates */
+        get: operations["list_active_production_plates_farms__farm_id__leafy_production_active_plates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/harvests": {
         parameters: {
             query?: never;
@@ -2298,6 +2350,51 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveProductionPlateRead
+         * @description The narrow, Leafy-Production-specific active-placements read -- one
+         *     row per currently-active (unreleased) Production Cultivation Plate
+         *     BatchCarrierAssignment.
+         */
+        ActiveProductionPlateRead: {
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /** Plate Code */
+            plate_code: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Name */
+            variety_name: string | null;
+            /** Opening Population */
+            opening_population: number;
+            /** Current Living Population */
+            current_living_population: number;
+            /** Total Recorded Loss */
+            total_recorded_loss: number;
+            current_location: components["schemas"]["LeafyProductionLocationRead"] | null;
+            /** Has Location Warning */
+            has_location_warning: boolean;
+        };
         /** AssetCreate */
         AssetCreate: {
             /** Asset Type Code */
@@ -3183,6 +3280,20 @@ export interface components {
             name: string;
         };
         /**
+         * CorrectProductionDispositionCreate
+         * @description `corrected=None` means VOID (reversal only, no replacement); a
+         *     populated `corrected` means replace the original with a corrected
+         *     biological fact. One atomic command either way.
+         */
+        CorrectProductionDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            corrected?: components["schemas"]["CorrectedProductionDispositionIn"] | null;
+        };
+        /**
          * CorrectSeedlingDispositionCreate
          * @description Section 18/0.B: `corrected=None` means VOID (reversal only, no
          *     replacement); a populated `corrected` means replace the original with a
@@ -3200,6 +3311,20 @@ export interface components {
         CorrectedDispositionIn: {
             /** Quantity */
             quantity: number;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** CorrectedProductionDispositionIn */
+        CorrectedProductionDispositionIn: {
+            /** Plant Loss Count */
+            plant_loss_count: number;
             /** Reason Code */
             reason_code: string;
             /**
@@ -4624,6 +4749,26 @@ export interface components {
             note: string | null;
         };
         /**
+         * LeafyProductionLocationRead
+         * @description Operator context only, never biological authority -- mirrors
+         *     NURSERY-OPS-005B's own `LeafyProductionCurrentLocationSummary`.
+         */
+        LeafyProductionLocationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Location Type Code */
+            location_type_code: string;
+            /** Ancestry Label */
+            ancestry_label: string;
+        };
+        /**
          * LeafyProductionTransferCreate
          * @description Mirrors `IntersaladsTransplantCreate`'s own structure and validation
          *     intent exactly, substituting `LeafyProductionDestinationLineIn` for
@@ -5570,6 +5715,150 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /** ProductionDispositionCorrectResult */
+        ProductionDispositionCorrectResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            target_event: components["schemas"]["ProductionDispositionEventRead"];
+            reversal_event: components["schemas"]["ProductionDispositionEventRead"];
+            replacement_event: components["schemas"]["ProductionDispositionEventRead"] | null;
+            /** Restored Batch Carrier Assignment Id */
+            restored_batch_carrier_assignment_id: string | null;
+            /** Previous Living Population */
+            previous_living_population: number;
+            /** Resulting Living Population */
+            resulting_living_population: number;
+        };
+        /** ProductionDispositionEventRead */
+        ProductionDispositionEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            /**
+             * Event Kind
+             * @enum {string}
+             */
+            event_kind: "REDUCTION" | "REVERSAL";
+            /** Reason Code */
+            reason_code: string;
+            /** Quantity Delta */
+            quantity_delta: number;
+            /** Plant Loss Quantity */
+            plant_loss_quantity: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Note */
+            note: string | null;
+            /** Reverses Event Id */
+            reverses_event_id: string | null;
+            /** Corrects Event Id */
+            corrects_event_id: string | null;
+            /** Is Reversed */
+            is_reversed: boolean;
+            /** Actor User Id */
+            actor_user_id: string | null;
+        };
+        /**
+         * ProductionDispositionHistoryRead
+         * @description Full, un-collapsed event history for one population lineage -- never
+         *     hides original erroneous facts; corrections are visible as their own
+         *     rows with explicit linkage. Remains accessible after the lineage's
+         *     active BCA is released (section 30 of the ticket: a zero-exhausted
+         *     Plate must stay discoverable here even though it disappears from
+         *     Active Production Plates).
+         */
+        ProductionDispositionHistoryRead: {
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            /** Plate Code */
+            plate_code: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Opening Population */
+            opening_population: number;
+            /** Current Living Population */
+            current_living_population: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Events */
+            events: components["schemas"]["ProductionDispositionEventRead"][];
+        };
+        /** ProductionDispositionRecordResult */
+        ProductionDispositionRecordResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            event: components["schemas"]["ProductionDispositionEventRead"];
+            /** Previous Living Population */
+            previous_living_population: number;
+            /** Resulting Living Population */
+            resulting_living_population: number;
+            /** Assignment Released */
+            assignment_released: boolean;
+        };
         /** ProductionSystemCreate */
         ProductionSystemCreate: {
             /** Code */
@@ -5909,6 +6198,35 @@ export interface components {
             weight_kg: string;
             /** Package Count */
             package_count: number;
+        };
+        /**
+         * RecordProductionDispositionCreate
+         * @description The operator supplies only physical/biological command facts -- a
+         *     positive `plant_loss_count`, never a signed delta. The service
+         *     translates this into `quantity_delta = -plant_loss_count`.
+         */
+        RecordProductionDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Plant Loss Count */
+            plant_loss_count: number;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
         };
         /**
          * RecordSeedlingDispositionCreate
@@ -12701,6 +13019,164 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvailableProductionCultivationPlateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_production_disposition_history_farms__farm_id__leafy_production_dispositions_get: {
+        parameters: {
+            query?: {
+                batch_carrier_assignment_id?: string | null;
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionDispositionHistoryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_production_disposition_farms__farm_id__leafy_production_dispositions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordProductionDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionDispositionRecordResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_production_disposition_farms__farm_id__leafy_production_dispositions__event_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectProductionDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionDispositionCorrectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_active_production_plates_farms__farm_id__leafy_production_active_plates_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveProductionPlateRead"][];
                 };
             };
             /** @description Validation Error */

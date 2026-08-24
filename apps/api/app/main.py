@@ -17,6 +17,7 @@ from app.api.traceability import router as traceability_router
 from app.api.harvests import router as harvests_router
 from app.api.health import router as health_router
 from app.api.intersalads_transplants import router as intersalads_transplants_router
+from app.api.leafy_production_disposition import router as leafy_production_disposition_router
 from app.api.leafy_production_transfers import router as leafy_production_transfers_router
 from app.api.locations import router as locations_router
 from app.api.memberships import router as memberships_router
@@ -71,6 +72,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(transplants_router)
     api.include_router(intersalads_transplants_router)
     api.include_router(leafy_production_transfers_router)
+    api.include_router(leafy_production_disposition_router)
     api.include_router(harvests_router)
     api.include_router(packing_router)
     api.include_router(dispatch_router)

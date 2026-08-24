@@ -73,6 +73,13 @@ export type LeafyProductionTransferCreate = components["schemas"]["LeafyProducti
 export type LeafyProductionTransferRead = components["schemas"]["LeafyProductionTransferRead"];
 export type AvailableLeafyProductionSourceRead = components["schemas"]["AvailableLeafyProductionSourceRead"];
 export type AvailableProductionCultivationPlateRead = components["schemas"]["AvailableProductionCultivationPlateRead"];
+export type ActiveProductionPlateRead = components["schemas"]["ActiveProductionPlateRead"];
+export type RecordProductionDispositionCreate = components["schemas"]["RecordProductionDispositionCreate"];
+export type ProductionDispositionRecordResult = components["schemas"]["ProductionDispositionRecordResult"];
+export type CorrectProductionDispositionCreate = components["schemas"]["CorrectProductionDispositionCreate"];
+export type ProductionDispositionCorrectResult = components["schemas"]["ProductionDispositionCorrectResult"];
+export type ProductionDispositionHistoryRead = components["schemas"]["ProductionDispositionHistoryRead"];
+export type ProductionDispositionEventRead = components["schemas"]["ProductionDispositionEventRead"];
 export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
 export type OccupancyRead = components["schemas"]["OccupancyRead"];
 
@@ -553,6 +560,53 @@ export function listAvailableProductionPlates(
   return getJson<AvailableProductionCultivationPlateRead[]>(
     `/farms/${farmId}/leafy-production/available-plates`, signal,
   );
+}
+
+// --- LEAFY-OPS-001 -------------------------------------------------------------
+// Production Biological Disposition: authoritative living-population record/
+// correct against a Production Cultivation Plate's active BatchCarrierAssignment,
+// plus the Active Production Plates / Plant Loss History workspace reads.
+
+export function listActiveProductionPlates(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<ActiveProductionPlateRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<ActiveProductionPlateRead[]>(`/farms/${farmId}/leafy-production/active-plates${query}`, signal);
+}
+
+export function recordProductionDisposition(
+  farmId: string,
+  payload: RecordProductionDispositionCreate,
+  signal?: AbortSignal,
+): Promise<ProductionDispositionRecordResult> {
+  return postJson<ProductionDispositionRecordResult>(
+    `/farms/${farmId}/leafy-production/dispositions`, payload, signal,
+  );
+}
+
+export function correctProductionDisposition(
+  farmId: string,
+  eventId: string,
+  payload: CorrectProductionDispositionCreate,
+  signal?: AbortSignal,
+): Promise<ProductionDispositionCorrectResult> {
+  return postJson<ProductionDispositionCorrectResult>(
+    `/farms/${farmId}/leafy-production/dispositions/${eventId}/correct`, payload, signal,
+  );
+}
+
+export function listProductionDispositionHistory(
+  farmId: string,
+  params: { batchCarrierAssignmentId?: string; batchId?: string } = {},
+  signal?: AbortSignal,
+): Promise<ProductionDispositionHistoryRead[]> {
+  const search = new URLSearchParams();
+  if (params.batchCarrierAssignmentId) search.set("batch_carrier_assignment_id", params.batchCarrierAssignmentId);
+  if (params.batchId) search.set("batch_id", params.batchId);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return getJson<ProductionDispositionHistoryRead[]>(`/farms/${farmId}/leafy-production/dispositions${query}`, signal);
 }
 
 export function getLocationOccupants(
