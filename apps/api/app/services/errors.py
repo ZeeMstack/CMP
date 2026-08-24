@@ -1131,3 +1131,80 @@ class LeafyProductionTransferReplayStateConflictError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class ProductionDispositionValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidProductionDispositionReasonError(DomainError):
+    pass
+
+
+class InvalidProductionDispositionEffectiveTimeError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ProductionDispositionAssignmentReleasedError(DomainError):
+    """LEAFY-OPS-001: a NEW disposition RECORD command may only target the
+    currently-active BCA generation of a population lineage -- mirrors
+    SeedlingDispositionAssignmentReleasedError's own MVP safeguard."""
+
+
+class ProductionDispositionBalanceError(DomainError):
+    """LEAFY-OPS-001: the proposed event would drive the chronological
+    running authoritative living-population balance for this population
+    lineage below zero or above the root's own opening quantity at some
+    effective-time point -- checked service-side (defense-in-depth against
+    the DB's own CHECK-violation backstop)."""
+
+
+class ProductionDispositionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class ProductionDispositionEventNotFoundError(DomainError):
+    pass
+
+
+class ProductionDispositionNotReductionError(DomainError):
+    """LEAFY-OPS-001: only a REDUCTION event may ever be the target of a
+    correction/reversal -- a REVERSAL can never itself be corrected."""
+
+
+class ProductionDispositionAlreadyCorrectedError(DomainError):
+    """LEAFY-OPS-001: a REDUCTION may be reversed/corrected at most once,
+    ever."""
+
+
+class ProductionDispositionCarrierReusedError(DomainError):
+    """LEAFY-OPS-001: the physical Production Cultivation Plate Carrier this
+    correction would restore population onto has since been assigned to a
+    later, unrelated use (`Carrier.latest_batch_carrier_assignment_id` no
+    longer points to the predecessor being restored) -- mirrors
+    SeedlingDispositionCarrierReusedError's own guard exactly."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class NoPopulationRootError(DomainError):
+    """LEAFY-OPS-001: the referenced BatchCarrierAssignment has no
+    `population_root_batch_carrier_assignment_id` -- it is not a
+    Transplant-destination-anchored population lineage member (e.g. a
+    sowing-origin or batch-derivation-origin assignment), so Production
+    Biological Disposition cannot be recorded against it."""
+
+
+class UnsupportedProductionDispositionCarrierTypeError(DomainError):
+    """LEAFY-OPS-001: Production Biological Disposition is only ever
+    recorded against a `production_cultivation_plate`-typed Carrier's
+    BatchCarrierAssignment -- the underlying population-root/ledger
+    mechanism is carrier-agnostic, but the V1 service layer deliberately
+    keeps this narrow (mirrors NURSERY-OPS-005B's own destination-type
+    allowlist)."""

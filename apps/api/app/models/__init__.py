@@ -38,6 +38,9 @@ from app.models.recall import (
     RecallScopeFinishedGoodsLot,
     RecallScopeProduceLot,
 )
+from app.models.production_disposition_command import ProductionDispositionCommand
+from app.models.production_disposition_event import ProductionDispositionEvent
+from app.models.production_disposition_reason import ProductionDispositionReason
 from app.models.seed_lot import SeedLot
 from app.models.seedling_disposition_command import SeedlingDispositionCommand
 from app.models.seedling_disposition_event import SeedlingDispositionEvent
@@ -96,6 +99,9 @@ __all__ = [
     "RecallScopeBatch",
     "RecallScopeFinishedGoodsLot",
     "RecallScopeProduceLot",
+    "ProductionDispositionCommand",
+    "ProductionDispositionEvent",
+    "ProductionDispositionReason",
     "SeedLot",
     "SeedlingDispositionCommand",
     "SeedlingDispositionEvent",

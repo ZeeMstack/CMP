@@ -427,14 +427,16 @@ def test_deferred_trigger_rejects_direct_sql_unmatched_destination_open(test_eng
         )
         # Opens a new transplant-origin assignment for this already-committed
         # event without ever inserting a matching transplant_destination_line.
+        new_assignment_id = uuid.uuid4()
         session.execute(
             text(
                 "INSERT INTO batch_carrier_assignments (id, tenant_id, farm_id, batch_id, carrier_id, "
-                "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, actor_user_id) "
-                "VALUES (:id, :tenant_id, :farm_id, :batch_id, :carrier_id, :run_id, :eff, :event_id, :actor)"
+                "batch_stage_run_id, assigned_effective_time, opening_transplant_event_id, "
+                "population_root_batch_carrier_assignment_id, actor_user_id) "
+                "VALUES (:id, :tenant_id, :farm_id, :batch_id, :carrier_id, :run_id, :eff, :event_id, :id, :actor)"
             ),
             {
-                "id": uuid.uuid4(), "tenant_id": tenant.id, "farm_id": farm.id, "batch_id": s["batch_id"],
+                "id": new_assignment_id, "tenant_id": tenant.id, "farm_id": farm.id, "batch_id": s["batch_id"],
                 "carrier_id": extra_carrier.id, "run_id": active_run_id, "eff": event_row.effective_time,
                 "event_id": event_row.id, "actor": user.id,
             },
