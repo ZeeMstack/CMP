@@ -94,6 +94,26 @@ export type OperationalSummaryState = "active" | "all";
  * directly against a backend path -- everything goes through here so
  * error handling and typing stay consistent in one place.
  */
+/** Most routes' error body is `{"detail": "<string>"}`. A narrow, additive
+ * set of routes (HARVEST-OPS-001 SLICE 2 CORRECTION 1's Leafy Harvest
+ * conflicts) instead send `{"detail": {"message": "<string>", "code":
+ * "<STABLE_CODE>"}}` so the frontend can branch on `code` rather than
+ * parsing message text/shape. Both shapes are handled here, once, so
+ * `getJson`/`postJson` never duplicate the narrowing logic; every other
+ * route's plain-string shape keeps working exactly as before. */
+function parseErrorDetail(body: unknown): { message?: string; code: string | null } {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return { message: detail, code: null };
+  if (detail && typeof detail === "object") {
+    const { message, code } = detail as { message?: unknown; code?: unknown };
+    return {
+      message: typeof message === "string" ? message : undefined,
+      code: typeof code === "string" ? code : null,
+    };
+  }
+  return { message: undefined, code: null };
+}
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
@@ -113,13 +133,15 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
   if (!response.ok) {
     let detail: string | undefined;
+    let code: string | null = null;
     try {
-      const body = (await response.json()) as { detail?: string };
-      detail = body.detail;
+      const parsed = parseErrorDetail(await response.json());
+      detail = parsed.message;
+      code = parsed.code;
     } catch {
       // response body wasn't JSON; fall back to the generic message for this status
     }
-    throw errorFromResponse(response.status, detail);
+    throw errorFromResponse(response.status, detail, code);
   }
   return (await response.json()) as T;
 }
@@ -145,13 +167,15 @@ async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): P
   }
   if (!response.ok) {
     let detail: string | undefined;
+    let code: string | null = null;
     try {
-      const responseBody = (await response.json()) as { detail?: string };
-      detail = responseBody.detail;
+      const parsed = parseErrorDetail(await response.json());
+      detail = parsed.message;
+      code = parsed.code;
     } catch {
       // response body wasn't JSON; fall back to the generic message for this status
     }
-    throw errorFromResponse(response.status, detail);
+    throw errorFromResponse(response.status, detail, code);
   }
   return (await response.json()) as T;
 }
@@ -607,6 +631,69 @@ export function listProductionDispositionHistory(
   if (params.batchId) search.set("batch_id", params.batchId);
   const query = search.toString() ? `?${search.toString()}` : "";
   return getJson<ProductionDispositionHistoryRead[]>(`/farms/${farmId}/leafy-production/dispositions${query}`, signal);
+}
+
+// --- HARVEST-OPS-001 SLICE 2 -----------------------------------------------------
+// Operator-facing Leafy Harvest surface: harvestable Production Plates,
+// recording, history (original vs. current-effective vs. available-after-
+// Packing), and line-level correction. Layers on Slice 1's frozen backend
+// domain -- never a second Harvest write path.
+
+export type LeafyHarvestLocationRead = components["schemas"]["LeafyHarvestLocationRead"];
+export type HarvestablePlateRead = components["schemas"]["HarvestablePlateRead"];
+export type RecordLeafyHarvestCreate = components["schemas"]["RecordLeafyHarvestCreate"];
+export type RecordLeafyHarvestSourceLineIn = components["schemas"]["RecordLeafyHarvestSourceLineIn"];
+export type LeafyHarvestEventRead = components["schemas"]["LeafyHarvestEventRead"];
+export type LeafyHarvestSourceLineRead = components["schemas"]["LeafyHarvestSourceLineRead"];
+export type LeafyHarvestSourceLineCorrectionRead = components["schemas"]["LeafyHarvestSourceLineCorrectionRead"];
+export type CorrectLeafyHarvestSourceLineCreate = components["schemas"]["CorrectLeafyHarvestSourceLineCreate"];
+
+export function listHarvestablePlates(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<HarvestablePlateRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<HarvestablePlateRead[]>(`/farms/${farmId}/leafy-production/harvestable-plates${query}`, signal);
+}
+
+export function recordLeafyHarvest(
+  farmId: string,
+  payload: RecordLeafyHarvestCreate,
+  signal?: AbortSignal,
+): Promise<LeafyHarvestEventRead> {
+  return postJson<LeafyHarvestEventRead>(`/farms/${farmId}/leafy-production/harvests`, payload, signal);
+}
+
+export function listLeafyHarvests(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<LeafyHarvestEventRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<LeafyHarvestEventRead[]>(`/farms/${farmId}/leafy-production/harvests${query}`, signal);
+}
+
+export function getLeafyHarvest(
+  farmId: string,
+  harvestEventId: string,
+  signal?: AbortSignal,
+): Promise<LeafyHarvestEventRead> {
+  return getJson<LeafyHarvestEventRead>(`/farms/${farmId}/leafy-production/harvests/${harvestEventId}`, signal);
+}
+
+export function correctLeafyHarvestSourceLine(
+  farmId: string,
+  harvestEventId: string,
+  harvestSourceLineId: string,
+  payload: CorrectLeafyHarvestSourceLineCreate,
+  signal?: AbortSignal,
+): Promise<LeafyHarvestEventRead> {
+  return postJson<LeafyHarvestEventRead>(
+    `/farms/${farmId}/leafy-production/harvests/${harvestEventId}/source-lines/${harvestSourceLineId}/correct`,
+    payload,
+    signal,
+  );
 }
 
 export function getLocationOccupants(

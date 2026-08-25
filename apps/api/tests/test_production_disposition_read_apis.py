@@ -14,6 +14,7 @@ exclusion tests below."""
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -353,3 +354,68 @@ def test_history_farm_isolation(db_session, active_context_with_farm) -> None:
         db_session, tenant_id=tenant.id, farm_id=other_farm.id,
     )
     assert not any(r["population_root_batch_carrier_assignment_id"] == root_id for r in rows)
+
+
+# =====================================================================
+# HARVEST-OPS-001 SLICE 2: `list_active_production_plates`'s `current_
+# living` must route through the shared `leafy_population_service`
+# authority, not an inline `ProductionDispositionEvent`-only SUM -- Slice 2
+# discovered this had drifted stale once HarvestPopulationEvent existed
+# (this read function predates Harvest and was never updated to see it).
+# =====================================================================
+
+
+def test_active_plates_current_living_reflects_harvest_consumption(db_session, active_context_with_farm) -> None:
+    """A Plate Harvested down from 10 to 6 must show `current_living_
+    population == 6` here, not the stale opening-minus-Plant-Loss-only
+    value (10) it showed before the Slice 2 fix -- proves the read now
+    agrees with `get_current_living_population` (and therefore with
+    `harvest_service.list_harvestable_production_plates`, which always used
+    the shared authority)."""
+    from app.services import harvest_service, leafy_population_service
+
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=10)
+    harvest_service.record_leafy_harvest(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), effective_time=t0 + timedelta(hours=1),
+        produce_lot_code=f"HL-{uuid.uuid4().hex[:8]}", note=None,
+        source_lines=[
+            {"batch_carrier_assignment_id": root_id, "whole_unit_count": 4, "harvested_weight_kg": Decimal("2.000"), "note": None}
+        ],
+    )
+    rows = production_disposition_service.list_active_production_plates(
+        db_session, tenant_id=tenant.id, farm_id=farm.id
+    )
+    row = next(r for r in rows if r["batch_carrier_assignment_id"] == root_id)
+    authoritative = leafy_population_service.get_current_living_population(
+        db_session, root_batch_carrier_assignment_id=root_id
+    )
+    assert authoritative == 6
+    assert row["current_living_population"] == 6
+
+
+def test_active_plates_current_living_combines_plant_loss_and_harvest(db_session, active_context_with_farm) -> None:
+    """Both a Plant Loss AND a Harvest against the same Plate must both be
+    reflected: opening 10, Plant Loss 2, Harvest 3 -> current living 5."""
+    from datetime import timedelta
+
+    from app.services import harvest_service
+
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=10)
+    _record_loss(db_session, tenant, farm, user, root_id, 2, effective_time=t0 + timedelta(hours=1))
+    harvest_service.record_leafy_harvest(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), effective_time=t0 + timedelta(hours=2),
+        produce_lot_code=f"HL-{uuid.uuid4().hex[:8]}", note=None,
+        source_lines=[
+            {"batch_carrier_assignment_id": root_id, "whole_unit_count": 3, "harvested_weight_kg": Decimal("1.500"), "note": None}
+        ],
+    )
+    rows = production_disposition_service.list_active_production_plates(
+        db_session, tenant_id=tenant.id, farm_id=farm.id
+    )
+    row = next(r for r in rows if r["batch_carrier_assignment_id"] == root_id)
+    assert row["current_living_population"] == 5
+    assert row["total_recorded_loss"] == 2

@@ -6,6 +6,7 @@ import * as api from "@/lib/api/client";
 import type {
   CarrierSpecificationCreate,
   CarrierSpecificationUpdate,
+  CorrectLeafyHarvestSourceLineCreate,
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
@@ -14,6 +15,7 @@ import type {
   LeafyProductionTransferCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  RecordLeafyHarvestCreate,
   RecordProductionDispositionCreate,
   RecordSeedlingDispositionCreate,
   SeedlingEntryCreate,
@@ -805,6 +807,86 @@ export function useCorrectProductionDisposition(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateProductionDisposition(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+// --- HARVEST-OPS-001 SLICE 2 -----------------------------------------------------
+// Harvestable Plates / Harvest history reads, and the record/correct
+// commands. Mirrors LEAFY-OPS-001's own invalidation discipline exactly --
+// refetch-then-force-back-to-editable-step is the component's job (see
+// LeafyHarvestForm/CorrectHarvestForm), this layer only keeps the cache honest.
+
+export function useHarvestablePlates(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.harvestablePlates(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listHarvestablePlates(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useLeafyHarvests(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.leafyHarvests(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listLeafyHarvests(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useLeafyHarvest(farmId: string, harvestEventId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.leafyHarvest(tenantId ?? "", farmId, harvestEventId ?? ""),
+    queryFn: ({ signal }) => api.getLeafyHarvest(farmId, harvestEventId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(harvestEventId),
+  });
+}
+
+function _invalidateLeafyHarvest(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.harvestablePlates(tenantId, farmId, "") });
+  queryClient.invalidateQueries({ queryKey: queryKeys.leafyHarvests(tenantId, farmId, "") });
+  queryClient.invalidateQueries({
+    queryKey: ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", "detail"],
+  });
+}
+
+export function useRecordLeafyHarvest(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordLeafyHarvestCreate) => api.recordLeafyHarvest(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useCorrectLeafyHarvestSourceLine(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { harvestEventId, harvestSourceLineId, payload }: {
+        harvestEventId: string; harvestSourceLineId: string; payload: CorrectLeafyHarvestSourceLineCreate;
+      },
+    ) => api.correctLeafyHarvestSourceLine(farmId, harvestEventId, harvestSourceLineId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateLeafyHarvest(queryClient, tenantId, farmId);
     },
   });
 }

@@ -1208,3 +1208,71 @@ class UnsupportedProductionDispositionCarrierTypeError(DomainError):
     mechanism is carrier-agnostic, but the V1 service layer deliberately
     keeps this narrow (mirrors NURSERY-OPS-005B's own destination-type
     allowlist)."""
+
+
+# --- HARVEST-OPS-001 --------------------------------------------------------------
+
+
+class UnsupportedHarvestSourceCarrierTypeError(DomainError):
+    """HARVEST-OPS-001: a Leafy Harvest source line is only ever recorded
+    against a `production_cultivation_plate`-typed Carrier's
+    BatchCarrierAssignment -- mirrors
+    UnsupportedProductionDispositionCarrierTypeError exactly. Generic
+    CMP-013 `record_harvest` has no such restriction and is unaffected."""
+
+
+class HarvestPopulationInsufficientError(DomainError):
+    """HARVEST-OPS-001: a Leafy Harvest source line's `whole_unit_count`
+    either exceeds the Production Cultivation Plate's own current
+    authoritative living population, or that population is already zero --
+    heads/weight are never invented, and Harvest may never harvest more
+    biology than is actually alive."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class HarvestSourceLineNotFoundError(DomainError):
+    pass
+
+
+class HarvestCorrectionValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class HarvestCorrectionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class HarvestCorrectionAlreadySupersededError(DomainError):
+    """HARVEST-OPS-001: the correction predecessor (the original
+    HarvestSourceLine, or a specific prior correction) the caller believes
+    is current has already been superseded by another correction -- the
+    caller must refresh and re-review, never silently retarget to the newer
+    tip (mirrors the concurrency-conflict contract established for
+    Production Disposition/InterSalads corrections)."""
+
+
+class HarvestLedgerBalanceError(DomainError):
+    """HARVEST-OPS-001: this correction's produce-lot ledger adjustment
+    would leave the HarvestedProduceLot's own available balance negative --
+    some quantity has already been consumed downstream in Packing."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class HarvestCarrierReusedError(DomainError):
+    """HARVEST-OPS-001: the physical Production Cultivation Plate Carrier a
+    Harvest correction would restore population onto has since been
+    assigned to a later, unrelated use (`Carrier.latest_batch_carrier_
+    assignment_id` no longer points to the predecessor being restored) --
+    mirrors ProductionDispositionCarrierReusedError exactly."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

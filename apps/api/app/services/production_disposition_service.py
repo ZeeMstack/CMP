@@ -55,7 +55,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.carrier import Carrier
@@ -64,8 +64,7 @@ from app.models.crop_batch import CropBatch
 from app.models.production_disposition_command import ProductionDispositionCommand
 from app.models.production_disposition_event import ProductionDispositionEvent
 from app.models.production_disposition_reason import ProductionDispositionReason
-from app.models.transplant_destination_line import TransplantDestinationLine
-from app.services import farm_service
+from app.services import farm_service, leafy_population_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
@@ -88,8 +87,6 @@ from app.services.errors import (
 OTHER_REASON_CODE = "other"
 PRODUCTION_CULTIVATION_PLATE_CARRIER_TYPE_CODE = "production_cultivation_plate"
 
-_CHRONOLOGICAL_BALANCE_MARKER = "CMP-DOMAIN-PRODUCTION-001 chronological balance violated"
-
 
 def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> None:
     farm = farm_service.get_farm(db, tenant_id=tenant_id, farm_id=farm_id)
@@ -108,10 +105,7 @@ def _constraint_name(exc: IntegrityError) -> str | None:
 
 
 def _is_balance_violation_error(exc: IntegrityError) -> bool:
-    orig = getattr(exc, "orig", None)
-    diag = getattr(orig, "diag", None)
-    message = getattr(diag, "message_primary", None) or str(orig or exc)
-    return _CHRONOLOGICAL_BALANCE_MARKER in message
+    return leafy_population_service.is_balance_violation_error(exc)
 
 
 def _compute_record_fingerprint(
@@ -154,104 +148,29 @@ def _find_existing_command(
     ).scalar_one_or_none()
 
 
-def get_root_opening_population(db: Session, *, root_batch_carrier_assignment_id: uuid.UUID) -> int:
-    """Public: the ONLY opening-population authority -- the lineage root's
-    own `TransplantDestinationLine.assigned_plant_count`. Never a second,
-    independently-derived starting quantity."""
-    value = db.execute(
-        select(TransplantDestinationLine.assigned_plant_count).where(
-            TransplantDestinationLine.destination_batch_carrier_assignment_id == root_batch_carrier_assignment_id
-        )
-    ).scalar_one_or_none()
-    if value is None:
-        raise NoPopulationRootError(str(root_batch_carrier_assignment_id))
-    return value
-
-
-def get_current_living_population(
-    db: Session, *, root_batch_carrier_assignment_id: uuid.UUID, as_of: datetime | None = None
-) -> int:
-    """Public: authoritative current living population for an entire
-    population lineage -- one flat, non-recursive SUM keyed by the stable
-    root id, correct across any number of A -> B -> C restoration
-    generations. `as_of=None` means "all events ever recorded"."""
-    opening = get_root_opening_population(db, root_batch_carrier_assignment_id=root_batch_carrier_assignment_id)
-    query = select(func.coalesce(func.sum(ProductionDispositionEvent.quantity_delta), 0)).where(
-        ProductionDispositionEvent.population_root_batch_carrier_assignment_id == root_batch_carrier_assignment_id
-    )
-    if as_of is not None:
-        query = query.where(ProductionDispositionEvent.effective_time <= as_of)
-    delta_sum = db.execute(query).scalar_one()
-    return opening + delta_sum
-
-
-def resolve_active_assignment_id_for_root(
-    db: Session, *, root_batch_carrier_assignment_id: uuid.UUID
-) -> uuid.UUID | None:
-    """The currently-active (unreleased) BCA generation for this population
-    lineage, or `None` if the lineage is fully exhausted and not (yet)
-    restored. At most one such row can exist by construction (a lineage is
-    a strict linear chain: a restoration only ever opens a NEW generation
-    once its predecessor is released)."""
-    return db.execute(
-        select(BatchCarrierAssignment.id).where(
-            BatchCarrierAssignment.population_root_batch_carrier_assignment_id == root_batch_carrier_assignment_id,
-            BatchCarrierAssignment.released_effective_time.is_(None),
-        )
-    ).scalar_one_or_none()
-
-
-def resolve_lineage_tip_assignment_id(
-    db: Session, *, root_batch_carrier_assignment_id: uuid.UUID
-) -> uuid.UUID:
-    """The most recent generation in this population lineage, active or
-    released -- the one row nothing else's `restored_from_batch_carrier_
-    assignment_id` names as its own predecessor."""
-    successor = aliased(BatchCarrierAssignment)
-    return db.execute(
-        select(BatchCarrierAssignment.id).where(
-            BatchCarrierAssignment.population_root_batch_carrier_assignment_id == root_batch_carrier_assignment_id,
-            ~select(successor.id)
-            .where(successor.restored_from_batch_carrier_assignment_id == BatchCarrierAssignment.id)
-            .exists(),
-        )
-    ).scalar_one()
+# HARVEST-OPS-001: these four resolvers now live in leafy_population_service
+# (the ONE shared authoritative calculation Plant Loss and Harvest both
+# use) -- re-exported here under their original names so every existing
+# caller/test (`production_disposition_service.get_current_living_population(...)`
+# etc.) keeps working byte-for-byte. `get_current_living_population` now
+# correctly includes HarvestPopulationEvent deltas too, which is a no-op
+# change for any lineage with no Harvest history (LEAFY-OPS-001's own
+# behavior is unchanged).
+get_root_opening_population = leafy_population_service.get_root_opening_population
+get_current_living_population = leafy_population_service.get_current_living_population
+resolve_active_assignment_id_for_root = leafy_population_service.resolve_active_assignment_id_for_root
+resolve_lineage_tip_assignment_id = leafy_population_service.resolve_lineage_tip_assignment_id
 
 
 def _validate_chronological_balance(
     db: Session, *, root_batch_carrier_assignment_id: uuid.UUID, opening: int,
     new_effective_time: datetime, new_delta: int, exclude_event_id: uuid.UUID | None = None,
 ) -> None:
-    """Service-side pre-check (defense-in-depth against the DB's own
-    CHECK-violation trigger backstop) -- mirrors SeedlingDisposition's own
-    "grouped by effective_time, walked forward" approach exactly, so a
-    same-timestamp REVERSAL/target pair is never sensitive to incidental
-    row ordering."""
-    rows = db.execute(
-        select(ProductionDispositionEvent.effective_time, ProductionDispositionEvent.quantity_delta).where(
-            ProductionDispositionEvent.population_root_batch_carrier_assignment_id
-            == root_batch_carrier_assignment_id,
-            ProductionDispositionEvent.id != exclude_event_id if exclude_event_id is not None else True,
-        )
-    ).all()
-    grouped: dict[datetime, int] = {}
-    for et, delta in rows:
-        grouped[et] = grouped.get(et, 0) + delta
-    grouped[new_effective_time] = grouped.get(new_effective_time, 0) + new_delta
-
-    running = opening
-    for et in sorted(grouped.keys()):
-        running += grouped[et]
-        if running < 0:
-            raise ProductionDispositionBalanceError(
-                f"recording this event would drive the chronological authoritative living-population balance "
-                f"below zero as of {et.isoformat()}"
-            )
-        if running > opening:
-            raise ProductionDispositionBalanceError(
-                f"recording this event would drive the chronological authoritative living-population balance "
-                f"above the population root's own opening quantity as of {et.isoformat()}"
-            )
+    leafy_population_service.validate_chronological_balance(
+        db, root_batch_carrier_assignment_id=root_batch_carrier_assignment_id, opening=opening,
+        new_effective_time=new_effective_time, new_delta=new_delta,
+        exclude_production_disposition_event_id=exclude_event_id,
+    )
 
 
 def _require_production_cultivation_plate(db: Session, *, carrier_id: uuid.UUID) -> None:
@@ -741,19 +660,22 @@ def list_active_production_plates(
     for r in rows:
         root_id = r["root_id"]
         opening = get_root_opening_population(db, root_batch_carrier_assignment_id=root_id)
-        totals = db.execute(
+        # HARVEST-OPS-001 SLICE 2: `current_living` must route through the
+        # shared authority (which also sums HarvestPopulationEvent), not an
+        # inline ProductionDispositionEvent-only SUM -- a plate that has
+        # ever been Harvested would otherwise show a stale, too-high living
+        # count here. `total_recorded_loss` stays Production-Disposition-
+        # specific (Plant Loss only, by design) and keeps its own inline sum.
+        current_living = leafy_population_service.get_current_living_population(
+            db, root_batch_carrier_assignment_id=root_id
+        )
+        total_recorded_loss = db.execute(
             select(
-                func.coalesce(func.sum(ProductionDispositionEvent.quantity_delta), 0),
                 func.coalesce(
-                    func.sum(
-                        func.greatest(-ProductionDispositionEvent.quantity_delta, 0)
-                    ),
-                    0,
-                ),
+                    func.sum(func.greatest(-ProductionDispositionEvent.quantity_delta, 0)), 0,
+                )
             ).where(ProductionDispositionEvent.population_root_batch_carrier_assignment_id == root_id)
-        ).one()
-        current_living = opening + totals[0]
-        total_recorded_loss = totals[1]
+        ).scalar_one()
 
         location = None
         has_warning = True

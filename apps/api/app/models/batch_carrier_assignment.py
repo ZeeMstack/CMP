@@ -96,6 +96,20 @@ class BatchCarrierAssignment(Base):
     population_root_batch_carrier_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("batch_carrier_assignments.id"), nullable=True
     )
+    # HARVEST-OPS-001: a fifth typed releaser -- the exact
+    # HarvestPopulationEvent (CONSUMPTION) whose insert drove a Production
+    # Cultivation Plate's authoritative living population to exactly zero.
+    # Deliberately source-line-specific, not HarvestEvent-header-specific:
+    # a multi-Plate HarvestEvent may zero-exhaust one Plate while leaving
+    # another active, and this column names the exact biological fact for
+    # THIS BCA's own lineage, never the shared event header. Never reuses
+    # any other typed releaser (a different biological lifecycle each).
+    released_by_harvest_population_event_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # A restoration's opener when a Harvest correction restores positive
+    # population after the exhausting Harvest above released this
+    # lineage's active BCA -- mirrors opening_production_disposition_
+    # reversal_event_id exactly.
+    opening_harvest_population_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -108,22 +122,37 @@ class BatchCarrierAssignment(Base):
             "+ CASE WHEN opening_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN opening_transplant_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN opening_seedling_disposition_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END "
-            "+ CASE WHEN opening_production_disposition_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
+            "+ CASE WHEN opening_production_disposition_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN opening_harvest_population_reversal_event_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_batch_carrier_assignments_exactly_one_opener",
         ),
         CheckConstraint(
             "(released_effective_time IS NULL) = "
             "(released_by_transplant_event_id IS NULL AND released_by_batch_derivation_event_id IS NULL "
             "AND released_by_seedling_disposition_event_id IS NULL "
-            "AND released_by_production_disposition_event_id IS NULL)",
+            "AND released_by_production_disposition_event_id IS NULL "
+            "AND released_by_harvest_population_event_id IS NULL)",
             name="ck_batch_carrier_assignments_release_fields_together",
         ),
         CheckConstraint(
             "(CASE WHEN released_by_transplant_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN released_by_batch_derivation_event_id IS NOT NULL THEN 1 ELSE 0 END "
             "+ CASE WHEN released_by_seedling_disposition_event_id IS NOT NULL THEN 1 ELSE 0 END "
-            "+ CASE WHEN released_by_production_disposition_event_id IS NOT NULL THEN 1 ELSE 0 END) <= 1",
+            "+ CASE WHEN released_by_production_disposition_event_id IS NOT NULL THEN 1 ELSE 0 END "
+            "+ CASE WHEN released_by_harvest_population_event_id IS NOT NULL THEN 1 ELSE 0 END) <= 1",
             name="ck_batch_carrier_assignments_at_most_one_releaser",
+        ),
+        # HARVEST-OPS-001: mirrors ck_batch_carrier_assignments_only_
+        # production_source_releasable exactly -- a Harvest-driven release
+        # is only ever a Transplant-created destination BCA or one already
+        # restored by a prior Production Disposition OR Harvest correction
+        # (the same population lineage this and LEAFY-OPS-001 share).
+        CheckConstraint(
+            "released_by_harvest_population_event_id IS NULL "
+            "OR opening_transplant_event_id IS NOT NULL "
+            "OR opening_production_disposition_reversal_event_id IS NOT NULL "
+            "OR opening_harvest_population_reversal_event_id IS NOT NULL",
+            name="ck_batch_carrier_assignments_only_harvest_source_releasable",
         ),
         # LEAFY-OPS-001: a Production-Disposition-driven release is only ever
         # a Transplant-created destination BCA (the population lineage this
@@ -135,7 +164,8 @@ class BatchCarrierAssignment(Base):
         CheckConstraint(
             "released_by_production_disposition_event_id IS NULL "
             "OR opening_transplant_event_id IS NOT NULL "
-            "OR opening_production_disposition_reversal_event_id IS NOT NULL",
+            "OR opening_production_disposition_reversal_event_id IS NOT NULL "
+            "OR opening_harvest_population_reversal_event_id IS NOT NULL",
             name="ck_batch_carrier_assignments_only_production_source_releasable",
         ),
         # SEEDLING-DISPOSITION-LIFECYCLE-001: a Disposition-driven release is
@@ -172,7 +202,8 @@ class BatchCarrierAssignment(Base):
             "(restored_from_batch_carrier_assignment_id IS NOT NULL) = "
             "(opening_transplant_reversal_event_id IS NOT NULL "
             "OR opening_seedling_disposition_reversal_event_id IS NOT NULL "
-            "OR opening_production_disposition_reversal_event_id IS NOT NULL)",
+            "OR opening_production_disposition_reversal_event_id IS NOT NULL "
+            "OR opening_harvest_population_reversal_event_id IS NOT NULL)",
             name="ck_batch_carrier_assignments_restoration_opener_match",
         ),
         CheckConstraint(
@@ -215,6 +246,20 @@ class BatchCarrierAssignment(Base):
             "opening_production_disposition_reversal_event_id",
             unique=True,
             postgresql_where=text("opening_production_disposition_reversal_event_id IS NOT NULL"),
+        ),
+        # HARVEST-OPS-001: same two DB-level backstops, mirrored for the new
+        # Harvest typed pair.
+        Index(
+            "ux_batch_carrier_assignments_released_by_harvest_pop_once",
+            "released_by_harvest_population_event_id",
+            unique=True,
+            postgresql_where=text("released_by_harvest_population_event_id IS NOT NULL"),
+        ),
+        Index(
+            "ux_batch_carrier_assignments_opened_by_harvest_pop_once",
+            "opening_harvest_population_reversal_event_id",
+            unique=True,
+            postgresql_where=text("opening_harvest_population_reversal_event_id IS NOT NULL"),
         ),
         UniqueConstraint(
             "tenant_id", "farm_id", "id", name="uq_batch_carrier_assignments_tenant_farm_id"
@@ -373,5 +418,27 @@ class BatchCarrierAssignment(Base):
                 "batch_carrier_assignments.id",
             ],
             name="fk_batch_carrier_assignments_population_root",
+        ),
+        # HARVEST-OPS-001: same 2-column tenant/farm form as the Production
+        # Disposition FKs above (HarvestPopulationEvent has no batch_id
+        # column of its own either) -- same-batch/lineage equality is
+        # proven by the closure and origin-integrity triggers instead.
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "released_by_harvest_population_event_id"],
+            [
+                "harvest_population_events.tenant_id",
+                "harvest_population_events.farm_id",
+                "harvest_population_events.id",
+            ],
+            name="fk_batch_carrier_assignments_released_by_harvest_pop_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "opening_harvest_population_reversal_event_id"],
+            [
+                "harvest_population_events.tenant_id",
+                "harvest_population_events.farm_id",
+                "harvest_population_events.id",
+            ],
+            name="fk_batch_carrier_assignments_opening_harvest_pop_reversal_event",
         ),
     )

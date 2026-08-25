@@ -16,18 +16,31 @@ export type AppErrorKind =
 export class AppError extends Error {
   readonly kind: AppErrorKind;
   readonly status: number | null;
+  /** A stable, machine-readable domain-error identifier (e.g.
+   * `"HARVEST_CORRECTION_STALE"`), when the backend supplied one -- `null`
+   * otherwise. Additive and backward-compatible: most routes never send a
+   * `code`, and every caller must keep working with `code === null`.
+   * Human-readable `message`/`kind` are never a substitute for this: a
+   * caller that needs to distinguish between two 409s of the same `kind`
+   * (e.g. two different Harvest correction conflicts) must branch on
+   * `code`, never on the message text or its shape. */
+  readonly code: string | null;
 
-  constructor(kind: AppErrorKind, message: string, status: number | null = null) {
+  constructor(kind: AppErrorKind, message: string, status: number | null = null, code: string | null = null) {
     super(message);
     this.kind = kind;
     this.status = status;
+    this.code = code;
   }
 }
 
-export function errorFromResponse(status: number, detail?: string): AppError {
+export function errorFromResponse(status: number, detail?: string, code?: string | null): AppError {
+  const errorCode = code ?? null;
   switch (status) {
     case 401:
-      return new AppError("identity_error", detail ?? "You are not signed in, or your session has expired.", status);
+      return new AppError(
+        "identity_error", detail ?? "You are not signed in, or your session has expired.", status, errorCode,
+      );
     case 403:
       // A 403 is never an authentication failure -- the caller is still
       // signed in. Never worded like a session/network problem, and
@@ -37,21 +50,22 @@ export function errorFromResponse(status: number, detail?: string): AppError {
         "permission_error",
         detail ?? "You don't have access to this operation or workspace context.",
         status,
+        errorCode,
       );
     case 404:
-      return new AppError("not_found", detail ?? "That item could not be found.", status);
+      return new AppError("not_found", detail ?? "That item could not be found.", status, errorCode);
     case 400:
     case 422:
-      return new AppError("invalid_request", detail ?? "The request was invalid.", status);
+      return new AppError("invalid_request", detail ?? "The request was invalid.", status, errorCode);
     case 409:
-      return new AppError("conflict", detail ?? "This conflicts with existing data.", status);
+      return new AppError("conflict", detail ?? "This conflicts with existing data.", status, errorCode);
     case 502:
-      return new AppError("network_error", detail ?? "Could not reach the backend.", status);
+      return new AppError("network_error", detail ?? "Could not reach the backend.", status, errorCode);
     default:
       if (status >= 500) {
-        return new AppError("server_error", detail ?? "The server encountered an error.", status);
+        return new AppError("server_error", detail ?? "The server encountered an error.", status, errorCode);
       }
-      return new AppError("server_error", detail ?? `Unexpected response (${status}).`, status);
+      return new AppError("server_error", detail ?? `Unexpected response (${status}).`, status, errorCode);
   }
 }
 

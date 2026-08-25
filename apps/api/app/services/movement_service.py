@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -492,6 +492,32 @@ def get_occupancy(
 ) -> Occupancy | None:
     _resolve_occupant(db, tenant_id=tenant_id, farm_id=farm_id, occupant_kind=occupant_kind, occupant_id=occupant_id)
     return _get_active_occupancy_for_occupant(db, occupant_kind=occupant_kind, occupant_id=occupant_id)
+
+
+def get_carrier_location_as_of(db: Session, *, carrier_id: uuid.UUID, as_of: datetime) -> uuid.UUID | None:
+    """HARVEST-OPS-001 SLICE 2 CORRECTION 1: the Carrier's physical
+    `target_location_id` as of a historical timestamp -- NOT its current
+    occupancy. Interval semantics mirror `observation_service.record_
+    observation`'s own historical `BatchStageRun` resolution exactly
+    (open-bound inclusive, close-bound exclusive-with-null-escape):
+    `effective_time <= as_of AND (end_time IS NULL OR end_time > as_of)`.
+    Only ever meaningful for a Carrier occupying a fixed Location directly
+    (Harvest's own callers never need the Asset-position/relative-path
+    resolution `get_resolved_location` provides) -- returns `None`,
+    never a fallback to current location, if no Occupancy interval
+    legitimately contains `as_of` (e.g. the Carrier had no Occupancy row
+    yet at that instant)."""
+    return db.execute(
+        select(Occupancy.target_location_id)
+        .where(
+            Occupancy.occupant_carrier_id == carrier_id,
+            Occupancy.target_location_id.is_not(None),
+            Occupancy.effective_time <= as_of,
+            or_(Occupancy.end_time.is_(None), Occupancy.end_time > as_of),
+        )
+        .order_by(Occupancy.effective_time.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 def get_movement_history(
