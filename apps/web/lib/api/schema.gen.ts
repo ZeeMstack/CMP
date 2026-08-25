@@ -1917,6 +1917,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/leafy-production/harvestable-plates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Harvestable Plates */
+        get: operations["list_harvestable_plates_farms__farm_id__leafy_production_harvestable_plates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/harvests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Leafy Harvests */
+        get: operations["list_leafy_harvests_farms__farm_id__leafy_production_harvests_get"];
+        put?: never;
+        /** Record Leafy Harvest */
+        post: operations["record_leafy_harvest_farms__farm_id__leafy_production_harvests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/harvests/{harvest_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Leafy Harvest */
+        get: operations["get_leafy_harvest_farms__farm_id__leafy_production_harvests__harvest_event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/leafy-production/harvests/{harvest_event_id}/source-lines/{harvest_source_line_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Leafy Harvest Source Line */
+        post: operations["correct_leafy_harvest_source_line_farms__farm_id__leafy_production_harvests__harvest_event_id__source_lines__harvest_source_line_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/harvests": {
         parameters: {
             query?: never;
@@ -3279,6 +3348,26 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CorrectLeafyHarvestSourceLineCreate */
+        CorrectLeafyHarvestSourceLineCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Supersedes Correction Id */
+            supersedes_correction_id?: string | null;
+            /** Is Void */
+            is_void: boolean;
+            /** Corrected Harvested Weight Kg */
+            corrected_harvested_weight_kg?: number | string | null;
+            /** Corrected Whole Unit Count */
+            corrected_whole_unit_count?: number | null;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string;
+        };
         /**
          * CorrectProductionDispositionCreate
          * @description `corrected=None` means VOID (reversal only, no replacement); a
@@ -4468,6 +4557,51 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /**
+         * HarvestablePlateRead
+         * @description One row per currently-eligible Leafy Harvest source: an active
+         *     (unreleased) `production_cultivation_plate` BatchCarrierAssignment with
+         *     positive current living population (Slice-1 shared authority). A
+         *     zero-living Plate never appears here (it disappears from the
+         *     harvestable list once fully harvested) but remains discoverable via
+         *     Harvest history. A quality-held Plate DOES still appear here (visibly
+         *     flagged, never hidden) -- the write endpoint remains the sole
+         *     authority that actually blocks a new Harvest while the hold is open.
+         *     Deliberately omits the internal population-root BatchCarrierAssignment
+         *     id -- never genuinely useful to the operator-facing client.
+         */
+        HarvestablePlateRead: {
+            /**
+             * Production Plate Id
+             * Format: uuid
+             */
+            production_plate_id: string;
+            /** Production Plate Code */
+            production_plate_code: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Name */
+            variety_name: string | null;
+            /** Current Living Heads */
+            current_living_heads: number;
+            /**
+             * Current Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            current_batch_carrier_assignment_id: string;
+            location: components["schemas"]["LeafyHarvestLocationRead"] | null;
+            /** Has Location Warning */
+            has_location_warning: boolean;
+            /** Quality Hold Open */
+            quality_hold_open: boolean;
+        };
         /** HarvestedProduceLotImpactRead */
         HarvestedProduceLotImpactRead: {
             /**
@@ -4668,6 +4802,184 @@ export interface components {
             total_discarded_plant_count: number;
             /** Total Remainder After */
             total_remainder_after: number;
+        };
+        /**
+         * LeafyHarvestEventRead
+         * @description One HarvestEvent/HarvestedProduceLot pair, Leafy-aware. `original_*`
+         *     mirrors `HarvestedProduceLot.total_*` (immutable, never presented as
+         *     current truth on its own). `current_*` is the aggregation of every
+         *     source line's own current effective tuple (Slice-1's correction chain
+         *     authority) -- may equal `original_*` in total even when individual
+         *     lines changed in offsetting directions; per-line values in
+         *     `source_lines` remain the only place that distinction is visible.
+         *     `available_balance_*` is the produce lot's CURRENT ledger balance
+         *     (after any downstream Packing consumption) -- deliberately a different
+         *     number from `current_*`, never conflated with it.
+         */
+        LeafyHarvestEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Produce Lot Id
+             * Format: uuid
+             */
+            produce_lot_id: string;
+            /** Produce Lot Code */
+            produce_lot_code: string;
+            /** Note */
+            note: string | null;
+            /** Original Total Harvested Weight Kg */
+            original_total_harvested_weight_kg: string;
+            /** Original Total Whole Unit Count */
+            original_total_whole_unit_count: number | null;
+            /** Current Total Harvested Weight Kg */
+            current_total_harvested_weight_kg: string;
+            /** Current Total Whole Unit Count */
+            current_total_whole_unit_count: number;
+            /** Available Balance Weight Kg */
+            available_balance_weight_kg: string;
+            /** Available Balance Whole Unit Count */
+            available_balance_whole_unit_count: number | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["LeafyHarvestSourceLineRead"][];
+        };
+        /**
+         * LeafyHarvestLocationRead
+         * @description One Location breakdown, broken out by the fixed Leafy chain (`zone ->
+         *     span -> grow_table`, always under one `greenhouse`) -- resolved by
+         *     walking `parent_location_id` and slotting each ancestor by its own
+         *     `location_type_code`, never by a hardcoded depth (CLAUDE.md: generic,
+         *     UUID-based parent-child locations). Operator context only, never
+         *     biological authority. Reused for two DELIBERATELY DIFFERENT-MEANING
+         *     fields (never conflate them): `HarvestablePlateRead.location` is the
+         *     Plate's CURRENT physical Occupancy target (operational, live);
+         *     `LeafyHarvestSourceLineRead.harvest_location` is the Plate's HISTORICAL
+         *     Occupancy target as of the HarvestEvent's own `effective_time` (a
+         *     traceability fact, frozen at Harvest time, unaffected by any later
+         *     Movement).
+         */
+        LeafyHarvestLocationRead: {
+            greenhouse: components["schemas"]["LeafyLocationSlotRead"] | null;
+            zone: components["schemas"]["LeafyLocationSlotRead"] | null;
+            span: components["schemas"]["LeafyLocationSlotRead"] | null;
+            grow_table: components["schemas"]["LeafyLocationSlotRead"] | null;
+        };
+        /** LeafyHarvestSourceLineCorrectionRead */
+        LeafyHarvestSourceLineCorrectionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Supersedes Correction Id */
+            supersedes_correction_id: string | null;
+            /** Is Void */
+            is_void: boolean;
+            /** Corrected Harvested Weight Kg */
+            corrected_harvested_weight_kg: string | null;
+            /** Corrected Whole Unit Count */
+            corrected_whole_unit_count: number | null;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+        };
+        /**
+         * LeafyHarvestSourceLineRead
+         * @description Both the immutable ORIGINAL fact and the structurally-resolved
+         *     CURRENT effective truth for one source contribution -- never collapses
+         *     one into the other. `state` is `"VOID"` only when the correction chain
+         *     tip is a void correction; otherwise `"ACTIVE"` (including when never
+         *     corrected at all). `correction_tip_id` is the id the client MUST echo
+         *     back as `supersedes_correction_id` on its next correction attempt (a
+         *     stale value there is rejected with 409, never silently retargeted).
+         */
+        LeafyHarvestSourceLineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            harvest_location: components["schemas"]["LeafyHarvestLocationRead"] | null;
+            /** Original Harvested Weight Kg */
+            original_harvested_weight_kg: string;
+            /** Original Whole Unit Count */
+            original_whole_unit_count: number | null;
+            /** Current Harvested Weight Kg */
+            current_harvested_weight_kg: string;
+            /** Current Whole Unit Count */
+            current_whole_unit_count: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ACTIVE" | "VOID";
+            /** Correction Tip Id */
+            correction_tip_id: string | null;
+            /** Correction History */
+            correction_history: components["schemas"]["LeafyHarvestSourceLineCorrectionRead"][];
+        };
+        /** LeafyLocationSlotRead */
+        LeafyLocationSlotRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
         };
         /**
          * LeafyProductionCurrentLocationSummary
@@ -6198,6 +6510,44 @@ export interface components {
             weight_kg: string;
             /** Package Count */
             package_count: number;
+        };
+        /** RecordLeafyHarvestCreate */
+        RecordLeafyHarvestCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Produce Lot Code */
+            produce_lot_code: string;
+            /** Note */
+            note?: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["RecordLeafyHarvestSourceLineIn"][];
+        };
+        /** RecordLeafyHarvestSourceLineIn */
+        RecordLeafyHarvestSourceLineIn: {
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Whole Unit Count */
+            whole_unit_count: number;
+            /** Harvested Weight Kg */
+            harvested_weight_kg: number | string;
+            /** Note */
+            note?: string | null;
         };
         /**
          * RecordProductionDispositionCreate
@@ -13177,6 +13527,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActiveProductionPlateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_harvestable_plates_farms__farm_id__leafy_production_harvestable_plates_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HarvestablePlateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_leafy_harvests_farms__farm_id__leafy_production_harvests_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeafyHarvestEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_leafy_harvest_farms__farm_id__leafy_production_harvests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordLeafyHarvestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeafyHarvestEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_leafy_harvest_farms__farm_id__leafy_production_harvests__harvest_event_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                harvest_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeafyHarvestEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_leafy_harvest_source_line_farms__farm_id__leafy_production_harvests__harvest_event_id__source_lines__harvest_source_line_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                harvest_event_id: string;
+                harvest_source_line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectLeafyHarvestSourceLineCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeafyHarvestEventRead"];
                 };
             };
             /** @description Validation Error */

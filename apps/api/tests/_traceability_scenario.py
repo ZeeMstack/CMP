@@ -281,6 +281,17 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM packing_input_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM packing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # HARVEST-OPS-001: harvest_population_events/harvest_source_line_
+        # corrections are new to this shared cleanup -- must precede
+        # harvest_source_lines/harvested_produce_lots/harvest_events and
+        # batch_carrier_assignments below (all four reference at least one
+        # of them). Existence-guarded for the same reason seedling_entries
+        # above is: a downgrade-guard test may call this cleanup while
+        # cmp_test is deliberately downgraded below the migration that
+        # creates these two tables.
+        for table in ("harvest_population_events", "harvest_source_line_corrections"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvest_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvested_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvest_events WHERE tenant_id = :tid"), {"tid": tenant_id})

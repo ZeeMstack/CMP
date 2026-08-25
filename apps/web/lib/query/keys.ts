@@ -102,4 +102,14 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "leafy-production", "active-plates", batchId] as const,
   productionDispositionHistory: (tenantId: string, farmId: string, batchCarrierAssignmentId: string, batchId: string) =>
     ["tenant", tenantId, "farms", farmId, "leafy-production", "dispositions", batchCarrierAssignmentId, batchId] as const,
+
+  // --- HARVEST-OPS-001 SLICE 2 -------------------------------------------------
+  // `batchId` defaults to "" (unfiltered) so the unfiltered and Batch-filtered
+  // variants never collide in cache, mirroring NURSERY-OPS-005B's own convention.
+  harvestablePlates: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "harvestable-plates", batchId] as const,
+  leafyHarvests: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", batchId] as const,
+  leafyHarvest: (tenantId: string, farmId: string, harvestEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", "detail", harvestEventId] as const,
 };

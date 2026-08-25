@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, Boxes, ClipboardList, Leaf, LayoutGrid, LogOut, Map, Menu, Package, Sprout, Table2, Thermometer, Wrench, X } from "lucide-react";
+import { ArrowRightLeft, Boxes, ClipboardList, Leaf, LayoutGrid, LogOut, Map, Menu, Package, Sprout, Table2, Thermometer, Wheat, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,6 +26,7 @@ function navItems(farmId: string) {
     { href: `/farms/${farmId}/nursery/intersalads`, label: "InterSalads", icon: Table2, exact: false },
     { href: `/farms/${farmId}/leafy-production`, label: "Leafy Production", icon: ClipboardList, exact: true },
     { href: `/farms/${farmId}/leafy-production/transfer`, label: "Production Transfer", icon: ArrowRightLeft, exact: false },
+    { href: `/farms/${farmId}/leafy-production/harvest`, label: "Harvest", icon: Wheat, exact: false },
     { href: `/farms/${farmId}/farm-setup`, label: "Farm Setup", icon: Wrench, exact: false },
   ];
 }
