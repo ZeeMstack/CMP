@@ -1408,3 +1408,60 @@ class InvalidPackSpecificationVersionEffectiveTimeError(DomainError):
     future; a retirement effective_time before its own version's
     effective_from; an activation effective_time before the version it
     would replace's own effective_from."""
+
+
+# --- POSTHARVEST-OPS-001C ----------------------------------------------------------
+
+
+class GradingEventNotFoundError(DomainError):
+    pass
+
+
+class GradingCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GradingValidationError(DomainError):
+    """Generic domain-validation bucket for the record-grading command --
+    mirrors PackingValidationError's own established shape. Covers: zero
+    output lines with no reject/loss/sample either (a true no-op),
+    duplicate exact grade-version outputs, non-positive output weight,
+    zero processed weight (input_presented == remainder), weight/count
+    reconciliation mismatch, invalid count mode, and source availability
+    exceeded."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidGradingEffectiveTimeError(DomainError):
+    pass
+
+
+class TooManyGradingOutputsError(DomainError):
+    pass
+
+
+class GradingSourceProduceLotNotFoundError(DomainError):
+    pass
+
+
+class ProcessingHallLocationInvalidError(DomainError):
+    """The referenced location is not an active `packing_hall`-typed
+    Location in this tenant/farm."""
+
+
+class DuplicateGradedProduceLotCodeError(DomainError):
+    pass
+
+
+class GradedProduceLotNotFoundError(DomainError):
+    pass
+
+
+class InsufficientHarvestedProduceLotBalanceError(DomainError):
+    """Raised when input_presented_weight_kg (or count) exceeds the
+    source HarvestedProduceLot's current available ledger balance --
+    compared against the full PRESENTED quantity, never merely the
+    processed quantity."""

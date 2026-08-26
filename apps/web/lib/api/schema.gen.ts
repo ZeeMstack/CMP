@@ -2349,6 +2349,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/grading-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Grading Events */
+        get: operations["list_grading_events_farms__farm_id__grading_events_get"];
+        put?: never;
+        /** Record Grading */
+        post: operations["record_grading_farms__farm_id__grading_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/grading-events/{grading_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Grading Event */
+        get: operations["get_grading_event_farms__farm_id__grading_events__grading_event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/graded-produce-lots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Graded Produce Lots */
+        get: operations["list_graded_produce_lots_farms__farm_id__graded_produce_lots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/graded-produce-lots/{graded_produce_lot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graded Produce Lot */
+        get: operations["get_graded_produce_lot_farms__farm_id__graded_produce_lots__graded_produce_lot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/graded-produce-lots/{graded_produce_lot_id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graded Produce Lot Ledger */
+        get: operations["get_graded_produce_lot_ledger_farms__farm_id__graded_produce_lots__graded_produce_lot_id__ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/graded-produce-lots/{graded_produce_lot_id}/balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graded Produce Lot Balance */
+        get: operations["get_graded_produce_lot_balance_farms__farm_id__graded_produce_lots__graded_produce_lot_id__balance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/packing-events": {
         parameters: {
             query?: never;
@@ -2652,6 +2755,63 @@ export interface paths {
         put?: never;
         /** Close Recall Case */
         post: operations["close_recall_case_farms__farm_id__recall_cases__recall_case_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap Tenant */
+        post: operations["bootstrap_tenant_dev_bootstrap_tenants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap User */
+        post: operations["bootstrap_user_dev_bootstrap_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bootstrap Membership
+         * @description Development-only: creates a tenant's first membership. No active
+         *     membership is required to call this — that's the whole point of a
+         *     bootstrap route. `POST /memberships` (not under /dev/bootstrap) is for
+         *     an already-active member to add further members.
+         */
+        post: operations["bootstrap_membership_dev_bootstrap_memberships_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3372,6 +3532,25 @@ export interface components {
             id: string;
             /** Code */
             code: string;
+        };
+        /**
+         * BootstrapMembershipCreate
+         * @description Development-only: creates a membership without requiring an existing
+         *     active membership, to bootstrap a tenant's first member.
+         */
+        BootstrapMembershipCreate: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Role Code */
+            role_code: string;
         };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
@@ -4693,6 +4872,259 @@ export interface components {
              * Format: date-time
              */
             effective_time: string;
+        };
+        /** GradedProduceLotBalanceRead */
+        GradedProduceLotBalanceRead: {
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
+            /** Graded Produce Lot Code */
+            graded_produce_lot_code: string;
+            /** Received Weight Kg */
+            received_weight_kg: string;
+            /** Available Weight Kg */
+            available_weight_kg: string;
+            /** Received Whole Unit Count */
+            received_whole_unit_count: number | null;
+            /** Available Whole Unit Count */
+            available_whole_unit_count: number | null;
+            /** Entry Count */
+            entry_count: number;
+            /**
+             * Last Effective Time
+             * Format: date-time
+             */
+            last_effective_time: string;
+        };
+        /** GradedProduceLotLedgerEntryRead */
+        GradedProduceLotLedgerEntryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Entry Kind */
+            entry_kind: string;
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
+            /** Graded Produce Lot Code */
+            graded_produce_lot_code: string;
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /** Weight Delta Kg */
+            weight_delta_kg: string;
+            /** Whole Unit Count Delta */
+            whole_unit_count_delta: number | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /** Note */
+            note: string | null;
+        };
+        /** GradedProduceLotRead */
+        GradedProduceLotRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /** Code */
+            code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /**
+             * Grade Definition Version Id
+             * Format: uuid
+             */
+            grade_definition_version_id: string;
+            /** Original Received Weight Kg */
+            original_received_weight_kg: string;
+            /** Original Received Whole Unit Count */
+            original_received_whole_unit_count: number | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /** GradingEventCreate */
+        GradingEventCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Source Harvested Produce Lot Id
+             * Format: uuid
+             */
+            source_harvested_produce_lot_id: string;
+            /**
+             * Processing Hall Location Id
+             * Format: uuid
+             */
+            processing_hall_location_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /** Input Presented Weight Kg */
+            input_presented_weight_kg: number | string;
+            /** Input Presented Whole Unit Count */
+            input_presented_whole_unit_count?: number | null;
+            /** Rejected Weight Kg */
+            rejected_weight_kg: number | string;
+            /** Rejected Whole Unit Count */
+            rejected_whole_unit_count?: number | null;
+            /** Loss Weight Kg */
+            loss_weight_kg: number | string;
+            /** Loss Whole Unit Count */
+            loss_whole_unit_count?: number | null;
+            /** Sample Weight Kg */
+            sample_weight_kg: number | string;
+            /** Sample Whole Unit Count */
+            sample_whole_unit_count?: number | null;
+            /** Remainder Weight Kg */
+            remainder_weight_kg: number | string;
+            /** Remainder Whole Unit Count */
+            remainder_whole_unit_count?: number | null;
+            /** Outputs */
+            outputs?: components["schemas"]["GradingOutputIn"][];
+        };
+        /** GradingEventRead */
+        GradingEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Source Harvested Produce Lot Id
+             * Format: uuid
+             */
+            source_harvested_produce_lot_id: string;
+            /** Source Produce Lot Code */
+            source_produce_lot_code: string;
+            /**
+             * Processing Hall Location Id
+             * Format: uuid
+             */
+            processing_hall_location_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /** Input Presented Weight Kg */
+            input_presented_weight_kg: string;
+            /** Input Presented Whole Unit Count */
+            input_presented_whole_unit_count: number | null;
+            /** Rejected Weight Kg */
+            rejected_weight_kg: string;
+            /** Rejected Whole Unit Count */
+            rejected_whole_unit_count: number | null;
+            /** Loss Weight Kg */
+            loss_weight_kg: string;
+            /** Loss Whole Unit Count */
+            loss_whole_unit_count: number | null;
+            /** Sample Weight Kg */
+            sample_weight_kg: string;
+            /** Sample Whole Unit Count */
+            sample_whole_unit_count: number | null;
+            /** Remainder Weight Kg */
+            remainder_weight_kg: string;
+            /** Remainder Whole Unit Count */
+            remainder_whole_unit_count: number | null;
+            /** Processed Weight Kg */
+            processed_weight_kg: string;
+            /** Processed Whole Unit Count */
+            processed_whole_unit_count: number | null;
+            /** Outputs */
+            outputs: components["schemas"]["GradedProduceLotRead"][];
+        };
+        /** GradingOutputIn */
+        GradingOutputIn: {
+            /**
+             * Grade Definition Version Id
+             * Format: uuid
+             */
+            grade_definition_version_id: string;
+            /** Code */
+            code: string;
+            /** Output Weight Kg */
+            output_weight_kg: number | string;
+            /** Output Whole Unit Count */
+            output_whole_unit_count?: number | null;
         };
         /**
          * GreenhouseOverviewItem
@@ -8204,6 +8636,27 @@ export interface components {
              */
             id: string;
         };
+        /** TenantCreate */
+        TenantCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** TenantRead */
+        TenantRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
         /** TransplantAllocationIn */
         TransplantAllocationIn: {
             /**
@@ -8578,6 +9031,35 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** UserCreate */
+        UserCreate: {
+            /** Oidc Issuer */
+            oidc_issuer: string;
+            /** Oidc Subject */
+            oidc_subject: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /** UserRead */
+        UserRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Oidc Issuer */
+            oidc_issuer: string;
+            /** Oidc Subject */
+            oidc_subject: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /** Status */
+            status: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -15337,6 +15819,273 @@ export interface operations {
             };
         };
     };
+    list_grading_events_farms__farm_id__grading_events_get: {
+        parameters: {
+            query?: {
+                source_harvested_produce_lot_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_grading_farms__farm_id__grading_events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradingEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_grading_event_farms__farm_id__grading_events__grading_event_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                grading_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_graded_produce_lots_farms__farm_id__graded_produce_lots_get: {
+        parameters: {
+            query?: {
+                crop_id?: string | null;
+                variety_id?: string | null;
+                grade_definition_version_id?: string | null;
+                grading_event_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradedProduceLotRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graded_produce_lot_farms__farm_id__graded_produce_lots__graded_produce_lot_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                graded_produce_lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradedProduceLotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graded_produce_lot_ledger_farms__farm_id__graded_produce_lots__graded_produce_lot_id__ledger_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                graded_produce_lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradedProduceLotLedgerEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graded_produce_lot_balance_farms__farm_id__graded_produce_lots__graded_produce_lot_id__balance_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                graded_produce_lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradedProduceLotBalanceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_packing_events_farms__farm_id__packing_events_get: {
         parameters: {
             query?: never;
@@ -16113,6 +16862,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallCaseDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_tenant_dev_bootstrap_tenants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_user_dev_bootstrap_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_membership_dev_bootstrap_memberships_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BootstrapMembershipCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRead"];
                 };
             };
             /** @description Validation Error */
