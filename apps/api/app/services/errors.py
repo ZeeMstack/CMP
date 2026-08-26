@@ -1276,3 +1276,52 @@ class HarvestCarrierReusedError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+# --- POSTHARVEST-OPS-001A ----------------------------------------------------------
+
+
+class GradeDefinitionNotFoundError(DomainError):
+    pass
+
+
+class DuplicateGradeDefinitionCodeError(DomainError):
+    pass
+
+
+class GradeDefinitionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GradeDefinitionVersionNotFoundError(DomainError):
+    pass
+
+
+class GradeDefinitionVersionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GradeDefinitionVersionNotDraftError(DomainError):
+    """Raised when ACTIVATE targets a version that is not currently draft
+    (already active, already retired, or -- on an exact-fingerprint replay
+    check -- some other command's version)."""
+
+
+class GradeDefinitionVersionActivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GradeDefinitionVersionNotActiveError(DomainError):
+    """Raised when RETIRE targets a version that is not currently active."""
+
+
+class GradeDefinitionVersionRetirementReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InvalidGradeDefinitionVersionEffectiveTimeError(DomainError):
+    """Raised for any of: an activation/retirement effective_time in the
+    future; a retirement effective_time before its own version's
+    effective_from; an activation effective_time before the version it
+    would replace's own effective_from (an invalid window for the version
+    being retired by replacement)."""
