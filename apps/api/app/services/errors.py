@@ -1325,3 +1325,86 @@ class InvalidGradeDefinitionVersionEffectiveTimeError(DomainError):
     effective_from; an activation effective_time before the version it
     would replace's own effective_from (an invalid window for the version
     being retired by replacement)."""
+
+
+# --- POSTHARVEST-OPS-001B ----------------------------------------------------------
+
+
+class PackagingUnitNotFoundError(DomainError):
+    pass
+
+
+class DuplicatePackagingUnitCodeError(DomainError):
+    pass
+
+
+class PackagingUnitCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackagingUnitRetirementReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackagingUnitNotActiveError(DomainError):
+    """Raised when RETIRE targets a PackagingUnit that is not currently
+    active, or when a new PackSpecificationVersion is created referencing
+    a PackagingUnit that is not currently active."""
+
+
+class PackSpecificationNotFoundError(DomainError):
+    pass
+
+
+class DuplicatePackSpecificationCodeError(DomainError):
+    pass
+
+
+class PackSpecificationCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackSpecificationVersionNotFoundError(DomainError):
+    pass
+
+
+class PackSpecificationVersionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackSpecificationVersionValidationError(DomainError):
+    """Generic domain-validation bucket for a PackSpecificationVersion
+    create command -- mirrors this codebase's established one-class-per-
+    command "ValidationError(reason)" idiom (e.g. PackingValidationError,
+    HarvestValidationError). Covers: both pack-measure fields NULL, a
+    non-positive nominal_net_weight_kg/whole_units_per_pack, a referenced
+    GradeDefinitionVersion still in DRAFT, and a referenced
+    GradeDefinitionVersion whose own GradeDefinition crop/variety scope is
+    incompatible with the parent PackSpecification's stable scope."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class PackSpecificationVersionNotDraftError(DomainError):
+    """Raised when ACTIVATE targets a version that is not currently draft."""
+
+
+class PackSpecificationVersionActivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackSpecificationVersionNotActiveError(DomainError):
+    """Raised when RETIRE targets a version that is not currently active."""
+
+
+class PackSpecificationVersionRetirementReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InvalidPackSpecificationVersionEffectiveTimeError(DomainError):
+    """Raised for any of: an activation/retirement effective_time in the
+    future; a retirement effective_time before its own version's
+    effective_from; an activation effective_time before the version it
+    would replace's own effective_from."""
