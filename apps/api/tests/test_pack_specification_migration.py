@@ -42,8 +42,22 @@ def _assert_at_head(test_engine) -> None:
 
 
 @pytest.mark.integration
-def test_new_migration_is_sole_head() -> None:
-    assert _resolve_head_revision(_cfg()) == _THIS_REVISION
+def test_migration_is_part_of_the_current_revision_chain() -> None:
+    """e8d5f3a2b6c1 was the sole Alembic head at the time
+    POSTHARVEST-OPS-001B was built. A later ticket (starting with
+    POSTHARVEST-OPS-001C's own f2c8a5d1e793) may legitimately extend the
+    chain on top of it -- asserting literal current sole-headedness here
+    would go stale on purpose the moment any such ticket lands, which is
+    exactly what happened (mirrors test_grade_definition_migration.py's
+    own identical fix for the same reason). The ongoing, ticket-agnostic
+    "exactly one head" guarantee lives in
+    test_migrations.py::test_alembic_script_graph_resolves_single_unambiguous_head,
+    not here; this test only proves e8d5f3a2b6c1 remains a real, reachable
+    ancestor of whatever the current head is."""
+    script_dir = ScriptDirectory.from_config(_cfg())
+    current_head = script_dir.get_current_head()
+    ancestor_revisions = {rev.revision for rev in script_dir.iterate_revisions(current_head, "base")}
+    assert _THIS_REVISION in ancestor_revisions
 
 
 @pytest.mark.integration

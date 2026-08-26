@@ -14,6 +14,7 @@ from app.api.finished_goods_storage import router as finished_goods_storage_rout
 from app.api.germination import router as germination_router
 from app.api.germination_outcomes import router as germination_outcomes_router
 from app.api.grade_definitions import router as grade_definitions_router
+from app.api.grading import router as grading_router
 from app.api.pack_specifications import router as pack_specifications_router
 from app.api.packaging_units import router as packaging_units_router
 from app.api.traceability import router as traceability_router
@@ -82,6 +83,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(leafy_production_disposition_router)
     api.include_router(leafy_harvest_router)
     api.include_router(harvests_router)
+    api.include_router(grading_router)
     api.include_router(packing_router)
     api.include_router(dispatch_router)
     api.include_router(finished_goods_storage_router)
