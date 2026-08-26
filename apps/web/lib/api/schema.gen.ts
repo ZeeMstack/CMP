@@ -4435,6 +4435,8 @@ export interface components {
             crop_batch_ids: string[];
             /** Harvested Produce Lot Ids */
             harvested_produce_lot_ids: string[];
+            /** Graded Produce Lot Ids */
+            graded_produce_lot_ids: string[];
             /** Finished Goods Lot Ids */
             finished_goods_lot_ids: string[];
         };
@@ -7344,6 +7346,8 @@ export interface components {
             crop_batch_id?: string | null;
             /** Harvested Produce Lot Id */
             harvested_produce_lot_id?: string | null;
+            /** Graded Produce Lot Id */
+            graded_produce_lot_id?: string | null;
             /** Finished Goods Lot Id */
             finished_goods_lot_id?: string | null;
             /** Reason Code */
@@ -7364,6 +7368,8 @@ export interface components {
             crop_batch_id: string | null;
             /** Harvested Produce Lot Id */
             harvested_produce_lot_id: string | null;
+            /** Graded Produce Lot Id */
+            graded_produce_lot_id: string | null;
             /** Finished Goods Lot Id */
             finished_goods_lot_id: string | null;
             /** Reason Code */
@@ -7404,6 +7410,8 @@ export interface components {
             crop_batch_id: string | null;
             /** Harvested Produce Lot Id */
             harvested_produce_lot_id: string | null;
+            /** Graded Produce Lot Id */
+            graded_produce_lot_id: string | null;
             /** Finished Goods Lot Id */
             finished_goods_lot_id: string | null;
             /** Reason Code */

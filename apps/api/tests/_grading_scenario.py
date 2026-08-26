@@ -92,11 +92,31 @@ def build_committed_scenario(
 
 
 def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
+    """PRE-COMMIT CORRECTION (POSTHARVEST-OPS-001D verification pass):
+    `test_grading_quality_recall.py` opens real `RecallCase`s (via this
+    scenario's own tenant) to prove 001C's grading containment gate --
+    this cleanup previously never deleted them, leaving orphaned
+    `recall_cases`/scope rows referencing an already-deleted tenant behind
+    in `cmp_test`, which blocks every full-chain migration downgrade test
+    until manually cleaned. Mirrors `tests/_recall_scenario.py::
+    cleanup_recall_scenario`'s own FK-safe, children-before-parents
+    ordering across all six Recall tables (its own `recall_scope_
+    graded_produce_lots` delete is existence-guarded there for the same
+    downgrade-guard-compatibility reason kept here)."""
     require_cmp_test(test_engine)
     conn = test_engine.connect()
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        conn.execute(text("DELETE FROM recall_case_closures WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM recall_scope_finished_goods_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        if conn.execute(text("SELECT to_regclass('recall_scope_graded_produce_lots')")).scalar() is not None:
+            conn.execute(
+                text("DELETE FROM recall_scope_graded_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id}
+            )
+        conn.execute(text("DELETE FROM recall_scope_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM recall_scope_batches WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM recall_cases WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(
             text("DELETE FROM graded_produce_lot_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id}
         )

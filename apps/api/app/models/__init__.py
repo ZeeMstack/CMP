@@ -36,6 +36,7 @@ from app.models.recall import (
     RecallCaseClosure,
     RecallScopeBatch,
     RecallScopeFinishedGoodsLot,
+    RecallScopeGradedProduceLot,
     RecallScopeProduceLot,
 )
 from app.models.production_disposition_command import ProductionDispositionCommand
@@ -98,6 +99,7 @@ __all__ = [
     "RecallCaseClosure",
     "RecallScopeBatch",
     "RecallScopeFinishedGoodsLot",
+    "RecallScopeGradedProduceLot",
     "RecallScopeProduceLot",
     "ProductionDispositionCommand",
     "ProductionDispositionEvent",

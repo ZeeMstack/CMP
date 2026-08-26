@@ -232,6 +232,34 @@ def _produce_lots_for_harvest_events(conn: Connection, *, tenant_id, farm_id, ha
     return [dict(r) for r in rows]
 
 
+def _graded_produce_lots_for_harvested_produce_lots(
+    conn: Connection, *, tenant_id, farm_id, harvested_produce_lot_ids: list[uuid.UUID]
+) -> list[dict]:
+    """POSTHARVEST-OPS-001D: every existing `GradedProduceLot` whose
+    `GradingEvent.source_harvested_produce_lot_id` is one of
+    `harvested_produce_lot_ids` -- the one join `recall_service` needs to
+    freeze upstream (crop-batch- or produce-lot-source) recall scope into
+    already-created downstream graded material. Unlike the functions
+    above, this is new for 001D, not a CMP-019 extraction -- `traceability_
+    service.py`'s own public contract is untouched by it."""
+    if not harvested_produce_lot_ids:
+        return []
+    rows = conn.execute(
+        text(
+            "SELECT gpl.id AS graded_produce_lot_id, gpl.grading_event_id, "
+            "ge.source_harvested_produce_lot_id, gpl.effective_time "
+            "FROM graded_produce_lots gpl "
+            "JOIN grading_events ge ON ge.id = gpl.grading_event_id "
+            "  AND ge.tenant_id = gpl.tenant_id AND ge.farm_id = gpl.farm_id "
+            "WHERE gpl.tenant_id = :tid AND gpl.farm_id = :fid "
+            "  AND ge.source_harvested_produce_lot_id = ANY(:ids) "
+            "ORDER BY gpl.effective_time, gpl.id"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "ids": harvested_produce_lot_ids},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
 def _packing_input_lines_for_produce_lots(conn: Connection, *, tenant_id, farm_id, produce_lot_ids: list[uuid.UUID]) -> list[dict]:
     if not produce_lot_ids:
         return []

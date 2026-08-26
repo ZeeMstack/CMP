@@ -19,6 +19,7 @@ from app.services.errors import (
     DuplicateRecallCaseCodeError,
     FarmNotFoundError,
     FinishedGoodsLotNotFoundError,
+    GradedProduceLotNotFoundError,
     HarvestedProduceLotNotFoundError,
     InvalidRecallCaseEffectiveTimeError,
     RecallCaseAlreadyClosedError,
@@ -54,11 +55,15 @@ def open_recall_case(
             code=payload.code,
             crop_batch_id=payload.crop_batch_id,
             harvested_produce_lot_id=payload.harvested_produce_lot_id,
+            graded_produce_lot_id=payload.graded_produce_lot_id,
             finished_goods_lot_id=payload.finished_goods_lot_id,
             reason_code=payload.reason_code,
             reason_text=payload.reason_text,
         )
-    except (FarmNotFoundError, CropBatchNotFoundError, HarvestedProduceLotNotFoundError, FinishedGoodsLotNotFoundError) as exc:
+    except (
+        FarmNotFoundError, CropBatchNotFoundError, HarvestedProduceLotNotFoundError,
+        GradedProduceLotNotFoundError, FinishedGoodsLotNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except (
         RecallCaseCommandReusedWithDifferentPayloadError,

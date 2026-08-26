@@ -29,12 +29,14 @@ from sqlalchemy.orm import Session
 
 from app.models.crop_batch import CropBatch
 from app.models.finished_goods_lot import FinishedGoodsLot
+from app.models.graded_produce_lot import GradedProduceLot
 from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.recall import (
     RecallCase,
     RecallCaseClosure,
     RecallScopeBatch,
     RecallScopeFinishedGoodsLot,
+    RecallScopeGradedProduceLot,
     RecallScopeProduceLot,
 )
 from app.services import farm_service, lineage_traversal
@@ -44,6 +46,7 @@ from app.services.errors import (
     DuplicateRecallCaseCodeError,
     FarmNotFoundError,
     FinishedGoodsLotNotFoundError,
+    GradedProduceLotNotFoundError,
     HarvestedProduceLotNotFoundError,
     InvalidRecallCaseEffectiveTimeError,
     RecallCaseAlreadyClosedError,
@@ -102,6 +105,25 @@ def has_open_produce_lot_recall(
     return row is not None
 
 
+def has_open_graded_produce_lot_recall(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, graded_produce_lot_id: uuid.UUID
+) -> bool:
+    """POSTHARVEST-OPS-001D: mirrors `has_open_produce_lot_recall` exactly.
+    No production caller exists inside this ticket (nothing yet consumes a
+    `GradedProduceLot`) -- it is recall containment's own public surface,
+    to be called by POSTHARVEST-OPS-001E's future packing-of-graded-lots
+    gate the same way `grading_service` already calls
+    `has_open_produce_lot_recall` today."""
+    row = db.execute(
+        select(RecallScopeGradedProduceLot.id).where(
+            RecallScopeGradedProduceLot.tenant_id == tenant_id, RecallScopeGradedProduceLot.farm_id == farm_id,
+            RecallScopeGradedProduceLot.graded_produce_lot_id == graded_produce_lot_id,
+            ~exists().where(RecallCaseClosure.recall_case_id == RecallScopeGradedProduceLot.recall_case_id),
+        )
+    ).first()
+    return row is not None
+
+
 def has_open_finished_goods_recall(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, finished_goods_lot_id: uuid.UUID
 ) -> bool:
@@ -116,6 +138,15 @@ def has_open_finished_goods_recall(
 
 
 # --- Locking helpers (sorted-UUID, matching batch_derivation_service's own idiom) --
+# POSTHARVEST-OPS-001D: the global lock order is now four tiers --
+# CropBatch -> HarvestedProduceLot -> GradedProduceLot -> FinishedGoodsLot
+# -- GradedProduceLot inserted between HarvestedProduceLot and
+# FinishedGoodsLot, its own place in the lineage chain
+# (HarvestedProduceLot -> GradingEvent -> GradedProduceLot). A
+# graded-produce-lot-source freeze never walks backward to lock
+# HarvestedProduceLot/CropBatch (mirrors the produce-lot- and
+# finished-goods-lot-source freezes, neither of which promotes anything
+# upstream); it only ever locks the one selected row.
 
 
 def _lock_crop_batches(db: Session, *, tenant_id, farm_id, ids) -> list[CropBatch]:
@@ -141,6 +172,21 @@ def _lock_produce_lots(db: Session, *, tenant_id, farm_id, ids) -> list[Harveste
                 HarvestedProduceLot.farm_id == farm_id,
             )
             .order_by(HarvestedProduceLot.id).with_for_update()
+        ).scalars()
+    )
+
+
+def _lock_graded_produce_lots(db: Session, *, tenant_id, farm_id, ids) -> list[GradedProduceLot]:
+    if not ids:
+        return []
+    return list(
+        db.execute(
+            select(GradedProduceLot)
+            .where(
+                GradedProduceLot.id.in_(list(ids)), GradedProduceLot.tenant_id == tenant_id,
+                GradedProduceLot.farm_id == farm_id,
+            )
+            .order_by(GradedProduceLot.id).with_for_update()
         ).scalars()
     )
 
@@ -197,11 +243,41 @@ def _derive_and_lock_fg_lots(db: Session, conn, *, tenant_id, farm_id, produce_l
     return fg_lot_ids | fg_lot_ids_2
 
 
+def _derive_and_lock_graded_produce_lots(
+    db: Session, conn, *, tenant_id, farm_id, produce_lot_ids: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    """POSTHARVEST-OPS-001D: derives every EXISTING `GradedProduceLot`
+    graded from `produce_lot_ids` (via `GradingEvent.source_harvested_
+    produce_lot_id`), locks them, then re-derives and locks any delta --
+    the same defensive lock-then-recheck pass `_derive_and_lock_fg_lots`
+    uses one tier over, on top of the fact every produce lot in
+    `produce_lot_ids` is already locked by the caller, which already
+    prevents any *new* GradingEvent from being inserted against it
+    (`grading_service` locks the source batch then the source produce lot,
+    in that order, before creating any `GradedProduceLot`)."""
+    graded_rows = lineage_traversal._graded_produce_lots_for_harvested_produce_lots(
+        conn, tenant_id=tenant_id, farm_id=farm_id, harvested_produce_lot_ids=sorted(produce_lot_ids)
+    )
+    graded_lot_ids = {r["graded_produce_lot_id"] for r in graded_rows}
+
+    _lock_graded_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=sorted(graded_lot_ids))
+
+    graded_rows_2 = lineage_traversal._graded_produce_lots_for_harvested_produce_lots(
+        conn, tenant_id=tenant_id, farm_id=farm_id, harvested_produce_lot_ids=sorted(produce_lot_ids)
+    )
+    graded_lot_ids_2 = {r["graded_produce_lot_id"] for r in graded_rows_2}
+    delta = graded_lot_ids_2 - graded_lot_ids
+    if delta:
+        _lock_graded_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=sorted(delta))
+    return graded_lot_ids | graded_lot_ids_2
+
+
 def _freeze_batch_source_scope(db: Session, conn, *, tenant_id, farm_id, source_batch_id: uuid.UUID):
     """Crop-batch source: selected batch + full descendant closure, their
-    harvested produce lots, and every finished-goods lot reachable through
-    packing. See `docs/domain/RECALL_CONTAINMENT_MODEL.md` for the full
-    step-by-step rationale."""
+    harvested produce lots, every EXISTING `GradedProduceLot` graded from
+    those produce lots (POSTHARVEST-OPS-001D), and every finished-goods lot
+    reachable through packing. See `docs/domain/RECALL_CONTAINMENT_MODEL.md`
+    for the full step-by-step rationale."""
     locked = _lock_crop_batches(db, tenant_id=tenant_id, farm_id=farm_id, ids=[source_batch_id])
     if not locked:
         raise CropBatchNotFoundError(str(source_batch_id))
@@ -247,25 +323,57 @@ def _freeze_batch_source_scope(db: Session, conn, *, tenant_id, farm_id, source_
         _lock_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=sorted(delta))
     produce_lot_ids = produce_lot_ids | produce_lot_ids_2
 
+    # Lock-order tier 3 (GradedProduceLot) before tier 4 (FinishedGoodsLot)
+    # -- packing does not yet consume GradedProduceLot (that is
+    # POSTHARVEST-OPS-001E), so this derivation is independent of, and must
+    # not be reordered relative to, the FG-lot derivation below; both key
+    # off the same stable `produce_lot_ids`.
+    graded_lot_ids = _derive_and_lock_graded_produce_lots(
+        db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
+    )
+
     fg_lot_ids = _derive_and_lock_fg_lots(
         db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
     )
-    return batch_ids, produce_lot_ids, fg_lot_ids, source_batch.created_effective_time
+    return batch_ids, produce_lot_ids, graded_lot_ids, fg_lot_ids, source_batch.created_effective_time
 
 
 def _freeze_produce_lot_source_scope(db: Session, conn, *, tenant_id, farm_id, source_produce_lot_id: uuid.UUID):
-    """Harvested-produce-lot source: selected lot + finished-goods lots
-    that already contain material from it. The lot's own crop batch is
-    deliberately never promoted into batch scope."""
+    """Harvested-produce-lot source: selected lot, every EXISTING
+    `GradedProduceLot` graded from it (POSTHARVEST-OPS-001D), and
+    finished-goods lots that already contain material from it. The lot's
+    own crop batch is deliberately never promoted into batch scope."""
     locked = _lock_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=[source_produce_lot_id])
     if not locked:
         raise HarvestedProduceLotNotFoundError(str(source_produce_lot_id))
     source_lot = locked[0]
     produce_lot_ids = {source_lot.id}
+    graded_lot_ids = _derive_and_lock_graded_produce_lots(
+        db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
+    )
     fg_lot_ids = _derive_and_lock_fg_lots(
         db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
     )
-    return produce_lot_ids, fg_lot_ids, source_lot.effective_time
+    return produce_lot_ids, graded_lot_ids, fg_lot_ids, source_lot.effective_time
+
+
+def _freeze_graded_produce_lot_source_scope(
+    db: Session, *, tenant_id, farm_id, source_graded_produce_lot_id: uuid.UUID
+):
+    """POSTHARVEST-OPS-001D: graded-produce-lot source -- the selected lot
+    ONLY. Deliberately never walks backward to its `GradingEvent`'s source
+    `HarvestedProduceLot` or that lot's `CropBatch` (no promotion, mirroring
+    the produce-lot- and finished-goods-lot-source freezes above), never
+    includes sibling outputs of the same `GradingEvent` (mandatory
+    sibling-isolation rule -- one `GradingEvent` may produce several
+    `GradedProduceLot`s; recalling one must never recall the others), and
+    has no finished-goods expansion (packing does not yet consume
+    `GradedProduceLot` -- that is POSTHARVEST-OPS-001E)."""
+    locked = _lock_graded_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=[source_graded_produce_lot_id])
+    if not locked:
+        raise GradedProduceLotNotFoundError(str(source_graded_produce_lot_id))
+    source_lot = locked[0]
+    return {source_lot.id}, source_lot.effective_time
 
 
 def _freeze_finished_goods_lot_source_scope(db: Session, *, tenant_id, farm_id, source_fg_lot_id: uuid.UUID):
@@ -285,12 +393,14 @@ def _freeze_finished_goods_lot_source_scope(db: Session, *, tenant_id, farm_id, 
 
 def _compute_open_fingerprint(
     *, tenant_id, farm_id, actor_user_id, code, crop_batch_id, harvested_produce_lot_id,
-    finished_goods_lot_id, effective_time, reason_code, reason_text,
+    graded_produce_lot_id, finished_goods_lot_id, effective_time, reason_code, reason_text,
 ) -> str:
     if crop_batch_id is not None:
         source_kind, source_id = "crop_batch", crop_batch_id
     elif harvested_produce_lot_id is not None:
         source_kind, source_id = "harvested_produce_lot", harvested_produce_lot_id
+    elif graded_produce_lot_id is not None:
+        source_kind, source_id = "graded_produce_lot", graded_produce_lot_id
     else:
         source_kind, source_id = "finished_goods_lot", finished_goods_lot_id
     parts = [
@@ -320,13 +430,17 @@ def open_recall_case(
     finished_goods_lot_id: uuid.UUID | None,
     reason_code: str,
     reason_text: str,
+    graded_produce_lot_id: uuid.UUID | None = None,
 ) -> RecallCase:
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
-    source_count = sum(x is not None for x in (crop_batch_id, harvested_produce_lot_id, finished_goods_lot_id))
+    source_count = sum(
+        x is not None for x in (crop_batch_id, harvested_produce_lot_id, graded_produce_lot_id, finished_goods_lot_id)
+    )
     if source_count != 1:
         raise RecallCaseValidationError(
-            "exactly one of crop_batch_id, harvested_produce_lot_id, finished_goods_lot_id must be provided"
+            "exactly one of crop_batch_id, harvested_produce_lot_id, graded_produce_lot_id, "
+            "finished_goods_lot_id must be provided"
         )
 
     if effective_time > datetime.now(timezone.utc):
@@ -335,8 +449,8 @@ def open_recall_case(
     fingerprint = _compute_open_fingerprint(
         tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, code=code,
         crop_batch_id=crop_batch_id, harvested_produce_lot_id=harvested_produce_lot_id,
-        finished_goods_lot_id=finished_goods_lot_id, effective_time=effective_time,
-        reason_code=reason_code, reason_text=reason_text,
+        graded_produce_lot_id=graded_produce_lot_id, finished_goods_lot_id=finished_goods_lot_id,
+        effective_time=effective_time, reason_code=reason_code, reason_text=reason_text,
     )
 
     existing = _find_existing_case(db, tenant_id=tenant_id, client_command_id=client_command_id)
@@ -353,14 +467,20 @@ def open_recall_case(
 
     batch_ids: set[uuid.UUID] = set()
     produce_lot_ids: set[uuid.UUID] = set()
+    graded_lot_ids: set[uuid.UUID] = set()
     if crop_batch_id is not None:
-        batch_ids, produce_lot_ids, fg_lot_ids, source_effective_time = _freeze_batch_source_scope(
+        batch_ids, produce_lot_ids, graded_lot_ids, fg_lot_ids, source_effective_time = _freeze_batch_source_scope(
             db, conn, tenant_id=tenant_id, farm_id=farm_id, source_batch_id=crop_batch_id
         )
     elif harvested_produce_lot_id is not None:
-        produce_lot_ids, fg_lot_ids, source_effective_time = _freeze_produce_lot_source_scope(
+        produce_lot_ids, graded_lot_ids, fg_lot_ids, source_effective_time = _freeze_produce_lot_source_scope(
             db, conn, tenant_id=tenant_id, farm_id=farm_id, source_produce_lot_id=harvested_produce_lot_id
         )
+    elif graded_produce_lot_id is not None:
+        graded_lot_ids, source_effective_time = _freeze_graded_produce_lot_source_scope(
+            db, tenant_id=tenant_id, farm_id=farm_id, source_graded_produce_lot_id=graded_produce_lot_id
+        )
+        fg_lot_ids = set()
     else:
         fg_lot_ids, source_effective_time = _freeze_finished_goods_lot_source_scope(
             db, tenant_id=tenant_id, farm_id=farm_id, source_fg_lot_id=finished_goods_lot_id
@@ -382,6 +502,7 @@ def open_recall_case(
     case = RecallCase(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, code=code,
         crop_batch_id=crop_batch_id, harvested_produce_lot_id=harvested_produce_lot_id,
+        graded_produce_lot_id=graded_produce_lot_id,
         finished_goods_lot_id=finished_goods_lot_id, reason_code=reason_code, reason_text=reason_text,
         effective_time=effective_time, actor_user_id=actor_user_id, client_command_id=client_command_id,
         request_fingerprint=fingerprint,
@@ -410,6 +531,13 @@ def open_recall_case(
                 harvested_produce_lot_id=pid,
             )
         )
+    for gid in sorted(graded_lot_ids):
+        db.add(
+            RecallScopeGradedProduceLot(
+                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, recall_case_id=case.id,
+                graded_produce_lot_id=gid,
+            )
+        )
     for fid in sorted(fg_lot_ids):
         db.add(
             RecallScopeFinishedGoodsLot(
@@ -427,10 +555,12 @@ def open_recall_case(
                 "recall_case_id": str(case.id), "code": code,
                 "crop_batch_id": str(crop_batch_id) if crop_batch_id else None,
                 "harvested_produce_lot_id": str(harvested_produce_lot_id) if harvested_produce_lot_id else None,
+                "graded_produce_lot_id": str(graded_produce_lot_id) if graded_produce_lot_id else None,
                 "finished_goods_lot_id": str(finished_goods_lot_id) if finished_goods_lot_id else None,
                 "reason_code": reason_code, "effective_time": effective_time.isoformat(),
                 "client_command_id": str(client_command_id),
                 "scope_batch_count": len(batch_ids), "scope_produce_lot_count": len(produce_lot_ids),
+                "scope_graded_produce_lot_count": len(graded_lot_ids),
                 "scope_finished_goods_lot_count": len(fg_lot_ids),
             },
         )
@@ -580,6 +710,7 @@ def list_recall_cases(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) 
         {
             "recall_case_id": c.id, "code": c.code,
             "crop_batch_id": c.crop_batch_id, "harvested_produce_lot_id": c.harvested_produce_lot_id,
+            "graded_produce_lot_id": c.graded_produce_lot_id,
             "finished_goods_lot_id": c.finished_goods_lot_id, "reason_code": c.reason_code,
             "reason_text": c.reason_text, "effective_time": c.effective_time, "recorded_time": c.recorded_time,
             "actor_user_id": c.actor_user_id, "is_open": c.id not in closed_ids,
@@ -609,7 +740,8 @@ def get_recall_case(
 
         case_row = conn.execute(
             text(
-                "SELECT id, code, crop_batch_id, harvested_produce_lot_id, finished_goods_lot_id, "
+                "SELECT id, code, crop_batch_id, harvested_produce_lot_id, graded_produce_lot_id, "
+                "finished_goods_lot_id, "
                 "reason_code, reason_text, effective_time, recorded_time, actor_user_id "
                 "FROM recall_cases WHERE id = :id AND tenant_id = :tid AND farm_id = :fid"
             ),
@@ -639,6 +771,15 @@ def get_recall_case(
                 text(
                     "SELECT harvested_produce_lot_id FROM recall_scope_produce_lots "
                     "WHERE recall_case_id = :cid ORDER BY harvested_produce_lot_id"
+                ),
+                {"cid": recall_case_id},
+            ).scalars()
+        )
+        graded_produce_lot_ids = sorted(
+            conn.execute(
+                text(
+                    "SELECT graded_produce_lot_id FROM recall_scope_graded_produce_lots "
+                    "WHERE recall_case_id = :cid ORDER BY graded_produce_lot_id"
                 ),
                 {"cid": recall_case_id},
             ).scalars()
@@ -688,6 +829,7 @@ def get_recall_case(
             "recall_case_id": case_row["id"], "code": case_row["code"],
             "crop_batch_id": case_row["crop_batch_id"],
             "harvested_produce_lot_id": case_row["harvested_produce_lot_id"],
+            "graded_produce_lot_id": case_row["graded_produce_lot_id"],
             "finished_goods_lot_id": case_row["finished_goods_lot_id"],
             "reason_code": case_row["reason_code"], "reason_text": case_row["reason_text"],
             "effective_time": case_row["effective_time"], "recorded_time": case_row["recorded_time"],
@@ -696,6 +838,7 @@ def get_recall_case(
             "closure": dict(closure_row) if closure_row is not None else None,
             "frozen_scope": {
                 "crop_batch_ids": batch_ids, "harvested_produce_lot_ids": produce_lot_ids,
+                "graded_produce_lot_ids": graded_produce_lot_ids,
                 "finished_goods_lot_ids": fg_lot_ids,
             },
             "live_state": {
