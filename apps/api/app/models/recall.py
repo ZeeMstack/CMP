@@ -18,12 +18,14 @@ from app.core.db import Base
 
 class RecallCase(Base):
     """Immutable, insert-only formal food-safety containment decision
-    (CMP-020). The row itself *is* the "opened" fact -- there is no
-    separate opened-event row and no mutable status column, mirroring
-    `QualityHold`'s own immutable-fact-plus-derived-state shape. Exactly
-    one of `crop_batch_id`/`harvested_produce_lot_id`/`finished_goods_lot_id`
-    is populated (`ck_recall_cases_typed_source_shape`). Open/closed state
-    is always derived from whether a `RecallCaseClosure` row exists."""
+    (CMP-020, widened by POSTHARVEST-OPS-001D). The row itself *is* the
+    "opened" fact -- there is no separate opened-event row and no mutable
+    status column, mirroring `QualityHold`'s own immutable-fact-plus-
+    derived-state shape. Exactly one of `crop_batch_id`/
+    `harvested_produce_lot_id`/`graded_produce_lot_id`/
+    `finished_goods_lot_id` is populated
+    (`ck_recall_cases_typed_source_shape`). Open/closed state is always
+    derived from whether a `RecallCaseClosure` row exists."""
 
     __tablename__ = "recall_cases"
 
@@ -34,6 +36,9 @@ class RecallCase(Base):
     crop_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("crop_batches.id"), nullable=True)
     harvested_produce_lot_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("harvested_produce_lots.id"), nullable=True
+    )
+    graded_produce_lot_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("graded_produce_lots.id"), nullable=True
     )
     finished_goods_lot_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("finished_goods_lots.id"), nullable=True
@@ -52,6 +57,7 @@ class RecallCase(Base):
         CheckConstraint(
             "(CASE WHEN crop_batch_id IS NOT NULL THEN 1 ELSE 0 END) + "
             "(CASE WHEN harvested_produce_lot_id IS NOT NULL THEN 1 ELSE 0 END) + "
+            "(CASE WHEN graded_produce_lot_id IS NOT NULL THEN 1 ELSE 0 END) + "
             "(CASE WHEN finished_goods_lot_id IS NOT NULL THEN 1 ELSE 0 END) = 1",
             name="ck_recall_cases_typed_source_shape",
         ),
@@ -74,6 +80,11 @@ class RecallCase(Base):
                 "harvested_produce_lots.id",
             ],
             name="fk_recall_cases_tenant_farm_produce_lot",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "graded_produce_lot_id"],
+            ["graded_produce_lots.tenant_id", "graded_produce_lots.farm_id", "graded_produce_lots.id"],
+            name="fk_recall_cases_tenant_farm_graded_lot",
         ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "finished_goods_lot_id"],
@@ -192,6 +203,49 @@ class RecallScopeProduceLot(Base):
                 "harvested_produce_lots.id",
             ],
             name="fk_recall_scope_produce_lots_tenant_farm_lot",
+        ),
+    )
+
+
+class RecallScopeGradedProduceLot(Base):
+    """Immutable, insert-only member of a recall case's frozen
+    graded-produce-lot scope (POSTHARVEST-OPS-001D). See `RecallScopeBatch`
+    for the shared design rationale. Records only the exact
+    `GradedProduceLot` identity -- never its `GradingEvent` id, its source
+    `HarvestedProduceLot` id, its `CropBatch` id, code, crop, variety,
+    grade, or any quantity/balance -- all derivable through the ordinary
+    `GradedProduceLot -> GradingEvent -> HarvestedProduceLot` relationship
+    when needed."""
+
+    __tablename__ = "recall_scope_graded_produce_lots"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"), nullable=False)
+    recall_case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("recall_cases.id"), nullable=False)
+    graded_produce_lot_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("graded_produce_lots.id"), nullable=False
+    )
+    recorded_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "recall_case_id", "graded_produce_lot_id", name="ux_recall_scope_graded_lots_case_lot"
+        ),
+        Index(
+            "ix_recall_scope_graded_lots_tenant_farm_lot", "tenant_id", "farm_id", "graded_produce_lot_id"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "recall_case_id"],
+            ["recall_cases.tenant_id", "recall_cases.farm_id", "recall_cases.id"],
+            name="fk_recall_scope_graded_lots_tenant_farm_case",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "graded_produce_lot_id"],
+            ["graded_produce_lots.tenant_id", "graded_produce_lots.farm_id", "graded_produce_lots.id"],
+            name="fk_recall_scope_graded_lots_tenant_farm_lot",
         ),
     )
 

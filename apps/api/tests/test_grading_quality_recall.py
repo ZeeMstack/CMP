@@ -3,6 +3,7 @@ coverage -- mirrors packing_service's own established gate semantics."""
 import uuid
 
 import pytest
+from sqlalchemy import text
 
 from app.services import quality_hold_service, recall_service
 from app.services.errors import QualityHoldOpenError, RecallContainmentOpenError
@@ -127,3 +128,50 @@ def test_exact_replay_returns_original_even_after_later_hold(test_engine) -> Non
         session.close()
         conn.close()
         cleanup_scenario(test_engine, scenario["tenant_id"])
+
+
+@pytest.mark.integration
+def test_grading_scenario_cleanup_leaves_no_recall_rows_behind(test_engine) -> None:
+    """PRE-COMMIT CORRECTION (POSTHARVEST-OPS-001D verification pass):
+    `cleanup_scenario` previously never deleted the RecallCase/scope rows
+    this file's own tests create (see `_grading_scenario.cleanup_scenario`'s
+    docstring) -- orphaning them once the tenant was deleted underneath
+    them, and blocking every full-chain migration downgrade test until
+    manually cleaned. Proves the fix directly: open a RecallCase through
+    the exact same path `test_open_batch_recall_blocks_grading` uses, run
+    the normal scenario cleanup, and confirm zero RecallCase/scope/closure
+    rows remain for that tenant."""
+    scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
+    tenant_id = scenario["tenant_id"]
+    session, conn = _session(test_engine)
+    try:
+        recall_service.open_recall_case(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+            actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=now(),
+            code=f"RECALL-CLEANUP-{scenario['suffix']}", crop_batch_id=scenario["batch_id"],
+            harvested_produce_lot_id=None, finished_goods_lot_id=None,
+            reason_code="CONTAMINATION", reason_text="Cleanup hermeticity proof.",
+        )
+        session.commit()
+    finally:
+        session.close()
+        conn.close()
+        cleanup_scenario(test_engine, tenant_id)
+
+    with test_engine.connect() as check_conn:
+        remaining_cases = check_conn.execute(
+            text("SELECT count(*) FROM recall_cases WHERE tenant_id = :tid"), {"tid": tenant_id}
+        ).scalar_one()
+        remaining_batch_scope = check_conn.execute(
+            text("SELECT count(*) FROM recall_scope_batches WHERE tenant_id = :tid"), {"tid": tenant_id}
+        ).scalar_one()
+        remaining_produce_lot_scope = check_conn.execute(
+            text("SELECT count(*) FROM recall_scope_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id}
+        ).scalar_one()
+        remaining_closures = check_conn.execute(
+            text("SELECT count(*) FROM recall_case_closures WHERE tenant_id = :tid"), {"tid": tenant_id}
+        ).scalar_one()
+    assert remaining_cases == 0
+    assert remaining_batch_scope == 0
+    assert remaining_produce_lot_scope == 0
+    assert remaining_closures == 0

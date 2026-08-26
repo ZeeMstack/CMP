@@ -36,6 +36,7 @@ class RecallCaseCreate(BaseModel):
     code: str
     crop_batch_id: uuid.UUID | None = None
     harvested_produce_lot_id: uuid.UUID | None = None
+    graded_produce_lot_id: uuid.UUID | None = None
     finished_goods_lot_id: uuid.UUID | None = None
     reason_code: str
     reason_text: str
@@ -60,10 +61,14 @@ class RecallCaseCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_exactly_one_source(self) -> "RecallCaseCreate":
-        sources = [self.crop_batch_id, self.harvested_produce_lot_id, self.finished_goods_lot_id]
+        sources = [
+            self.crop_batch_id, self.harvested_produce_lot_id, self.graded_produce_lot_id,
+            self.finished_goods_lot_id,
+        ]
         if sum(s is not None for s in sources) != 1:
             raise ValueError(
-                "exactly one of crop_batch_id, harvested_produce_lot_id, finished_goods_lot_id must be provided"
+                "exactly one of crop_batch_id, harvested_produce_lot_id, graded_produce_lot_id, "
+                "finished_goods_lot_id must be provided"
             )
         return self
 
@@ -97,6 +102,7 @@ class RecallCaseSummaryRead(BaseModel):
     code: str
     crop_batch_id: uuid.UUID | None
     harvested_produce_lot_id: uuid.UUID | None
+    graded_produce_lot_id: uuid.UUID | None
     finished_goods_lot_id: uuid.UUID | None
     reason_code: str
     reason_text: str
@@ -117,6 +123,7 @@ class RecallCaseClosureRead(BaseModel):
 class FrozenScopeRead(BaseModel):
     crop_batch_ids: list[uuid.UUID]
     harvested_produce_lot_ids: list[uuid.UUID]
+    graded_produce_lot_ids: list[uuid.UUID]
     finished_goods_lot_ids: list[uuid.UUID]
 
 
@@ -164,6 +171,7 @@ class RecallCaseDetailRead(BaseModel):
     code: str
     crop_batch_id: uuid.UUID | None
     harvested_produce_lot_id: uuid.UUID | None
+    graded_produce_lot_id: uuid.UUID | None
     finished_goods_lot_id: uuid.UUID | None
     reason_code: str
     reason_text: str
