@@ -37,6 +37,8 @@ from app.services.lineage_traversal import (
     _bulk_placed,
     _bulk_storage_movements,
     _finished_goods_lots_for_packing_events,
+    _graded_produce_lots_by_ids,
+    _grading_events_by_ids,
     _harvest_events_for_batches,
     _packing_events,
     _packing_input_lines_for_packing_events,
@@ -134,6 +136,30 @@ def get_finished_goods_lot_trace(
         packing_inputs = _packing_input_lines_for_packing_events(
             conn, tenant_id=tenant_id, farm_id=farm_id, packing_event_ids=[lot["packing_event_id"]]
         )
+
+        # POSTHARVEST-OPS-001F: GPL is a first-class traceability entity --
+        # every source GraduatedProduceLot this FG lot's packing event
+        # consumed, and every GradingEvent that produced one, resolved
+        # directly rather than left implicit behind the HPL join.
+        graded_produce_lot_ids = sorted({r["graded_produce_lot_id"] for r in packing_inputs})
+        graded_produce_lots = _graded_produce_lots_by_ids(
+            conn, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_ids=graded_produce_lot_ids
+        )
+        if len(graded_produce_lots) != len(graded_produce_lot_ids):
+            raise TraceabilityIntegrityError(
+                f"packing event {lot['packing_event_id']} has an input line referencing a graded "
+                "produce lot that does not resolve; this violates the schema's own FK guarantee."
+            )
+        grading_event_ids = sorted({g["grading_event_id"] for g in graded_produce_lots})
+        grading_events = _grading_events_by_ids(
+            conn, tenant_id=tenant_id, farm_id=farm_id, grading_event_ids=grading_event_ids
+        )
+        if len(grading_events) != len(grading_event_ids):
+            raise TraceabilityIntegrityError(
+                f"a graded produce lot feeding finished-goods lot {finished_goods_lot_id} references a "
+                "grading event that does not resolve; this violates the schema's own FK guarantee."
+            )
+
         produce_lot_ids = sorted({r["harvested_produce_lot_id"] for r in packing_inputs})
 
         produce_lots = []
@@ -203,6 +229,8 @@ def get_finished_goods_lot_trace(
             "subject": subject,
             "packing_event": dict(packing_event),
             "packing_inputs": packing_inputs,
+            "graded_produce_lots": graded_produce_lots,
+            "grading_events": grading_events,
             "produce_lots": produce_lots,
             "harvest_events": harvest_events,
             "lineage": {"batches": nodes, "edges": edges},
@@ -233,6 +261,28 @@ def _forward_impact_from_produce_lots(
     )
     for r in packing_inputs:
         r["is_affected_source"] = r["harvested_produce_lot_id"] in affected_produce_lot_ids
+
+    # POSTHARVEST-OPS-001F: GPL is a first-class traceability entity in the
+    # forward direction too -- every GraduatedProduceLot reached through an
+    # affected or context packing input line, resolved directly rather than
+    # left implicit behind the HPL join. A GPL is affected iff its own one
+    # source HPL is affected (a GPL always has exactly one source HPL via
+    # its GradingEvent), so `is_affected_source` here mirrors the same flag
+    # already computed per packing input line above.
+    graded_produce_lot_ids = sorted({r["graded_produce_lot_id"] for r in packing_inputs})
+    affected_graded_produce_lot_ids = {r["graded_produce_lot_id"] for r in packing_inputs if r["is_affected_source"]}
+    graded_produce_lots_rows = _graded_produce_lots_by_ids(
+        conn, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_ids=graded_produce_lot_ids
+    )
+    if len(graded_produce_lots_rows) != len(graded_produce_lot_ids):
+        raise TraceabilityIntegrityError(
+            "a packing input line references a graded produce lot that does not resolve; this violates "
+            "the schema's own FK guarantee."
+        )
+    graded_produce_lots = [
+        dict(r) | {"is_affected_source": r["graded_produce_lot_id"] in affected_graded_produce_lot_ids}
+        for r in graded_produce_lots_rows
+    ]
 
     fg_lot_rows = _finished_goods_lots_for_packing_events(conn, tenant_id=tenant_id, farm_id=farm_id, packing_event_ids=affected_packing_event_ids)
     fg_lot_ids = [r["finished_goods_lot_id"] for r in fg_lot_rows]
@@ -296,6 +346,7 @@ def _forward_impact_from_produce_lots(
     summary = {
         "affected_crop_batch_count": 0,  # filled by callers that know the batch set
         "affected_harvested_produce_lot_count": len(affected_produce_lot_ids),
+        "affected_graded_produce_lot_count": len(affected_graded_produce_lot_ids),
         "affected_finished_goods_lot_count": len(finished_goods),
         "affected_dispatch_event_count": len(dispatch_event_ids),
         "potentially_affected_available_weight_kg": sum((f["potentially_affected_available_weight_kg"] for f in finished_goods), Decimal("0")),
@@ -310,6 +361,7 @@ def _forward_impact_from_produce_lots(
 
     return {
         "packing_inputs": packing_inputs,
+        "graded_produce_lots": graded_produce_lots,
         "finished_goods": finished_goods,
         "storage": storage,
         "dispatches": dispatches,
@@ -348,6 +400,7 @@ def get_crop_batch_impact(
             "harvest_events": harvest_events,
             "produce_lots": produce_lots,
             "packing_inputs": downstream["packing_inputs"],
+            "graded_produce_lots": downstream["graded_produce_lots"],
             "finished_goods": downstream["finished_goods"],
             "storage": downstream["storage"],
             "dispatches": downstream["dispatches"],
@@ -376,6 +429,7 @@ def get_harvested_produce_lot_impact(
             "subject_harvested_produce_lot_id": subject["id"], "subject_harvested_produce_lot_code": subject["code"],
             "produce_lots": [dict(subject) | {"harvested_produce_lot_id": subject["id"]}],
             "packing_inputs": downstream["packing_inputs"],
+            "graded_produce_lots": downstream["graded_produce_lots"],
             "finished_goods": downstream["finished_goods"],
             "storage": downstream["storage"],
             "dispatches": downstream["dispatches"],

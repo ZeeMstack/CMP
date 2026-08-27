@@ -273,12 +273,18 @@ def _packing_input_lines_for_produce_lots(conn: Connection, *, tenant_id, farm_i
     produce_lot_id` needed to recover the same field is added internally
     here, not at either caller. No proportional ambiguity: one packing
     input line names exactly one GradedProduceLot, which names exactly one
-    GradingEvent, which names exactly one source HarvestedProduceLot."""
+    GradingEvent, which names exactly one source HarvestedProduceLot.
+
+    POSTHARVEST-OPS-001F: also returns `graded_produce_lot_id` (Packing's
+    own real source column, previously only exposed by the sibling
+    `_packing_input_lines_for_graded_produce_lots`/`_packing_input_lines_
+    for_packing_events` helpers) so callers can surface GPL identity
+    without a second query."""
     if not produce_lot_ids:
         return []
     rows = conn.execute(
         text(
-            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, "
+            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, pil.graded_produce_lot_id, "
             "ge.source_harvested_produce_lot_id AS harvested_produce_lot_id, "
             "pil.consumed_weight_kg, pil.consumed_whole_unit_count "
             "FROM packing_input_lines pil "
@@ -328,12 +334,16 @@ def _packing_input_lines_for_packing_events(
     produce_lots` above, centralized here so the join is written exactly
     once. Returns the same `harvested_produce_lot_id`-keyed shape
     `traceability_service.py`'s own response contract already exposes, so
-    neither of its two call sites needs any response-shape change."""
+    neither of its two call sites needs any response-shape change.
+
+    POSTHARVEST-OPS-001F: also returns `graded_produce_lot_id`, so the
+    public traceability response can expose GPL identity directly instead
+    of only the HPL it was graded from."""
     if not packing_event_ids:
         return []
     rows = conn.execute(
         text(
-            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, "
+            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, pil.graded_produce_lot_id, "
             "ge.source_harvested_produce_lot_id AS harvested_produce_lot_id, "
             "pil.consumed_weight_kg, pil.consumed_whole_unit_count "
             "FROM packing_input_lines pil "
@@ -345,6 +355,60 @@ def _packing_input_lines_for_packing_events(
             "ORDER BY pil.packing_event_id, ge.source_harvested_produce_lot_id"
         ),
         {"tid": tenant_id, "fid": farm_id, "ids": packing_event_ids},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+# --- Graded produce lots / grading events (POSTHARVEST-OPS-001F) -----------
+
+
+def _graded_produce_lots_by_ids(
+    conn: Connection, *, tenant_id, farm_id, graded_produce_lot_ids: list[uuid.UUID]
+) -> list[dict]:
+    """Full public-traceability detail for an explicit set of GPL ids --
+    used once GPL ids are already known (from packing input lines), never
+    a produce-lot- or grading-event-keyed lookup, so distinct GPLs graded
+    from the same HPL (or the same GradingEvent) are never collapsed."""
+    if not graded_produce_lot_ids:
+        return []
+    rows = conn.execute(
+        text(
+            "SELECT id AS graded_produce_lot_id, code, grading_event_id, crop_id, variety_id, "
+            "grade_definition_version_id, original_received_weight_kg, original_received_whole_unit_count, "
+            "effective_time FROM graded_produce_lots "
+            "WHERE tenant_id = :tid AND farm_id = :fid AND id = ANY(:ids) ORDER BY effective_time, id"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "ids": graded_produce_lot_ids},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _grading_events_by_ids(conn: Connection, *, tenant_id, farm_id, grading_event_ids: list[uuid.UUID]) -> list[dict]:
+    """Full public-traceability detail for an explicit set of GradingEvent
+    ids -- one GradingEvent may be the parent of several distinct
+    GradedProduceLots (different grade outputs of one command); this
+    helper is deduplicated by event id, never by GPL, so it is called once
+    per distinct grading_event_id already collected from the GPL set.
+
+    POSTHARVEST-OPS-001F correction: also returns the whole-unit-count
+    sibling of each weight field (rejected/loss/sample/remainder) -- these
+    already existed on `GradingEvent` (all-or-none per
+    `ck_grading_events_count_mode_shape`) but were omitted from the first
+    pass. No new database field; a weight-only (non-count-mode) grading
+    event still returns every count field NULL."""
+    if not grading_event_ids:
+        return []
+    rows = conn.execute(
+        text(
+            "SELECT id AS grading_event_id, source_harvested_produce_lot_id, effective_time, recorded_time, "
+            "input_presented_weight_kg, input_presented_whole_unit_count, "
+            "rejected_weight_kg, rejected_whole_unit_count, "
+            "loss_weight_kg, loss_whole_unit_count, "
+            "sample_weight_kg, sample_whole_unit_count, "
+            "remainder_weight_kg, remainder_whole_unit_count FROM grading_events "
+            "WHERE tenant_id = :tid AND farm_id = :fid AND id = ANY(:ids) ORDER BY effective_time, id"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "ids": grading_event_ids},
     ).mappings().all()
     return [dict(r) for r in rows]
 

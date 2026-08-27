@@ -38,14 +38,23 @@ def test_traceability_acceptance_flow(client, test_engine) -> None:
         body = resp.json()
         assert body["subject"]["finished_goods_lot_id"] == str(fg_lot_id)
         assert body["completeness"]["trace_complete"] is True
+        # POSTHARVEST-OPS-001F: GPL is a first-class public traceability entity.
+        assert len(body["graded_produce_lots"]) == 1
+        assert len(body["grading_events"]) == 1
+        assert body["packing_inputs"][0]["graded_produce_lot_id"] == body["graded_produce_lots"][0]["graded_produce_lot_id"]
 
         resp = client.get(f"/farms/{farm_id}/traceability/crop-batches/{batch_id}/impact", headers=headers)
         assert resp.status_code == 200, resp.text
-        assert resp.json()["subject_batch_id"] == str(batch_id)
+        batch_impact = resp.json()
+        assert batch_impact["subject_batch_id"] == str(batch_id)
+        assert len(batch_impact["graded_produce_lots"]) == 1
+        assert batch_impact["summary"]["affected_graded_produce_lot_count"] == 1
 
         resp = client.get(f"/farms/{farm_id}/traceability/harvested-produce-lots/{produce_lot_id}/impact", headers=headers)
         assert resp.status_code == 200, resp.text
-        assert resp.json()["subject_harvested_produce_lot_id"] == str(produce_lot_id)
+        hpl_impact = resp.json()
+        assert hpl_impact["subject_harvested_produce_lot_id"] == str(produce_lot_id)
+        assert len(hpl_impact["graded_produce_lots"]) == 1
 
         # No mutation routes anywhere in this API.
         assert client.post(f"/farms/{farm_id}/traceability/finished-goods-lots/{fg_lot_id}", headers=headers).status_code in (404, 405)

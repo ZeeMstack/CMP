@@ -72,10 +72,41 @@ class HarvestedProduceLotRead(BaseModel):
 class PackingInputLineRead(BaseModel):
     packing_input_line_id: uuid.UUID
     packing_event_id: uuid.UUID
+    graded_produce_lot_id: uuid.UUID
     harvested_produce_lot_id: uuid.UUID
     consumed_weight_kg: Decimal
     consumed_whole_unit_count: int | None
     is_affected_source: bool | None = None
+
+
+class GradedProduceLotRead(BaseModel):
+    graded_produce_lot_id: uuid.UUID
+    code: str
+    grading_event_id: uuid.UUID
+    crop_id: uuid.UUID
+    variety_id: uuid.UUID | None
+    grade_definition_version_id: uuid.UUID
+    original_received_weight_kg: Decimal
+    original_received_whole_unit_count: int | None
+    effective_time: datetime
+    is_affected_source: bool | None = None
+
+
+class GradingEventRead(BaseModel):
+    grading_event_id: uuid.UUID
+    source_harvested_produce_lot_id: uuid.UUID
+    effective_time: datetime
+    recorded_time: datetime
+    input_presented_weight_kg: Decimal
+    input_presented_whole_unit_count: int | None
+    rejected_weight_kg: Decimal
+    rejected_whole_unit_count: int | None
+    loss_weight_kg: Decimal
+    loss_whole_unit_count: int | None
+    sample_weight_kg: Decimal
+    sample_whole_unit_count: int | None
+    remainder_weight_kg: Decimal
+    remainder_whole_unit_count: int | None
 
 
 class PackingEventRead(BaseModel):
@@ -158,6 +189,7 @@ class QualityHoldRead(BaseModel):
 class ImpactSummary(BaseModel):
     affected_crop_batch_count: int
     affected_harvested_produce_lot_count: int
+    affected_graded_produce_lot_count: int
     affected_finished_goods_lot_count: int
     affected_dispatch_event_count: int
     potentially_affected_available_weight_kg: Decimal
@@ -176,6 +208,8 @@ class FinishedGoodsLotTraceRead(BaseModel):
     subject: FinishedGoodsLotRead
     packing_event: PackingEventRead
     packing_inputs: list[PackingInputLineRead]
+    graded_produce_lots: list[GradedProduceLotRead]
+    grading_events: list[GradingEventRead]
     produce_lots: list[HarvestedProduceLotRead]
     harvest_events: list[HarvestEventRead]
     lineage: Lineage
@@ -193,6 +227,7 @@ class CropBatchImpactRead(BaseModel):
     harvest_events: list[HarvestEventRead]
     produce_lots: list[HarvestedProduceLotRead]
     packing_inputs: list[PackingInputLineRead]
+    graded_produce_lots: list[GradedProduceLotRead]
     finished_goods: list[FinishedGoodsLotImpactRead]
     storage: list[LocationBalanceRead]
     dispatches: list[DispatchLineRead]
@@ -205,6 +240,7 @@ class HarvestedProduceLotImpactRead(BaseModel):
     subject_harvested_produce_lot_code: str
     produce_lots: list[HarvestedProduceLotRead]
     packing_inputs: list[PackingInputLineRead]
+    graded_produce_lots: list[GradedProduceLotRead]
     finished_goods: list[FinishedGoodsLotImpactRead]
     storage: list[LocationBalanceRead]
     dispatches: list[DispatchLineRead]
