@@ -3899,6 +3899,8 @@ export interface components {
             produce_lots: components["schemas"]["app__schemas__traceability__HarvestedProduceLotRead"][];
             /** Packing Inputs */
             packing_inputs: components["schemas"]["app__schemas__traceability__PackingInputLineRead"][];
+            /** Graded Produce Lots */
+            graded_produce_lots: components["schemas"]["app__schemas__traceability__GradedProduceLotRead"][];
             /** Finished Goods */
             finished_goods: components["schemas"]["FinishedGoodsLotImpactRead"][];
             /** Storage */
@@ -4305,6 +4307,10 @@ export interface components {
             packing_event: components["schemas"]["app__schemas__traceability__PackingEventRead"];
             /** Packing Inputs */
             packing_inputs: components["schemas"]["app__schemas__traceability__PackingInputLineRead"][];
+            /** Graded Produce Lots */
+            graded_produce_lots: components["schemas"]["app__schemas__traceability__GradedProduceLotRead"][];
+            /** Grading Events */
+            grading_events: components["schemas"]["app__schemas__traceability__GradingEventRead"][];
             /** Produce Lots */
             produce_lots: components["schemas"]["app__schemas__traceability__HarvestedProduceLotRead"][];
             /** Harvest Events */
@@ -4942,52 +4948,6 @@ export interface components {
             /** Note */
             note: string | null;
         };
-        /** GradedProduceLotRead */
-        GradedProduceLotRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
-            /**
-             * Farm Id
-             * Format: uuid
-             */
-            farm_id: string;
-            /**
-             * Grading Event Id
-             * Format: uuid
-             */
-            grading_event_id: string;
-            /** Code */
-            code: string;
-            crop: components["schemas"]["CropSummary"];
-            variety: components["schemas"]["VarietySummary"] | null;
-            /**
-             * Grade Definition Version Id
-             * Format: uuid
-             */
-            grade_definition_version_id: string;
-            /** Original Received Weight Kg */
-            original_received_weight_kg: string;
-            /** Original Received Whole Unit Count */
-            original_received_whole_unit_count: number | null;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
-            /**
-             * Recorded At
-             * Format: date-time
-             */
-            recorded_at: string;
-        };
         /** GradingEventCreate */
         GradingEventCreate: {
             /**
@@ -5034,84 +4994,6 @@ export interface components {
             remainder_whole_unit_count?: number | null;
             /** Outputs */
             outputs?: components["schemas"]["GradingOutputIn"][];
-        };
-        /** GradingEventRead */
-        GradingEventRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
-            /**
-             * Farm Id
-             * Format: uuid
-             */
-            farm_id: string;
-            /**
-             * Source Harvested Produce Lot Id
-             * Format: uuid
-             */
-            source_harvested_produce_lot_id: string;
-            /** Source Produce Lot Code */
-            source_produce_lot_code: string;
-            /**
-             * Processing Hall Location Id
-             * Format: uuid
-             */
-            processing_hall_location_id: string;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
-            /**
-             * Recorded Time
-             * Format: date-time
-             */
-            recorded_time: string;
-            /**
-             * Actor User Id
-             * Format: uuid
-             */
-            actor_user_id: string;
-            /**
-             * Client Command Id
-             * Format: uuid
-             */
-            client_command_id: string;
-            /** Note */
-            note: string | null;
-            /** Input Presented Weight Kg */
-            input_presented_weight_kg: string;
-            /** Input Presented Whole Unit Count */
-            input_presented_whole_unit_count: number | null;
-            /** Rejected Weight Kg */
-            rejected_weight_kg: string;
-            /** Rejected Whole Unit Count */
-            rejected_whole_unit_count: number | null;
-            /** Loss Weight Kg */
-            loss_weight_kg: string;
-            /** Loss Whole Unit Count */
-            loss_whole_unit_count: number | null;
-            /** Sample Weight Kg */
-            sample_weight_kg: string;
-            /** Sample Whole Unit Count */
-            sample_whole_unit_count: number | null;
-            /** Remainder Weight Kg */
-            remainder_weight_kg: string;
-            /** Remainder Whole Unit Count */
-            remainder_whole_unit_count: number | null;
-            /** Processed Weight Kg */
-            processed_weight_kg: string;
-            /** Processed Whole Unit Count */
-            processed_whole_unit_count: number | null;
-            /** Outputs */
-            outputs: components["schemas"]["GradedProduceLotRead"][];
         };
         /** GradingOutputIn */
         GradingOutputIn: {
@@ -5431,6 +5313,8 @@ export interface components {
             produce_lots: components["schemas"]["app__schemas__traceability__HarvestedProduceLotRead"][];
             /** Packing Inputs */
             packing_inputs: components["schemas"]["app__schemas__traceability__PackingInputLineRead"][];
+            /** Graded Produce Lots */
+            graded_produce_lots: components["schemas"]["app__schemas__traceability__GradedProduceLotRead"][];
             /** Finished Goods */
             finished_goods: components["schemas"]["FinishedGoodsLotImpactRead"][];
             /** Storage */
@@ -5446,6 +5330,8 @@ export interface components {
             affected_crop_batch_count: number;
             /** Affected Harvested Produce Lot Count */
             affected_harvested_produce_lot_count: number;
+            /** Affected Graded Produce Lot Count */
+            affected_graded_produce_lot_count: number;
             /** Affected Finished Goods Lot Count */
             affected_finished_goods_lot_count: number;
             /** Affected Dispatch Event Count */
@@ -9419,6 +9305,130 @@ export interface components {
             /** Package Count */
             package_count: number;
         };
+        /** GradedProduceLotRead */
+        app__schemas__grading__GradedProduceLotRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /** Code */
+            code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /**
+             * Grade Definition Version Id
+             * Format: uuid
+             */
+            grade_definition_version_id: string;
+            /** Original Received Weight Kg */
+            original_received_weight_kg: string;
+            /** Original Received Whole Unit Count */
+            original_received_whole_unit_count: number | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /** GradingEventRead */
+        app__schemas__grading__GradingEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Source Harvested Produce Lot Id
+             * Format: uuid
+             */
+            source_harvested_produce_lot_id: string;
+            /** Source Produce Lot Code */
+            source_produce_lot_code: string;
+            /**
+             * Processing Hall Location Id
+             * Format: uuid
+             */
+            processing_hall_location_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /** Input Presented Weight Kg */
+            input_presented_weight_kg: string;
+            /** Input Presented Whole Unit Count */
+            input_presented_whole_unit_count: number | null;
+            /** Rejected Weight Kg */
+            rejected_weight_kg: string;
+            /** Rejected Whole Unit Count */
+            rejected_whole_unit_count: number | null;
+            /** Loss Weight Kg */
+            loss_weight_kg: string;
+            /** Loss Whole Unit Count */
+            loss_whole_unit_count: number | null;
+            /** Sample Weight Kg */
+            sample_weight_kg: string;
+            /** Sample Whole Unit Count */
+            sample_whole_unit_count: number | null;
+            /** Remainder Weight Kg */
+            remainder_weight_kg: string;
+            /** Remainder Whole Unit Count */
+            remainder_whole_unit_count: number | null;
+            /** Processed Weight Kg */
+            processed_weight_kg: string;
+            /** Processed Whole Unit Count */
+            processed_whole_unit_count: number | null;
+            /** Outputs */
+            outputs: components["schemas"]["app__schemas__grading__GradedProduceLotRead"][];
+        };
         /** HarvestEventRead */
         app__schemas__harvest__HarvestEventRead: {
             /**
@@ -9811,6 +9821,87 @@ export interface components {
             /** Unplaced Package Count */
             unplaced_package_count: number;
         };
+        /** GradedProduceLotRead */
+        app__schemas__traceability__GradedProduceLotRead: {
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Variety Id */
+            variety_id: string | null;
+            /**
+             * Grade Definition Version Id
+             * Format: uuid
+             */
+            grade_definition_version_id: string;
+            /** Original Received Weight Kg */
+            original_received_weight_kg: string;
+            /** Original Received Whole Unit Count */
+            original_received_whole_unit_count: number | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Is Affected Source */
+            is_affected_source?: boolean | null;
+        };
+        /** GradingEventRead */
+        app__schemas__traceability__GradingEventRead: {
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /**
+             * Source Harvested Produce Lot Id
+             * Format: uuid
+             */
+            source_harvested_produce_lot_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /** Input Presented Weight Kg */
+            input_presented_weight_kg: string;
+            /** Input Presented Whole Unit Count */
+            input_presented_whole_unit_count: number | null;
+            /** Rejected Weight Kg */
+            rejected_weight_kg: string;
+            /** Rejected Whole Unit Count */
+            rejected_whole_unit_count: number | null;
+            /** Loss Weight Kg */
+            loss_weight_kg: string;
+            /** Loss Whole Unit Count */
+            loss_whole_unit_count: number | null;
+            /** Sample Weight Kg */
+            sample_weight_kg: string;
+            /** Sample Whole Unit Count */
+            sample_whole_unit_count: number | null;
+            /** Remainder Weight Kg */
+            remainder_weight_kg: string;
+            /** Remainder Whole Unit Count */
+            remainder_whole_unit_count: number | null;
+        };
         /** HarvestEventRead */
         app__schemas__traceability__HarvestEventRead: {
             /**
@@ -9913,6 +10004,11 @@ export interface components {
              * Format: uuid
              */
             packing_event_id: string;
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
             /**
              * Harvested Produce Lot Id
              * Format: uuid
@@ -15865,7 +15961,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradingEventRead"][];
+                    "application/json": components["schemas"]["app__schemas__grading__GradingEventRead"][];
                 };
             };
             /** @description Validation Error */
@@ -15905,7 +16001,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradingEventRead"];
+                    "application/json": components["schemas"]["app__schemas__grading__GradingEventRead"];
                 };
             };
             /** @description Validation Error */
@@ -15942,7 +16038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradingEventRead"];
+                    "application/json": components["schemas"]["app__schemas__grading__GradingEventRead"];
                 };
             };
             /** @description Validation Error */
@@ -15983,7 +16079,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradedProduceLotRead"][];
+                    "application/json": components["schemas"]["app__schemas__grading__GradedProduceLotRead"][];
                 };
             };
             /** @description Validation Error */
@@ -16020,7 +16116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GradedProduceLotRead"];
+                    "application/json": components["schemas"]["app__schemas__grading__GradedProduceLotRead"];
                 };
             };
             /** @description Validation Error */
