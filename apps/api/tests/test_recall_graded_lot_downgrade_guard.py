@@ -102,8 +102,8 @@ def test_clean_downgrade_with_no_graded_lot_history_reupgrade_restores_exact_pri
             )
 
         command.upgrade(_cfg(), "head")
+        _assert_at_head(test_engine)
         with test_engine.connect() as c:
-            assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "c3f7a29d5e64"
             table_restored = c.execute(text("SELECT to_regclass('recall_scope_graded_produce_lots')")).scalar()
             assert table_restored is not None
 

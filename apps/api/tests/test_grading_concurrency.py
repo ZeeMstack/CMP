@@ -13,10 +13,9 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.services import grading_service, packing_service, quality_hold_service
+from app.services import grading_service, quality_hold_service
 from app.services.errors import (
     InsufficientHarvestedProduceLotBalanceError,
-    InsufficientProduceLotBalanceError,
     QualityHoldOpenError,
 )
 from tests._grading_scenario import build_committed_scenario, cleanup_scenario, now
@@ -319,93 +318,12 @@ def test_grading_vs_harvest_correction_same_source_no_deadlock(test_engine) -> N
         cleanup_traceability_scenario(test_engine, plate_scenario["tenant_id"])
 
 
-@pytest.mark.integration
-def test_grading_vs_packing_same_source_serializes_safely(test_engine) -> None:
-    """Direct Harvest -> Packing still exists alongside the new Harvest ->
-    Grading path -- both consume from the same HarvestedProduceLot ledger,
-    so a Grading command and a Packing command racing against the same
-    10kg lot, each requesting 7kg, must serialize through the shared
-    ledger/lock: at most one may succeed, the loser fails with its own
-    insufficient-balance error, and the balance never goes negative."""
-    scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
-    barrier = threading.Barrier(2)
-    results: dict[str, object] = {}
-    effective_time = now()
-
-    def grading_worker() -> None:
-        conn = test_engine.connect()
-        session = Session(bind=conn)
-        try:
-            barrier.wait(timeout=10)
-            event = grading_service.record_grading(
-                session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
-                source_harvested_produce_lot_id=scenario["lot_a_id"],
-                processing_hall_location_id=scenario["packing_hall_location_id"], effective_time=effective_time,
-                note=None, input_presented_weight_kg=Decimal("7.000"), input_presented_whole_unit_count=None,
-                rejected_weight_kg=Decimal("0"), rejected_whole_unit_count=None,
-                loss_weight_kg=Decimal("0"), loss_whole_unit_count=None,
-                sample_weight_kg=Decimal("0"), sample_whole_unit_count=None,
-                remainder_weight_kg=Decimal("0"), remainder_whole_unit_count=None,
-                outputs=[_output(scenario, weight="7.000", code="GPL-VS-PACK")],
-            )
-            results["grading"] = ("ok", event.id)
-        except InsufficientHarvestedProduceLotBalanceError as exc:
-            results["grading"] = ("insufficient", str(exc))
-        except Exception as exc:  # pragma: no cover
-            results["grading"] = ("error", repr(exc))
-        finally:
-            session.close()
-            conn.close()
-
-    def packing_worker() -> None:
-        conn = test_engine.connect()
-        session = Session(bind=conn)
-        try:
-            barrier.wait(timeout=10)
-            event = packing_service.record_packing(
-                session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                finished_goods_lot_code=f"FG-VS-GRADE-{scenario['suffix']}", package_count=1,
-                packed_output_weight_kg=Decimal("7.000"), process_loss_weight_kg=Decimal("0"),
-                rejected_weight_kg=Decimal("0"), note=None,
-                input_lines=[
-                    {
-                        "harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("7.000"),
-                        "consumed_whole_unit_count": None, "note": None,
-                    }
-                ],
-            )
-            results["packing"] = ("ok", event.id)
-        except InsufficientProduceLotBalanceError as exc:
-            results["packing"] = ("insufficient", str(exc))
-        except Exception as exc:  # pragma: no cover
-            results["packing"] = ("error", repr(exc))
-        finally:
-            session.close()
-            conn.close()
-
-    t_a = threading.Thread(target=grading_worker)
-    t_b = threading.Thread(target=packing_worker)
-    t_a.start()
-    t_b.start()
-    t_a.join(timeout=15)
-    t_b.join(timeout=15)
-
-    try:
-        assert not t_a.is_alive() and not t_b.is_alive()
-        outcomes = [results["grading"][0], results["packing"][0]]
-        assert outcomes.count("ok") == 1, results
-        assert outcomes.count("insufficient") == 1, results
-        with test_engine.connect() as verify_conn:
-            balance = verify_conn.execute(
-                text("SELECT COALESCE(sum(weight_delta_kg), 0) FROM produce_lot_ledger_entries WHERE produce_lot_id = :lid"),
-                {"lid": scenario["lot_a_id"]},
-            ).scalar_one()
-        assert balance >= 0, "the lot's balance must never go negative across grading+packing consumption"
-        assert balance == Decimal("3.000")
-    finally:
-        cleanup_scenario(test_engine, scenario["tenant_id"])
+# POSTHARVEST-OPS-001E: `test_grading_vs_packing_same_source_serializes_safely`
+# removed outright (not rewritten) -- it tested Grading racing a *direct*
+# Harvest -> Packing consuming the same HarvestedProduceLot ledger row.
+# That contract no longer exists: Packing now consumes exclusively from
+# GradedProduceLot balance and never accepts a harvested_produce_lot_id at
+# all, so there is no longer any shared-ledger race between the two to prove.
 
 
 @pytest.mark.integration

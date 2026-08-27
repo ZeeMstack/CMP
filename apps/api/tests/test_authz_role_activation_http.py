@@ -258,11 +258,12 @@ def test_packing_supervisor_can_pack_but_not_manage_storage(_scenario_cleanup, c
 
     pack_response = client.post(f"/farms/{scenario['farm_id']}/packing-events", json={
         "client_command_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
+        "pack_specification_version_id": str(scenario["pack_specification_version_id"]),
         "finished_goods_lot_code": f"FG-PK-{scenario['suffix']}", "package_count": 5,
         "packed_output_weight_kg": "4.000", "process_loss_weight_kg": "0",
         "rejected_weight_kg": "0", "note": None,
         "input_lines": [{
-            "harvested_produce_lot_id": str(scenario["lot_a_id"]), "consumed_weight_kg": "4.000",
+            "graded_produce_lot_id": str(scenario["gpl_a_id"]), "consumed_weight_kg": "4.000",
             "consumed_whole_unit_count": None, "note": None,
         }],
     }, headers=headers)
@@ -366,11 +367,12 @@ def test_dispatch_officer_can_dispatch_but_not_pack(_scenario_cleanup, client, d
 
     pack_response = client.post(f"/farms/{scenario['farm_id']}/packing-events", json={
         "client_command_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
+        "pack_specification_version_id": str(scenario["pack_specification_version_id"]),
         "finished_goods_lot_code": f"FG-DO-{scenario['suffix']}", "package_count": 5,
         "packed_output_weight_kg": "1.000", "process_loss_weight_kg": "0",
         "rejected_weight_kg": "0", "note": None,
         "input_lines": [{
-            "harvested_produce_lot_id": str(scenario["lot_a_id"]), "consumed_weight_kg": "1.000",
+            "graded_produce_lot_id": str(scenario["gpl_a_id"]), "consumed_weight_kg": "1.000",
             "consumed_whole_unit_count": None, "note": None,
         }],
     }, headers=headers)

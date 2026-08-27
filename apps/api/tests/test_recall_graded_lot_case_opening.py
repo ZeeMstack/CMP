@@ -235,12 +235,36 @@ def test_cross_farm_graded_produce_lot_rejected(test_engine) -> None:
             cleanup_recall_graded_lot_scenario(test_engine, tenant_id)
 
 
+def _all_graded_lot_ids_for_hpl(session, produce_lot_id) -> list:
+    """POSTHARVEST-OPS-001E: `pack_lot` can no longer consume a
+    HarvestedProduceLot directly -- packing any of its "remaining" balance
+    now transparently grades that remaining weight into its OWN additional
+    GradedProduceLot first (see `_traceability_scenario.pack_lot`'s own
+    docstring). A recall's frozen scope must include every one of an HPL's
+    GPL descendants, not just the two explicitly named by the test's own
+    setup -- so the expected set is read back from the database rather
+    than hardcoded, staying correct regardless of how many GPLs a given
+    scenario helper happens to create."""
+    return sorted(
+        session.execute(
+            text(
+                "SELECT gpl.id FROM graded_produce_lots gpl "
+                "JOIN grading_events ge ON ge.id = gpl.grading_event_id "
+                "WHERE ge.source_harvested_produce_lot_id = :hpl_id"
+            ),
+            {"hpl_id": produce_lot_id},
+        ).scalars().all()
+    )
+
+
 @pytest.mark.integration
 def test_batch_source_recall_freezes_existing_graded_lot_descendants(test_engine) -> None:
     """Batch B -> HPL-1 -> grading -> GPL-A, GPL-B; the remaining HPL-1
-    balance is packed into an FG lot. A recall opened on Batch B must
-    freeze all four: the batch, HPL-1, GPL-A, GPL-B, and the FG lot --
-    existing FinishedGoodsLot freeze behavior is unchanged."""
+    balance is packed into an FG lot (which, post-001E, requires grading
+    that remaining balance into its own additional GPL first). A recall
+    opened on Batch B must freeze the batch, HPL-1, every one of HPL-1's
+    GPL descendants, and the FG lot -- existing FinishedGoodsLot freeze
+    behavior is unchanged."""
     tenant_id = None
     try:
         with committed_connection(test_engine) as session:
@@ -250,6 +274,8 @@ def test_batch_source_recall_freezes_existing_graded_lot_descendants(test_engine
             batch_id, produce_lot_id, _, gpl_a_id, gpl_b_id = _build_graded_pair(session, tenant, user, farm)
             fg_lot_id, _ = pack_lot(session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), package_count=5)
             session.commit()
+            expected_gpl_ids = _all_graded_lot_ids_for_hpl(session, produce_lot_id)
+            assert {gpl_a_id, gpl_b_id}.issubset(set(expected_gpl_ids))
 
             case = open_case(session, tenant, farm, user, crop_batch_id=batch_id)
             session.commit()
@@ -258,7 +284,7 @@ def test_batch_source_recall_freezes_existing_graded_lot_descendants(test_engine
         detail = recall_service.get_recall_case(tenant_id=tenant_id, farm_id=farm_id, recall_case_id=case_id, engine=test_engine)
         assert detail["frozen_scope"]["crop_batch_ids"] == [batch_id]
         assert detail["frozen_scope"]["harvested_produce_lot_ids"] == [produce_lot_id]
-        assert sorted(detail["frozen_scope"]["graded_produce_lot_ids"]) == sorted([gpl_a_id, gpl_b_id])
+        assert sorted(detail["frozen_scope"]["graded_produce_lot_ids"]) == expected_gpl_ids
         assert detail["frozen_scope"]["finished_goods_lot_ids"] == [fg_lot_id]
     finally:
         if tenant_id is not None:
@@ -268,8 +294,10 @@ def test_batch_source_recall_freezes_existing_graded_lot_descendants(test_engine
 @pytest.mark.integration
 def test_harvested_produce_lot_source_recall_freezes_existing_graded_lot_descendants_without_promoting_batch(test_engine) -> None:
     """HPL-1 -> grading -> GPL-A, GPL-B; the remaining balance is packed
-    into an FG lot. A recall opened directly on HPL-1 must freeze HPL-1,
-    GPL-A, GPL-B, and the FG lot -- but never promote the CropBatch."""
+    into an FG lot (which, post-001E, requires grading that remaining
+    balance into its own additional GPL first). A recall opened directly
+    on HPL-1 must freeze HPL-1, every one of HPL-1's GPL descendants, and
+    the FG lot -- but never promote the CropBatch."""
     tenant_id = None
     try:
         with committed_connection(test_engine) as session:
@@ -279,6 +307,8 @@ def test_harvested_produce_lot_source_recall_freezes_existing_graded_lot_descend
             batch_id, produce_lot_id, _, gpl_a_id, gpl_b_id = _build_graded_pair(session, tenant, user, farm)
             fg_lot_id, _ = pack_lot(session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), package_count=5)
             session.commit()
+            expected_gpl_ids = _all_graded_lot_ids_for_hpl(session, produce_lot_id)
+            assert {gpl_a_id, gpl_b_id}.issubset(set(expected_gpl_ids))
 
             case = open_case(session, tenant, farm, user, harvested_produce_lot_id=produce_lot_id)
             session.commit()
@@ -287,7 +317,7 @@ def test_harvested_produce_lot_source_recall_freezes_existing_graded_lot_descend
         detail = recall_service.get_recall_case(tenant_id=tenant_id, farm_id=farm_id, recall_case_id=case_id, engine=test_engine)
         assert detail["frozen_scope"]["crop_batch_ids"] == []
         assert detail["frozen_scope"]["harvested_produce_lot_ids"] == [produce_lot_id]
-        assert sorted(detail["frozen_scope"]["graded_produce_lot_ids"]) == sorted([gpl_a_id, gpl_b_id])
+        assert sorted(detail["frozen_scope"]["graded_produce_lot_ids"]) == expected_gpl_ids
         assert detail["frozen_scope"]["finished_goods_lot_ids"] == [fg_lot_id]
     finally:
         if tenant_id is not None:

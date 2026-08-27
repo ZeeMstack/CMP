@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services import packing_service
-from app.services.errors import DuplicateFinishedGoodsLotCodeError, InsufficientProduceLotBalanceError
+from app.services.errors import DuplicateFinishedGoodsLotCodeError, InsufficientGradedProduceLotBalanceError
 from tests._packing_scenario import build_committed_scenario, cleanup_scenario, now
 
 
@@ -33,16 +33,17 @@ def test_overlapping_concurrent_consumption_cannot_overdraw(test_engine) -> None
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+                pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=effective_time,
                 finished_goods_lot_code=f"FG-{name}-{scenario['suffix']}", package_count=1,
                 packed_output_weight_kg=Decimal("7.000"), process_loss_weight_kg=Decimal("0"),
                 rejected_weight_kg=Decimal("0"), note=None,
                 input_lines=[
-                    {"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("7.000"), "consumed_whole_unit_count": None, "note": None}
+                    {"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("7.000"), "consumed_whole_unit_count": None, "note": None}
                 ],
             )
             results[name] = ("ok", event.id)
-        except InsufficientProduceLotBalanceError as exc:
+        except InsufficientGradedProduceLotBalanceError as exc:
             results[name] = ("insufficient", str(exc))
         except Exception as exc:  # pragma: no cover
             results[name] = ("error", repr(exc))
@@ -66,10 +67,10 @@ def test_overlapping_concurrent_consumption_cannot_overdraw(test_engine) -> None
         with test_engine.connect() as verify_conn:
             balance = verify_conn.execute(
                 text(
-                    "SELECT COALESCE(sum(weight_delta_kg), 0) FROM produce_lot_ledger_entries "
-                    "WHERE produce_lot_id = :lid"
+                    "SELECT COALESCE(sum(weight_delta_kg), 0) FROM graded_produce_lot_ledger_entries "
+                    "WHERE graded_produce_lot_id = :lid"
                 ),
-                {"lid": scenario["lot_a_id"]},
+                {"lid": scenario["gpl_a_id"]},
             ).scalar_one()
         assert balance >= 0, "the lot's balance must never go negative under concurrent consumption"
         assert balance == Decimal("3.000"), "exactly one 7kg consumption must have succeeded against the 10kg lot"
@@ -93,11 +94,12 @@ def test_exact_duplicate_packing_command_race_creates_one_event(test_engine) -> 
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=command_id, effective_time=effective_time,
+                actor_user_id=scenario["user_id"], client_command_id=command_id,
+                pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=effective_time,
                 finished_goods_lot_code=code, package_count=1, packed_output_weight_kg=Decimal("5.000"),
                 process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"), note=None,
                 input_lines=[
-                    {"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}
+                    {"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}
                 ],
             )
             results[name] = ("ok", event.id)
@@ -123,8 +125,8 @@ def test_exact_duplicate_packing_command_race_creates_one_event(test_engine) -> 
                 text("SELECT count(*) FROM packing_events WHERE tenant_id = :tid"), {"tid": scenario["tenant_id"]}
             ).scalar_one()
             debit_count = verify_conn.execute(
-                text("SELECT count(*) FROM produce_lot_ledger_entries WHERE produce_lot_id = :lid AND entry_kind = 'packing_consumption'"),
-                {"lid": scenario["lot_a_id"]},
+                text("SELECT count(*) FROM graded_produce_lot_ledger_entries WHERE graded_produce_lot_id = :lid AND entry_kind = 'packing_consumption'"),
+                {"lid": scenario["gpl_a_id"]},
             ).scalar_one()
             # CMP-016: the racing duplicate command must also leave exactly
             # one finished-goods lot and exactly one packing receipt behind.
@@ -162,11 +164,12 @@ def test_same_finished_goods_lot_code_race_leaves_one_winner(test_engine) -> Non
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+                pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=effective_time,
                 finished_goods_lot_code=code, package_count=1, packed_output_weight_kg=Decimal("1.000"),
                 process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"), note=None,
                 input_lines=[
-                    {"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}
+                    {"graded_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}
                 ],
             )
             results[name] = ("ok", event.id)
@@ -178,8 +181,8 @@ def test_same_finished_goods_lot_code_race_leaves_one_winner(test_engine) -> Non
             session.close()
             conn.close()
 
-    t_a = threading.Thread(target=worker, args=("a", scenario["lot_a_id"]))
-    t_b = threading.Thread(target=worker, args=("b", scenario["lot_b_id"]))
+    t_a = threading.Thread(target=worker, args=("a", scenario["gpl_a_id"]))
+    t_b = threading.Thread(target=worker, args=("b", scenario["gpl_b_id"]))
     t_a.start()
     t_b.start()
     t_a.join(timeout=15)
@@ -230,12 +233,13 @@ def test_two_concurrent_commands_consuming_exact_final_weight_both_succeed(test_
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+                pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=effective_time,
                 finished_goods_lot_code=f"FG-{name}-{scenario['suffix']}", package_count=1,
                 packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                 rejected_weight_kg=Decimal("0"), note=None,
                 input_lines=[
-                    {"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}
+                    {"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}
                 ],
             )
             results[name] = ("ok", event.id)
@@ -257,8 +261,8 @@ def test_two_concurrent_commands_consuming_exact_final_weight_both_succeed(test_
         assert results["a"][0] == "ok" and results["b"][0] == "ok", results
         with test_engine.connect() as verify_conn:
             balance = verify_conn.execute(
-                text("SELECT COALESCE(sum(weight_delta_kg), 0) FROM produce_lot_ledger_entries WHERE produce_lot_id = :lid"),
-                {"lid": scenario["lot_a_id"]},
+                text("SELECT COALESCE(sum(weight_delta_kg), 0) FROM graded_produce_lot_ledger_entries WHERE graded_produce_lot_id = :lid"),
+                {"lid": scenario["gpl_a_id"]},
             ).scalar_one()
         assert balance == Decimal("0.000") or balance == Decimal("0")
     finally:
@@ -274,7 +278,7 @@ def test_overlapping_multi_lot_commands_reversed_order_no_deadlock(test_engine) 
     commands complete without ever deadlocking regardless of client-
     supplied line order."""
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_b_weight="10.000", lot_a_count=None, lot_b_count=None)
-    lot_a_id, lot_b_id = scenario["lot_a_id"], scenario["lot_b_id"]
+    lot_a_id, lot_b_id = scenario["gpl_a_id"], scenario["gpl_b_id"]
     barrier = threading.Barrier(2)
     results: dict[str, object] = {}
     effective_time = now()
@@ -286,13 +290,14 @@ def test_overlapping_multi_lot_commands_reversed_order_no_deadlock(test_engine) 
             barrier.wait(timeout=10)
             event = packing_service.record_packing(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+                pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=effective_time,
                 finished_goods_lot_code=f"FG-{name}-{scenario['suffix']}", package_count=1,
                 packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
                 rejected_weight_kg=Decimal("0"), note=None,
                 input_lines=[
-                    {"harvested_produce_lot_id": first_lot, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
-                    {"harvested_produce_lot_id": second_lot, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
+                    {"graded_produce_lot_id": first_lot, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
+                    {"graded_produce_lot_id": second_lot, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
                 ],
             )
             results[name] = ("ok", event.id)

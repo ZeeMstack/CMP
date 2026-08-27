@@ -23,16 +23,24 @@ def pack_one(
     packed_output_weight_kg: Decimal = Decimal("8.000"), code_suffix: str = "",
 ):
     """Packs the scenario's given source produce lot into a new
-    finished-goods lot. Returns (finished_goods_lot_id, packing_event_id)."""
+    finished-goods lot. Returns (finished_goods_lot_id, packing_event_id).
+
+    POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    directly -- `lot_key` (e.g. "lot_a_id"/"lot_b_id") is mapped to its
+    corresponding GradedProduceLot key ("gpl_a_id"/"gpl_b_id"), which
+    `tests._packing_scenario.build_committed_scenario` already grades in
+    full ahead of time."""
+    gpl_key = "gpl_" + lot_key.removeprefix("lot_")
     event = packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=scenario["pack_specification_version_id"],
+        effective_time=now(),
         finished_goods_lot_code=f"FG-{scenario['suffix']}{code_suffix}", package_count=package_count,
         packed_output_weight_kg=packed_output_weight_kg, process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
         input_lines=[
             {
-                "harvested_produce_lot_id": scenario[lot_key], "consumed_weight_kg": packed_output_weight_kg,
+                "graded_produce_lot_id": scenario[gpl_key], "consumed_weight_kg": packed_output_weight_kg,
                 "consumed_whole_unit_count": None, "note": None,
             }
         ],

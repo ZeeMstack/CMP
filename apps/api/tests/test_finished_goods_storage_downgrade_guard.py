@@ -24,8 +24,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
+from app.services import finished_goods_storage_service
 from tests._dispatch_scenario import pack_one
-from tests._packing_scenario import build_committed_scenario, cleanup_scenario, require_cmp_test
+from tests._packing_scenario import (
+    build_committed_scenario, build_packing_scaffold, cleanup_scenario, grade_entire_lot, require_cmp_test,
+)
 from tests._storage_scenario import create_cold_store, create_cold_store_position, place_one, release_one
 
 API_ROOT = Path(__file__).resolve().parent.parent
@@ -84,7 +87,7 @@ def _build_placed_scenario(test_engine):
 def test_downgrade_blocked_by_storage_movement_history(test_engine, alembic_head_restore) -> None:
     s = _build_placed_scenario(test_engine)
     try:
-        with pytest.raises(RuntimeError, match="finished_goods_storage_movements contains history"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP018_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -128,7 +131,7 @@ def test_downgrade_blocked_even_when_net_placed_balance_is_zero(test_engine, ale
             ).scalar_one()
         assert balance == Decimal("0.000"), "the place/release pair must net to a zero balance for this to be meaningful"
 
-        with pytest.raises(RuntimeError, match="finished_goods_storage_movements contains history"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP018_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -140,8 +143,7 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
     """No storage movement history at all: downgrade must succeed, drop
     the storage table/triggers/function, restore the byte-exact CMP-017
     (v2) ledger trigger attachment, remove only the CMP-018-added
-    `uq_locations_tenant_farm_id` constraint, preserve every existing
-    packing receipt and dispatch issue untouched, and re-upgrade must
+    `uq_locations_tenant_farm_id` constraint, and re-upgrade must
     reattach the v3 trigger and recreate the composite unique constraint.
     Also proves (hardening pass): both the source- and destination-
     location foreign keys on the storage table target
@@ -150,31 +152,36 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
     left with no movements referencing it, so the downgrade guard still
     passes cleanly -- survives the full downgrade/re-upgrade cycle byte-
     identical, proving the constraint drop/recreate never touches
-    `locations` data, only its own catalog entry."""
+    `locations` data, only its own catalog entry.
+
+    POSTHARVEST-OPS-001E: unlike this test's own pre-001E shape, no
+    packing/GradedProduceLot history is created before the downgrade --
+    any real packing_events row (or, further down the same cascade, any
+    real GradingEvent/GradedProduceLot row from build_committed_scenario's
+    own default grading step) now unconditionally blocks downgrade past
+    001E/001C respectively, both of which sit above CMP-018 in the chain,
+    before it could ever reach CMP-018's own state. The "preserve an
+    existing packing receipt" proof this test used to make is superseded
+    by the stronger guarantee (no packing receipt can ever survive a
+    downgrade past 001E) proven in test_dispatch_downgrade_guard.py and
+    test_packing_downgrade_guard.py. The "movement table is fully
+    functional again" proof below packs a FRESH finished-goods lot AFTER
+    re-upgrading to head instead, which needs no packing history to have
+    survived the downgrade itself."""
     require_cmp_test(test_engine)
     # CARRIER-CONFIG-001A: this test's downgrade must succeed cleanly --
     # grow_bag keeps the scenario free of a carrier_specifications row.
-    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
+    # grade_and_pack_spec=False: see the POSTHARVEST-OPS-001E docstring
+    # note above.
+    scenario = build_committed_scenario(
+        test_engine, lot_a_count=None, carrier_type_code="grow_bag", grade_and_pack_spec=False,
+    )
     conn = test_engine.connect()
     session = Session(bind=conn)
-    fg_lot_id, _ = pack_one(scenario, session, package_count=3, packed_output_weight_kg=Decimal("2.000"))
     cold_store = create_cold_store(scenario, session)
     pos = create_cold_store_position(scenario, session, cold_store_id=cold_store.id)
     cold_store_id, pos_id = cold_store.id, pos.id
     session.commit()
-
-    def _receipt_snapshot():
-        with test_engine.connect() as c:
-            return dict(
-                c.execute(
-                    text(
-                        "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                        "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                        "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                    ),
-                    {"lid": fg_lot_id},
-                ).mappings().one()
-            )
 
     def _location_rows_snapshot():
         with test_engine.connect() as c:
@@ -188,7 +195,6 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
             ).mappings().all()
             return [dict(r) for r in rows]
 
-    receipt_before = _receipt_snapshot()
     locations_before = _location_rows_snapshot()
     assert len(locations_before) == 2, "both location rows must exist before downgrade"
     session.close()
@@ -290,16 +296,6 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
             ).scalar_one()
             assert movement_functions_exist is False, "clean downgrade must drop the storage movement trigger function"
 
-            receipt_still_present = c.execute(
-                text(
-                    "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                    "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                    "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                ),
-                {"lid": fg_lot_id},
-            ).mappings().one()
-            assert dict(receipt_still_present) == receipt_before, "the existing packing receipt must survive untouched"
-
         command.upgrade(_cfg(), "head")
         with test_engine.connect() as c:
             current = c.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
@@ -338,32 +334,47 @@ def test_clean_downgrade_with_no_storage_history_reupgrade_restores_exact_cmp017
                 "re-upgrade must leave both location rows byte-identical across the full downgrade/re-upgrade cycle"
             )
 
-            receipt_after_reupgrade = dict(
-                c.execute(
-                    text(
-                        "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                        "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                        "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                    ),
-                    {"lid": fg_lot_id},
-                ).mappings().one()
-            )
-            assert receipt_after_reupgrade == receipt_before, "re-upgrade must leave the receipt byte-identical"
-
         # Re-upgrading must also leave the movement table fully functional
-        # again -- a fresh placement against the surviving lot must work.
-        from app.services import finished_goods_storage_service
-
+        # again -- pack a FRESH finished-goods lot now (needs no packing
+        # history to have survived the downgrade itself) and place it.
+        # The scenario was built with grade_and_pack_spec=False (see the
+        # POSTHARVEST-OPS-001E note above), so it needs its own grading
+        # scaffold + GradedProduceLot built here, post-reupgrade, before
+        # pack_one can consume it.
         verify_conn = test_engine.connect()
         verify_session = Session(bind=verify_conn)
         try:
+            from app.models.farm import Farm
+            from app.models.tenant import Tenant
+            from app.models.user import User
+
+            tenant_obj = verify_session.get(Tenant, scenario["tenant_id"])
+            user_obj = verify_session.get(User, scenario["user_id"])
+            farm_obj = verify_session.get(Farm, scenario["farm_id"])
+            crop_id = verify_session.execute(
+                text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": scenario["lot_a_id"]}
+            ).scalar_one()
+            post_scaffold = build_packing_scaffold(
+                verify_session, tenant_obj, user_obj, farm_obj, crop_id=crop_id, suffix=f"post-{scenario['suffix']}",
+            )
+            gpl_id = grade_entire_lot(
+                verify_session, tenant_obj, user_obj, farm_obj,
+                produce_lot_id=scenario["lot_a_id"], weight=scenario["lot_a_weight"], count=scenario["lot_a_count"],
+                scaffold=post_scaffold, suffix=f"post-{scenario['suffix']}",
+            )
+            scenario["gpl_a_id"] = gpl_id
+            scenario["pack_specification_version_id"] = post_scaffold["pack_specification_version_id"]
+            fresh_fg_lot_id, _ = pack_one(
+                scenario, verify_session, package_count=1, packed_output_weight_kg=Decimal("1.000"),
+                code_suffix="-POST",
+            )
             cold_store = create_cold_store(scenario, verify_session, code_suffix="-POST")
             pos = create_cold_store_position(scenario, verify_session, cold_store_id=cold_store.id, code_suffix="-POST")
             verify_session.commit()
             movement = finished_goods_storage_service.record_movement(
                 verify_session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=_now(),
-                finished_goods_lot_id=fg_lot_id, movement_kind="place", source_location_id=None,
+                finished_goods_lot_id=fresh_fg_lot_id, movement_kind="place", source_location_id=None,
                 destination_location_id=pos.id, moved_weight_kg=Decimal("1.000"), moved_package_count=1, note=None,
             )
             assert movement.id is not None

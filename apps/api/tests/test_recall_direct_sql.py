@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import text
 
 from app.services import recall_service
-from tests._packing_scenario import require_cmp_test
+from tests._packing_scenario import build_packing_scaffold, grade_entire_lot, require_cmp_test
 from tests._recall_scenario import (
     build_batch_with_assignments,
     build_committed_tenant_farm,
@@ -104,6 +104,18 @@ def test_direct_sql_packing_consumption_from_recalled_produce_lot_rejected(test_
             _, lot1 = harvest_all(session, tenant, user, farm, batch_id=batch1["batch"].id, assignment_ids=batch1["assignment_ids"], weight_per_line=Decimal("3.000"))
             _, lot2 = harvest_all(session, tenant, user, farm, batch_id=batch2["batch"].id, assignment_ids=batch2["assignment_ids"], weight_per_line=Decimal("2.000"))
             fg_lot_id, event_id = pack_lot(session, tenant, user, farm, produce_lot_id=lot2, weight=Decimal("2.000"), package_count=2)
+            # POSTHARVEST-OPS-001E: Packing consumes GradedProduceLot, not
+            # HarvestedProduceLot directly -- grade lot1's full weight into
+            # its own GPL BEFORE the recall case opens (Grading itself would
+            # otherwise be blocked from a source lot already under an open
+            # recall), so the later raw-SQL packing_input_lines insert has a
+            # real GPL to reference.
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": lot1}).scalar_one()
+            scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="ds-lot1")
+            gpl1 = grade_entire_lot(
+                session, tenant, user, farm, produce_lot_id=lot1, weight=Decimal("3.000"), count=None,
+                scaffold=scaffold, suffix="ds-lot1",
+            )
             session.commit()
 
             open_case(session, tenant, farm, user, harvested_produce_lot_id=lot1)
@@ -111,16 +123,16 @@ def test_direct_sql_packing_consumption_from_recalled_produce_lot_rejected(test_
 
         require_cmp_test(test_engine)
         with test_engine.connect() as conn:
-            with pytest.raises(Exception, match="source produce lot .* is contained by an open recall case"):
+            with pytest.raises(Exception, match="source graded produce lot .* upstream harvested produce lot is contained by an open recall case"):
                 with conn.begin():
                     conn.execute(
                         text(
                             "INSERT INTO packing_input_lines "
-                            "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, "
+                            "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, "
                             "consumed_weight_kg, consumed_whole_unit_count, note) "
                             "VALUES (:id, :tid, :fid, :eid, :lid, :w, NULL, NULL)"
                         ),
-                        {"id": uuid.uuid4(), "tid": tenant_id, "fid": farm_id, "eid": event_id, "lid": lot1, "w": Decimal("1.000")},
+                        {"id": uuid.uuid4(), "tid": tenant_id, "fid": farm_id, "eid": event_id, "lid": gpl1, "w": Decimal("1.000")},
                     )
     finally:
         if tenant_id is not None:
@@ -134,13 +146,25 @@ def test_direct_sql_packing_consumption_from_recalled_batch_rejected(test_engine
     does not block harvest, so this later produce lot is never itself in
     any produce-lot scope. Packing consumption of it must still be
     rejected because its crop batch remains contained -- isolating the
-    batch-level containment check from the produce-lot-level one."""
+    batch-level containment check from the produce-lot-level one.
+
+    POSTHARVEST-OPS-001E: Packing consumes GradedProduceLot, not
+    HarvestedProduceLot directly, and Grading's own (pre-existing, 001C)
+    insert-integrity trigger independently checks the SAME live batch
+    containment -- meaning a real `grading_service.record_grading` call
+    against lot1b would now be rejected by Grading itself before Packing
+    ever got a chance to. To keep isolating Packing's OWN batch-level
+    check specifically (this file's whole point), lot1b's GradedProduceLot
+    is constructed directly via `session_replication_role = replica`
+    (bypassing Grading's trigger only), then the packing_input_lines
+    insert below goes through PACKING's own, real, unbypassed trigger."""
     tenant_id = None
     try:
         with committed_connection(test_engine) as session:
             tenant, user, farm = build_committed_tenant_farm(session)
             tenant_id = tenant.id
             farm_id = farm.id
+            user_id = user.id
             wf_scaffold = build_workflow_scaffold(session, tenant, user, farm)
             batch1 = sow_new_batch(session, tenant, user, farm, wf_scaffold, carrier_count=2, suffix="ds-batch")
             batch2 = sow_new_batch(session, tenant, user, farm, wf_scaffold, carrier_count=1, suffix="ds-other")
@@ -163,18 +187,60 @@ def test_direct_sql_packing_consumption_from_recalled_batch_rejected(test_engine
             fg_lot_id, event_id = pack_lot(session, tenant, user, farm, produce_lot_id=lot2, weight=Decimal("2.000"), package_count=2)
             session.commit()
 
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": lot1b}).scalar_one()
+            scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="ds-batch-recalled")
+            session.commit()
+
         require_cmp_test(test_engine)
+        grading_event_id = uuid.uuid4()
+        gpl1b = uuid.uuid4()
+        bypass_conn = test_engine.connect()
+        bypass_trans = bypass_conn.begin()
+        bypass_conn.execute(text("SET session_replication_role = replica"))
+        bypass_conn.execute(
+            text(
+                "INSERT INTO grading_events "
+                "(id, tenant_id, farm_id, source_harvested_produce_lot_id, processing_hall_location_id, "
+                "effective_time, recorded_time, actor_user_id, client_command_id, request_fingerprint, note, "
+                "input_presented_weight_kg, input_presented_whole_unit_count, "
+                "rejected_weight_kg, rejected_whole_unit_count, loss_weight_kg, loss_whole_unit_count, "
+                "sample_weight_kg, sample_whole_unit_count, remainder_weight_kg, remainder_whole_unit_count) "
+                "VALUES (:id, :tid, :fid, :lid, :hall, :eff, :eff, :uid, :ccid, 'fp', NULL, "
+                "1.000, NULL, 0, NULL, 0, NULL, 0, NULL, 0, NULL)"
+            ),
+            {
+                "id": grading_event_id, "tid": tenant_id, "fid": farm_id, "lid": lot1b,
+                "hall": scaffold["packing_hall_location_id"], "eff": now(), "uid": user_id, "ccid": uuid.uuid4(),
+            },
+        )
+        bypass_conn.execute(
+            text(
+                "INSERT INTO graded_produce_lots "
+                "(id, tenant_id, farm_id, grading_event_id, crop_id, variety_id, grade_definition_version_id, "
+                "code, original_received_weight_kg, original_received_whole_unit_count, effective_time, recorded_at) "
+                "SELECT :id, :tid, :fid, :geid, crop_id, variety_id, :gdvid, 'GPL-DS-BATCH', 1.000, NULL, :eff, :eff "
+                "FROM harvested_produce_lots WHERE id = :lid"
+            ),
+            {
+                "id": gpl1b, "tid": tenant_id, "fid": farm_id, "geid": grading_event_id,
+                "gdvid": scaffold["grade_definition_version_id"], "eff": now(), "lid": lot1b,
+            },
+        )
+        bypass_conn.execute(text("SET session_replication_role = DEFAULT"))
+        bypass_trans.commit()
+        bypass_conn.close()
+
         with test_engine.connect() as conn:
-            with pytest.raises(Exception, match="crop batch is contained by an open recall case"):
+            with pytest.raises(Exception, match="upstream crop batch is contained by an open recall case"):
                 with conn.begin():
                     conn.execute(
                         text(
                             "INSERT INTO packing_input_lines "
-                            "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, "
+                            "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, "
                             "consumed_weight_kg, consumed_whole_unit_count, note) "
                             "VALUES (:id, :tid, :fid, :eid, :lid, :w, NULL, NULL)"
                         ),
-                        {"id": uuid.uuid4(), "tid": tenant_id, "fid": farm_id, "eid": event_id, "lid": lot1b, "w": Decimal("1.000")},
+                        {"id": uuid.uuid4(), "tid": tenant_id, "fid": farm_id, "eid": event_id, "lid": gpl1b, "w": Decimal("1.000")},
                     )
     finally:
         if tenant_id is not None:

@@ -17,13 +17,14 @@ MAX_WHOLE_UNIT_COUNT = 9223372036854775807
 def _pack(scenario, *, db, package_count, packed_output="3.000", client_command_id=None):
     return packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=client_command_id or uuid.uuid4(), effective_time=now(),
+        client_command_id=client_command_id or uuid.uuid4(),
+        pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=now(),
         finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}", package_count=package_count,
         packed_output_weight_kg=Decimal(packed_output), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal(str(Decimal(scenario["lot_a_weight"]) - Decimal(packed_output))), note=None,
         input_lines=[
             {
-                "harvested_produce_lot_id": scenario["lot_a_id"],
+                "graded_produce_lot_id": scenario["gpl_a_id"],
                 "consumed_weight_kg": Decimal(scenario["lot_a_weight"]), "consumed_whole_unit_count": None,
                 "note": None,
             }
@@ -129,7 +130,15 @@ def test_package_count_bigint_max_accepted(test_engine) -> None:
 @pytest.mark.integration
 def test_cmp014_harvest_receipt_behavior_unaffected(test_engine) -> None:
     """Regression: packing (and its finished-goods receipt) must not
-    change lot A's own CMP-014 harvest_receipt row or its balance."""
+    change lot A's own CMP-014 harvest_receipt row or its balance.
+
+    POSTHARVEST-OPS-001E: `build_committed_scenario` now grades lot_a's
+    full weight into a GradedProduceLot before this test even runs (a
+    `grading_consumption` debit already drains lot_a's own HPL balance to
+    zero, matching the new mandatory Harvest -> Grading -> Packing
+    lineage) -- so `balance_before` is captured post-grading, and the
+    proof is that `_pack` (which now consumes the GPL, never the HPL
+    directly) leaves that already-reduced HPL balance byte-identical."""
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -137,7 +146,8 @@ def test_cmp014_harvest_receipt_behavior_unaffected(test_engine) -> None:
         balance_before = produce_lot_ledger_service.get_balance(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
         )
-        assert balance_before.available_weight_kg == Decimal("10.000")
+        assert balance_before.available_weight_kg == Decimal("0.000")
+        assert balance_before.received_weight_kg == Decimal("10.000")
 
         _pack(scenario, db=session, package_count=4, packed_output="10.000")
 
@@ -150,7 +160,7 @@ def test_cmp014_harvest_receipt_behavior_unaffected(test_engine) -> None:
         balance_after = produce_lot_ledger_service.get_balance(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
         )
-        assert balance_after.available_weight_kg == Decimal("0.000")
+        assert balance_after.available_weight_kg == balance_before.available_weight_kg
         assert balance_after.received_weight_kg == Decimal("10.000")
     finally:
         session.close()

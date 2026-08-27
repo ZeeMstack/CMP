@@ -5,7 +5,7 @@ harvest/pack/storage/dispatch convenience wrappers. Not a test file itself
 (pytest's default `test_*.py` discovery glob does not match this name)."""
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -18,9 +18,13 @@ from app.services import (
     dispatch_service,
     farm_service,
     finished_goods_storage_service,
+    grade_definition_service,
+    grading_service,
     harvest_service,
     location_service,
     membership_service,
+    pack_specification_service,
+    packaging_unit_service,
     packing_service,
     production_system_service,
     sowing_service,
@@ -204,30 +208,140 @@ def harvest_all(db: Session, tenant, user, farm, *, batch_id, assignment_ids, we
     return event, lot_id
 
 
+def _build_packing_scaffold(db: Session, tenant, user, farm, *, crop_id, suffix):
+    """POSTHARVEST-OPS-001E: the minimal Grading+PackSpec scaffold `pack_lot`/
+    `pack_multi` need to route through the new GPL-based Packing contract
+    -- a packing hall, one active GradeDefinitionVersion, one active
+    PackagingUnit, and one active PackSpecificationVersion (variety_id=None,
+    so it applies regardless of the scenario's own concrete variety)."""
+    hall = location_service.create_location(
+        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="packing_hall",
+        code=f"pack-hall-{suffix}", name="Processing Hall", parent_location_id=None,
+        greenhouse_classification=None, occupiable=False,
+    )
+    grade_definition = grade_definition_service.register_grade_definition(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"grade-{suffix}", name="Standard", crop_id=crop_id, variety_id=None, description=None,
+    )
+    grade_version = grade_definition_service.create_draft_version(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        grade_definition_id=grade_definition.id, spec_notes=None,
+    )
+    grade_definition_service.activate_version(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        grade_definition_id=grade_definition.id, version_id=grade_version.id,
+        effective_time=now() - timedelta(days=30),
+    )
+    packaging_unit = packaging_unit_service.register_packaging_unit(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"unit-{suffix}", name="Carton",
+    )
+    pack_spec = pack_specification_service.register_pack_specification(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"spec-{suffix}", name="Standard Pack", crop_id=crop_id, variety_id=None, customer_reference=None,
+    )
+    pack_spec_version = pack_specification_service.create_draft_version(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_id=pack_spec.id, grade_definition_version_id=None,
+        packaging_unit_id=packaging_unit.id, nominal_net_weight_kg=Decimal("1.000"), whole_units_per_pack=None,
+        spec_notes=None,
+    )
+    pack_specification_service.activate_version(
+        db, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_id=pack_spec.id, version_id=pack_spec_version.id,
+        effective_time=now() - timedelta(days=30),
+    )
+    return {
+        "packing_hall_location_id": hall.id, "grade_version_id": grade_version.id,
+        "pack_specification_version_id": pack_spec_version.id,
+    }
+
+
+def _grade_entire_lot(db: Session, tenant, user, farm, *, produce_lot_id, weight, scaffold, suffix):
+    """Grades the FULL requested `weight` from `produce_lot_id` into
+    exactly one GradedProduceLot (no rejection/loss/sample/remainder) and
+    returns its id -- the transparent intermediate step `pack_lot`/
+    `pack_multi` insert so their own callers can keep saying "pack this
+    HPL's material" without needing to know Packing no longer accepts an
+    HPL id directly."""
+    event = grading_service.record_grading(
+        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        source_harvested_produce_lot_id=produce_lot_id,
+        processing_hall_location_id=scaffold["packing_hall_location_id"], effective_time=now(), note=None,
+        input_presented_weight_kg=weight, input_presented_whole_unit_count=None,
+        rejected_weight_kg=Decimal("0"), rejected_whole_unit_count=None,
+        loss_weight_kg=Decimal("0"), loss_whole_unit_count=None,
+        sample_weight_kg=Decimal("0"), sample_whole_unit_count=None,
+        remainder_weight_kg=Decimal("0"), remainder_whole_unit_count=None,
+        outputs=[
+            {
+                "grade_definition_version_id": scaffold["grade_version_id"], "code": f"GPL-{suffix}",
+                "output_weight_kg": weight, "output_whole_unit_count": None,
+            }
+        ],
+    )
+    return db.execute(
+        text("SELECT id FROM graded_produce_lots WHERE grading_event_id = :eid"), {"eid": event.id}
+    ).scalar_one()
+
+
 def pack_lot(db: Session, tenant, user, farm, *, produce_lot_id, weight=Decimal("5.000"), package_count=5, suffix=None):
+    """POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    directly -- this helper transparently grades the full `weight` from
+    `produce_lot_id` into one GradedProduceLot first, then packs that GPL.
+    External signature/behavior (HPL balance debited by `weight`, one FG
+    lot of `weight`/`package_count` created) is unchanged for every one of
+    this helper's many existing callers."""
     suffix = suffix or uuid.uuid4().hex[:8]
+    crop_id, variety_id = db.execute(
+        text("SELECT crop_id, variety_id FROM harvested_produce_lots WHERE id = :id"), {"id": produce_lot_id}
+    ).one()
+    scaffold = _build_packing_scaffold(db, tenant, user, farm, crop_id=crop_id, suffix=suffix)
+    gpl_id = _grade_entire_lot(
+        db, tenant, user, farm, produce_lot_id=produce_lot_id, weight=weight, scaffold=scaffold, suffix=suffix
+    )
     event = packing_service.record_packing(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=now(), finished_goods_lot_code=f"FG-{suffix}", package_count=package_count,
+        pack_specification_version_id=scaffold["pack_specification_version_id"], effective_time=now(),
+        finished_goods_lot_code=f"FG-{suffix}", package_count=package_count,
         packed_output_weight_kg=weight, process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
-        input_lines=[{"harvested_produce_lot_id": produce_lot_id, "consumed_weight_kg": weight, "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": weight, "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(db, tenant_id=tenant.id, farm_id=farm.id, packing_event_id=event.id)
     return detail.finished_goods_lot.id, event.id
 
 
 def pack_multi(db: Session, tenant, user, farm, *, produce_lot_ids_and_weights: list[tuple], package_count=5, suffix=None):
+    """POSTHARVEST-OPS-001E: grades each source HPL's own full requested
+    weight into its own GradedProduceLot (same shared GradeDefinitionVersion
+    across all of them, so the resulting GPLs satisfy Packing's exact-
+    grade-match requirement), then packs every resulting GPL together into
+    one FinishedGoodsLot -- preserves this helper's own "one FG lot from
+    multiple HPL sources" external contract."""
     suffix = suffix or uuid.uuid4().hex[:8]
     total = sum(w for _, w in produce_lot_ids_and_weights)
+    scaffold = None
+    gpl_lines = []
+    for idx, (lot_id, w) in enumerate(produce_lot_ids_and_weights):
+        crop_id, variety_id = db.execute(
+            text("SELECT crop_id, variety_id FROM harvested_produce_lots WHERE id = :id"), {"id": lot_id}
+        ).one()
+        if scaffold is None:
+            scaffold = _build_packing_scaffold(db, tenant, user, farm, crop_id=crop_id, suffix=suffix)
+        gpl_id = _grade_entire_lot(
+            db, tenant, user, farm, produce_lot_id=lot_id, weight=w, scaffold=scaffold, suffix=f"{suffix}-{idx}"
+        )
+        gpl_lines.append((gpl_id, w))
     event = packing_service.record_packing(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=now(), finished_goods_lot_code=f"FG-{suffix}", package_count=package_count,
+        pack_specification_version_id=scaffold["pack_specification_version_id"], effective_time=now(),
+        finished_goods_lot_code=f"FG-{suffix}", package_count=package_count,
         packed_output_weight_kg=total, process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
         input_lines=[
-            {"harvested_produce_lot_id": lot_id, "consumed_weight_kg": w, "consumed_whole_unit_count": None, "note": None}
-            for lot_id, w in produce_lot_ids_and_weights
+            {"graded_produce_lot_id": gid, "consumed_weight_kg": w, "consumed_whole_unit_count": None, "note": None}
+            for gid, w in gpl_lines
         ],
     )
     detail = packing_service.get_packing_event(db, tenant_id=tenant.id, farm_id=farm.id, packing_event_id=event.id)
@@ -281,6 +395,20 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM packing_input_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM packing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # POSTHARVEST-OPS-001E: pack_lot/pack_multi now transparently grade
+        # each source HPL first and pin a fresh PackSpecificationVersion --
+        # existence-guarded (`to_regclass`) so this same cleanup keeps
+        # working for a downgrade-guard test that runs it while cmp_test is
+        # deliberately downgraded below the migration that creates these.
+        for table in ("graded_produce_lot_ledger_entries", "graded_produce_lots", "grading_events"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        for table in (
+            "pack_specification_versions", "pack_specifications", "packaging_units",
+            "grade_definition_versions", "grade_definitions",
+        ):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         # HARVEST-OPS-001: harvest_population_events/harvest_source_line_
         # corrections are new to this shared cleanup -- must precede
         # harvest_source_lines/harvested_produce_lots/harvest_events and

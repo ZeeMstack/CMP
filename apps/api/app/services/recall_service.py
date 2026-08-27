@@ -209,17 +209,21 @@ def _lock_finished_goods_lots(db: Session, *, tenant_id, farm_id, ids) -> list[F
 # --- Stable scope-freeze algorithms ------------------------------------------
 
 
-def _derive_and_lock_fg_lots(db: Session, conn, *, tenant_id, farm_id, produce_lot_ids: set[uuid.UUID]) -> set[uuid.UUID]:
-    """Derives the finished-goods lots reachable from `produce_lot_ids` via
-    packing, locks them, then re-derives and locks any delta -- a defensive
-    lock-then-recheck pass (this codebase's universal idempotency
-    discipline applied to scope discovery), on top of the fact that every
-    produce lot in `produce_lot_ids` is already locked by the caller, which
-    already prevents any *new* packing_input_line from being inserted
-    against it (packing_service locks batches then produce lots, in that
-    order, before creating a finished-goods lot)."""
-    packing_inputs = lineage_traversal._packing_input_lines_for_produce_lots(
-        conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=sorted(produce_lot_ids)
+def _derive_and_lock_fg_lots(db: Session, conn, *, tenant_id, farm_id, graded_lot_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """POSTHARVEST-OPS-001E: derives the finished-goods lots reachable from
+    `graded_lot_ids` via packing (Packing consumes `GradedProduceLot`
+    exclusively -- there is no longer a direct HarvestedProduceLot ->
+    Packing path), locks them, then re-derives and locks any delta -- a
+    defensive lock-then-recheck pass (this codebase's universal
+    idempotency discipline applied to scope discovery), on top of the fact
+    that every graded lot in `graded_lot_ids` is already locked by the
+    caller (tier 3 of the global lock order), which already prevents any
+    *new* packing_input_line from being inserted against it
+    (packing_service locks CropBatch, then HarvestedProduceLot, then
+    GradedProduceLot, in that order, before creating a finished-goods
+    lot)."""
+    packing_inputs = lineage_traversal._packing_input_lines_for_graded_produce_lots(
+        conn, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_ids=sorted(graded_lot_ids)
     )
     packing_event_ids = sorted({r["packing_event_id"] for r in packing_inputs})
     fg_rows = lineage_traversal._finished_goods_lots_for_packing_events(
@@ -229,8 +233,8 @@ def _derive_and_lock_fg_lots(db: Session, conn, *, tenant_id, farm_id, produce_l
 
     _lock_finished_goods_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=sorted(fg_lot_ids))
 
-    packing_inputs_2 = lineage_traversal._packing_input_lines_for_produce_lots(
-        conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=sorted(produce_lot_ids)
+    packing_inputs_2 = lineage_traversal._packing_input_lines_for_graded_produce_lots(
+        conn, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_ids=sorted(graded_lot_ids)
     )
     packing_event_ids_2 = sorted({r["packing_event_id"] for r in packing_inputs_2})
     fg_rows_2 = lineage_traversal._finished_goods_lots_for_packing_events(
@@ -333,7 +337,7 @@ def _freeze_batch_source_scope(db: Session, conn, *, tenant_id, farm_id, source_
     )
 
     fg_lot_ids = _derive_and_lock_fg_lots(
-        db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
+        db, conn, tenant_id=tenant_id, farm_id=farm_id, graded_lot_ids=graded_lot_ids
     )
     return batch_ids, produce_lot_ids, graded_lot_ids, fg_lot_ids, source_batch.created_effective_time
 
@@ -352,28 +356,34 @@ def _freeze_produce_lot_source_scope(db: Session, conn, *, tenant_id, farm_id, s
         db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
     )
     fg_lot_ids = _derive_and_lock_fg_lots(
-        db, conn, tenant_id=tenant_id, farm_id=farm_id, produce_lot_ids=produce_lot_ids
+        db, conn, tenant_id=tenant_id, farm_id=farm_id, graded_lot_ids=graded_lot_ids
     )
     return produce_lot_ids, graded_lot_ids, fg_lot_ids, source_lot.effective_time
 
 
 def _freeze_graded_produce_lot_source_scope(
-    db: Session, *, tenant_id, farm_id, source_graded_produce_lot_id: uuid.UUID
+    db: Session, conn, *, tenant_id, farm_id, source_graded_produce_lot_id: uuid.UUID
 ):
-    """POSTHARVEST-OPS-001D: graded-produce-lot source -- the selected lot
-    ONLY. Deliberately never walks backward to its `GradingEvent`'s source
+    """Graded-produce-lot source -- the selected lot itself, PLUS (as of
+    POSTHARVEST-OPS-001E, now that Packing consumes GradedProduceLot)
+    downstream finished-goods lots packed from that exact lot. Deliberately
+    never walks backward to its `GradingEvent`'s source
     `HarvestedProduceLot` or that lot's `CropBatch` (no promotion, mirroring
-    the produce-lot- and finished-goods-lot-source freezes above), never
-    includes sibling outputs of the same `GradingEvent` (mandatory
+    the produce-lot- and finished-goods-lot-source freezes above), and
+    never includes sibling outputs of the same `GradingEvent` (mandatory
     sibling-isolation rule -- one `GradingEvent` may produce several
-    `GradedProduceLot`s; recalling one must never recall the others), and
-    has no finished-goods expansion (packing does not yet consume
-    `GradedProduceLot` -- that is POSTHARVEST-OPS-001E)."""
+    `GradedProduceLot`s; recalling one must never recall the others, and
+    this freeze never queries by `grading_event_id`, only by the one
+    selected lot's own id)."""
     locked = _lock_graded_produce_lots(db, tenant_id=tenant_id, farm_id=farm_id, ids=[source_graded_produce_lot_id])
     if not locked:
         raise GradedProduceLotNotFoundError(str(source_graded_produce_lot_id))
     source_lot = locked[0]
-    return {source_lot.id}, source_lot.effective_time
+    graded_lot_ids = {source_lot.id}
+    fg_lot_ids = _derive_and_lock_fg_lots(
+        db, conn, tenant_id=tenant_id, farm_id=farm_id, graded_lot_ids=graded_lot_ids
+    )
+    return graded_lot_ids, fg_lot_ids, source_lot.effective_time
 
 
 def _freeze_finished_goods_lot_source_scope(db: Session, *, tenant_id, farm_id, source_fg_lot_id: uuid.UUID):
@@ -477,10 +487,9 @@ def open_recall_case(
             db, conn, tenant_id=tenant_id, farm_id=farm_id, source_produce_lot_id=harvested_produce_lot_id
         )
     elif graded_produce_lot_id is not None:
-        graded_lot_ids, source_effective_time = _freeze_graded_produce_lot_source_scope(
-            db, tenant_id=tenant_id, farm_id=farm_id, source_graded_produce_lot_id=graded_produce_lot_id
+        graded_lot_ids, fg_lot_ids, source_effective_time = _freeze_graded_produce_lot_source_scope(
+            db, conn, tenant_id=tenant_id, farm_id=farm_id, source_graded_produce_lot_id=graded_produce_lot_id
         )
-        fg_lot_ids = set()
     else:
         fg_lot_ids, source_effective_time = _freeze_finished_goods_lot_source_scope(
             db, tenant_id=tenant_id, farm_id=farm_id, source_fg_lot_id=finished_goods_lot_id

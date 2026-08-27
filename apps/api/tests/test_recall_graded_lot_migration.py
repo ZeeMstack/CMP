@@ -1,6 +1,7 @@
-"""POSTHARVEST-OPS-001D migration-chain proofs: parent revision and sole
-head -- mirrors `test_grading_migration.py`'s own established conventions
-for the immediately-preceding ticket."""
+"""POSTHARVEST-OPS-001D migration-chain proofs: parent revision and
+remaining the sole chain's direct ancestor (POSTHARVEST-OPS-001E now sits
+on top) -- mirrors `test_grading_migration.py`'s own established
+conventions for the immediately-preceding ticket."""
 from pathlib import Path
 
 import pytest
@@ -33,5 +34,22 @@ def test_migration_revises_the_expected_parent() -> None:
 
 
 @pytest.mark.integration
-def test_new_migration_is_sole_head() -> None:
-    assert _resolve_head_revision(_cfg()) == _THIS_REVISION
+def test_this_revision_remains_the_sole_chains_direct_ancestor() -> None:
+    """POSTHARVEST-OPS-001E (`d8f4a1c92b57`) now sits on top of this
+    migration -- `c3f7a29d5e64` is no longer itself the head, but must
+    remain part of the one single, unambiguous chain leading to it, never
+    orphaned by a competing branch. `test_migrations.py`'s own
+    `test_alembic_script_graph_resolves_single_unambiguous_head` proves
+    the "exactly one head" half generically for every revision; this test
+    keeps this ticket's own local proof that its specific revision is
+    still on that one chain, updated for whichever ticket currently sits
+    on top of it -- mirrors `test_grading_migration.py`'s identical
+    convention."""
+    cfg = _cfg()
+    script = ScriptDirectory.from_config(cfg)
+    rev = script.get_revision(_resolve_head_revision(cfg))
+    ancestors = set()
+    while rev is not None:
+        ancestors.add(rev.revision)
+        rev = script.get_revision(rev.down_revision) if rev.down_revision else None
+    assert _THIS_REVISION in ancestors

@@ -59,9 +59,10 @@ def test_packing_input_consumed_weight_zero_rejected(client, active_context) -> 
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": 1, "packed_output_weight_kg": "1.000",
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "0", "consumed_whole_unit_count": None}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "0", "consumed_whole_unit_count": None}],
         },
     )
     assert resp.status_code == 422
@@ -75,9 +76,10 @@ def test_packed_output_weight_zero_rejected(client, active_context) -> None:
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": 1, "packed_output_weight_kg": "0",
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
         },
     )
     assert resp.status_code == 422
@@ -91,9 +93,10 @@ def test_packing_weight_fields_binary_float_rejected(client, active_context) -> 
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": 1, "packed_output_weight_kg": 1.5,
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
         },
     )
     assert resp.status_code == 422
@@ -111,9 +114,10 @@ def test_process_loss_and_rejected_weight_zero_accepted(client, active_context) 
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": 1, "packed_output_weight_kg": "1.000",
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
         },
     )
     # Payload itself validates cleanly (zero accepted); the farm doesn't
@@ -176,9 +180,9 @@ def test_harvest_receipt_ledger_weight_zero_rejected_by_check(test_engine) -> No
             conn.execute(
                 text(
                     "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
-                    "VALUES (gen_random_uuid(), :tid, :fid, :lid, :heid, NULL, 'harvest_receipt', 0, NULL, "
+                    "VALUES (gen_random_uuid(), :tid, :fid, :lid, :heid, 'harvest_receipt', 0, NULL, "
                     "now(), now(), :uid, NULL)"
                 ),
                 {"tid": scenario["tenant_id"], "fid": scenario["farm_id"], "lid": scenario["lot_a_id"],
@@ -201,11 +205,12 @@ def test_packing_input_line_weight_zero_rejected_by_check(test_engine) -> None:
     setup_session = Session(bind=setup_conn)
     event = packing_service.record_packing(
         setup_session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-        actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=now(),
+        actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+        pack_specification_version_id=scenario["pack_specification_version_id"], effective_time=now(),
         finished_goods_lot_code=f"FG-{scenario['suffix']}", package_count=1,
         packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     event_id = event.id
     setup_session.close()
@@ -218,12 +223,12 @@ def test_packing_input_line_weight_zero_rejected_by_check(test_engine) -> None:
             conn.execute(
                 text(
                     "INSERT INTO packing_input_lines "
-                    "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                    "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
                     "consumed_whole_unit_count, note) "
                     "VALUES (:id, :tid, :fid, :eid, :lid, 0, NULL, NULL)"
                 ),
                 {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "eid": event_id, "lid": scenario["lot_b_id"]},
+                 "eid": event_id, "lid": scenario["gpl_b_id"]},
             )
     finally:
         trans.rollback()
@@ -241,14 +246,15 @@ def test_packing_event_packed_output_weight_zero_rejected_by_check(test_engine) 
             conn.execute(
                 text(
                     "INSERT INTO packing_events "
-                    "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+                    "(id, tenant_id, farm_id, crop_id, variety_id, pack_specification_version_id, "
+                    "total_input_weight_kg, packed_output_weight_kg, "
                     "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
                     "request_fingerprint, note) "
-                    "SELECT gen_random_uuid(), tenant_id, farm_id, crop_id, variety_id, 1.000, 0, 1.000, 0, "
+                    "SELECT gen_random_uuid(), tenant_id, farm_id, crop_id, variety_id, :specid, 1.000, 0, 1.000, 0, "
                     "effective_time, :uid, gen_random_uuid(), 'x', NULL "
                     "FROM harvested_produce_lots WHERE id = :lid"
                 ),
-                {"uid": scenario["user_id"], "lid": scenario["lot_a_id"]},
+                {"uid": scenario["user_id"], "lid": scenario["lot_a_id"], "specid": scenario["pack_specification_version_id"]},
             )
     finally:
         trans.rollback()

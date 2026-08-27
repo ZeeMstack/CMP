@@ -1167,7 +1167,9 @@ def correct_leafy_harvest(
 
         # Ledger adjustment -- lock the lot, compute the prior balance,
         # reject before insert if this delta would drive it negative
-        # (some quantity already consumed downstream in Packing).
+        # (some quantity already consumed downstream in Grading --
+        # POSTHARVEST-OPS-001E: Packing no longer touches this ledger at
+        # all, so Grading is the only possible cause).
         db.execute(
             select(HarvestedProduceLot.id).where(HarvestedProduceLot.id == lot.id).with_for_update()
         ).scalar_one()
@@ -1192,7 +1194,7 @@ def correct_leafy_harvest(
             if remaining_weight < 0 or remaining_count < 0:
                 raise HarvestLedgerBalanceError(
                     "this correction would reduce the available Harvest Lot below zero because some quantity has "
-                    "already been consumed in packing"
+                    "already been consumed in grading"
                 )
             db.add(
                 ProduceLotLedgerEntry(

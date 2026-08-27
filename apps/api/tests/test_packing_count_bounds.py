@@ -36,9 +36,10 @@ def test_packing_input_consumed_count_out_of_range_rejected(client, active_conte
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": 1, "packed_output_weight_kg": "1.000",
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": bad_count}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": bad_count}],
         },
     )
     assert resp.status_code == 422
@@ -52,9 +53,10 @@ def test_package_count_out_of_range_rejected(client, active_context, bad_count) 
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": bad_count, "packed_output_weight_kg": "1.000",
             "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": None}],
         },
     )
     assert resp.status_code == 422
@@ -69,9 +71,10 @@ def test_max_valid_counts_accepted_by_pydantic(client, active_context) -> None:
         "/farms/00000000-0000-0000-0000-000000000000/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": str(uuid.uuid4()),
             "finished_goods_lot_code": "FG-X", "package_count": MAX_WHOLE_UNIT_COUNT,
             "packed_output_weight_kg": "1.000", "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
-            "input_lines": [{"harvested_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": MAX_WHOLE_UNIT_COUNT}],
+            "input_lines": [{"graded_produce_lot_id": str(uuid.uuid4()), "consumed_weight_kg": "1.000", "consumed_whole_unit_count": MAX_WHOLE_UNIT_COUNT}],
         },
     )
     # Payload validates cleanly; farm doesn't exist, so 404 — never 422.
@@ -91,12 +94,12 @@ def test_direct_sql_consumed_count_bigint_overflow_rejected(test_engine) -> None
             conn.execute(
                 text(
                     "INSERT INTO packing_input_lines "
-                    "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                    "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
                     "consumed_whole_unit_count, note) "
                     "VALUES (:id, :tid, :fid, gen_random_uuid(), :lid, 1.000, :count, NULL)"
                 ),
                 {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "lid": scenario["lot_a_id"], "count": BIGINT_OVERFLOW},
+                 "lid": scenario["gpl_a_id"], "count": BIGINT_OVERFLOW},
             )
     finally:
         trans.rollback()
@@ -142,14 +145,15 @@ def test_ledger_debit_count_beyond_int32_round_trips_exactly(test_engine) -> Non
         event = packing_service.record_packing(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
             actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
+            pack_specification_version_id=scenario["pack_specification_version_id"],
             effective_time=datetime.now(timezone.utc), finished_goods_lot_code=f"FG-{scenario['suffix']}",
             package_count=1, packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"),
             rejected_weight_kg=Decimal("0"), note=None,
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": INT32_OVERFLOW, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": INT32_OVERFLOW, "note": None}],
         )
         delta = session.execute(
             text(
-                "SELECT whole_unit_count_delta FROM produce_lot_ledger_entries "
+                "SELECT whole_unit_count_delta FROM graded_produce_lot_ledger_entries "
                 "WHERE packing_event_id = :eid AND entry_kind = 'packing_consumption'"
             ),
             {"eid": event.id},

@@ -30,10 +30,11 @@ def scenario(test_engine):
     session = Session(bind=conn)
     event = packing_service.record_packing(
         session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+        effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
         package_count=1, packed_output_weight_kg=Decimal("3.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": s["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": s["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], packing_event_id=event.id)
     s["packing_event_id"] = event.id
@@ -60,37 +61,28 @@ def _rollback_only(test_engine, sql: str, params: dict):
 
 @pytest.mark.integration
 def test_direct_sql_overdraw_rejected(scenario, test_engine) -> None:
-    """Lot B has 10kg available (untouched by the fixture's own packing,
-    which only consumed from lot A). A direct-SQL debit for 11kg must be
-    rejected by the v2 trigger's negative-balance check, independent of
-    the Python service layer. Uses lot B (not lot A, which already has an
-    input line under this packing event) to avoid the one-lot-per-event
-    unique constraint firing first."""
+    """GPL B has 10kg available (untouched by the fixture's own packing,
+    which only consumed from GPL A). A direct-SQL packing_input_lines
+    insert for 11kg must be rejected by the v3 trigger's own balance check
+    (POSTHARVEST-OPS-001E moved balance sufficiency to the input-line
+    insert itself, ahead of the ledger insert), independent of the Python
+    service layer. Uses GPL B (not GPL A, which already has an input line
+    under this packing event) to avoid the one-lot-per-event unique
+    constraint firing first."""
     conn = test_engine.connect()
     trans = conn.begin()
     try:
         line_id = uuid.uuid4()
-        conn.execute(
-            text(
-                "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
-                "consumed_whole_unit_count, note) "
-                "VALUES (:id, :tid, :fid, :eid, :lid, 11.000, NULL, NULL)"
-            ),
-            {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-             "eid": scenario["packing_event_id"], "lid": scenario["lot_b_id"]},
-        )
-        with pytest.raises(Exception, match="negative available weight"):
+        with pytest.raises(Exception, match="exceeds source graded produce lot"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
-                    "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
-                    "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -11.000, NULL, :eff, now(), :uid, NULL)"
+                    "INSERT INTO packing_input_lines "
+                    "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
+                    "consumed_whole_unit_count, note) "
+                    "VALUES (:id, :tid, :fid, :eid, :lid, 11.000, NULL, NULL)"
                 ),
-                {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "lid": scenario["lot_b_id"],
-                 "eid": scenario["packing_event_id"], "eff": scenario["packing_event_effective_time"],
-                 "uid": scenario["user_id"]},
+                {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
+                 "eid": scenario["packing_event_id"], "lid": scenario["gpl_b_id"]},
             )
     finally:
         trans.rollback()
@@ -108,22 +100,22 @@ def test_direct_sql_malformed_ledger_projection_rejected(scenario, test_engine) 
         conn.execute(
             text(
                 "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
                 "consumed_whole_unit_count, note) "
                 "VALUES (:id, :tid, :fid, :eid, :lid, 1.000, NULL, NULL)"
             ),
             {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-             "eid": scenario["packing_event_id"], "lid": scenario["lot_b_id"]},
+             "eid": scenario["packing_event_id"], "lid": scenario["gpl_b_id"]},
         )
         with pytest.raises(Exception, match="does not match the negative"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "INSERT INTO graded_produce_lot_ledger_entries "
+                    "(id, tenant_id, farm_id, graded_produce_lot_id, grading_event_id, packing_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
                     "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -999.000, NULL, :eff, now(), :uid, NULL)"
                 ),
-                {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "lid": scenario["lot_b_id"],
+                {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "lid": scenario["gpl_b_id"],
                  "eid": scenario["packing_event_id"], "eff": scenario["packing_event_effective_time"],
                  "uid": scenario["user_id"]},
             )
@@ -140,13 +132,13 @@ def test_direct_sql_unknown_entry_kind_rejected(scenario, test_engine) -> None:
         with pytest.raises(Exception, match="unknown ledger entry kind"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "INSERT INTO graded_produce_lot_ledger_entries "
+                    "(id, tenant_id, farm_id, graded_produce_lot_id, grading_event_id, packing_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
                     "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'future_kind', -1.000, NULL, :eff, now(), :uid, NULL)"
                 ),
                 {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "lid": scenario["lot_b_id"], "eid": scenario["packing_event_id"],
+                 "lid": scenario["gpl_b_id"], "eid": scenario["packing_event_id"],
                  "eff": scenario["packing_event_effective_time"], "uid": scenario["user_id"]},
             )
     finally:
@@ -167,13 +159,13 @@ def test_direct_sql_typed_source_xor_rejected(scenario, test_engine) -> None:
         with pytest.raises(Exception, match="packing input line not found for ledger debit"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "INSERT INTO graded_produce_lot_ledger_entries "
+                    "(id, tenant_id, farm_id, graded_produce_lot_id, grading_event_id, packing_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
                     "VALUES (:id, :tid, :fid, :lid, NULL, NULL, 'packing_consumption', -1.000, NULL, :eff, now(), :uid, NULL)"
                 ),
                 {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "lid": scenario["lot_b_id"], "eff": scenario["packing_event_effective_time"],
+                 "lid": scenario["gpl_b_id"], "eff": scenario["packing_event_effective_time"],
                  "uid": scenario["user_id"]},
             )
     finally:
@@ -197,16 +189,16 @@ def test_direct_sql_positive_weight_rejected_for_packing_consumption(scenario, t
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
-        with pytest.raises(Exception, match="ck_produce_lot_ledger_entries_weight_envelope"):
+        with pytest.raises(Exception, match="ck_graded_produce_lot_ledger_entries_weight_envelope"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "INSERT INTO graded_produce_lot_ledger_entries "
+                    "(id, tenant_id, farm_id, graded_produce_lot_id, grading_event_id, packing_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
                     "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', 1.000, NULL, :eff, now(), :uid, NULL)"
                 ),
                 {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "lid": scenario["lot_b_id"], "eid": scenario["packing_event_id"],
+                 "lid": scenario["gpl_b_id"], "eid": scenario["packing_event_id"],
                  "eff": scenario["packing_event_effective_time"], "uid": scenario["user_id"]},
             )
     finally:
@@ -223,11 +215,14 @@ def test_cmp014_harvest_receipt_insert_still_works_via_v2_trigger(scenario, test
     original function did — proven here by re-deriving lot B's own
     already-existing receipt fields and re-affirming they satisfy the v2
     function (indirectly, by confirming the original insert succeeded and
-    is still queryable with entry_kind = 'harvest_receipt')."""
+    is still queryable with entry_kind = 'harvest_receipt'). Unaffected by
+    POSTHARVEST-OPS-001E -- produce_lot_ledger_entries no longer has a
+    packing_event_id column at all (Packing debits GradedProduceLot
+    balance exclusively now), so that column is dropped from this read."""
     conn = test_engine.connect()
     row = conn.execute(
         text(
-            "SELECT entry_kind, harvest_event_id, packing_event_id FROM produce_lot_ledger_entries "
+            "SELECT entry_kind, harvest_event_id FROM produce_lot_ledger_entries "
             "WHERE produce_lot_id = :lid AND entry_kind = 'harvest_receipt'"
         ),
         {"lid": scenario["lot_b_id"]},
@@ -235,7 +230,6 @@ def test_cmp014_harvest_receipt_insert_still_works_via_v2_trigger(scenario, test
     conn.close()
     assert row.entry_kind == "harvest_receipt"
     assert row.harvest_event_id is not None
-    assert row.packing_event_id is None
 
 
 @pytest.mark.integration
@@ -249,14 +243,14 @@ def test_late_input_line_without_matching_debit_fails_deferred_reconciliation(sc
         conn.execute(
             text(
                 "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
                 "consumed_whole_unit_count, note) "
                 "VALUES (:id, :tid, :fid, :eid, :lid, 1.000, NULL, NULL)"
             ),
             {"id": uuid.uuid4(), "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-             "eid": scenario["packing_event_id"], "lid": scenario["lot_b_id"]},
+             "eid": scenario["packing_event_id"], "lid": scenario["gpl_b_id"]},
         )
-        with pytest.raises(Exception, match="input-line count does not match ledger-debit count"):
+        with pytest.raises(Exception, match="input-line count does not match graded ledger-debit count"):
             trans.commit()
     finally:
         conn.close()
@@ -277,36 +271,37 @@ def test_direct_sql_debit_referencing_wrong_lot_rejected(scenario, test_engine) 
         conn.execute(
             text(
                 "INSERT INTO packing_events "
-                "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+                "(id, tenant_id, farm_id, crop_id, variety_id, pack_specification_version_id, "
+                "total_input_weight_kg, packed_output_weight_kg, "
                 "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
                 "request_fingerprint, note) "
-                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, 1.000, 1.000, 0, 0, :eff, :uid, "
+                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, :specid, 1.000, 1.000, 0, 0, :eff, :uid, "
                 "gen_random_uuid(), 'x', NULL FROM harvested_produce_lots WHERE id = :lid"
             ),
             {"id": event_id, "eff": scenario["packing_event_effective_time"], "uid": scenario["user_id"],
-             "lid": scenario["lot_b_id"]},
+             "lid": scenario["lot_b_id"], "specid": scenario["pack_specification_version_id"]},
         )
         line_id = uuid.uuid4()
         conn.execute(
             text(
                 "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
                 "consumed_whole_unit_count, note) "
                 "VALUES (:id, :tid, :fid, :eid, :lid, 1.000, NULL, NULL)"
             ),
             {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "eid": event_id,
-             "lid": scenario["lot_b_id"]},
+             "lid": scenario["gpl_b_id"]},
         )
         with pytest.raises(Exception, match="does not match its input line"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                    "INSERT INTO graded_produce_lot_ledger_entries "
+                    "(id, tenant_id, farm_id, graded_produce_lot_id, grading_event_id, packing_event_id, entry_kind, "
                     "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
                     "VALUES (:id, :tid, :fid, :wrong_lid, NULL, :eid, 'packing_consumption', -1.000, NULL, :eff, now(), :uid, NULL)"
                 ),
                 {"id": line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
-                 "wrong_lid": scenario["lot_a_id"], "eid": event_id,
+                 "wrong_lid": scenario["gpl_a_id"], "eid": event_id,
                  "eff": scenario["packing_event_effective_time"], "uid": scenario["user_id"]},
             )
     finally:
@@ -328,18 +323,19 @@ def test_direct_sql_count_overdraw_rejected(test_engine) -> None:
     setup_session = Session(bind=setup_conn)
     event = packing_service.record_packing(
         setup_session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+        effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
         package_count=1, packed_output_weight_kg=Decimal("3.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": s["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
+        input_lines=[{"graded_produce_lot_id": s["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
     )
     setup_session.close()
     setup_conn.close()
 
-    # Lot A has 7kg / 28 units remaining. A direct-SQL debit for 1kg but
+    # GPL A has 7kg / 28 units remaining. A direct-SQL debit for 1kg but
     # 999 units must be rejected on the count check, not the weight check.
     # Uses a second, fresh packing_event (not the setup event above, which
-    # already has an input line for lot A — the one-lot-per-event unique
+    # already has an input line for GPL A — the one-lot-per-event unique
     # constraint would otherwise fire first).
     conn = test_engine.connect()
     trans = conn.begin()
@@ -349,34 +345,26 @@ def test_direct_sql_count_overdraw_rejected(test_engine) -> None:
         conn.execute(
             text(
                 "INSERT INTO packing_events "
-                "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+                "(id, tenant_id, farm_id, crop_id, variety_id, pack_specification_version_id, "
+                "total_input_weight_kg, packed_output_weight_kg, "
                 "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
                 "request_fingerprint, note) "
-                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, 1.000, 1.000, 0, 0, :eff, :uid, "
+                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, :specid, 1.000, 1.000, 0, 0, :eff, :uid, "
                 "gen_random_uuid(), 'x', NULL FROM harvested_produce_lots WHERE id = :lid"
             ),
-            {"id": event_id, "eff": event_effective_time, "uid": s["user_id"], "lid": s["lot_a_id"]},
+            {"id": event_id, "eff": event_effective_time, "uid": s["user_id"], "lid": s["lot_a_id"],
+             "specid": s["pack_specification_version_id"]},
         )
         line_id = uuid.uuid4()
-        conn.execute(
-            text(
-                "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
-                "consumed_whole_unit_count, note) "
-                "VALUES (:id, :tid, :fid, :eid, :lid, 1.000, 999, NULL)"
-            ),
-            {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "eid": event_id, "lid": s["lot_a_id"]},
-        )
-        with pytest.raises(Exception, match="negative available count"):
+        with pytest.raises(Exception, match="exceeds source graded produce lot"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
-                    "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
-                    "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -1.000, -999, :eff, now(), :uid, NULL)"
+                    "INSERT INTO packing_input_lines "
+                    "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
+                    "consumed_whole_unit_count, note) "
+                    "VALUES (:id, :tid, :fid, :eid, :lid, 1.000, 999, NULL)"
                 ),
-                {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "lid": s["lot_a_id"],
-                 "eid": event_id, "eff": event_effective_time, "uid": s["user_id"]},
+                {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "eid": event_id, "lid": s["gpl_a_id"]},
             )
     finally:
         trans.rollback()
@@ -398,15 +386,16 @@ def test_direct_sql_residual_weight_count_mismatch_rejected(test_engine) -> None
     setup_session = Session(bind=setup_conn)
     event = packing_service.record_packing(
         setup_session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+        effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
         package_count=1, packed_output_weight_kg=Decimal("3.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": s["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
+        input_lines=[{"graded_produce_lot_id": s["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
     )
     setup_session.close()
     setup_conn.close()
 
-    # Lot A has 7kg / 28 units remaining. Consuming all 7kg but only 20 of
+    # GPL A has 7kg / 28 units remaining. Consuming all 7kg but only 20 of
     # the 28 units would leave (weight=0, count=8) — a mismatched residual.
     # Uses a second, fresh packing_event (see comment in the count-overdraw
     # test above for why the setup event can't be reused).
@@ -418,34 +407,26 @@ def test_direct_sql_residual_weight_count_mismatch_rejected(test_engine) -> None
         conn.execute(
             text(
                 "INSERT INTO packing_events "
-                "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+                "(id, tenant_id, farm_id, crop_id, variety_id, pack_specification_version_id, "
+                "total_input_weight_kg, packed_output_weight_kg, "
                 "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
                 "request_fingerprint, note) "
-                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, 7.000, 7.000, 0, 0, :eff, :uid, "
+                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, :specid, 7.000, 7.000, 0, 0, :eff, :uid, "
                 "gen_random_uuid(), 'x', NULL FROM harvested_produce_lots WHERE id = :lid"
             ),
-            {"id": event_id, "eff": event_effective_time, "uid": s["user_id"], "lid": s["lot_a_id"]},
+            {"id": event_id, "eff": event_effective_time, "uid": s["user_id"], "lid": s["lot_a_id"],
+             "specid": s["pack_specification_version_id"]},
         )
         line_id = uuid.uuid4()
-        conn.execute(
-            text(
-                "INSERT INTO packing_input_lines "
-                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
-                "consumed_whole_unit_count, note) "
-                "VALUES (:id, :tid, :fid, :eid, :lid, 7.000, 20, NULL)"
-            ),
-            {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "eid": event_id, "lid": s["lot_a_id"]},
-        )
         with pytest.raises(Exception, match="mismatched residual weight/count"):
             conn.execute(
                 text(
-                    "INSERT INTO produce_lot_ledger_entries "
-                    "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
-                    "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
-                    "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -7.000, -20, :eff, now(), :uid, NULL)"
+                    "INSERT INTO packing_input_lines "
+                    "(id, tenant_id, farm_id, packing_event_id, graded_produce_lot_id, consumed_weight_kg, "
+                    "consumed_whole_unit_count, note) "
+                    "VALUES (:id, :tid, :fid, :eid, :lid, 7.000, 20, NULL)"
                 ),
-                {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "lid": s["lot_a_id"],
-                 "eid": event_id, "eff": event_effective_time, "uid": s["user_id"]},
+                {"id": line_id, "tid": s["tenant_id"], "fid": s["farm_id"], "eid": event_id, "lid": s["gpl_a_id"]},
             )
     finally:
         trans.rollback()

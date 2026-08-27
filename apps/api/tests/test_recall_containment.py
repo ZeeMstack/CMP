@@ -6,6 +6,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 
 from app.services import (
     batch_derivation_service,
@@ -16,6 +17,7 @@ from app.services import (
     recall_service,
 )
 from app.services.errors import RecallContainmentOpenError
+from tests._packing_scenario import build_packing_scaffold, grade_entire_lot
 from tests._recall_scenario import (
     build_batch_with_assignments,
     build_committed_tenant_farm,
@@ -70,16 +72,29 @@ def test_packing_blocked_by_contained_produce_lot(test_engine) -> None:
             scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
             _, produce_lot_id = harvest_all(session, tenant, user, farm, batch_id=scaffold["batch"].id, assignment_ids=scaffold["assignment_ids"])
             session.commit()
+            # POSTHARVEST-OPS-001E: Packing consumes GradedProduceLot, not
+            # HarvestedProduceLot directly -- grade the lot's full weight
+            # into its own GPL BEFORE the recall case opens (Grading itself
+            # would otherwise be blocked from a source lot already under an
+            # open recall).
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": produce_lot_id}).scalar_one()
+            pack_scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="contained-lot")
+            gpl_id = grade_entire_lot(
+                session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), count=None,
+                scaffold=pack_scaffold, suffix="contained-lot",
+            )
+            session.commit()
             open_case(session, tenant, farm, user, harvested_produce_lot_id=produce_lot_id)
             session.commit()
 
             with pytest.raises(RecallContainmentOpenError):
                 packing_service.record_packing(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+                    pack_specification_version_id=pack_scaffold["pack_specification_version_id"],
                     effective_time=now(), finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}", package_count=5,
                     packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                     rejected_weight_kg=Decimal("0"), note=None,
-                    input_lines=[{"harvested_produce_lot_id": produce_lot_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
+                    input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
                 )
     finally:
         if tenant_id is not None:
@@ -98,6 +113,15 @@ def test_packing_blocked_by_contained_batch(test_engine) -> None:
             scaffold = build_batch_with_assignments(session, tenant, user, farm, carrier_count=1)
             _, produce_lot_id = harvest_all(session, tenant, user, farm, batch_id=scaffold["batch"].id, assignment_ids=scaffold["assignment_ids"])
             session.commit()
+            # POSTHARVEST-OPS-001E: see the equivalent note in
+            # test_packing_blocked_by_contained_produce_lot above.
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": produce_lot_id}).scalar_one()
+            pack_scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="contained-batch")
+            gpl_id = grade_entire_lot(
+                session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), count=None,
+                scaffold=pack_scaffold, suffix="contained-batch",
+            )
+            session.commit()
             batch_id = scaffold["batch"].id
             open_case(session, tenant, farm, user, crop_batch_id=batch_id)
             session.commit()
@@ -105,10 +129,11 @@ def test_packing_blocked_by_contained_batch(test_engine) -> None:
             with pytest.raises(RecallContainmentOpenError):
                 packing_service.record_packing(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+                    pack_specification_version_id=pack_scaffold["pack_specification_version_id"],
                     effective_time=now(), finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}", package_count=5,
                     packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                     rejected_weight_kg=Decimal("0"), note=None,
-                    input_lines=[{"harvested_produce_lot_id": produce_lot_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
+                    input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
                 )
     finally:
         if tenant_id is not None:

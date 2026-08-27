@@ -31,9 +31,17 @@ def build_committed_scenario(
     version scoped to the scenario's own crop/variety, activated well in
     the past so any reasonable `effective_time` in a test falls inside its
     window)."""
+    # POSTHARVEST-OPS-001E: this builder creates its OWN grading scaffold
+    # (packing_hall/inactive_hall/other_location plus a GradeDefinitionVersion
+    # matching the scenario's crop) and needs lot_a/lot_b's FULL balance
+    # untouched for its own Grading tests to consume -- grade_and_pack_spec=False
+    # opts out of _packing_scenario.build_committed_scenario's own default
+    # auto-grading step, which would otherwise both deplete lot_a/lot_b and
+    # collide on this same `grade-{suffix}` GradeDefinition code.
     scenario = _build_harvest_scenario(
         test_engine, lot_a_weight=lot_a_weight, lot_a_count=lot_a_count, lot_b_weight=lot_b_weight,
         lot_b_count=lot_b_count, carrier_type_code=carrier_type_code, carrier_count=carrier_count,
+        grade_and_pack_spec=False,
     )
 
     conn = test_engine.connect()

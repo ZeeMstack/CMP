@@ -385,7 +385,7 @@ def record_grading(
         db.add(
             ProduceLotLedgerEntry(
                 id=event.id, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=locked_lot.id,
-                harvest_event_id=None, packing_event_id=None, harvest_source_line_correction_id=None,
+                harvest_event_id=None, harvest_source_line_correction_id=None,
                 grading_event_id=event.id, entry_kind="grading_consumption",
                 weight_delta_kg=-processed_weight_kg,
                 whole_unit_count_delta=-processed_whole_unit_count if lot_tracks_count else None,

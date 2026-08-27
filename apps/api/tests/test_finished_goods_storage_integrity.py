@@ -33,7 +33,7 @@ from app.services import (
     workflow_service,
 )
 from tests._dispatch_scenario import pack_one
-from tests._packing_scenario import build_committed_scenario, cleanup_scenario, now, require_cmp_test
+from tests._packing_scenario import build_committed_scenario, build_packing_scaffold, cleanup_scenario, now, require_cmp_test
 from tests._storage_scenario import create_cold_store, create_cold_store_position, place_one
 from tests.conftest import ensure_seed_tray_specification
 
@@ -140,8 +140,14 @@ def _build_scenario_ready_to_harvest(session: Session, *, t_batch, t_sow, t_tran
 
 
 def _harvest_and_pack_at(session: Session, scenario, *, t_harvest, t_pack, weight=Decimal("10.000")):
-    """Harvests then packs the full weight at the caller's own explicit,
-    deterministic times. Returns the finished_goods_lot_id."""
+    """Harvests, grades (POSTHARVEST-OPS-001E: at the same effective_time
+    as the harvest -- the chronology rule is inclusive, `>=`, not `>`),
+    then packs the full weight at the caller's own explicit, deterministic
+    times. Returns the finished_goods_lot_id."""
+    from app.models.farm import Farm
+    from app.models.tenant import Tenant
+    from app.models.user import User
+
     harvest = harvest_service.record_harvest(
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
         batch_id=scenario["batch_id"], client_command_id=uuid.uuid4(), effective_time=t_harvest,
@@ -151,12 +157,50 @@ def _harvest_and_pack_at(session: Session, scenario, *, t_harvest, t_pack, weigh
     lot_id = session.execute(
         text("SELECT id FROM harvested_produce_lots WHERE harvest_event_id = :eid"), {"eid": harvest.id}
     ).scalar_one()
+    crop_id = session.execute(
+        text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": lot_id}
+    ).scalar_one()
+    tenant_obj = session.get(Tenant, scenario["tenant_id"])
+    user_obj = session.get(User, scenario["user_id"])
+    farm_obj = session.get(Farm, scenario["farm_id"])
+    pack_scaffold = build_packing_scaffold(
+        session, tenant_obj, user_obj, farm_obj, crop_id=crop_id, suffix=scenario["suffix"]
+    )
+    # grade_entire_lot always uses now() (the real wall clock) as its own
+    # effective_time -- unusable here, since t_harvest/t_pack are both
+    # deliberately in the deterministic past (see this module's own
+    # docstring), and Packing's own chronology check would then reject
+    # t_pack for preceding the GPL's real-now() effective_time. Grading is
+    # called directly instead, at t_harvest (the chronology rule is
+    # inclusive, `>=`, not `>`, against its own source HPL).
+    from app.services import grading_service
+
+    grading_event = grading_service.record_grading(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        client_command_id=uuid.uuid4(), source_harvested_produce_lot_id=lot_id,
+        processing_hall_location_id=pack_scaffold["packing_hall_location_id"], effective_time=t_harvest, note=None,
+        input_presented_weight_kg=weight, input_presented_whole_unit_count=None,
+        rejected_weight_kg=Decimal("0"), rejected_whole_unit_count=None,
+        loss_weight_kg=Decimal("0"), loss_whole_unit_count=None,
+        sample_weight_kg=Decimal("0"), sample_whole_unit_count=None,
+        remainder_weight_kg=Decimal("0"), remainder_whole_unit_count=None,
+        outputs=[
+            {
+                "grade_definition_version_id": pack_scaffold["grade_definition_version_id"],
+                "code": f"GPL-{scenario['suffix']}", "output_weight_kg": weight, "output_whole_unit_count": None,
+            }
+        ],
+    )
+    gpl_id = session.execute(
+        text("SELECT id FROM graded_produce_lots WHERE grading_event_id = :eid"), {"eid": grading_event.id}
+    ).scalar_one()
     event = packing_service.record_packing(
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=t_pack, finished_goods_lot_code=f"FG-{scenario['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=pack_scaffold["pack_specification_version_id"],
+        effective_time=t_pack, finished_goods_lot_code=f"FG-{scenario['suffix']}",
         package_count=10, packed_output_weight_kg=weight, process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": weight, "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": weight, "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event.id

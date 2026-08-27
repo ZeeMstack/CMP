@@ -13,7 +13,7 @@ import pytest
 
 from app.services import membership_service, quality_hold_service, user_service
 from tests.test_leafy_harvest import _harvest, _line, _two_plate_scenario
-from tests.test_leafy_harvest_correction import _correct
+from tests.test_leafy_harvest_correction import _correct, _grade_partial
 from tests.test_production_disposition import _plate_scenario
 
 pytestmark = pytest.mark.integration
@@ -465,8 +465,6 @@ def test_correct_stale_predecessor_409(client, db_session, active_context_with_f
 
 @pytest.mark.integration
 def test_correct_negative_available_balance_409(client, db_session, active_context_with_farm) -> None:
-    from app.services import packing_service
-
     tenant, user, headers, farm = active_context_with_farm
     batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=10)
     event = _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 10, "5.000")], effective_time=t0 + timedelta(hours=1))
@@ -474,14 +472,13 @@ def test_correct_negative_available_balance_409(client, db_session, active_conte
 
     line = _only_source_line(db_session, event)
     lot = _lot_for(db_session, event)
-    packing_service.record_packing(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=t0 + timedelta(hours=2), finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}", package_count=1,
-        packed_output_weight_kg=Decimal("4.000"), process_loss_weight_kg=Decimal("0.000"),
-        rejected_weight_kg=Decimal("0.000"), note=None,
-        input_lines=[
-            {"harvested_produce_lot_id": lot.id, "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 8, "note": None}
-        ],
+    # POSTHARVEST-OPS-001E: HarvestedProduceLot balance is debited by
+    # Grading, never by Packing anymore -- see _grade_partial's own
+    # docstring. This reduces the lot by weight=4.000/count=8, exactly as
+    # the old direct-packing call used to.
+    _grade_partial(
+        db_session, tenant, farm, user, lot=lot, weight=Decimal("4.000"), count=8,
+        output_weight=Decimal("4.000"), loss_weight=Decimal("0.000"), suffix="neg-balance",
     )
     resp = client.post(
         _correct_url(farm.id, event.id, line.id),
@@ -490,7 +487,7 @@ def test_correct_negative_available_balance_409(client, db_session, active_conte
     )
     assert resp.status_code == 409
     detail = resp.json()["detail"]
-    assert "packing" in detail["message"].lower()
+    assert "grading" in detail["message"].lower()
 
 
 @pytest.mark.integration
@@ -693,8 +690,6 @@ def test_stale_predecessor_409_carries_stable_code(client, db_session, active_co
 
 @pytest.mark.integration
 def test_negative_available_balance_409_carries_stable_code(client, db_session, active_context_with_farm) -> None:
-    from app.services import packing_service
-
     tenant, user, headers, farm = active_context_with_farm
     batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=10)
     event = _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 10, "5.000")], effective_time=t0 + timedelta(hours=1))
@@ -702,14 +697,13 @@ def test_negative_available_balance_409_carries_stable_code(client, db_session, 
 
     line = _only_source_line(db_session, event)
     lot = _lot_for(db_session, event)
-    packing_service.record_packing(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=t0 + timedelta(hours=2), finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}", package_count=1,
-        packed_output_weight_kg=Decimal("4.000"), process_loss_weight_kg=Decimal("0.000"),
-        rejected_weight_kg=Decimal("0.000"), note=None,
-        input_lines=[
-            {"harvested_produce_lot_id": lot.id, "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 8, "note": None}
-        ],
+    # POSTHARVEST-OPS-001E: HarvestedProduceLot balance is debited by
+    # Grading, never by Packing anymore -- see _grade_partial's own
+    # docstring. This reduces the lot by weight=4.000/count=8, exactly as
+    # the old direct-packing call used to.
+    _grade_partial(
+        db_session, tenant, farm, user, lot=lot, weight=Decimal("4.000"), count=8,
+        output_weight=Decimal("4.000"), loss_weight=Decimal("0.000"), suffix="neg-balance-code",
     )
     resp = client.post(
         _correct_url(farm.id, event.id, line.id),
@@ -720,7 +714,7 @@ def test_negative_available_balance_409_carries_stable_code(client, db_session, 
     detail = resp.json()["detail"]
     assert isinstance(detail, dict)
     assert detail["code"] == "HARVEST_NEGATIVE_LOT_BALANCE"
-    assert "already been consumed in packing" in detail["message"]
+    assert "already been consumed in grading" in detail["message"]
 
 
 @pytest.mark.integration

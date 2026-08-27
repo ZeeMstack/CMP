@@ -13,6 +13,8 @@ from app.models.dispatch_line import DispatchLine
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_lot import FinishedGoodsLot
 from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
+from app.models.graded_produce_lot import GradedProduceLot
+from app.models.grading_event import GradingEvent
 from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.packing_input_line import PackingInputLine
 from app.schemas.dispatch import DispatchEventRead, DispatchLineRead
@@ -117,14 +119,22 @@ def record_dispatch(
     # Derive the complete, deterministic lineage from each requested
     # finished-goods lot back to the crop batch(es) that contributed to it
     # — finished_goods_lot -> packing_event -> packing_input_lines ->
-    # harvested_produce_lot -> batch. A lot with no resolvable lineage
-    # (nonexistent, wrong tenant/farm, or — structurally unreachable given
-    # CMP-015's own reconciliation, but never assumed — no input lines) is
-    # rejected outright rather than silently dispatched.
+    # graded_produce_lot -> grading_event -> harvested_produce_lot -> batch
+    # (POSTHARVEST-OPS-001E: one join hop longer than before -- Packing
+    # consumes GradedProduceLot exclusively, never HarvestedProduceLot
+    # directly). No proportional ambiguity: one packing input line names
+    # exactly one graded produce lot, which names exactly one grading
+    # event, which names exactly one source harvested produce lot. A lot
+    # with no resolvable lineage (nonexistent, wrong tenant/farm, or —
+    # structurally unreachable given CMP-015/POSTHARVEST-OPS-001E's own
+    # reconciliation, but never assumed — no input lines) is rejected
+    # outright rather than silently dispatched.
     lineage_rows = db.execute(
         select(FinishedGoodsLot.id, HarvestedProduceLot.batch_id)
         .join(PackingInputLine, PackingInputLine.packing_event_id == FinishedGoodsLot.packing_event_id)
-        .join(HarvestedProduceLot, HarvestedProduceLot.id == PackingInputLine.harvested_produce_lot_id)
+        .join(GradedProduceLot, GradedProduceLot.id == PackingInputLine.graded_produce_lot_id)
+        .join(GradingEvent, GradingEvent.id == GradedProduceLot.grading_event_id)
+        .join(HarvestedProduceLot, HarvestedProduceLot.id == GradingEvent.source_harvested_produce_lot_id)
         .where(
             FinishedGoodsLot.id.in_(lot_ids), FinishedGoodsLot.tenant_id == tenant_id,
             FinishedGoodsLot.farm_id == farm_id,

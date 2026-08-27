@@ -39,6 +39,7 @@ from app.services.lineage_traversal import (
     _finished_goods_lots_for_packing_events,
     _harvest_events_for_batches,
     _packing_events,
+    _packing_input_lines_for_packing_events,
     _packing_input_lines_for_produce_lots,
     _produce_lots_for_harvest_events,
     _quality_holds_for_batches,
@@ -130,16 +131,9 @@ def get_finished_goods_lot_trace(
 
         # Packing inputs for THIS lot's own event (reverse of the usual
         # produce-lot-keyed helper -- query directly by packing_event_id).
-        packing_inputs = conn.execute(
-            text(
-                "SELECT id AS packing_input_line_id, packing_event_id, harvested_produce_lot_id, "
-                "consumed_weight_kg, consumed_whole_unit_count FROM packing_input_lines "
-                "WHERE tenant_id = :tid AND farm_id = :fid AND packing_event_id = :peid "
-                "ORDER BY harvested_produce_lot_id"
-            ),
-            {"tid": tenant_id, "fid": farm_id, "peid": lot["packing_event_id"]},
-        ).mappings().all()
-        packing_inputs = [dict(r) for r in packing_inputs]
+        packing_inputs = _packing_input_lines_for_packing_events(
+            conn, tenant_id=tenant_id, farm_id=farm_id, packing_event_ids=[lot["packing_event_id"]]
+        )
         produce_lot_ids = sorted({r["harvested_produce_lot_id"] for r in packing_inputs})
 
         produce_lots = []
@@ -234,19 +228,9 @@ def _forward_impact_from_produce_lots(
     # unaffected co-input packed alongside an affected one remains visible
     # as context (per the ticket: co-inputs are shown, never promoted to
     # an additional affected source).
-    packing_inputs = (
-        conn.execute(
-            text(
-                "SELECT id AS packing_input_line_id, packing_event_id, harvested_produce_lot_id, "
-                "consumed_weight_kg, consumed_whole_unit_count FROM packing_input_lines "
-                "WHERE tenant_id = :tid AND farm_id = :fid AND packing_event_id = ANY(:ids) "
-                "ORDER BY packing_event_id, harvested_produce_lot_id"
-            ),
-            {"tid": tenant_id, "fid": farm_id, "ids": affected_packing_event_ids},
-        ).mappings().all()
-        if affected_packing_event_ids else []
+    packing_inputs = _packing_input_lines_for_packing_events(
+        conn, tenant_id=tenant_id, farm_id=farm_id, packing_event_ids=affected_packing_event_ids
     )
-    packing_inputs = [dict(r) for r in packing_inputs]
     for r in packing_inputs:
         r["is_affected_source"] = r["harvested_produce_lot_id"] in affected_produce_lot_ids
 

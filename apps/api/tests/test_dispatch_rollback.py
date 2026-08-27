@@ -25,6 +25,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import DuplicateDispatchCodeError
+from tests._packing_scenario import build_packing_scaffold, grade_entire_lot
 from tests.conftest import ensure_seed_tray_specification
 
 
@@ -117,12 +118,21 @@ def _build_scenario(db_session, tenant, user, farm, *, suffix=None):
         text("SELECT id FROM harvested_produce_lots WHERE harvest_event_id = :eid"), {"eid": harvest.id}
     ).scalar_one()
 
+    # POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    # directly -- grade the lot's full weight into one GradedProduceLot and
+    # activate a PackSpecificationVersion before packing.
+    scaffold = build_packing_scaffold(db_session, tenant, user, farm, crop_id=crop.id, suffix=suffix)
+    gpl_id = grade_entire_lot(
+        db_session, tenant, user, farm, produce_lot_id=lot_id, weight=Decimal("10.000"), count=None,
+        scaffold=scaffold, suffix=suffix,
+    )
     pack_event = packing_service.record_packing(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_version_id=scaffold["pack_specification_version_id"],
         effective_time=_now(), finished_goods_lot_code=f"FG-{suffix}", package_count=10,
         packed_output_weight_kg=Decimal("8.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
-        input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("8.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("8.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(db_session, tenant_id=tenant.id, farm_id=farm.id, packing_event_id=pack_event.id)
     return {"fg_lot_id": detail.finished_goods_lot.id}

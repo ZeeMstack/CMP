@@ -17,7 +17,7 @@ from app.models.carrier import Carrier
 from app.models.harvest_source_line import HarvestSourceLine
 from app.models.harvest_source_line_correction import HarvestSourceLineCorrection
 from app.models.harvested_produce_lot import HarvestedProduceLot
-from app.services import harvest_service, leafy_population_service, packing_service, production_disposition_service, transplant_service
+from app.services import harvest_service, leafy_population_service, production_disposition_service, transplant_service
 
 pytestmark = pytest.mark.integration
 
@@ -409,124 +409,13 @@ def test_concurrent_harvest_vs_plant_loss_correction_racing_below_zero(test_engi
         _cleanup(test_engine, scenario["tenant_id"])
 
 
-@pytest.mark.parametrize("attempt", range(5))
-def test_concurrent_harvest_correction_vs_packing_consumption_racing_below_zero(test_engine, attempt) -> None:
-    """A Leafy Harvest of 10 units / 5.000kg is recorded and committed
-    FIRST, opening a HarvestedProduceLot with an available balance of
-    10 units / 5.000kg. Operator A then corrects that harvest down to 5
-    units / 2.500kg (freeing 2.5kg / 5 units of lot balance back);
-    Operator B simultaneously packs 8 units / 4.000kg out of the SAME lot.
-    Both lock the lot row first (shared lock-order convention). Neither
-    side may independently assume the other's balance: if the correction
-    commits first, the lot's available balance drops to 2.5kg / 5 units,
-    which cannot cover Packing's 4.000kg / 8-unit request
-    (InsufficientProduceLotBalanceError); if Packing commits first, the
-    balance drops to 1.000kg / 2 units, which cannot absorb the
-    correction's -2.5kg / -5-unit adjustment without going negative
-    (HarvestLedgerBalanceError). Exactly one of the two may ever succeed;
-    the lot's final balance must never go negative."""
-    scenario = _build_committed_plate_scenario(test_engine, opening_count=15)
-    conn0 = test_engine.connect()
-    session0 = Session(bind=conn0)
-    event = harvest_service.record_leafy_harvest(
-        session0, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        batch_id=scenario["batch_id"], client_command_id=uuid.uuid4(), effective_time=scenario["et"],
-        produce_lot_code=f"HL-{uuid.uuid4().hex[:8]}", note=None,
-        source_lines=[
-            {
-                "batch_carrier_assignment_id": scenario["root_id"], "whole_unit_count": 10,
-                "harvested_weight_kg": Decimal("5.000"), "note": None,
-            }
-        ],
-    )
-    line_id = session0.execute(
-        select(HarvestSourceLine.id).where(HarvestSourceLine.harvest_event_id == event.id)
-    ).scalar_one()
-    lot_id = session0.execute(
-        select(HarvestedProduceLot.id).where(HarvestedProduceLot.harvest_event_id == event.id)
-    ).scalar_one()
-    session0.commit()
-    session0.close()
-    conn0.close()
-
-    try:
-        barrier = threading.Barrier(2)
-        results: dict[str, object] = {}
-
-        def correction_worker() -> None:
-            conn = test_engine.connect()
-            session = Session(bind=conn)
-            try:
-                barrier.wait(timeout=10)
-                correction = harvest_service.correct_leafy_harvest(
-                    session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                    actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
-                    harvest_source_line_id=line_id, supersedes_correction_id=None, is_void=False,
-                    corrected_harvested_weight_kg=Decimal("2.500"), corrected_whole_unit_count=5,
-                    reason_code="miscounted", note="race",
-                )
-                results["correction"] = ("ok", correction.id)
-            except Exception as exc:  # pragma: no cover -- includes expected balance rejection
-                results["correction"] = ("error", repr(exc))
-            finally:
-                session.close()
-                conn.close()
-
-        def packing_worker() -> None:
-            conn = test_engine.connect()
-            session = Session(bind=conn)
-            try:
-                barrier.wait(timeout=10)
-                packing_event = packing_service.record_packing(
-                    session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
-                    actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(),
-                    effective_time=scenario["et"] + timedelta(hours=1), finished_goods_lot_code=f"FG-{uuid.uuid4().hex[:8]}",
-                    package_count=1, packed_output_weight_kg=Decimal("4.000"), process_loss_weight_kg=Decimal("0.000"),
-                    rejected_weight_kg=Decimal("0.000"), note=None,
-                    input_lines=[
-                        {
-                            "harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("4.000"),
-                            "consumed_whole_unit_count": 8, "note": None,
-                        }
-                    ],
-                )
-                results["packing"] = ("ok", packing_event.id)
-            except Exception as exc:  # pragma: no cover -- includes expected balance rejection
-                results["packing"] = ("error", repr(exc))
-            finally:
-                session.close()
-                conn.close()
-
-        t_a = threading.Thread(target=correction_worker)
-        t_b = threading.Thread(target=packing_worker)
-        t_a.start()
-        t_b.start()
-        t_a.join(timeout=20)
-        t_b.join(timeout=20)
-
-        assert not t_a.is_alive() and not t_b.is_alive(), "no deadlock: both threads must complete"
-        outcomes = [results["correction"][0], results["packing"][0]]
-        assert outcomes.count("ok") == 1, results
-
-        verify_conn = test_engine.connect()
-        verify_session = Session(bind=verify_conn)
-        try:
-            from sqlalchemy import func
-
-            from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
-
-            weight, count = verify_session.execute(
-                select(
-                    func.coalesce(func.sum(ProduceLotLedgerEntry.weight_delta_kg), 0),
-                    func.coalesce(func.sum(ProduceLotLedgerEntry.whole_unit_count_delta), 0),
-                ).where(ProduceLotLedgerEntry.produce_lot_id == lot_id)
-            ).one()
-            assert weight >= 0 and count >= 0
-        finally:
-            verify_session.close()
-            verify_conn.close()
-    finally:
-        _cleanup(test_engine, scenario["tenant_id"])
+# POSTHARVEST-OPS-001E: `test_concurrent_harvest_correction_vs_packing_consumption_racing_below_zero`
+# removed outright (not rewritten) -- it tested a Harvest correction racing
+# a *direct* Harvest -> Packing consumption of the same HarvestedProduceLot
+# ledger row. That contract no longer exists: Packing now consumes
+# exclusively from GradedProduceLot balance and never accepts a
+# harvested_produce_lot_id at all, so there is no longer any shared-ledger
+# race between a Harvest correction and Packing to prove.
 
 
 def _build_committed_carrier_reuse_scenario(test_engine):

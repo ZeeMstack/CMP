@@ -13,14 +13,18 @@ from app.services.errors import (
     DuplicateFinishedGoodsLotCodeError,
     FarmNotFoundError,
     FinishedGoodsLotNotFoundError,
-    InsufficientProduceLotBalanceError,
+    InsufficientGradedProduceLotBalanceError,
     InvalidPackingEffectiveTimeError,
     PackingCommandReusedWithDifferentPayloadError,
     PackingCropVarietyMismatchError,
     PackingEventNotFoundError,
-    PackingInputProduceLotNotFoundError,
+    PackingGradeVersionMismatchError,
+    PackingInputGradedProduceLotNotFoundError,
     PackingValidationError,
+    PackSpecificationVersionNotFoundError,
+    PackSpecificationVersionNotUsableError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
     TooManyPackingInputLinesError,
 )
 
@@ -40,7 +44,7 @@ def record_packing(
 ) -> PackingEventRead:
     input_lines = [
         {
-            "harvested_produce_lot_id": line.harvested_produce_lot_id,
+            "graded_produce_lot_id": line.graded_produce_lot_id,
             "consumed_weight_kg": line.consumed_weight_kg,
             "consumed_whole_unit_count": line.consumed_whole_unit_count,
             "note": line.note,
@@ -54,6 +58,7 @@ def record_packing(
             farm_id=farm_id,
             actor_user_id=ctx.user_id,
             client_command_id=payload.client_command_id,
+            pack_specification_version_id=payload.pack_specification_version_id,
             effective_time=payload.effective_time,
             finished_goods_lot_code=payload.finished_goods_lot_code,
             package_count=payload.package_count,
@@ -63,13 +68,16 @@ def record_packing(
             note=payload.note,
             input_lines=input_lines,
         )
-    except (FarmNotFoundError, PackingInputProduceLotNotFoundError) as exc:
+    except (
+        FarmNotFoundError, PackingInputGradedProduceLotNotFoundError, PackSpecificationVersionNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except (
         QualityHoldOpenError,
+        RecallContainmentOpenError,
         PackingCommandReusedWithDifferentPayloadError,
         DuplicateFinishedGoodsLotCodeError,
-        InsufficientProduceLotBalanceError,
+        InsufficientGradedProduceLotBalanceError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (
@@ -77,6 +85,8 @@ def record_packing(
         InvalidPackingEffectiveTimeError,
         TooManyPackingInputLinesError,
         PackingCropVarietyMismatchError,
+        PackingGradeVersionMismatchError,
+        PackSpecificationVersionNotUsableError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return packing_service.get_packing_event(
