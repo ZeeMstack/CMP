@@ -55,11 +55,12 @@ def _assert_at_head(test_engine) -> None:
 def _pack_one(scenario, db) -> None:
     packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=scenario["pack_specification_version_id"],
+        effective_time=_now(),
         finished_goods_lot_code=f"FG-{scenario['suffix']}", package_count=1,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
 
 
@@ -70,6 +71,15 @@ def test_downgrade_blocked_when_packing_history_exists(test_engine, alembic_head
     # carrier_specifications row, which would otherwise unconditionally
     # block via e5b8c3a72f04's own, earlier-in-chain guard before this
     # guard is ever reached.
+    #
+    # POSTHARVEST-OPS-001E: real packing history is now GPL-input, which
+    # trips POSTHARVEST-OPS-001E's OWN downgrade guard (in d8f4a1c92b57)
+    # before the cascade ever reaches CMP-015's original guard further
+    # down the chain -- 001E's migration sits directly above CMP-015's own
+    # and blocks unconditionally on the same packing_events/
+    # packing_input_lines existence check. This test now proves that
+    # outer guard; CMP-015's own guard remains independently in place for
+    # a downgrade that starts already below 001E.
     scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
@@ -82,7 +92,7 @@ def test_downgrade_blocked_when_packing_history_exists(test_engine, alembic_head
     conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-015"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP015_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -156,12 +166,15 @@ def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_
     event can never be removed while the debit remains) still blocks
     downgrade, proving the guard does not depend on every row existing
     together. The CMP-016 opening receipt is removed along with its lot
-    (both are torn down here as one unit) so this remains a proof of
-    CMP-015's own unconditional guard specifically — without it, the
-    orphaned receipt left behind would trip CMP-016's own (correct, and
-    separately proven in test_finished_goods_ledger_downgrade_guard.py)
-    orphan-receipt guard first, since CMP-016 now sits above CMP-015 in the
-    downgrade cascade."""
+    (both are torn down here as one unit) so this remains a proof of the
+    unconditional guard specifically — without it, the orphaned receipt
+    left behind would trip CMP-016's own (correct, and separately proven
+    in test_finished_goods_ledger_downgrade_guard.py) orphan-receipt guard
+    first, since CMP-016 now sits above CMP-015 in the downgrade cascade.
+
+    POSTHARVEST-OPS-001E: the remaining bare `packing_events` row alone
+    already trips 001E's OWN downgrade guard (in d8f4a1c92b57), which sits
+    directly above CMP-015's own guard in the cascade and fires first."""
     # CARRIER-CONFIG-001A: packing history existence is unrelated to
     # carrier type -- grow_bag keeps the scenario free of a
     # carrier_specifications row, which would otherwise unconditionally
@@ -195,7 +208,7 @@ def test_downgrade_blocked_when_only_packing_event_and_ledger_debit_remain(test_
     conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-015"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP015_REVISION)
         _assert_at_head(test_engine)
     finally:

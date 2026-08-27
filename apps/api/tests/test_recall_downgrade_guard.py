@@ -421,11 +421,14 @@ def test_downgrade_blocked_even_after_case_closed(test_engine, alembic_head_rest
 @pytest.mark.integration
 def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_state(test_engine, alembic_head_restore) -> None:
     with test_engine.connect() as c:
-        packing_v2_before = c.execute(
+        # POSTHARVEST-OPS-001E re-versioned Packing's own trigger v2 -> v3
+        # (GPL-shaped inputs, see migration d8f4a1c92b57) -- at head, the
+        # attached function is v3; downgrading past 001E restores v2.
+        packing_v3_before = c.execute(
             text(
                 "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'packing_input_lines'::regclass "
                 "AND tgname = 'packing_input_lines_enforce_insert_integrity' "
-                "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v2'::regproc"
+                "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v3'::regproc"
             )
         ).scalar_one()
         storage_v2_before = c.execute(
@@ -448,7 +451,7 @@ def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_s
                 "AND tgname = 'batch_derivation_sources_enforce_containment'"
             )
         ).scalar_one()
-    assert packing_v2_before == 1
+    assert packing_v3_before == 1
     assert storage_v2_before == 1
     assert ledger_v4_before == 1
     assert derivation_gate_before == 1
@@ -569,11 +572,11 @@ def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_s
         command.upgrade(_cfg(), "head")
         with test_engine.connect() as c:
             assert c.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == _resolve_head_revision(_cfg())
-            packing_v2_restored = c.execute(
+            packing_v3_restored = c.execute(
                 text(
                     "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'packing_input_lines'::regclass "
                     "AND tgname = 'packing_input_lines_enforce_insert_integrity' "
-                    "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v2'::regproc"
+                    "AND tgfoid = 'enforce_packing_input_line_insert_integrity_v3'::regproc"
                 )
             ).scalar_one()
             ledger_v4_restored = c.execute(
@@ -583,7 +586,7 @@ def test_clean_downgrade_with_no_recall_history_reupgrade_restores_exact_prior_s
                     "AND tgfoid = 'enforce_finished_goods_ledger_entry_insert_integrity_v4'::regproc"
                 )
             ).scalar_one()
-        assert packing_v2_restored == 1
+        assert packing_v3_restored == 1
         assert ledger_v4_restored == 1
 
         # Re-upgraded containment gate genuinely works again.

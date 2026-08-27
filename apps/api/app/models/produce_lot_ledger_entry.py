@@ -23,49 +23,51 @@ class ProduceLotLedgerEntry(Base):
     """Immutable, insert-only ledger entry against one harvested produce
     lot. CMP-014 introduced one `entry_kind`, `harvest_receipt` — the
     lot's original harvested quantity, created automatically inside the
-    same transaction as the harvest command. CMP-015 adds a second kind,
-    `packing_consumption` — a typed negative debit created automatically
-    inside the packing transaction. HARVEST-OPS-001 adds a third kind,
-    `harvest_adjustment` — a signed (either-direction) correction delta,
-    `id` equal to its own `HarvestSourceLineCorrection`'s id, computed as
-    `corrected_effective_tuple - predecessor_effective_tuple` (never
-    relative to the ORIGINAL receipt once a prior correction exists — see
-    `harvest_service.py`'s own correction algorithm). POSTHARVEST-OPS-001C
-    adds a fourth kind, `grading_consumption` — a typed negative debit,
-    `id` equal to its own `GradingEvent`'s id (exactly one debit per
-    event, since a GradingEvent has exactly one source lot and exactly
-    one net-processed quantity — unlike `packing_consumption`, which has
-    one debit per input line because a packing event may have many
-    inputs), created automatically inside the grading transaction. The
-    weight delta equals `-(input_presented_weight_kg - remainder_weight_kg)`
-    — remainder is never debited, it simply remains part of the lot's own
-    still-positive balance for a later GradingEvent to reference again.
-    Each kind is a deterministic, reconstructible projection of exactly
-    one source row: a `harvest_receipt`'s `id`/`produce_lot_id` equal the
-    lot's own id and `harvest_event_id` is populated; a
-    `packing_consumption`'s `id` equals its `PackingInputLine`'s own id
-    and `packing_event_id` is populated; a `harvest_adjustment`'s `id`
-    equals its `HarvestSourceLineCorrection`'s own id and
-    `harvest_source_line_correction_id` is populated; a
+    same transaction as the harvest command. HARVEST-OPS-001 adds a second
+    kind, `harvest_adjustment` — a signed (either-direction) correction
+    delta, `id` equal to its own `HarvestSourceLineCorrection`'s id,
+    computed as `corrected_effective_tuple - predecessor_effective_tuple`
+    (never relative to the ORIGINAL receipt once a prior correction exists
+    — see `harvest_service.py`'s own correction algorithm). POSTHARVEST-
+    OPS-001C adds a third kind, `grading_consumption` — a typed negative
+    debit, `id` equal to its own `GradingEvent`'s id (exactly one debit
+    per event, since a GradingEvent has exactly one source lot and exactly
+    one net-processed quantity), created automatically inside the grading
+    transaction. The weight delta equals
+    `-(input_presented_weight_kg - remainder_weight_kg)` — remainder is
+    never debited, it simply remains part of the lot's own still-positive
+    balance for a later GradingEvent to reference again.
+
+    CMP-015 originally added a fourth kind, `packing_consumption` — Packing
+    directly debiting `HarvestedProduceLot` balance. POSTHARVEST-OPS-001E
+    removed it: Packing now consumes `GradedProduceLot` balance exclusively
+    (see `GradedProduceLotLedgerEntry`'s own `packing_consumption` kind) —
+    a `HarvestedProduceLot`'s commercial balance is affected by Grading
+    only, from CMP-015C onward. `packing_event_id` no longer exists on this
+    table.
+
+    Each remaining kind is a deterministic, reconstructible projection of
+    exactly one source row: a `harvest_receipt`'s `id`/`produce_lot_id`
+    equal the lot's own id and `harvest_event_id` is populated; a
+    `harvest_adjustment`'s `id` equals its `HarvestSourceLineCorrection`'s
+    own id and `harvest_source_line_correction_id` is populated; a
     `grading_consumption`'s `id` equals its `GradingEvent`'s own id and
-    `grading_event_id` is populated. The four source references are
+    `grading_event_id` is populated. The three source references are
     mutually exclusive (`ck_produce_lot_ledger_entries_typed_source_shape`)
     and the weight/count sign is tied to the kind (positive receipts,
-    negative consumption of either kind, either sign for an adjustment) —
+    negative consumption, either sign for an adjustment) —
     `available_weight_kg = SUM(weight_delta_kg)` therefore reflects
-    receipts, both consumption kinds, and corrections alike with no
-    separate balance/status column. `received_weight_kg`/
-    `received_whole_unit_count` (see `produce_lot_ledger_service.
-    get_balance`) sum `harvest_receipt` ORIGINAL inflow only, unaffected by
-    corrections or consumption; `current_corrected_received_*` widens that
-    sum to also include `harvest_adjustment` (excluding both consumption
-    kinds) — the "current corrected Harvest total" distinct from both the
-    frozen original receipt and the post-grading/packing available
-    balance. The `enforce_produce_lot_ledger_entry_insert_integrity_v2`
-    function is widened in place via `CREATE OR REPLACE` (never
-    versioned to `_v3`) for this fourth kind, following the exact idiom
-    HARVEST-OPS-001 already established when it widened the same function
-    for `harvest_adjustment` — the trigger ATTACHMENT
+    receipts, consumption, and corrections alike with no separate
+    balance/status column. `received_weight_kg`/`received_whole_unit_count`
+    (see `produce_lot_ledger_service.get_balance`) sum `harvest_receipt`
+    ORIGINAL inflow only, unaffected by corrections or consumption;
+    `current_corrected_received_*` widens that sum to also include
+    `harvest_adjustment` (excluding `grading_consumption`) — the "current
+    corrected Harvest total" distinct from both the frozen original
+    receipt and the post-grading available balance. The
+    `enforce_produce_lot_ledger_entry_insert_integrity_v2` function is
+    narrowed in place via `CREATE OR REPLACE` (never versioned to `_v3`)
+    to remove the `packing_consumption` branch — the trigger ATTACHMENT
     (`produce_lot_ledger_entries_enforce_insert_integrity_v2`) is never
     re-created, only the function body it points to."""
 
@@ -77,11 +79,9 @@ class ProduceLotLedgerEntry(Base):
     produce_lot_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("harvested_produce_lots.id"), nullable=False
     )
-    # Nullable since CMP-015: populated for harvest_receipt, NULL for
-    # packing_consumption (see ck_produce_lot_ledger_entries_typed_source_shape).
+    # Nullable: populated for harvest_receipt, NULL otherwise (see
+    # ck_produce_lot_ledger_entries_typed_source_shape).
     harvest_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("harvest_events.id"), nullable=True)
-    # New in CMP-015: populated for packing_consumption, NULL for harvest_receipt.
-    packing_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("packing_events.id"), nullable=True)
     # New in HARVEST-OPS-001: populated for harvest_adjustment, NULL for the
     # other two kinds.
     harvest_source_line_correction_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -100,7 +100,7 @@ class ProduceLotLedgerEntry(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "entry_kind IN ('harvest_receipt', 'packing_consumption', 'harvest_adjustment', 'grading_consumption')",
+            "entry_kind IN ('harvest_receipt', 'harvest_adjustment', 'grading_consumption')",
             name="ck_produce_lot_ledger_entries_kind_allowed",
         ),
         # NUMERIC is deliberately unscoped, not NUMERIC(14,3) — see CMP-013's
@@ -121,8 +121,6 @@ class ProduceLotLedgerEntry(Base):
         CheckConstraint(
             "(entry_kind = 'harvest_receipt' AND weight_delta_kg > 0 "
             "AND weight_delta_kg = trunc(weight_delta_kg, 3) AND weight_delta_kg < 100000000000) "
-            "OR (entry_kind = 'packing_consumption' AND weight_delta_kg < 0 "
-            "AND weight_delta_kg = trunc(weight_delta_kg, 3) AND weight_delta_kg > -100000000000) "
             "OR (entry_kind = 'harvest_adjustment' "
             "AND weight_delta_kg = trunc(weight_delta_kg, 3) "
             "AND weight_delta_kg > -100000000000 AND weight_delta_kg < 100000000000) "
@@ -132,7 +130,6 @@ class ProduceLotLedgerEntry(Base):
         ),
         CheckConstraint(
             "(entry_kind = 'harvest_receipt' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta > 0)) "
-            "OR (entry_kind = 'packing_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0)) "
             "OR (entry_kind = 'harvest_adjustment' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta <> 0)) "
             "OR (entry_kind = 'grading_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0))",
             name="ck_produce_lot_ledger_entries_count_positive",
@@ -154,17 +151,16 @@ class ProduceLotLedgerEntry(Base):
             "entry_kind <> 'harvest_receipt' OR note IS NULL",
             name="ck_produce_lot_ledger_entries_receipt_note_null",
         ),
-        # New in CMP-015, widened in HARVEST-OPS-001: ties entry_kind to
-        # exactly one populated source reference — the DB-level typed-source
-        # XOR across all three kinds.
+        # Ties entry_kind to exactly one populated source reference — the
+        # DB-level typed-source XOR across all three kinds. Narrowed by
+        # POSTHARVEST-OPS-001E (packing_event_id no longer exists on this
+        # table at all).
         CheckConstraint(
-            "(entry_kind = 'harvest_receipt' AND harvest_event_id IS NOT NULL AND packing_event_id IS NULL "
+            "(entry_kind = 'harvest_receipt' AND harvest_event_id IS NOT NULL "
             "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NULL) "
-            "OR (entry_kind = 'packing_consumption' AND harvest_event_id IS NULL AND packing_event_id IS NOT NULL "
-            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NULL) "
-            "OR (entry_kind = 'harvest_adjustment' AND harvest_event_id IS NULL AND packing_event_id IS NULL "
+            "OR (entry_kind = 'harvest_adjustment' AND harvest_event_id IS NULL "
             "AND harvest_source_line_correction_id IS NOT NULL AND grading_event_id IS NULL) "
-            "OR (entry_kind = 'grading_consumption' AND harvest_event_id IS NULL AND packing_event_id IS NULL "
+            "OR (entry_kind = 'grading_consumption' AND harvest_event_id IS NULL "
             "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NOT NULL)",
             name="ck_produce_lot_ledger_entries_typed_source_shape",
         ),
@@ -179,13 +175,6 @@ class ProduceLotLedgerEntry(Base):
         Index(
             "ux_produce_lot_ledger_entries_event_harvest_receipt", "harvest_event_id", unique=True,
             postgresql_where=text("entry_kind = 'harvest_receipt'"),
-        ),
-        # New in CMP-015: one lot appears once per packing event (defense
-        # in depth alongside PackingInputLine's own identical uniqueness
-        # and the deterministic id = packing_input_line.id convention).
-        Index(
-            "ux_produce_lot_ledger_entries_event_lot_packing_consumption", "packing_event_id", "produce_lot_id",
-            unique=True, postgresql_where=text("entry_kind = 'packing_consumption'"),
         ),
         # HARVEST-OPS-001: one correction produces exactly one
         # harvest_adjustment ledger entry, ever -- DB-level, unreachable via
@@ -218,17 +207,11 @@ class ProduceLotLedgerEntry(Base):
             ["harvest_events.tenant_id", "harvest_events.farm_id", "harvest_events.id"],
             name="fk_produce_lot_ledger_entries_tenant_farm_event",
         ),
-        # New in CMP-015. Both this and the harvest_event composite FK use
-        # Postgres's default MATCH SIMPLE: a FK is not checked for a row
-        # where any of its own columns is NULL, so each kind's row only
-        # activates the composite FK for the source table it actually
-        # references.
-        ForeignKeyConstraint(
-            ["tenant_id", "farm_id", "packing_event_id"],
-            ["packing_events.tenant_id", "packing_events.farm_id", "packing_events.id"],
-            name="fk_produce_lot_ledger_entries_tenant_farm_packing_event",
-        ),
-        # New in HARVEST-OPS-001, same MATCH SIMPLE reasoning as above.
+        # New in HARVEST-OPS-001. This and the harvest_event composite FK
+        # use Postgres's default MATCH SIMPLE: a FK is not checked for a
+        # row where any of its own columns is NULL, so each kind's row
+        # only activates the composite FK for the source table it
+        # actually references.
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "harvest_source_line_correction_id"],
             [

@@ -186,7 +186,12 @@ def test_clean_downgrade_and_reupgrade_restores_prior_ledger_shape(test_engine, 
                  "'enforce_produce_lot_ledger_entry_insert_integrity_v2'")
         ).scalar_one()
         assert "grading_consumption" in ledger_body_before
-        assert "packing_consumption" in ledger_body_before
+        # POSTHARVEST-OPS-001E moved packing_consumption off this table
+        # entirely, onto graded_produce_lot_ledger_entries -- at head (with
+        # 001E applied), this function's own packing_consumption branch is
+        # gone; the downgrade-side assertions below still expect it back
+        # once the database is downgraded past both Grading and 001E.
+        assert "packing_consumption" not in ledger_body_before
 
     command.downgrade(_cfg(), _PARENT_REVISION)
     with test_engine.connect() as conn:
@@ -281,4 +286,4 @@ def test_clean_downgrade_and_reupgrade_restores_prior_ledger_shape(test_engine, 
                  "'enforce_produce_lot_ledger_entry_insert_integrity_v2'")
         ).scalar_one()
         assert "grading_consumption" in ledger_body_reupgraded
-        assert "packing_consumption" in ledger_body_reupgraded
+        assert "packing_consumption" not in ledger_body_reupgraded

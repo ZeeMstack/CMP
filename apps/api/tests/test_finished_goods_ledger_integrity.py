@@ -34,10 +34,11 @@ def scenario(test_engine):
 
     event = packing_service.record_packing(
         session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+        effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
         package_count=6, packed_output_weight_kg=Decimal("3.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": s["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": s["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], packing_event_id=event.id)
     s["packing_event_id"] = event.id
@@ -55,10 +56,11 @@ def scenario(test_engine):
     # to hand-construct an entire CMP-015-valid event from raw SQL.
     bare_event = packing_service.record_packing(
         session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"BARE-{s['suffix']}",
+        client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+        effective_time=_now(), finished_goods_lot_code=f"BARE-{s['suffix']}",
         package_count=9, packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": s["lot_b_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": s["gpl_b_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     bare_detail = packing_service.get_packing_event(session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], packing_event_id=bare_event.id)
     bare_lot_id = bare_detail.finished_goods_lot.id
@@ -203,10 +205,11 @@ def test_direct_sql_output_lot_without_receipt_fails_at_commit(test_engine) -> N
     try:
         event = packing_service.record_packing(
             session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
-            client_command_id=uuid.uuid4(), effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
+            client_command_id=uuid.uuid4(), pack_specification_version_id=s["pack_specification_version_id"],
+            effective_time=_now(), finished_goods_lot_code=f"FG-{s['suffix']}",
             package_count=1, packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"),
             rejected_weight_kg=Decimal("0"), note=None,
-            input_lines=[{"harvested_produce_lot_id": s["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+            input_lines=[{"graded_produce_lot_id": s["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
         )
         event_id = event.id
         session.commit()

@@ -25,10 +25,40 @@ from app.services.errors import (
     HarvestCorrectionValidationError,
     HarvestLedgerBalanceError,
 )
+from tests._packing_scenario import build_packing_scaffold
 from tests.test_leafy_harvest import _harvest, _line
 from tests.test_production_disposition import _plate_scenario
 
 pytestmark = pytest.mark.integration
+
+
+def _grade_partial(db_session, tenant, farm, user, *, lot, weight, count, output_weight, loss_weight, suffix):
+    """POSTHARVEST-OPS-001E: HarvestedProduceLot balance is debited by
+    Grading (grading_consumption), never by Packing (which now consumes
+    exclusively from GradedProduceLot balance) -- this replaces what used
+    to be a direct `packing_service.record_packing` call against the HPL
+    for tests whose actual purpose is proving harvest-correction safety
+    against an already-reduced HPL balance, regardless of which downstream
+    operation reduced it."""
+    from app.services import grading_service
+
+    scaffold = build_packing_scaffold(db_session, tenant, user, farm, crop_id=lot.crop_id, suffix=suffix)
+    grading_service.record_grading(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        source_harvested_produce_lot_id=lot.id, processing_hall_location_id=scaffold["packing_hall_location_id"],
+        effective_time=lot.effective_time + timedelta(hours=1), note=None,
+        input_presented_weight_kg=weight, input_presented_whole_unit_count=count,
+        rejected_weight_kg=Decimal("0"), rejected_whole_unit_count=(0 if count is not None else None),
+        loss_weight_kg=loss_weight, loss_whole_unit_count=(0 if count is not None else None),
+        sample_weight_kg=Decimal("0"), sample_whole_unit_count=(0 if count is not None else None),
+        remainder_weight_kg=Decimal("0"), remainder_whole_unit_count=(0 if count is not None else None),
+        outputs=[
+            {
+                "grade_definition_version_id": scaffold["grade_definition_version_id"], "code": f"GPL-{suffix}",
+                "output_weight_kg": output_weight, "output_whole_unit_count": count,
+            }
+        ],
+    )
 
 
 def _correct(db_session, tenant, farm, user, harvest_source_line_id, **overrides):
@@ -287,20 +317,15 @@ def test_zero_release_restore_re_zero(db_session, active_context_with_farm) -> N
 
 
 def test_safe_correction_after_partial_packing_consumption(db_session, active_context_with_farm) -> None:
-    from app.services import packing_service
-
     tenant, user, _headers, farm = active_context_with_farm
     batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
     event = _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 5, "2.500")], effective_time=t0 + timedelta(hours=1))
     line = _only_source_line(db_session, event)
     lot = _lot_for(db_session, event)
 
-    packing_service.record_packing(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        client_command_id=uuid.uuid4(), effective_time=t0 + timedelta(hours=2),
-        finished_goods_lot_code=f"PL-{uuid.uuid4().hex[:8]}", package_count=1, note=None,
-        input_lines=[{"harvested_produce_lot_id": lot.id, "consumed_weight_kg": Decimal("1.500"), "consumed_whole_unit_count": 3, "note": None}],
-        packed_output_weight_kg=Decimal("1.400"), process_loss_weight_kg=Decimal("0.100"), rejected_weight_kg=Decimal("0"),
+    _grade_partial(
+        db_session, tenant, farm, user, lot=lot, weight=Decimal("1.500"), count=3,
+        output_weight=Decimal("1.400"), loss_weight=Decimal("0.100"), suffix="safe-correction",
     )
     weight_before, count_before = _balance(db_session, lot.id)
     assert weight_before == Decimal("1.000")
@@ -316,8 +341,6 @@ def test_safe_correction_after_partial_packing_consumption(db_session, active_co
 
 
 def test_unsafe_correction_rejected_and_biology_left_untouched(db_session, active_context_with_farm) -> None:
-    from app.services import packing_service
-
     tenant, user, _headers, farm = active_context_with_farm
     batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
     event = _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 5, "2.500")], effective_time=t0 + timedelta(hours=1))
@@ -325,14 +348,11 @@ def test_unsafe_correction_rejected_and_biology_left_untouched(db_session, activ
     lot = _lot_for(db_session, event)
 
     # Fully consume the lot (weight AND count both to zero -- a matched
-    # residual, satisfying Packing's own consistency rule), so ANY
+    # residual, satisfying Grading's own consistency rule), so ANY
     # subsequent reducing correction is guaranteed unsafe.
-    packing_service.record_packing(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        client_command_id=uuid.uuid4(), effective_time=t0 + timedelta(hours=2),
-        finished_goods_lot_code=f"PL-{uuid.uuid4().hex[:8]}", package_count=1, note=None,
-        input_lines=[{"harvested_produce_lot_id": lot.id, "consumed_weight_kg": Decimal("2.500"), "consumed_whole_unit_count": 5, "note": None}],
-        packed_output_weight_kg=Decimal("2.400"), process_loss_weight_kg=Decimal("0.100"), rejected_weight_kg=Decimal("0"),
+    _grade_partial(
+        db_session, tenant, farm, user, lot=lot, weight=Decimal("2.500"), count=5,
+        output_weight=Decimal("2.400"), loss_weight=Decimal("0.100"), suffix="unsafe-correction",
     )
     living_before = leafy_population_service.get_current_living_population(db_session, root_batch_carrier_assignment_id=root_id)
 

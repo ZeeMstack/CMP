@@ -147,6 +147,86 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
     assert balance_a["available_weight_kg"] == "10" and balance_a["available_whole_unit_count"] == 40
     assert balance_b["available_weight_kg"] == "5" and balance_b["available_whole_unit_count"] == 20
 
+    # POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    # directly -- grade each lot's FULL weight/count into its own
+    # GradedProduceLot (same shared GradeDefinitionVersion, so they satisfy
+    # Packing's exact-grade-match rule) and activate one
+    # PackSpecificationVersion (variety_id=None) before packing.
+    packing_hall = client.post(
+        f"/farms/{farm_id}/locations", headers=headers,
+        json={"location_type_code": "packing_hall", "code": f"pack-hall-{suffix}", "name": "Processing Hall"},
+    ).json()
+    grade_def = client.post(
+        "/grade-definitions", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "code": f"grade-{suffix}", "name": "Standard",
+            "crop_id": crop["id"], "variety_id": None,
+        },
+    ).json()
+    grade_version = client.post(
+        f"/grade-definitions/{grade_def['id']}/versions", headers=headers,
+        json={"client_command_id": str(uuid.uuid4())},
+    ).json()
+    activate_grade_resp = client.post(
+        f"/grade-definitions/{grade_def['id']}/versions/{grade_version['id']}/activate", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "effective_time": _now_iso()},
+    )
+    assert activate_grade_resp.status_code == 200, activate_grade_resp.text
+    packaging_unit = client.post(
+        "/packaging-units", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "code": f"unit-{suffix}", "name": "Carton"},
+    ).json()
+    pack_spec = client.post(
+        "/pack-specifications", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "code": f"spec-{suffix}", "name": "Standard Pack",
+            "crop_id": crop["id"], "variety_id": None,
+        },
+    ).json()
+    pack_spec_version = client.post(
+        f"/pack-specifications/{pack_spec['id']}/versions", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "grade_definition_version_id": None,
+            "packaging_unit_id": packaging_unit["id"], "nominal_net_weight_kg": "1.000", "whole_units_per_pack": None,
+        },
+    ).json()
+    activate_spec_resp = client.post(
+        f"/pack-specifications/{pack_spec['id']}/versions/{pack_spec_version['id']}/activate", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "effective_time": _now_iso()},
+    )
+    assert activate_spec_resp.status_code == 200, activate_spec_resp.text
+    pack_specification_version_id = pack_spec_version["id"]
+
+    def _grade_full(lot_id: str, weight: str, count: int, code: str) -> str:
+        resp = client.post(
+            f"/farms/{farm_id}/grading-events", headers=headers,
+            json={
+                "client_command_id": str(uuid.uuid4()), "source_harvested_produce_lot_id": lot_id,
+                "processing_hall_location_id": packing_hall["id"], "effective_time": _now_iso(), "note": None,
+                "input_presented_weight_kg": weight, "input_presented_whole_unit_count": count,
+                "rejected_weight_kg": "0", "rejected_whole_unit_count": 0,
+                "loss_weight_kg": "0", "loss_whole_unit_count": 0,
+                "sample_weight_kg": "0", "sample_whole_unit_count": 0,
+                "remainder_weight_kg": "0", "remainder_whole_unit_count": 0,
+                "outputs": [
+                    {
+                        "grade_definition_version_id": grade_version["id"], "code": code,
+                        "output_weight_kg": weight, "output_whole_unit_count": count,
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        return resp.json()["outputs"][0]["id"]
+
+    gpl_a_id = _grade_full(lot_a_id, "10.000", 40, f"GPL-A-{suffix}")
+    gpl_b_id = _grade_full(lot_b_id, "5.000", 20, f"GPL-B-{suffix}")
+
+    gpl_balance_a = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_a_id}/balance", headers=headers).json()
+    gpl_balance_b = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_b_id}/balance", headers=headers).json()
+    assert gpl_balance_a["available_weight_kg"] == "10" and gpl_balance_a["available_whole_unit_count"] == 40
+    assert gpl_balance_b["available_weight_kg"] == "5" and gpl_balance_b["available_whole_unit_count"] == 20
+
     occupancy_before = db_session.execute(select(func.count()).select_from(Occupancy)).scalar_one()
     movement_before = db_session.execute(select(func.count()).select_from(Movement)).scalar_one()
     assignment_before = db_session.execute(select(func.count()).select_from(BatchCarrierAssignment)).scalar_one()
@@ -155,11 +235,12 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
     pack_command_id = str(uuid.uuid4())
     pack_payload = {
         "client_command_id": pack_command_id, "effective_time": _now_iso(),
+        "pack_specification_version_id": pack_specification_version_id,
         "finished_goods_lot_code": f"fg-{suffix}", "package_count": 12,
         "packed_output_weight_kg": "10.500", "process_loss_weight_kg": "0.300", "rejected_weight_kg": "0.200",
         "input_lines": [
-            {"harvested_produce_lot_id": lot_a_id, "consumed_weight_kg": "8.000", "consumed_whole_unit_count": 32},
-            {"harvested_produce_lot_id": lot_b_id, "consumed_weight_kg": "3.000", "consumed_whole_unit_count": 12},
+            {"graded_produce_lot_id": gpl_a_id, "consumed_weight_kg": "8.000", "consumed_whole_unit_count": 32},
+            {"graded_produce_lot_id": gpl_b_id, "consumed_weight_kg": "3.000", "consumed_whole_unit_count": 12},
         ],
     }
     pack_resp = client.post(f"/farms/{farm_id}/packing-events", headers=headers, json=pack_payload)
@@ -176,22 +257,29 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
     assert fg_resp.status_code == 200
     fg = fg_resp.json()
     assert fg["net_packed_weight_kg"] == "10.5"
-    assert sorted(fg["source_produce_lot_ids"]) == sorted([lot_a_id, lot_b_id])
+    assert sorted(fg["source_graded_produce_lot_ids"]) == sorted([gpl_a_id, gpl_b_id])
+    assert fg["pack_specification_version_id"] == pack_specification_version_id
 
-    ledger_a = client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_a_id}/ledger", headers=headers).json()
-    ledger_b = client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_b_id}/ledger", headers=headers).json()
+    ledger_a = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_a_id}/ledger", headers=headers).json()
+    ledger_b = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_b_id}/ledger", headers=headers).json()
     assert len(ledger_a) == 2 and len(ledger_b) == 2
     debit_a = next(e for e in ledger_a if e["entry_kind"] == "packing_consumption")
     debit_b = next(e for e in ledger_b if e["entry_kind"] == "packing_consumption")
     assert debit_a["weight_delta_kg"] == "-8"
     assert debit_a["whole_unit_count_delta"] == -32
     assert debit_a["packing_event_id"] == event["id"]
-    assert debit_a["harvest_event_id"] is None
+    assert debit_a["grading_event_id"] is None
     assert debit_b["weight_delta_kg"] == "-3"
 
-    # 9. Source balances decrease exactly.
-    balance_a_after = client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_a_id}/balance", headers=headers).json()
-    balance_b_after = client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_b_id}/balance", headers=headers).json()
+    # HPL-level ledger/balance are untouched by Packing post-001E -- only
+    # the single grading_consumption debit from earlier is present.
+    hpl_ledger_a = client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_a_id}/ledger", headers=headers).json()
+    assert len(hpl_ledger_a) == 2
+    assert not any(e["entry_kind"] == "packing_consumption" for e in hpl_ledger_a)
+
+    # 9. Source (GPL) balances decrease exactly.
+    balance_a_after = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_a_id}/balance", headers=headers).json()
+    balance_b_after = client.get(f"/farms/{farm_id}/graded-produce-lots/{gpl_b_id}/balance", headers=headers).json()
     assert balance_a_after["available_weight_kg"] == "2" and balance_a_after["available_whole_unit_count"] == 8
     assert balance_b_after["available_weight_kg"] == "2" and balance_b_after["available_whole_unit_count"] == 8
     assert balance_a_after["received_weight_kg"] == "10"
@@ -212,15 +300,16 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
     assert retry_resp.json()["id"] == event["id"]
     assert len(client.get(f"/farms/{farm_id}/harvested-produce-lots/{lot_a_id}/ledger", headers=headers).json()) == 2
 
-    # 14. Overconsumption rejected (lot A only has 2kg / 8 units left).
+    # 14. Overconsumption rejected (GPL A only has 2kg / 8 units left).
     over_resp = client.post(
         f"/farms/{farm_id}/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": pack_specification_version_id,
             "finished_goods_lot_code": f"fg-over-{suffix}", "package_count": 1,
             "packed_output_weight_kg": "5.000", "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
             "input_lines": [
-                {"harvested_produce_lot_id": lot_a_id, "consumed_weight_kg": "5.000", "consumed_whole_unit_count": 8},
+                {"graded_produce_lot_id": gpl_a_id, "consumed_weight_kg": "5.000", "consumed_whole_unit_count": 8},
             ],
         },
     )
@@ -240,10 +329,11 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": pack_specification_version_id,
             "finished_goods_lot_code": f"fg-held-{suffix}", "package_count": 1,
             "packed_output_weight_kg": "1.000", "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
             "input_lines": [
-                {"harvested_produce_lot_id": lot_a_id, "consumed_weight_kg": "1.000", "consumed_whole_unit_count": 4},
+                {"graded_produce_lot_id": gpl_a_id, "consumed_weight_kg": "1.000", "consumed_whole_unit_count": 4},
             ],
         },
     )
@@ -338,15 +428,59 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
             "source_lines": [{"batch_carrier_assignment_id": other_assignment_id, "harvested_weight_kg": "2.000"}],
         },
     ).json()
+
+    # The other crop needs its OWN grading scaffold (its own GradeDefinitionVersion)
+    # before its HarvestedProduceLot can be graded into a GradedProduceLot.
+    other_packing_hall = client.post(
+        f"/farms/{farm_id}/locations", headers=headers,
+        json={"location_type_code": "packing_hall", "code": f"other-pack-hall-{suffix}", "name": "Other Hall"},
+    ).json()
+    other_grade_def = client.post(
+        "/grade-definitions", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "code": f"other-grade-{suffix}", "name": "Standard",
+            "crop_id": crop["id"], "variety_id": None,
+        },
+    ).json()
+    other_grade_version = client.post(
+        f"/grade-definitions/{other_grade_def['id']}/versions", headers=headers,
+        json={"client_command_id": str(uuid.uuid4())},
+    ).json()
+    assert client.post(
+        f"/grade-definitions/{other_grade_def['id']}/versions/{other_grade_version['id']}/activate", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "effective_time": _now_iso()},
+    ).status_code == 200
+    other_grading_resp = client.post(
+        f"/farms/{farm_id}/grading-events", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "source_harvested_produce_lot_id": other_harvest["produce_lot_id"],
+            "processing_hall_location_id": other_packing_hall["id"], "effective_time": _now_iso(), "note": None,
+            "input_presented_weight_kg": "2.000", "input_presented_whole_unit_count": None,
+            "rejected_weight_kg": "0", "rejected_whole_unit_count": None,
+            "loss_weight_kg": "0", "loss_whole_unit_count": None,
+            "sample_weight_kg": "0", "sample_whole_unit_count": None,
+            "remainder_weight_kg": "0", "remainder_whole_unit_count": None,
+            "outputs": [
+                {
+                    "grade_definition_version_id": other_grade_version["id"], "code": f"GPL-OTHER-{suffix}",
+                    "output_weight_kg": "2.000", "output_whole_unit_count": None,
+                }
+            ],
+        },
+    )
+    assert other_grading_resp.status_code == 201, other_grading_resp.text
+    other_gpl_id = other_grading_resp.json()["outputs"][0]["id"]
+
     mixed_resp = client.post(
         f"/farms/{farm_id}/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": pack_specification_version_id,
             "finished_goods_lot_code": f"fg-mixed-{suffix}", "package_count": 1,
             "packed_output_weight_kg": "2.500", "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
             "input_lines": [
-                {"harvested_produce_lot_id": lot_b_id, "consumed_weight_kg": "0.500", "consumed_whole_unit_count": None},
-                {"harvested_produce_lot_id": other_harvest["produce_lot_id"], "consumed_weight_kg": "2.000", "consumed_whole_unit_count": None},
+                {"graded_produce_lot_id": gpl_b_id, "consumed_weight_kg": "0.500", "consumed_whole_unit_count": None},
+                {"graded_produce_lot_id": other_gpl_id, "consumed_weight_kg": "2.000", "consumed_whole_unit_count": None},
             ],
         },
     )
@@ -357,10 +491,11 @@ def test_packing_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/packing-events", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(),
+            "pack_specification_version_id": pack_specification_version_id,
             "finished_goods_lot_code": f"fg-{suffix}", "package_count": 1,
             "packed_output_weight_kg": "1.000", "process_loss_weight_kg": "0", "rejected_weight_kg": "0",
             "input_lines": [
-                {"harvested_produce_lot_id": lot_b_id, "consumed_weight_kg": "1.000", "consumed_whole_unit_count": 4},
+                {"graded_produce_lot_id": gpl_b_id, "consumed_weight_kg": "1.000", "consumed_whole_unit_count": 4},
             ],
         },
     )

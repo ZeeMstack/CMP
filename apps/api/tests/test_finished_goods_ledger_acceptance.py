@@ -121,13 +121,81 @@ def test_finished_goods_ledger_acceptance_flow(client, active_context, db_sessio
     assert harvest_resp.status_code == 201
     lot_id = harvest_resp.json()["produce_lot_id"]
 
+    # POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    # directly -- grade the lot's full weight into one GradedProduceLot and
+    # activate a PackSpecificationVersion before packing.
+    packing_hall = client.post(
+        f"/farms/{farm_id}/locations", headers=headers,
+        json={"location_type_code": "packing_hall", "code": f"pack-hall-{suffix}", "name": "Processing Hall"},
+    ).json()
+    grade_def = client.post(
+        "/grade-definitions", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "code": f"grade-{suffix}", "name": "Standard",
+            "crop_id": crop["id"], "variety_id": None,
+        },
+    ).json()
+    grade_version = client.post(
+        f"/grade-definitions/{grade_def['id']}/versions", headers=headers,
+        json={"client_command_id": str(uuid.uuid4())},
+    ).json()
+    assert client.post(
+        f"/grade-definitions/{grade_def['id']}/versions/{grade_version['id']}/activate", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "effective_time": _now_iso()},
+    ).status_code == 200
+    packaging_unit = client.post(
+        "/packaging-units", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "code": f"unit-{suffix}", "name": "Carton"},
+    ).json()
+    pack_spec = client.post(
+        "/pack-specifications", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "code": f"spec-{suffix}", "name": "Standard Pack",
+            "crop_id": crop["id"], "variety_id": None,
+        },
+    ).json()
+    pack_spec_version = client.post(
+        f"/pack-specifications/{pack_spec['id']}/versions", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "grade_definition_version_id": None,
+            "packaging_unit_id": packaging_unit["id"], "nominal_net_weight_kg": "1.000", "whole_units_per_pack": None,
+        },
+    ).json()
+    assert client.post(
+        f"/pack-specifications/{pack_spec['id']}/versions/{pack_spec_version['id']}/activate", headers=headers,
+        json={"client_command_id": str(uuid.uuid4()), "effective_time": _now_iso()},
+    ).status_code == 200
+    pack_specification_version_id = pack_spec_version["id"]
+
+    grading_resp = client.post(
+        f"/farms/{farm_id}/grading-events", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "source_harvested_produce_lot_id": lot_id,
+            "processing_hall_location_id": packing_hall["id"], "effective_time": _now_iso(), "note": None,
+            "input_presented_weight_kg": "10.000", "input_presented_whole_unit_count": None,
+            "rejected_weight_kg": "0", "rejected_whole_unit_count": None,
+            "loss_weight_kg": "0", "loss_whole_unit_count": None,
+            "sample_weight_kg": "0", "sample_whole_unit_count": None,
+            "remainder_weight_kg": "0", "remainder_whole_unit_count": None,
+            "outputs": [
+                {
+                    "grade_definition_version_id": grade_version["id"], "code": f"GPL-{suffix}",
+                    "output_weight_kg": "10.000", "output_whole_unit_count": None,
+                }
+            ],
+        },
+    )
+    assert grading_resp.status_code == 201, grading_resp.text
+    gpl_id = grading_resp.json()["outputs"][0]["id"]
+
     # 1. Pack -> deterministic finished-goods opening receipt.
     pack_command_id = str(uuid.uuid4())
     pack_payload = {
         "client_command_id": pack_command_id, "effective_time": _now_iso(),
+        "pack_specification_version_id": pack_specification_version_id,
         "finished_goods_lot_code": f"fg-{suffix}", "package_count": 7,
         "packed_output_weight_kg": "6.000", "process_loss_weight_kg": "0", "rejected_weight_kg": "4.000",
-        "input_lines": [{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": "10.000", "consumed_whole_unit_count": None}],
+        "input_lines": [{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": "10.000", "consumed_whole_unit_count": None}],
     }
     pack_resp = client.post(f"/farms/{farm_id}/packing-events", headers=headers, json=pack_payload)
     assert pack_resp.status_code == 201, pack_resp.text

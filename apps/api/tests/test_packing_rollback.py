@@ -11,9 +11,9 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.models.finished_goods_lot import FinishedGoodsLot
+from app.models.graded_produce_lot_ledger_entry import GradedProduceLotLedgerEntry
 from app.models.packing_event import PackingEvent
 from app.models.packing_input_line import PackingInputLine
-from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
 from app.services import (
     carrier_service,
     crop_batch_service,
@@ -25,6 +25,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import DuplicateFinishedGoodsLotCodeError
+from tests._packing_scenario import build_packing_scaffold, grade_entire_lot
 from tests.conftest import ensure_seed_tray_specification
 
 
@@ -124,7 +125,19 @@ def _build_scenario(db_session, tenant, user, farm, *, suffix=None):
         text("SELECT id FROM harvested_produce_lots WHERE harvest_event_id = :eid"), {"eid": harvest.id}
     ).scalar_one()
 
-    return {"batch": batch, "lot_id": lot_id}
+    # POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+    # directly -- grade the lot's full weight into one GradedProduceLot and
+    # activate a PackSpecificationVersion before packing.
+    scaffold = build_packing_scaffold(db_session, tenant, user, farm, crop_id=crop.id, suffix=suffix)
+    gpl_id = grade_entire_lot(
+        db_session, tenant, user, farm, produce_lot_id=lot_id, weight=Decimal("10.000"), count=None,
+        scaffold=scaffold, suffix=suffix,
+    )
+
+    return {
+        "batch": batch, "lot_id": lot_id, "gpl_id": gpl_id,
+        "pack_specification_version_id": scaffold["pack_specification_version_id"],
+    }
 
 
 def _assert_session_usable(db_session) -> None:
@@ -136,24 +149,26 @@ def test_duplicate_finished_goods_lot_code_rollback_leaves_no_partial_rows(db_se
     tenant, user, _headers, farm = active_context_with_farm
     suffix = uuid.uuid4().hex[:6]
     s = _build_scenario(db_session, tenant, user, farm, suffix=suffix)
-    lot_id = s["lot_id"]
+    gpl_id = s["gpl_id"]
     colliding_code = f"COLLIDE-{suffix}"
 
     packing_service.record_packing(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_version_id=s["pack_specification_version_id"],
         effective_time=_now(), finished_goods_lot_code=colliding_code, package_count=1,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
-        input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
 
     with pytest.raises(DuplicateFinishedGoodsLotCodeError):
         packing_service.record_packing(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            pack_specification_version_id=s["pack_specification_version_id"],
             effective_time=_now(), finished_goods_lot_code=colliding_code, package_count=1,
             packed_output_weight_kg=Decimal("3.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
             note=None,
-            input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
+            input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": None, "note": None}],
         )
 
     _assert_session_usable(db_session)
@@ -174,15 +189,21 @@ def test_duplicate_finished_goods_lot_code_rollback_leaves_no_partial_rows(db_se
     assert line_count == 1, "the failed second packing command must not leave a partial input line behind"
 
     debit_count = db_session.execute(
-        select(func.count()).select_from(ProduceLotLedgerEntry)
-        .where(ProduceLotLedgerEntry.produce_lot_id == lot_id, ProduceLotLedgerEntry.entry_kind == "packing_consumption")
+        select(func.count()).select_from(GradedProduceLotLedgerEntry)
+        .where(
+            GradedProduceLotLedgerEntry.graded_produce_lot_id == gpl_id,
+            GradedProduceLotLedgerEntry.entry_kind == "packing_consumption",
+        )
     ).scalar_one()
     assert debit_count == 1, "the failed second packing command must not leave a partial/orphan debit behind"
 
-    # Existing harvest_receipt untouched.
+    # Existing grading_receipt untouched.
     receipt_count = db_session.execute(
-        select(func.count()).select_from(ProduceLotLedgerEntry)
-        .where(ProduceLotLedgerEntry.produce_lot_id == lot_id, ProduceLotLedgerEntry.entry_kind == "harvest_receipt")
+        select(func.count()).select_from(GradedProduceLotLedgerEntry)
+        .where(
+            GradedProduceLotLedgerEntry.graded_produce_lot_id == gpl_id,
+            GradedProduceLotLedgerEntry.entry_kind == "grading_receipt",
+        )
     ).scalar_one()
     assert receipt_count == 1
 
@@ -192,35 +213,39 @@ def test_reused_command_id_after_rollback_creates_exactly_one_debit(db_session, 
     tenant, user, _headers, farm = active_context_with_farm
     suffix = uuid.uuid4().hex[:6]
     s = _build_scenario(db_session, tenant, user, farm, suffix=suffix)
-    lot_id = s["lot_id"]
+    gpl_id = s["gpl_id"]
     command_id = uuid.uuid4()
     colliding_code = f"COLLIDE2-{suffix}"
 
     packing_service.record_packing(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_version_id=s["pack_specification_version_id"],
         effective_time=_now(), finished_goods_lot_code=colliding_code, package_count=1,
         packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
-        input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     with pytest.raises(DuplicateFinishedGoodsLotCodeError):
         packing_service.record_packing(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+            pack_specification_version_id=s["pack_specification_version_id"],
             effective_time=_now(), finished_goods_lot_code=colliding_code, package_count=1,
             packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
             note=None,
-            input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+            input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
         )
     _assert_session_usable(db_session)
 
     event = packing_service.record_packing(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+        pack_specification_version_id=s["pack_specification_version_id"],
         effective_time=_now(), finished_goods_lot_code=f"FRESH-{suffix}", package_count=1,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"), rejected_weight_kg=Decimal("0"),
         note=None,
-        input_lines=[{"harvested_produce_lot_id": lot_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     debit_count = db_session.execute(
-        select(func.count()).select_from(ProduceLotLedgerEntry).where(ProduceLotLedgerEntry.packing_event_id == event.id)
+        select(func.count()).select_from(GradedProduceLotLedgerEntry)
+        .where(GradedProduceLotLedgerEntry.packing_event_id == event.id)
     ).scalar_one()
     assert debit_count == 1

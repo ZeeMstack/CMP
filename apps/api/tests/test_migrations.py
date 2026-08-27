@@ -1360,13 +1360,20 @@ def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event
     which the very first check (lot_count vs receipt_count) catches. The
     16 downgrade-guard states in test_finished_goods_ledger_downgrade_guard.py
     exercise the same shared mismatch/orphan/duplicate predicates against
-    genuinely reachable *downgrade-time* corruption instead."""
+    genuinely reachable *downgrade-time* corruption instead.
+
+    POSTHARVEST-OPS-001E: a real, modern (GPL-input) packing_events row
+    can never survive a downgrade past 001E (in d8f4a1c92b57, which sits
+    directly above CMP-016 in the chain) -- so unlike this test's own
+    pre-001E shape, the well-formed CMP-015-era packing/finished-goods
+    scenario this test needs is now constructed via raw SQL AFTER
+    downgrading (with zero packing history) to a91f4c7b2e58, directly
+    against that revision's own legacy `packing_input_lines.
+    harvested_produce_lot_id` schema shape -- never through the modern
+    service layer, which no longer even accepts that shape."""
     import uuid
     from decimal import Decimal
 
-    from sqlalchemy.orm import Session
-
-    from app.services import packing_service
     from tests._packing_scenario import build_committed_scenario, cleanup_scenario, require_cmp_test
 
     def now():
@@ -1382,31 +1389,82 @@ def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event
     # carrier_specifications row, which would otherwise unconditionally
     # block via e5b8c3a72f04's own, earlier-in-chain guard before the
     # downgrade to a91f4c7b2e58 this test needs even happens.
-    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
-    conn = test_engine.connect()
-    session = Session(bind=conn)
-    event = packing_service.record_packing(
-        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=now(), finished_goods_lot_code=f"FG-{scenario['suffix']}",
-        package_count=6, packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
-        rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+    # grade_and_pack_spec=False: no Packing/Grading history at all is
+    # created before the downgrade -- see the POSTHARVEST-OPS-001E note
+    # above for why the well-formed legacy scenario must instead be built
+    # via raw SQL after reaching a91f4c7b2e58.
+    scenario = build_committed_scenario(
+        test_engine, lot_a_count=None, carrier_type_code="grow_bag", grade_and_pack_spec=False,
     )
-    detail = packing_service.get_packing_event(
-        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event.id
-    )
-    fg_lot_id = detail.finished_goods_lot.id
-    event_id = event.id
-    session.commit()
-    session.close()
-    conn.close()
 
     try:
-        # The receipt is well-formed, so this downgrade succeeds (proven
-        # separately by the with-data downgrade-guard test) and drops the
-        # ledger table entirely, leaving CMP-015 schema with no ledger to
-        # corrupt directly.
         command.downgrade(_cfg(), "a91f4c7b2e58")
+
+        # Build a well-formed CMP-015-era packing_events/packing_input_lines
+        # row directly against lot_a, then a matching finished_goods_lots
+        # row -- both tables exist at this revision with their original,
+        # HPL-input shape (the modern GPL-input service layer no longer
+        # accepts this shape at all, hence the raw SQL).
+        event_id = uuid.uuid4()
+        fg_lot_id = uuid.uuid4()
+        event_effective_time = now()
+        setup_conn = test_engine.connect()
+        setup_trans = setup_conn.begin()
+        setup_conn.execute(
+            text(
+                "INSERT INTO packing_events "
+                "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+                "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
+                "request_fingerprint, note) "
+                "SELECT :id, tenant_id, farm_id, crop_id, variety_id, 2.000, 2.000, 0, 0, :eff, :uid, "
+                "gen_random_uuid(), 'fp', NULL FROM harvested_produce_lots WHERE id = :lid"
+            ),
+            {"id": event_id, "eff": event_effective_time, "uid": scenario["user_id"], "lid": scenario["lot_a_id"]},
+        )
+        input_line_id = uuid.uuid4()
+        setup_conn.execute(
+            text(
+                "INSERT INTO packing_input_lines "
+                "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+                "consumed_whole_unit_count, note, recorded_time) "
+                "VALUES (:id, :tid, :fid, :eid, :lid, 2.000, NULL, NULL, :eff)"
+            ),
+            {
+                "id": input_line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "eid": event_id,
+                "lid": scenario["lot_a_id"], "eff": event_effective_time,
+            },
+        )
+        # The deferred enforce_packing_reconciliation() trigger (still the
+        # exact original CMP-015 shape at this revision) requires a matching
+        # packing_consumption ledger debit for this input line, sharing its
+        # own id by the same deterministic-identity convention CMP-015 uses.
+        setup_conn.execute(
+            text(
+                "INSERT INTO produce_lot_ledger_entries "
+                "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+                "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
+                "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -2.000, NULL, :eff, :eff, :uid, NULL)"
+            ),
+            {
+                "id": input_line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
+                "lid": scenario["lot_a_id"], "eid": event_id, "eff": event_effective_time, "uid": scenario["user_id"],
+            },
+        )
+        setup_conn.execute(
+            text(
+                "INSERT INTO finished_goods_lots "
+                "(id, tenant_id, farm_id, code, packing_event_id, crop_id, variety_id, net_packed_weight_kg, "
+                "package_count, effective_time) "
+                "SELECT :id, tenant_id, farm_id, :code, :eid, crop_id, variety_id, 2.000, 6, :eff "
+                "FROM harvested_produce_lots WHERE id = :lid"
+            ),
+            {
+                "id": fg_lot_id, "code": f"FG-{scenario['suffix']}", "eid": event_id, "eff": event_effective_time,
+                "lid": scenario["lot_a_id"],
+            },
+        )
+        setup_trans.commit()
+        setup_conn.close()
 
         bypass_conn = test_engine.connect()
         trans = bypass_conn.begin()
@@ -1426,17 +1484,23 @@ def test_migration_backfill_rejects_finished_goods_lot_with_broken_packing_event
             current = conn2.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert current == "a91f4c7b2e58", "a failed backfill must leave the database at its pre-upgrade revision"
     finally:
-        # Repair the corrupted reference before cleanup/re-upgrade: cleanup_scenario
-        # itself does not touch finished_goods_lots.packing_event_id, and a
-        # dangling reference would otherwise make the next upgrade fail again
-        # for a test run afterward.
+        # POSTHARVEST-OPS-001E: this raw-SQL-constructed legacy packing
+        # scenario has no honest GPL/GradingEvent lineage -- rather than
+        # "repair" the corrupted reference and let it ride into 001E's own
+        # upgrade-time legacy-history guard (which would then correctly
+        # abort THIS re-upgrade, since it can never silently convert data
+        # it has no honest mapping for), delete it outright before
+        # re-upgrading to head. cleanup_scenario itself does not touch
+        # packing_events/packing_input_lines/finished_goods_lots.
         repair_conn = test_engine.connect()
         repair_trans = repair_conn.begin()
         repair_conn.execute(text("SET session_replication_role = replica"))
+        repair_conn.execute(text("DELETE FROM finished_goods_lots WHERE id = :lid"), {"lid": fg_lot_id})
         repair_conn.execute(
-            text("UPDATE finished_goods_lots SET packing_event_id = :eid WHERE id = :lid"),
-            {"eid": event_id, "lid": fg_lot_id},
+            text("DELETE FROM produce_lot_ledger_entries WHERE packing_event_id = :eid"), {"eid": event_id}
         )
+        repair_conn.execute(text("DELETE FROM packing_input_lines WHERE packing_event_id = :eid"), {"eid": event_id})
+        repair_conn.execute(text("DELETE FROM packing_events WHERE id = :eid"), {"eid": event_id})
         repair_conn.execute(text("SET session_replication_role = DEFAULT"))
         repair_trans.commit()
         repair_conn.close()
@@ -1835,10 +1899,16 @@ def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_sh
     with test_engine.connect() as conn:
         current = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert current == _resolve_head_revision(_cfg())
+        # POSTHARVEST-OPS-001E (in d8f4a1c92b57, above CMP-019 in the chain)
+        # converts packing_input_lines from HPL source to GPL source and
+        # renames this one index accordingly on the way back up --
+        # ix_packing_input_lines_tenant_farm_produce_lot no longer exists at
+        # head at all; ix_packing_input_lines_tenant_farm_graded_produce_lot
+        # replaces it. The other two CMP-019 indexes are untouched.
         indexes = conn.execute(
             text(
                 "SELECT indexname FROM pg_indexes WHERE indexname IN ("
-                "'ix_packing_input_lines_tenant_farm_produce_lot', "
+                "'ix_packing_input_lines_tenant_farm_graded_produce_lot', "
                 "'ix_dispatch_lines_tenant_farm_finished_goods_lot', "
                 "'ix_finished_goods_storage_movements_tenant_farm_lot')"
             )
@@ -1846,7 +1916,7 @@ def test_migration_downgrade_removes_traceability_indexes_and_restores_cmp018_sh
         assert sorted(indexes) == [
             "ix_dispatch_lines_tenant_farm_finished_goods_lot",
             "ix_finished_goods_storage_movements_tenant_farm_lot",
-            "ix_packing_input_lines_tenant_farm_produce_lot",
+            "ix_packing_input_lines_tenant_farm_graded_produce_lot",
         ]
 
 
@@ -1927,7 +1997,11 @@ def test_migration_downgrade_removes_recall_tables_triggers_and_restores_cmp019_
         ]
 
         for tgrelid, tgname, proname in (
-            ("packing_input_lines", "packing_input_lines_enforce_insert_integrity", "enforce_packing_input_line_insert_integrity_v2"),
+            # POSTHARVEST-OPS-001E (in d8f4a1c92b57, above CMP-020 in the
+            # chain) re-versions packing_input_lines's own trigger v2 -> v3
+            # (HPL source -> GPL source) -- a full re-upgrade to head
+            # reattaches v3, not CMP-020's own v2.
+            ("packing_input_lines", "packing_input_lines_enforce_insert_integrity", "enforce_packing_input_line_insert_integrity_v3"),
             ("finished_goods_storage_movements", "finished_goods_storage_movements_enforce_insert_integrity", "enforce_finished_goods_storage_movement_insert_integrity_v2"),
             ("finished_goods_ledger_entries", "finished_goods_ledger_entries_enforce_insert_integrity", "enforce_finished_goods_ledger_entry_insert_integrity_v4"),
         ):

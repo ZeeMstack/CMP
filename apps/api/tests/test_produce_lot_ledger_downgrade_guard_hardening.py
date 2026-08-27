@@ -73,16 +73,173 @@ def _plv():
 
 
 def _pack_one(scenario, db) -> None:
-    """Records a legitimate CMP-015 packing_consumption debit against
-    lot_a — real, valid, non-corrupted data."""
+    """Records a real, modern (GPL-input) packing consumption against
+    lot_a. POSTHARVEST-OPS-001E: `_new_scenario` builds with
+    grade_and_pack_spec=False (this file's own downgrades cross far below
+    Grading), so this helper builds its own minimal grading scaffold and
+    grades lot_a's full weight before packing it -- used only by
+    `test_cmp015_and_cmp016_downgrade_behavior_unchanged` now, to prove
+    001E's OWN downgrade guard fires for real packing history (CMP-015's
+    own guard is no longer reachable behind it -- see that test's own
+    docstring)."""
+    from app.models.farm import Farm
+    from app.models.tenant import Tenant
+    from app.models.user import User
+    from tests._packing_scenario import build_packing_scaffold, grade_entire_lot
+
+    tenant_obj = db.get(Tenant, scenario["tenant_id"])
+    user_obj = db.get(User, scenario["user_id"])
+    farm_obj = db.get(Farm, scenario["farm_id"])
+    crop_id = db.execute(
+        text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": scenario["lot_a_id"]}
+    ).scalar_one()
+    pack_scaffold = build_packing_scaffold(db, tenant_obj, user_obj, farm_obj, crop_id=crop_id, suffix=scenario["suffix"])
+    gpl_id = grade_entire_lot(
+        db, tenant_obj, user_obj, farm_obj,
+        produce_lot_id=scenario["lot_a_id"], weight=Decimal("2.000"), count=None,
+        scaffold=pack_scaffold, suffix=scenario["suffix"],
+    )
     packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=pack_scaffold["pack_specification_version_id"],
+        effective_time=_now(),
         finished_goods_lot_code=f"FG-{scenario['suffix']}", package_count=1,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
+
+
+_PRE_001E_REVISION = "c3f7a29d5e64"
+
+
+def _build_legacy_packing_consumption_at_pre_001e(test_engine, scenario) -> dict:
+    """POSTHARVEST-OPS-001E: `packing_consumption` is no longer a legal
+    `produce_lot_ledger_entries` entry_kind at head at all (Packing debits
+    GradedProduceLot balance exclusively now) -- a real packing_events row
+    can also never survive a downgrade past 001E (in d8f4a1c92b57, which
+    sits directly above this file's own CMP-016A marker in the chain).
+    `_pack_one`'s own modern `packing_service.record_packing` call can
+    therefore no longer construct the legitimate "packing_consumption
+    history that predates CMP-016A" scenario this file's own tests need.
+
+    This instead downgrades cleanly (the scenario carries no packing/
+    grading history at all -- see `_new_scenario`'s own note) to
+    `c3f7a29d5e64` (POSTHARVEST-OPS-001D, one revision below 001E, whose
+    schema still has the original, wide-open `produce_lot_ledger_entries`
+    CHECK/trigger shape allowing `packing_consumption`) and constructs a
+    well-formed CMP-015-era packing_events/packing_input_lines/
+    produce_lot_ledger_entries(packing_consumption) trio directly via raw
+    SQL there, satisfying that revision's own (still-active, not yet
+    narrowed by 001E) v2 trigger and deferred reconciliation function
+    exactly like a real `record_packing` call would have. Callers must
+    downgrade FURTHER from there (never back past 001E) without first
+    cleaning this up -- see `_cleanup_legacy_packing_consumption` for the
+    required cleanup before any upgrade back past `c3f7a29d5e64`."""
+    _assert_at(test_engine, _PRE_001E_REVISION)
+    event_id = uuid.uuid4()
+    input_line_id = uuid.uuid4()
+    effective_time = _now()
+    conn = test_engine.connect()
+    trans = conn.begin()
+    conn.execute(
+        text(
+            "INSERT INTO packing_events "
+            "(id, tenant_id, farm_id, crop_id, variety_id, total_input_weight_kg, packed_output_weight_kg, "
+            "process_loss_weight_kg, rejected_weight_kg, effective_time, actor_user_id, client_command_id, "
+            "request_fingerprint, note) "
+            "SELECT :id, tenant_id, farm_id, crop_id, variety_id, 2.000, 2.000, 0, 0, :eff, :uid, "
+            "gen_random_uuid(), 'fp', NULL FROM harvested_produce_lots WHERE id = :lid"
+        ),
+        {"id": event_id, "eff": effective_time, "uid": scenario["user_id"], "lid": scenario["lot_a_id"]},
+    )
+    conn.execute(
+        text(
+            "INSERT INTO packing_input_lines "
+            "(id, tenant_id, farm_id, packing_event_id, harvested_produce_lot_id, consumed_weight_kg, "
+            "consumed_whole_unit_count, note, recorded_time) "
+            "VALUES (:id, :tid, :fid, :eid, :lid, 2.000, NULL, NULL, :eff)"
+        ),
+        {
+            "id": input_line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "eid": event_id,
+            "lid": scenario["lot_a_id"], "eff": effective_time,
+        },
+    )
+    conn.execute(
+        text(
+            "INSERT INTO produce_lot_ledger_entries "
+            "(id, tenant_id, farm_id, produce_lot_id, harvest_event_id, packing_event_id, entry_kind, "
+            "weight_delta_kg, whole_unit_count_delta, effective_time, recorded_time, actor_user_id, note) "
+            "VALUES (:id, :tid, :fid, :lid, NULL, :eid, 'packing_consumption', -2.000, NULL, :eff, :eff, :uid, NULL)"
+        ),
+        {
+            "id": input_line_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"],
+            "lid": scenario["lot_a_id"], "eid": event_id, "eff": effective_time, "uid": scenario["user_id"],
+        },
+    )
+    # The deferred enforce_packing_reconciliation() function (still the
+    # exact original CMP-015 shape at this revision) also requires exactly
+    # one finished_goods_lots row per packing_events row.
+    fg_lot_id = uuid.uuid4()
+    conn.execute(
+        text(
+            "INSERT INTO finished_goods_lots "
+            "(id, tenant_id, farm_id, code, packing_event_id, crop_id, variety_id, net_packed_weight_kg, "
+            "package_count, effective_time, recorded_time) "
+            "SELECT :id, tenant_id, farm_id, :code, :eid, crop_id, variety_id, 2.000, 1, :eff, :eff "
+            "FROM harvested_produce_lots WHERE id = :lid"
+        ),
+        {
+            "id": fg_lot_id, "code": f"FG-{scenario['suffix']}", "eid": event_id, "eff": effective_time,
+            "lid": scenario["lot_a_id"],
+        },
+    )
+    # CMP-016's own deferred enforce_finished_goods_ledger_reconciliation()
+    # (also still active at this revision) requires exactly one
+    # deterministic-id (id = finished_goods_lot_id) packing_receipt row.
+    conn.execute(
+        text(
+            "INSERT INTO finished_goods_ledger_entries "
+            "(id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, weight_delta_kg, "
+            "package_count_delta, effective_time, recorded_time, actor_user_id, note) "
+            "VALUES (:id, :tid, :fid, :id, :eid, 'packing_receipt', 2.000, 1, :eff, :eff, :uid, NULL)"
+        ),
+        {
+            "id": fg_lot_id, "tid": scenario["tenant_id"], "fid": scenario["farm_id"], "eid": event_id,
+            "eff": effective_time, "uid": scenario["user_id"],
+        },
+    )
+    trans.commit()
+    conn.close()
+    return {"event_id": event_id, "lot_id": scenario["lot_a_id"], "fg_lot_id": fg_lot_id}
+
+
+def _cleanup_legacy_packing_consumption(test_engine, info: dict) -> None:
+    """Deletes the raw-SQL-constructed legacy trio from
+    `_build_legacy_packing_consumption_at_pre_001e` -- it has no honest
+    GPL/GradingEvent lineage, so it must never ride into 001E's own
+    upgrade-time legacy-history guard (which would then correctly abort
+    the upgrade, since it can never silently convert data it has no
+    honest mapping for). Must be called before upgrading back past
+    `c3f7a29d5e64`, regardless of which further-down revision the test
+    itself reached."""
+    require_cmp_test(test_engine)
+    conn = test_engine.connect()
+    trans = conn.begin()
+    conn.execute(text("SET session_replication_role = replica"))
+    conn.execute(
+        text("DELETE FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"),
+        {"lid": info["fg_lot_id"]},
+    )
+    conn.execute(text("DELETE FROM finished_goods_lots WHERE id = :lid"), {"lid": info["fg_lot_id"]})
+    conn.execute(
+        text("DELETE FROM produce_lot_ledger_entries WHERE packing_event_id = :eid"), {"eid": info["event_id"]}
+    )
+    conn.execute(text("DELETE FROM packing_input_lines WHERE packing_event_id = :eid"), {"eid": info["event_id"]})
+    conn.execute(text("DELETE FROM packing_events WHERE id = :eid"), {"eid": info["event_id"]})
+    conn.execute(text("SET session_replication_role = DEFAULT"))
+    trans.commit()
+    conn.close()
 
 
 def _snapshot(test_engine, lot_id):
@@ -529,8 +686,14 @@ def _new_scenario(test_engine):
     # to carrier type -- grow_bag keeps the scenario free of a
     # carrier_specifications row, which would otherwise unconditionally
     # block via e5b8c3a72f04's own, earlier-in-chain guard before this
-    # guard is ever reached.
-    return build_committed_scenario(test_engine, lot_a_count=None, lot_b_count=None, carrier_type_code="grow_bag")
+    # guard is ever reached. POSTHARVEST-OPS-001E: this file's downgrades
+    # all cross far below Grading/001C -- grade_and_pack_spec=False keeps
+    # the scenario free of any GradedProduceLot/GradingEvent history,
+    # which would otherwise unconditionally block via 001C's own,
+    # earlier-in-chain (but still above CMP-014) guard first.
+    return build_committed_scenario(
+        test_engine, lot_a_count=None, lot_b_count=None, carrier_type_code="grow_bag", grade_and_pack_spec=False,
+    )
 
 
 @pytest.mark.integration
@@ -617,16 +780,13 @@ def test_staged_downgrade_blocked_field_mismatch(test_engine, column, mutate, ne
 def test_packing_consumption_does_not_block_cmp016a_upgrade_or_downgrade(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
-    conn = test_engine.connect()
-    session = Session(bind=conn)
-    _pack_one(scenario, session)
-    session.commit()
-    session.close()
-    conn.close()
 
     try:
+        command.downgrade(_cfg(), _PRE_001E_REVISION)
+        info = _build_legacy_packing_consumption_at_pre_001e(test_engine, scenario)
         command.downgrade(_cfg(), "b3f6e9a2d174")
         _assert_at(test_engine, "b3f6e9a2d174")
+        _cleanup_legacy_packing_consumption(test_engine, info)
         command.upgrade(_cfg(), "head")
         _assert_at(test_engine, _resolve_head_revision(_cfg()))
     finally:
@@ -637,17 +797,15 @@ def test_packing_consumption_does_not_block_cmp016a_upgrade_or_downgrade(test_en
 def test_packing_consumption_blocks_crossing_below_cmp014_one_shot(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
-    conn = test_engine.connect()
-    session = Session(bind=conn)
-    _pack_one(scenario, session)
-    session.commit()
-    session.close()
-    conn.close()
+    command.downgrade(_cfg(), _PRE_001E_REVISION)
+    info = _build_legacy_packing_consumption_at_pre_001e(test_engine, scenario)
     try:
         with pytest.raises(RuntimeError, match="unsupported_entry_kind_at_crossing"):
             command.downgrade(_cfg(), _pre_cmp014_revision(_cfg()))
-        _assert_at(test_engine, _resolve_head_revision(_cfg()))
+        _assert_at(test_engine, _PRE_001E_REVISION)
     finally:
+        _cleanup_legacy_packing_consumption(test_engine, info)
+        command.upgrade(_cfg(), "head")
         cleanup_scenario(test_engine, scenario["tenant_id"])
 
 
@@ -655,12 +813,8 @@ def test_packing_consumption_blocks_crossing_below_cmp014_one_shot(test_engine, 
 def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine, alembic_head_restore) -> None:
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
-    conn = test_engine.connect()
-    session = Session(bind=conn)
-    _pack_one(scenario, session)
-    session.commit()
-    session.close()
-    conn.close()
+    command.downgrade(_cfg(), _PRE_001E_REVISION)
+    info = _build_legacy_packing_consumption_at_pre_001e(test_engine, scenario)
     try:
         command.downgrade(_cfg(), "b3f6e9a2d174")
         _assert_at(test_engine, "b3f6e9a2d174")
@@ -668,6 +822,7 @@ def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine, al
             command.downgrade(_cfg(), _pre_cmp014_revision(_cfg()))
         _assert_at(test_engine, "b3f6e9a2d174")
     finally:
+        _cleanup_legacy_packing_consumption(test_engine, info)
         command.upgrade(_cfg(), "head")
         cleanup_scenario(test_engine, scenario["tenant_id"])
 
@@ -798,7 +953,15 @@ def test_downgrade_remaining_above_cmp014_is_unaffected(test_engine, alembic_hea
 @pytest.mark.integration
 def test_cmp015_and_cmp016_downgrade_behavior_unchanged(test_engine, alembic_head_restore) -> None:
     """CMP-015's own unconditional-block guard and CMP-016's own
-    reconstructible-projection guard are untouched by this ticket."""
+    reconstructible-projection guard are untouched by this ticket.
+
+    POSTHARVEST-OPS-001E: real packing history (created here via a real
+    `packing_service.record_packing` call, now GPL-input) trips 001E's OWN
+    downgrade guard (in d8f4a1c92b57, which sits directly above CMP-015 in
+    the chain) before the cascade ever reaches CMP-015's own guard further
+    down -- see test_packing_downgrade_guard.py for the equivalent note.
+    CMP-015's own guard remains independently in place in the migration
+    itself for a downgrade that starts already below 001E."""
     require_cmp_test(test_engine)
     scenario = _new_scenario(test_engine)
     conn = test_engine.connect()
@@ -808,7 +971,7 @@ def test_cmp015_and_cmp016_downgrade_behavior_unchanged(test_engine, alembic_hea
     session.close()
     conn.close()
     try:
-        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-015"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), "de82132ef837")
         _assert_at(test_engine, _resolve_head_revision(_cfg()))
     finally:

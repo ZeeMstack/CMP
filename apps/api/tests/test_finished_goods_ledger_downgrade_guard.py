@@ -63,11 +63,12 @@ def _assert_at_head(test_engine) -> None:
 def _pack_one(scenario, db) -> uuid.UUID:
     event = packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=scenario["pack_specification_version_id"],
+        effective_time=_now(),
         finished_goods_lot_code=f"FG-{scenario['suffix']}", package_count=6,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     detail = packing_service.get_packing_event(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event.id
@@ -82,19 +83,21 @@ def _pack_two(scenario, db) -> dict:
     to be valid under CMP-015's count-mode compatibility rule."""
     event_a = packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=scenario["pack_specification_version_id"],
+        effective_time=_now(),
         finished_goods_lot_code=f"FGA-{scenario['suffix']}", package_count=6,
         packed_output_weight_kg=Decimal("2.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     event_b = packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
-        client_command_id=uuid.uuid4(), effective_time=_now(),
+        client_command_id=uuid.uuid4(), pack_specification_version_id=scenario["pack_specification_version_id"],
+        effective_time=_now(),
         finished_goods_lot_code=f"FGB-{scenario['suffix']}", package_count=4,
         packed_output_weight_kg=Decimal("1.000"), process_loss_weight_kg=Decimal("0"),
         rejected_weight_kg=Decimal("0"), note=None,
-        input_lines=[{"harvested_produce_lot_id": scenario["lot_b_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+        input_lines=[{"graded_produce_lot_id": scenario["gpl_b_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
     )
     lot_a = packing_service.get_packing_event(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event_a.id
@@ -134,10 +137,21 @@ def _replica_update(test_engine, fg_lot_id, column: str, value) -> None:
 
 @pytest.mark.integration
 def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_receipt(test_engine, alembic_head_restore) -> None:
-    """Downgrade succeeds even while finished_goods_lots/packing_events
-    data exists, as long as the receipt is well-formed — the CMP-014
-    reconstructible-projection model, not CMP-015's unconditional block.
-    Re-upgrade must backfill a byte-identical receipt row."""
+    """Pre-POSTHARVEST-OPS-001E, this proved: downgrade succeeds even while
+    finished_goods_lots/packing_events data exists, as long as the receipt
+    is well-formed -- the CMP-014 reconstructible-projection model, not
+    CMP-015's unconditional block.
+
+    POSTHARVEST-OPS-001E: any real packing_events row (GPL-input Packing
+    is now independent, never-reconstructible operational history) now
+    unconditionally blocks downgrade past 001E -- in d8f4a1c92b57, which
+    sits directly above CMP-016 in the chain -- before the cascade could
+    ever reach CMP-016's own reconstructible-projection check. This test
+    now proves that outer guard fires even for a well-formed receipt;
+    CMP-016's own reconstruction logic remains independently in place in
+    the migration itself (and its OWN malformed-state guards below remain
+    independently correct) for a downgrade that starts already below
+    001E."""
     require_cmp_test(test_engine)
     # CARRIER-CONFIG-001A: this guard is about CMP-016 ledger
     # reconstructibility, unrelated to carrier type -- grow_bag keeps the
@@ -147,44 +161,14 @@ def test_clean_downgrade_with_wellformed_history_reupgrade_reproduces_identical_
     scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
     conn = test_engine.connect()
     session = Session(bind=conn)
-    fg_lot_id = _pack_one(scenario, session)
+    _pack_one(scenario, session)
     session.commit()
-
-    def _receipt_snapshot():
-        with test_engine.connect() as c:
-            return dict(
-                c.execute(
-                    text(
-                        "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                        "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                        "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                    ),
-                    {"lid": fg_lot_id},
-                ).mappings().one()
-            )
-
-    first_snapshot = _receipt_snapshot()
-    # Session's own implicit post-commit transaction (from db.refresh)
-    # must be released before triggering a downgrade cascade from another
-    # connection — the same lesson learned from CMP-014/015's own fix.
     session.close()
     conn.close()
 
     try:
-        command.downgrade(_cfg(), _PRE_CMP016_REVISION)
-        with test_engine.connect() as c:
-            table_exists = c.execute(
-                text("SELECT 1 FROM information_schema.tables WHERE table_name = 'finished_goods_ledger_entries'")
-            ).first()
-            lot_still_present = c.execute(
-                text("SELECT count(*) FROM finished_goods_lots WHERE id = :lid"), {"lid": fg_lot_id}
-            ).scalar_one()
-        assert table_exists is None, "downgrade must drop the ledger table"
-        assert lot_still_present == 1, "downgrade must leave the underlying CMP-015 finished-goods lot untouched"
-
-        command.upgrade(_cfg(), "head")
-        second_snapshot = _receipt_snapshot()
-        assert second_snapshot == first_snapshot, "re-upgrade must reproduce an identical receipt row"
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
+            command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
         cleanup_scenario(test_engine, scenario["tenant_id"])
@@ -222,7 +206,7 @@ def test_downgrade_blocked_by_missing_receipt(test_engine, alembic_head_restore)
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="missing its packing receipt"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -284,7 +268,7 @@ def test_downgrade_blocked_by_extra_receipt_without_valid_lot(test_engine, alemb
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="references no matching finished-goods lot/event"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -319,7 +303,7 @@ def test_downgrade_blocked_by_orphan_receipt_missing_packing_event(test_engine, 
     _replica_update(test_engine, ids["lot_b"], "packing_event_id", bogus_event_id)
 
     try:
-        with pytest.raises(RuntimeError, match="does not exactly reconstruct"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -376,7 +360,7 @@ def test_downgrade_blocked_by_duplicate_receipt_for_lot(test_engine, alembic_hea
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="more than one packing receipt"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -461,7 +445,7 @@ def test_downgrade_blocked_by_duplicate_receipt_for_packing_event(test_engine, a
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="more than one packing receipt|does not exactly reconstruct"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -534,7 +518,7 @@ def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine, alembic_hea
         # ever runs — so its guard fires first, making CMP-016's own
         # "does not exactly reconstruct" message unreachable via a single
         # multi-step downgrade from head for this specific malformed state.
-        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-017"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -606,7 +590,7 @@ def test_downgrade_blocked_by_field_mismatch(test_engine, column, mutate, alembi
     _replica_update(test_engine, fg_lot_id, column, new_value)
 
     try:
-        with pytest.raises(RuntimeError, match="does not exactly reconstruct"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -652,7 +636,7 @@ def test_downgrade_blocked_by_non_null_note(test_engine, alembic_head_restore) -
         # See test_downgrade_blocked_by_deterministic_id_mismatch above:
         # CMP-017's own downgrade guard fires first now that it sits above
         # CMP-016, making CMP-016's own message unreachable here too.
-        with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-017"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -729,7 +713,7 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_resto
         # CMP-017's own downgrade guard checks for an unrecognized entry
         # kind before CMP-016's own downgrade() ever runs, so its message
         # fires first now that it sits above CMP-016 in the chain.
-        with pytest.raises(RuntimeError, match="entry kind this migration does not recognize"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP016_REVISION)
         _assert_at_head(test_engine)
     finally:

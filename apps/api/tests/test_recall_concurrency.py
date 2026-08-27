@@ -21,7 +21,7 @@ from app.services import (
     recall_service,
 )
 from app.services.errors import RecallContainmentOpenError
-from tests._packing_scenario import require_cmp_test
+from tests._packing_scenario import build_packing_scaffold, grade_entire_lot, require_cmp_test
 from tests._recall_scenario import (
     build_batch_with_assignments,
     build_committed_tenant_farm,
@@ -138,6 +138,18 @@ def test_recall_open_batch_source_vs_packing_one_serial_truth(test_engine) -> No
             session.commit()
             farm_id, user_id = farm.id, user.id
             batch_id = scaffold["batch"].id
+            # POSTHARVEST-OPS-001E: Packing consumes GradedProduceLot, not
+            # HarvestedProduceLot directly -- grade the lot's full weight
+            # into its own GPL up front (outside the race itself), since
+            # only the recall-open-vs-packing race is under test here.
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": produce_lot_id}).scalar_one()
+            pack_scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="race-batch")
+            gpl_id = grade_entire_lot(
+                session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), count=None,
+                scaffold=pack_scaffold, suffix="race-batch",
+            )
+            pack_spec_version_id = pack_scaffold["pack_specification_version_id"]
+            session.commit()
 
         barrier = threading.Barrier(2)
         results: dict[str, tuple] = {}
@@ -170,10 +182,11 @@ def test_recall_open_batch_source_vs_packing_one_serial_truth(test_engine) -> No
                 barrier.wait(timeout=10)
                 event = packing_service.record_packing(
                     session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id, client_command_id=uuid.uuid4(),
+                    pack_specification_version_id=pack_spec_version_id,
                     effective_time=effective_time, finished_goods_lot_code=f"FG-RACE-{uuid.uuid4().hex[:8]}", package_count=5,
                     packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                     rejected_weight_kg=Decimal("0"), note=None,
-                    input_lines=[{"harvested_produce_lot_id": produce_lot_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
+                    input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
                 )
                 session.commit()
                 results["packing"] = ("ok", event.id)
@@ -218,6 +231,16 @@ def test_recall_open_produce_lot_source_vs_packing_one_serial_truth(test_engine)
             _, produce_lot_id = harvest_all(session, tenant, user, farm, batch_id=scaffold["batch"].id, assignment_ids=scaffold["assignment_ids"])
             session.commit()
             farm_id, user_id = farm.id, user.id
+            # POSTHARVEST-OPS-001E: see the equivalent note in
+            # test_recall_open_batch_source_vs_packing_one_serial_truth above.
+            crop_id = session.execute(text("SELECT crop_id FROM harvested_produce_lots WHERE id = :lid"), {"lid": produce_lot_id}).scalar_one()
+            pack_scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop_id, suffix="race-lot")
+            gpl_id = grade_entire_lot(
+                session, tenant, user, farm, produce_lot_id=produce_lot_id, weight=Decimal("5.000"), count=None,
+                scaffold=pack_scaffold, suffix="race-lot",
+            )
+            pack_spec_version_id = pack_scaffold["pack_specification_version_id"]
+            session.commit()
 
         barrier = threading.Barrier(2)
         results: dict[str, tuple] = {}
@@ -250,10 +273,11 @@ def test_recall_open_produce_lot_source_vs_packing_one_serial_truth(test_engine)
                 barrier.wait(timeout=10)
                 event = packing_service.record_packing(
                     session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id, client_command_id=uuid.uuid4(),
+                    pack_specification_version_id=pack_spec_version_id,
                     effective_time=effective_time, finished_goods_lot_code=f"FG-RACE-{uuid.uuid4().hex[:8]}", package_count=5,
                     packed_output_weight_kg=Decimal("5.000"), process_loss_weight_kg=Decimal("0"),
                     rejected_weight_kg=Decimal("0"), note=None,
-                    input_lines=[{"harvested_produce_lot_id": produce_lot_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
+                    input_lines=[{"graded_produce_lot_id": gpl_id, "consumed_weight_kg": Decimal("5.000"), "consumed_whole_unit_count": None, "note": None}],
                 )
                 session.commit()
                 results["packing"] = ("ok", event.id)

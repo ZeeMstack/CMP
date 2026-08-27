@@ -11,22 +11,25 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.services import packing_service, produce_lot_ledger_service
+from app.services import graded_produce_lot_ledger_service, packing_service
 from app.services.errors import (
-    InsufficientProduceLotBalanceError,
+    InsufficientGradedProduceLotBalanceError,
     PackingCommandReusedWithDifferentPayloadError,
     PackingCropVarietyMismatchError,
     PackingValidationError,
 )
-from tests._packing_scenario import build_committed_scenario, cleanup_scenario, now
+from tests._packing_scenario import (
+    build_committed_scenario, build_packing_scaffold, cleanup_scenario, grade_entire_lot, now,
+)
 from tests.conftest import ensure_seed_tray_specification
 
 
 def _pack(scenario, *, db, input_lines, packed_output, process_loss="0", rejected="0", code=None, package_count=1,
-          client_command_id=None, effective_time=None):
+          client_command_id=None, effective_time=None, pack_specification_version_id=None):
     return packing_service.record_packing(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
         client_command_id=client_command_id or uuid.uuid4(), effective_time=effective_time or now(),
+        pack_specification_version_id=pack_specification_version_id or scenario["pack_specification_version_id"],
         finished_goods_lot_code=code or f"FG-{uuid.uuid4().hex[:8]}", package_count=package_count,
         packed_output_weight_kg=Decimal(packed_output), process_loss_weight_kg=Decimal(process_loss),
         rejected_weight_kg=Decimal(rejected), note=None, input_lines=input_lines,
@@ -43,15 +46,15 @@ def test_deterministic_debit_identity_equals_input_line_id(test_engine) -> None:
     try:
         event = _pack(
             scenario, db=session, packed_output="3.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
         )
         detail = packing_service.get_packing_event(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], packing_event_id=event.id
         )
         line = detail.input_lines[0]
         assert line.id == line.ledger_entry_id
-        ledger = produce_lot_ledger_service.get_ledger(
-            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
+        ledger = graded_produce_lot_ledger_service.get_ledger(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], graded_produce_lot_id=scenario["gpl_a_id"]
         )
         debit = next(e for e in ledger if e.entry_kind == "packing_consumption")
         assert debit.id == line.id
@@ -71,14 +74,14 @@ def test_ledger_read_serializes_packing_event_id_and_negative_delta(test_engine)
     try:
         event = _pack(
             scenario, db=session, packed_output="2.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": 8, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": 8, "note": None}],
         )
-        ledger = produce_lot_ledger_service.get_ledger(
-            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
+        ledger = graded_produce_lot_ledger_service.get_ledger(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], graded_produce_lot_id=scenario["gpl_a_id"]
         )
         debit = next(e for e in ledger if e.entry_kind == "packing_consumption")
         assert debit.packing_event_id == event.id
-        assert debit.harvest_event_id is None
+        assert debit.grading_event_id is None
         assert debit.weight_delta_kg == Decimal("-2.000")
     finally:
         session.close()
@@ -96,10 +99,10 @@ def test_balance_decreases_exactly_after_packing(test_engine) -> None:
     try:
         _pack(
             scenario, db=session, packed_output="4.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 16, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 16, "note": None}],
         )
-        balance = produce_lot_ledger_service.get_balance(
-            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
+        balance = graded_produce_lot_ledger_service.get_balance(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], graded_produce_lot_id=scenario["gpl_a_id"]
         )
         assert balance.available_weight_kg == Decimal("6.000")
         assert balance.available_whole_unit_count == 24
@@ -120,14 +123,14 @@ def test_repeated_partial_consumption_until_exact_zero(test_engine) -> None:
     try:
         _pack(
             scenario, db=session, packed_output="4.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 16, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": 16, "note": None}],
         )
         _pack(
             scenario, db=session, packed_output="6.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("6.000"), "consumed_whole_unit_count": 24, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("6.000"), "consumed_whole_unit_count": 24, "note": None}],
         )
-        balance = produce_lot_ledger_service.get_balance(
-            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], produce_lot_id=scenario["lot_a_id"]
+        balance = graded_produce_lot_ledger_service.get_balance(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], graded_produce_lot_id=scenario["gpl_a_id"]
         )
         assert balance.available_weight_kg == Decimal("0")
         assert balance.available_whole_unit_count == 0
@@ -145,10 +148,10 @@ def test_weight_overconsumption_rejected(test_engine) -> None:
     conn = test_engine.connect()
     session = Session(bind=conn)
     try:
-        with pytest.raises(InsufficientProduceLotBalanceError):
+        with pytest.raises(InsufficientGradedProduceLotBalanceError):
             _pack(
                 scenario, db=session, packed_output="99.000",
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("99.000"), "consumed_whole_unit_count": 396, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("99.000"), "consumed_whole_unit_count": 396, "note": None}],
             )
     finally:
         session.close()
@@ -164,10 +167,10 @@ def test_count_overconsumption_rejected(test_engine) -> None:
     conn = test_engine.connect()
     session = Session(bind=conn)
     try:
-        with pytest.raises(InsufficientProduceLotBalanceError):
+        with pytest.raises(InsufficientGradedProduceLotBalanceError):
             _pack(
                 scenario, db=session, packed_output="1.000",
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": 999, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": 999, "note": None}],
             )
     finally:
         session.close()
@@ -186,7 +189,7 @@ def test_count_mode_requires_count_when_lot_tracks_it(test_engine) -> None:
         with pytest.raises(PackingValidationError):
             _pack(
                 scenario, db=session, packed_output="1.000",
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None}],
             )
     finally:
         session.close()
@@ -205,7 +208,7 @@ def test_count_mode_forbids_count_when_lot_does_not_track_it(test_engine) -> Non
         with pytest.raises(PackingValidationError):
             _pack(
                 scenario, db=session, packed_output="1.000",
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": 4, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": 4, "note": None}],
             )
     finally:
         session.close()
@@ -226,7 +229,7 @@ def test_residual_weight_count_mismatch_rejected(test_engine) -> None:
         with pytest.raises(PackingValidationError, match="residual"):
             _pack(
                 scenario, db=session, packed_output="10.000",
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("10.000"), "consumed_whole_unit_count": 30, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("10.000"), "consumed_whole_unit_count": 30, "note": None}],
             )
     finally:
         session.close()
@@ -338,13 +341,27 @@ def test_mixed_crop_variety_inputs_rejected(test_engine) -> None:
                 harvest_service.HarvestedProduceLot.harvest_event_id == other_harvest.id
             )
         ).scalar_one()
+        from app.models.farm import Farm
+        from app.models.tenant import Tenant
+        from app.models.user import User
+
+        tenant_obj = session.get(Tenant, scenario["tenant_id"])
+        user_obj = session.get(User, scenario["user_id"])
+        farm_obj = session.get(Farm, scenario["farm_id"])
+        other_scaffold = build_packing_scaffold(
+            session, tenant_obj, user_obj, farm_obj, crop_id=other_crop.id, suffix=f"other-{scenario['suffix']}",
+        )
+        other_gpl_id = grade_entire_lot(
+            session, tenant_obj, user_obj, farm_obj, produce_lot_id=other_lot_id, weight=Decimal("1.000"),
+            count=None, scaffold=other_scaffold, suffix=f"other-{scenario['suffix']}",
+        )
 
         with pytest.raises(PackingCropVarietyMismatchError):
             _pack(
                 scenario, db=session, packed_output="1.500",
                 input_lines=[
-                    {"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("0.500"), "consumed_whole_unit_count": 2, "note": None},
-                    {"harvested_produce_lot_id": other_lot_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
+                    {"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("0.500"), "consumed_whole_unit_count": 2, "note": None},
+                    {"graded_produce_lot_id": other_gpl_id, "consumed_weight_kg": Decimal("1.000"), "consumed_whole_unit_count": None, "note": None},
                 ],
             )
     finally:
@@ -365,12 +382,12 @@ def test_changed_payload_same_command_id_rejected(test_engine) -> None:
         fixed_time = now()
         _pack(
             scenario, db=session, packed_output="2.000", client_command_id=command_id, effective_time=fixed_time,
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": 8, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("2.000"), "consumed_whole_unit_count": 8, "note": None}],
         )
         with pytest.raises(PackingCommandReusedWithDifferentPayloadError):
             _pack(
                 scenario, db=session, packed_output="3.000", client_command_id=command_id, effective_time=fixed_time,
-                input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
+                input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("3.000"), "consumed_whole_unit_count": 12, "note": None}],
             )
     finally:
         session.close()
@@ -389,7 +406,7 @@ def test_exact_retry_after_complete_source_depletion_still_returns(test_engine) 
     from sqlalchemy import func, select as sa_select
     from sqlalchemy.orm import Session
 
-    from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
+    from app.models.graded_produce_lot_ledger_entry import GradedProduceLotLedgerEntry
 
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
     conn = test_engine.connect()
@@ -398,17 +415,18 @@ def test_exact_retry_after_complete_source_depletion_still_returns(test_engine) 
         command_id = uuid.uuid4()
         payload = {
             "packed_output": "4.000", "effective_time": now(), "code": f"FG-{scenario['suffix']}",
-            "input_lines": [{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": None, "note": None}],
+            "input_lines": [{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("4.000"), "consumed_whole_unit_count": None, "note": None}],
         }
         original = _pack(scenario, db=session, client_command_id=command_id, **payload)
 
         # Deplete the remaining 6kg via a second, genuinely new command.
         _pack(
             scenario, db=session, packed_output="6.000",
-            input_lines=[{"harvested_produce_lot_id": scenario["lot_a_id"], "consumed_weight_kg": Decimal("6.000"), "consumed_whole_unit_count": None, "note": None}],
+            input_lines=[{"graded_produce_lot_id": scenario["gpl_a_id"], "consumed_weight_kg": Decimal("6.000"), "consumed_whole_unit_count": None, "note": None}],
         )
         debit_count_before_retry = session.execute(
-            sa_select(func.count()).select_from(ProduceLotLedgerEntry).where(ProduceLotLedgerEntry.produce_lot_id == scenario["lot_a_id"])
+            sa_select(func.count()).select_from(GradedProduceLotLedgerEntry)
+            .where(GradedProduceLotLedgerEntry.graded_produce_lot_id == scenario["gpl_a_id"])
         ).scalar_one()
 
         # Exact retry of the original command must still return, not fail
@@ -416,7 +434,8 @@ def test_exact_retry_after_complete_source_depletion_still_returns(test_engine) 
         retried = _pack(scenario, db=session, client_command_id=command_id, **payload)
         assert retried.id == original.id
         debit_count_after_retry = session.execute(
-            sa_select(func.count()).select_from(ProduceLotLedgerEntry).where(ProduceLotLedgerEntry.produce_lot_id == scenario["lot_a_id"])
+            sa_select(func.count()).select_from(GradedProduceLotLedgerEntry)
+            .where(GradedProduceLotLedgerEntry.graded_produce_lot_id == scenario["gpl_a_id"])
         ).scalar_one()
         assert debit_count_after_retry == debit_count_before_retry
     finally:

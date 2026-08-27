@@ -2,26 +2,44 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
 
 class PackingEvent(Base):
-    """Immutable, insert-only record of one packing command (CMP-015): the
-    first typed consumer of produce-lot ledger balances. Consumes one or
-    more harvested produce lots (each recorded as an immutable
-    `PackingInputLine` plus a deterministic `packing_consumption` ledger
-    debit) and creates exactly one `FinishedGoodsLot`. Reconciliation
-    (`total_input = packed_output + process_loss + rejected`) is enforced
-    as a same-row CHECK constraint, not just at write time."""
+    """Immutable, insert-only record of one packing command (CMP-015,
+    converted by POSTHARVEST-OPS-001E): the typed consumer of graded-
+    produce-lot ledger balances. Consumes one or more `GradedProduceLot`s
+    (each recorded as an immutable `PackingInputLine` plus a deterministic
+    `packing_consumption` graded-ledger debit) and creates exactly one
+    `FinishedGoodsLot`. Pins an exact `PackSpecificationVersion` --
+    tenant-scoped only, never farm-scoped, hence the composite FK below is
+    `(tenant_id, pack_specification_version_id)`, not the usual
+    `(tenant_id, farm_id, id)` triple this codebase uses everywhere else.
+    Reconciliation (`total_input = packed_output + process_loss +
+    rejected`) is enforced as a same-row CHECK constraint, not just at
+    write time."""
 
     __tablename__ = "packing_events"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
     farm_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("farms.id"), nullable=False)
+    pack_specification_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pack_specification_versions.id"), nullable=False
+    )
     crop_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("crops.id"), nullable=False)
     variety_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("varieties.id"), nullable=True)
     total_input_weight_kg: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
@@ -68,4 +86,9 @@ class PackingEvent(Base):
         ),
         UniqueConstraint("tenant_id", "farm_id", "id", name="uq_packing_events_tenant_farm_id"),
         Index("ux_packing_events_tenant_client_command_id", "tenant_id", "client_command_id", unique=True),
+        ForeignKeyConstraint(
+            ["tenant_id", "pack_specification_version_id"],
+            ["pack_specification_versions.tenant_id", "pack_specification_versions.id"],
+            name="fk_packing_events_tenant_pack_spec_version",
+        ),
     )

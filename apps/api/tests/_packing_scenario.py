@@ -1,13 +1,25 @@
-"""Shared, non-collected scenario builder for CMP-015 packing tests.
-Builds a committed tenant/farm/crop/variety/workflow/batch with two
-independent harvested produce lots of the same crop/variety (same
+"""Shared, non-collected scenario builder for CMP-015/POSTHARVEST-OPS-001E
+packing tests. Builds a committed tenant/farm/crop/variety/workflow/batch
+with two independent harvested produce lots of the same crop/variety (same
 committed-connection pattern as test_produce_lot_ledger_concurrency.py's
 own `_build_committed_scenario`), plus the identical `cmp_test`-guarded
 `session_replication_role` cleanup used across CMP-013/014's own test
 files. Not a test file itself (pytest's default `test_*.py` discovery
-glob does not match this name)."""
+glob does not match this name).
+
+POSTHARVEST-OPS-001E: Packing no longer accepts a HarvestedProduceLot
+directly -- `build_committed_scenario` now also grades each of lot_a/lot_b's
+FULL weight/count into its own GradedProduceLot (same shared
+GradeDefinitionVersion, so they satisfy Packing's exact-grade-match rule)
+and activates one PackSpecificationVersion (variety_id=None, so it applies
+regardless of the scenario's own concrete variety), returned as
+`gpl_a_id`/`gpl_b_id`/`pack_specification_version_id`/`grade_definition_
+version_id`/`packaging_unit_id`. `lot_a_id`/`lot_b_id` still refer to the
+underlying HarvestedProduceLot (still a real entity, just no longer
+Packing's own input) for callers that need to assert HPL-level ledger/
+balance is untouched by Packing post-001E."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -18,8 +30,13 @@ from app.services import (
     crop_batch_service,
     crop_service,
     farm_service,
+    grade_definition_service,
+    grading_service,
     harvest_service,
+    location_service,
     membership_service,
+    packaging_unit_service,
+    pack_specification_service,
     production_system_service,
     sowing_service,
     tenant_service,
@@ -33,8 +50,84 @@ def now():
     return datetime.now(timezone.utc)
 
 
+def build_packing_scaffold(session: Session, tenant, user, farm, *, crop_id, suffix):
+    """POSTHARVEST-OPS-001E: the minimal Grading+PackSpec scaffold needed to
+    route a HarvestedProduceLot through the new GPL-based Packing contract
+    -- a packing hall, one active GradeDefinitionVersion, one active
+    PackagingUnit, and one active PackSpecificationVersion (variety_id=None,
+    so it applies regardless of the scenario's own concrete variety).
+    Mirrors `tests._traceability_scenario._build_packing_scaffold` exactly."""
+    hall = location_service.create_location(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="packing_hall",
+        code=f"pack-hall-{suffix}", name="Processing Hall", parent_location_id=None,
+        greenhouse_classification=None, occupiable=False,
+    )
+    grade_definition = grade_definition_service.register_grade_definition(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"grade-{suffix}", name="Standard", crop_id=crop_id, variety_id=None, description=None,
+    )
+    grade_version = grade_definition_service.create_draft_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        grade_definition_id=grade_definition.id, spec_notes=None,
+    )
+    grade_definition_service.activate_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        grade_definition_id=grade_definition.id, version_id=grade_version.id,
+        effective_time=now() - timedelta(days=30),
+    )
+    packaging_unit = packaging_unit_service.register_packaging_unit(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"unit-{suffix}", name="Carton",
+    )
+    pack_spec = pack_specification_service.register_pack_specification(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"spec-{suffix}", name="Standard Pack", crop_id=crop_id, variety_id=None, customer_reference=None,
+    )
+    pack_spec_version = pack_specification_service.create_draft_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_id=pack_spec.id, grade_definition_version_id=None,
+        packaging_unit_id=packaging_unit.id, nominal_net_weight_kg=Decimal("1.000"), whole_units_per_pack=None,
+        spec_notes=None,
+    )
+    pack_specification_service.activate_version(
+        session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        pack_specification_id=pack_spec.id, version_id=pack_spec_version.id,
+        effective_time=now() - timedelta(days=30),
+    )
+    return {
+        "packing_hall_location_id": hall.id, "grade_definition_version_id": grade_version.id,
+        "packaging_unit_id": packaging_unit.id, "pack_specification_version_id": pack_spec_version.id,
+    }
+
+
+def grade_entire_lot(session: Session, tenant, user, farm, *, produce_lot_id, weight, count, scaffold, suffix):
+    """Grades the FULL requested `weight`/`count` from `produce_lot_id` into
+    exactly one GradedProduceLot (no rejection/loss/sample/remainder) and
+    returns its id."""
+    event = grading_service.record_grading(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        source_harvested_produce_lot_id=produce_lot_id,
+        processing_hall_location_id=scaffold["packing_hall_location_id"], effective_time=now(), note=None,
+        input_presented_weight_kg=weight, input_presented_whole_unit_count=count,
+        rejected_weight_kg=Decimal("0"), rejected_whole_unit_count=(0 if count is not None else None),
+        loss_weight_kg=Decimal("0"), loss_whole_unit_count=(0 if count is not None else None),
+        sample_weight_kg=Decimal("0"), sample_whole_unit_count=(0 if count is not None else None),
+        remainder_weight_kg=Decimal("0"), remainder_whole_unit_count=(0 if count is not None else None),
+        outputs=[
+            {
+                "grade_definition_version_id": scaffold["grade_definition_version_id"], "code": f"GPL-{suffix}",
+                "output_weight_kg": weight, "output_whole_unit_count": count,
+            }
+        ],
+    )
+    return session.execute(
+        text("SELECT id FROM graded_produce_lots WHERE grading_event_id = :eid"), {"eid": event.id}
+    ).scalar_one()
+
+
 def build_committed_scenario(test_engine, *, carrier_count: int = 2, lot_a_weight="10.000", lot_a_count=40,
-                              lot_b_weight="5.000", lot_b_count=20, carrier_type_code="seed_tray"):
+                              lot_b_weight="5.000", lot_b_count=20, carrier_type_code="seed_tray",
+                              grade_and_pack_spec: bool = True):
     """Returns a dict with tenant_id/user_id/farm_id/batch_id/assignment_ids
     plus lot_a_id/lot_b_id (two harvested produce lots, same crop/variety,
     same batch, independent harvest events) and their weights/counts.
@@ -187,6 +280,33 @@ def build_committed_scenario(test_engine, *, carrier_count: int = 2, lot_a_weigh
         "lot_a_weight": Decimal(lot_a_weight), "lot_a_count": lot_a_count,
         "lot_b_weight": Decimal(lot_b_weight), "lot_b_count": lot_b_count,
     }
+
+    if grade_and_pack_spec:
+        # POSTHARVEST-OPS-001E: grade each of lot_a/lot_b's FULL weight/count
+        # into its own GradedProduceLot (same shared GradeDefinitionVersion,
+        # so they satisfy Packing's exact-grade-match rule) and activate one
+        # PackSpecificationVersion -- opted OUT of by callers (e.g. the
+        # downgrade-guard scenario) that need the bare pre-001E HPL-only
+        # scenario against a deliberately downgraded schema.
+        scaffold = build_packing_scaffold(session, tenant, user, farm, crop_id=crop.id, suffix=suffix)
+        gpl_a_id = grade_entire_lot(
+            session, tenant, user, farm, produce_lot_id=lot_a_id, weight=Decimal(lot_a_weight), count=lot_a_count,
+            scaffold=scaffold, suffix=f"{suffix}-a",
+        )
+        gpl_b_id = grade_entire_lot(
+            session, tenant, user, farm, produce_lot_id=lot_b_id, weight=Decimal(lot_b_weight), count=lot_b_count,
+            scaffold=scaffold, suffix=f"{suffix}-b",
+        )
+        result.update(
+            {
+                "gpl_a_id": gpl_a_id, "gpl_b_id": gpl_b_id,
+                "packing_hall_location_id": scaffold["packing_hall_location_id"],
+                "grade_definition_version_id": scaffold["grade_definition_version_id"],
+                "packaging_unit_id": scaffold["packaging_unit_id"],
+                "pack_specification_version_id": scaffold["pack_specification_version_id"],
+            }
+        )
+
     session.close()
     conn.close()
     return result
@@ -216,6 +336,21 @@ def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         conn.execute(text("DELETE FROM packing_input_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM packing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # POSTHARVEST-OPS-001E: build_committed_scenario now transparently
+        # grades each source lot and activates a fresh PackSpecificationVersion
+        # -- existence-guarded (`to_regclass`) so this same cleanup keeps
+        # working for the downgrade-guard scenario that runs it while
+        # cmp_test is deliberately downgraded below the migration that
+        # creates these tables.
+        for table in ("graded_produce_lot_ledger_entries", "graded_produce_lots", "grading_events"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        for table in (
+            "pack_specification_versions", "pack_specifications", "packaging_units",
+            "grade_definition_versions", "grade_definitions",
+        ):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvest_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvested_produce_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM harvest_events WHERE tenant_id = :tid"), {"tid": tenant_id})

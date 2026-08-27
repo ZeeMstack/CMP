@@ -16,11 +16,13 @@ class ProduceLotLedgerEntryRead(BaseModel):
     entry_kind: str
     produce_lot_id: uuid.UUID
     produce_lot_code: str
-    # Exactly one of harvest_event_id / packing_event_id is populated,
-    # matching entry_kind (CMP-015 widened this from a required field —
-    # see ck_produce_lot_ledger_entries_typed_source_shape).
+    # Exactly one typed source is populated, matching entry_kind (see
+    # ck_produce_lot_ledger_entries_typed_source_shape) --
+    # harvest_source_line_correction_id/grading_event_id are intentionally
+    # not exposed here (not read anywhere yet); `packing_event_id` no
+    # longer exists at all as of POSTHARVEST-OPS-001E -- Packing debits
+    # GradedProduceLot balance exclusively, never HarvestedProduceLot's.
     harvest_event_id: uuid.UUID | None
-    packing_event_id: uuid.UUID | None
     actor_user_id: uuid.UUID
     weight_delta_kg: Decimal
     whole_unit_count_delta: int | None

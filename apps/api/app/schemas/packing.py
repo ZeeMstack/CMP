@@ -38,7 +38,7 @@ def _require_tz_aware(v: datetime) -> datetime:
 class PackingInputLineIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    harvested_produce_lot_id: uuid.UUID
+    graded_produce_lot_id: uuid.UUID
     consumed_weight_kg: Decimal
     consumed_whole_unit_count: int | None = Field(default=None, gt=0, le=MAX_WHOLE_UNIT_COUNT)
     note: str | None = None
@@ -58,6 +58,7 @@ class PackingEventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     client_command_id: uuid.UUID
+    pack_specification_version_id: uuid.UUID
     effective_time: datetime
     finished_goods_lot_code: str
     package_count: int = Field(gt=0, le=MAX_WHOLE_UNIT_COUNT)
@@ -94,9 +95,9 @@ class PackingEventCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_lines(self) -> "PackingEventCreate":
-        lot_ids = [line.harvested_produce_lot_id for line in self.input_lines]
+        lot_ids = [line.graded_produce_lot_id for line in self.input_lines]
         if len(lot_ids) != len(set(lot_ids)):
-            raise ValueError("duplicate harvested_produce_lot_id within one packing command")
+            raise ValueError("duplicate graded_produce_lot_id within one packing command")
         return self
 
 
@@ -105,9 +106,9 @@ class PackingEventCreate(BaseModel):
 
 class PackingInputLineRead(BaseModel):
     id: uuid.UUID
-    harvested_produce_lot_id: uuid.UUID
-    produce_lot_code: str
-    harvest_event_id: uuid.UUID
+    graded_produce_lot_id: uuid.UUID
+    graded_produce_lot_code: str
+    grade_definition_version_id: uuid.UUID
     consumed_weight_kg: Decimal
     consumed_whole_unit_count: int | None
     ledger_entry_id: uuid.UUID
@@ -134,6 +135,8 @@ class PackingEventRead(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     farm_id: uuid.UUID
+    pack_specification_version_id: uuid.UUID
+    grade_definition_version_id: uuid.UUID | None
     crop: CropSummary
     variety: VarietySummary | None
     finished_goods_lot: FinishedGoodsLotSummary
@@ -161,11 +164,12 @@ class FinishedGoodsLotRead(BaseModel):
     farm_id: uuid.UUID
     code: str
     packing_event_id: uuid.UUID
+    pack_specification_version_id: uuid.UUID
     crop: CropSummary
     variety: VarietySummary | None
     net_packed_weight_kg: Decimal
     package_count: int
-    source_produce_lot_ids: list[uuid.UUID]
+    source_graded_produce_lot_ids: list[uuid.UUID]
     effective_time: datetime
     recorded_time: datetime
 

@@ -4916,11 +4916,10 @@ export interface components {
             graded_produce_lot_id: string;
             /** Graded Produce Lot Code */
             graded_produce_lot_code: string;
-            /**
-             * Grading Event Id
-             * Format: uuid
-             */
-            grading_event_id: string;
+            /** Grading Event Id */
+            grading_event_id: string | null;
+            /** Packing Event Id */
+            packing_event_id: string | null;
             /**
              * Actor User Id
              * Format: uuid
@@ -6847,6 +6846,11 @@ export interface components {
              */
             client_command_id: string;
             /**
+             * Pack Specification Version Id
+             * Format: uuid
+             */
+            pack_specification_version_id: string;
+            /**
              * Effective Time
              * Format: date-time
              */
@@ -6869,10 +6873,10 @@ export interface components {
         /** PackingInputLineIn */
         PackingInputLineIn: {
             /**
-             * Harvested Produce Lot Id
+             * Graded Produce Lot Id
              * Format: uuid
              */
-            harvested_produce_lot_id: string;
+            graded_produce_lot_id: string;
             /** Consumed Weight Kg */
             consumed_weight_kg: number | string;
             /** Consumed Whole Unit Count */
@@ -7009,8 +7013,6 @@ export interface components {
             produce_lot_code: string;
             /** Harvest Event Id */
             harvest_event_id: string | null;
-            /** Packing Event Id */
-            packing_event_id: string | null;
             /**
              * Actor User Id
              * Format: uuid
@@ -9566,14 +9568,19 @@ export interface components {
              * Format: uuid
              */
             packing_event_id: string;
+            /**
+             * Pack Specification Version Id
+             * Format: uuid
+             */
+            pack_specification_version_id: string;
             crop: components["schemas"]["CropSummary"];
             variety: components["schemas"]["VarietySummary"] | null;
             /** Net Packed Weight Kg */
             net_packed_weight_kg: string;
             /** Package Count */
             package_count: number;
-            /** Source Produce Lot Ids */
-            source_produce_lot_ids: string[];
+            /** Source Graded Produce Lot Ids */
+            source_graded_produce_lot_ids: string[];
             /**
              * Effective Time
              * Format: date-time
@@ -9602,6 +9609,13 @@ export interface components {
              * Format: uuid
              */
             farm_id: string;
+            /**
+             * Pack Specification Version Id
+             * Format: uuid
+             */
+            pack_specification_version_id: string;
+            /** Grade Definition Version Id */
+            grade_definition_version_id: string | null;
             crop: components["schemas"]["CropSummary"];
             variety: components["schemas"]["VarietySummary"] | null;
             finished_goods_lot: components["schemas"]["FinishedGoodsLotSummary"];
@@ -9646,17 +9660,17 @@ export interface components {
              */
             id: string;
             /**
-             * Harvested Produce Lot Id
+             * Graded Produce Lot Id
              * Format: uuid
              */
-            harvested_produce_lot_id: string;
-            /** Produce Lot Code */
-            produce_lot_code: string;
+            graded_produce_lot_id: string;
+            /** Graded Produce Lot Code */
+            graded_produce_lot_code: string;
             /**
-             * Harvest Event Id
+             * Grade Definition Version Id
              * Format: uuid
              */
-            harvest_event_id: string;
+            grade_definition_version_id: string;
             /** Consumed Weight Kg */
             consumed_weight_kg: string;
             /** Consumed Whole Unit Count */

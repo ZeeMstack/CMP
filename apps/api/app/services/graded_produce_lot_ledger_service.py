@@ -47,7 +47,8 @@ def get_ledger(
     return [
         GradedProduceLotLedgerEntryRead(
             id=e.id, entry_kind=e.entry_kind, graded_produce_lot_id=e.graded_produce_lot_id,
-            graded_produce_lot_code=lot.code, grading_event_id=e.grading_event_id, actor_user_id=e.actor_user_id,
+            graded_produce_lot_code=lot.code, grading_event_id=e.grading_event_id,
+            packing_event_id=e.packing_event_id, actor_user_id=e.actor_user_id,
             weight_delta_kg=e.weight_delta_kg, whole_unit_count_delta=e.whole_unit_count_delta,
             effective_time=e.effective_time, recorded_time=e.recorded_time, note=e.note,
         )

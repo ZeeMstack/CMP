@@ -655,15 +655,37 @@ class TooManyPackingInputLinesError(DomainError):
     pass
 
 
-class PackingInputProduceLotNotFoundError(DomainError):
+class PackingInputGradedProduceLotNotFoundError(DomainError):
     pass
 
 
 class PackingCropVarietyMismatchError(DomainError):
+    """Raised when input GradedProduceLots do not all share one exact
+    crop/variety, or when the (already-mutually-consistent) input set does
+    not match the referenced PackSpecification's own crop/variety scope."""
+
     pass
 
 
-class InsufficientProduceLotBalanceError(DomainError):
+class PackingGradeVersionMismatchError(DomainError):
+    """Raised when input GradedProduceLots do not all share one exact
+    grade_definition_version_id, or when they do but it does not match the
+    referenced PackSpecificationVersion's own pinned grade version (when
+    one is set)."""
+
+    pass
+
+
+class PackSpecificationVersionNotUsableError(DomainError):
+    """Raised when a PackingEvent references a PackSpecificationVersion
+    that is draft, or whose [effective_from, effective_until) business
+    window does not contain the event's own effective_time -- current
+    recorded-time status is never consulted."""
+
+    pass
+
+
+class InsufficientGradedProduceLotBalanceError(DomainError):
     pass
 
 

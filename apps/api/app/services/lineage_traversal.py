@@ -261,16 +261,90 @@ def _graded_produce_lots_for_harvested_produce_lots(
 
 
 def _packing_input_lines_for_produce_lots(conn: Connection, *, tenant_id, farm_id, produce_lot_ids: list[uuid.UUID]) -> list[dict]:
+    """POSTHARVEST-OPS-001E: `packing_input_lines` no longer has a
+    `harvested_produce_lot_id` column at all -- Packing consumes
+    `GradedProduceLot`s exclusively. This helper's own name, signature, and
+    return shape (`harvested_produce_lot_id` per row) are preserved
+    byte-for-byte so its two existing callers (`traceability_service.py`'s
+    own forward-impact function; this module's own `recall_service`-facing
+    FG derivation, which callers key off produce-lot ids for the batch-/
+    HPL-source freeze paths) continue to work unmodified -- the one join
+    hop through `GradedProduceLot -> GradingEvent.source_harvested_
+    produce_lot_id` needed to recover the same field is added internally
+    here, not at either caller. No proportional ambiguity: one packing
+    input line names exactly one GradedProduceLot, which names exactly one
+    GradingEvent, which names exactly one source HarvestedProduceLot."""
     if not produce_lot_ids:
         return []
     rows = conn.execute(
         text(
-            "SELECT id AS packing_input_line_id, packing_event_id, harvested_produce_lot_id, "
-            "consumed_weight_kg, consumed_whole_unit_count FROM packing_input_lines "
-            "WHERE tenant_id = :tid AND farm_id = :fid AND harvested_produce_lot_id = ANY(:ids) "
-            "ORDER BY packing_event_id, harvested_produce_lot_id"
+            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, "
+            "ge.source_harvested_produce_lot_id AS harvested_produce_lot_id, "
+            "pil.consumed_weight_kg, pil.consumed_whole_unit_count "
+            "FROM packing_input_lines pil "
+            "JOIN graded_produce_lots gpl ON gpl.id = pil.graded_produce_lot_id "
+            "  AND gpl.tenant_id = pil.tenant_id AND gpl.farm_id = pil.farm_id "
+            "JOIN grading_events ge ON ge.id = gpl.grading_event_id "
+            "  AND ge.tenant_id = gpl.tenant_id AND ge.farm_id = gpl.farm_id "
+            "WHERE pil.tenant_id = :tid AND pil.farm_id = :fid "
+            "  AND ge.source_harvested_produce_lot_id = ANY(:ids) "
+            "ORDER BY pil.packing_event_id, ge.source_harvested_produce_lot_id"
         ),
         {"tid": tenant_id, "fid": farm_id, "ids": produce_lot_ids},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _packing_input_lines_for_graded_produce_lots(
+    conn: Connection, *, tenant_id, farm_id, graded_produce_lot_ids: list[uuid.UUID]
+) -> list[dict]:
+    """POSTHARVEST-OPS-001E: the direct (no extra join hop) equivalent of
+    `_packing_input_lines_for_produce_lots` above, keyed on
+    `graded_produce_lot_id` -- this is Packing's own real, current source
+    column. Used by `recall_service`'s graded-produce-lot-source freeze
+    (which has exactly one selected GPL, not a produce-lot set to walk
+    forward from)."""
+    if not graded_produce_lot_ids:
+        return []
+    rows = conn.execute(
+        text(
+            "SELECT id AS packing_input_line_id, packing_event_id, graded_produce_lot_id, "
+            "consumed_weight_kg, consumed_whole_unit_count FROM packing_input_lines "
+            "WHERE tenant_id = :tid AND farm_id = :fid AND graded_produce_lot_id = ANY(:ids) "
+            "ORDER BY packing_event_id, graded_produce_lot_id"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "ids": graded_produce_lot_ids},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _packing_input_lines_for_packing_events(
+    conn: Connection, *, tenant_id, farm_id, packing_event_ids: list[uuid.UUID]
+) -> list[dict]:
+    """POSTHARVEST-OPS-001E: replaces the two ad-hoc raw-SQL blocks
+    `traceability_service.py` used to run directly against
+    `packing_input_lines` (keyed by `packing_event_id`, not by produce-lot
+    id) -- same GPL/GradingEvent join as `_packing_input_lines_for_
+    produce_lots` above, centralized here so the join is written exactly
+    once. Returns the same `harvested_produce_lot_id`-keyed shape
+    `traceability_service.py`'s own response contract already exposes, so
+    neither of its two call sites needs any response-shape change."""
+    if not packing_event_ids:
+        return []
+    rows = conn.execute(
+        text(
+            "SELECT pil.id AS packing_input_line_id, pil.packing_event_id, "
+            "ge.source_harvested_produce_lot_id AS harvested_produce_lot_id, "
+            "pil.consumed_weight_kg, pil.consumed_whole_unit_count "
+            "FROM packing_input_lines pil "
+            "JOIN graded_produce_lots gpl ON gpl.id = pil.graded_produce_lot_id "
+            "  AND gpl.tenant_id = pil.tenant_id AND gpl.farm_id = pil.farm_id "
+            "JOIN grading_events ge ON ge.id = gpl.grading_event_id "
+            "  AND ge.tenant_id = gpl.tenant_id AND ge.farm_id = gpl.farm_id "
+            "WHERE pil.tenant_id = :tid AND pil.farm_id = :fid AND pil.packing_event_id = ANY(:ids) "
+            "ORDER BY pil.packing_event_id, ge.source_harvested_produce_lot_id"
+        ),
+        {"tid": tenant_id, "fid": farm_id, "ids": packing_event_ids},
     ).mappings().all()
     return [dict(r) for r in rows]
 

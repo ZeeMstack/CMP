@@ -10,7 +10,17 @@ integrity trigger attachment cleanly replaces (not supplements) CMP-016's
 own, that a clean downgrade restores the byte-exact original CMP-016
 CHECK constraints and trigger attachment, that every packing receipt
 survives the round trip untouched, and that CMP-016A's own env.py guard
-(a different, unrelated revision) is unaffected."""
+(a different, unrelated revision) is unaffected.
+
+POSTHARVEST-OPS-001E: every "downgrade blocked" proof below builds its
+scenario via `pack_one` (real packing history), which now trips 001E's
+OWN downgrade guard (in d8f4a1c92b57) before the cascade ever reaches any
+of CMP-017's own clause-specific dispatch checks further down the chain --
+001E's migration sits directly above CMP-017's own and blocks
+unconditionally on packing_events/packing_input_lines/graded-ledger
+packing_consumption existence. These tests now prove that outer guard;
+CMP-017's own guard clauses remain independently in place in the
+migration itself for a downgrade that starts already below 001E."""
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -90,7 +100,7 @@ def _build_dispatched_scenario(test_engine):
 def test_downgrade_blocked_by_dispatch_event(test_engine, alembic_head_restore) -> None:
     s = _build_dispatched_scenario(test_engine)
     try:
-        with pytest.raises(RuntimeError, match="dispatch_events contains history"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP017_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -113,7 +123,7 @@ def test_downgrade_blocked_by_dispatch_line_only(test_engine, alembic_head_resto
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="dispatch_lines contains history"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP017_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -137,7 +147,7 @@ def test_downgrade_blocked_by_dispatch_issue_only(test_engine, alembic_head_rest
     bypass_conn.close()
 
     try:
-        with pytest.raises(RuntimeError, match="contains dispatch_issue rows"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP017_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -183,7 +193,7 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
         trans.commit()
         bypass_conn.close()
 
-        with pytest.raises(RuntimeError, match="entry kind this migration does not recognize"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP017_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -295,7 +305,7 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
         trans.commit()
         bypass_conn.close()
 
-        with pytest.raises(RuntimeError, match="non-null dispatch_line_id"):
+        with pytest.raises(RuntimeError, match="Cannot downgrade past POSTHARVEST-OPS-001E"):
             command.downgrade(_cfg(), _PRE_CMP017_REVISION)
         _assert_at_head(test_engine)
     finally:
@@ -358,36 +368,36 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
 def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp016_state(test_engine, alembic_head_restore) -> None:
     """No dispatch history at all: downgrade must succeed, drop the
     dispatch tables/triggers, restore the byte-exact original CMP-016
-    CHECK bodies and trigger attachment, preserve every existing packing
-    receipt untouched, and re-upgrade must reattach the v2 trigger."""
+    CHECK bodies and trigger attachment, and re-upgrade must reattach the
+    v2 trigger.
+
+    POSTHARVEST-OPS-001E: unlike this test's own pre-001E shape, the
+    scenario here deliberately creates NO packing history at all (no
+    `pack_one` call) -- any real packing_events row, packing receipt
+    included, now unconditionally blocks downgrade past 001E (in
+    d8f4a1c92b57, which sits directly above CMP-017 in the chain) before
+    the cascade ever reaches CMP-017's own state, making "clean downgrade
+    with an existing packing receipt preserved" categorically impossible
+    now. That stronger guarantee -- no packing receipt can ever survive a
+    downgrade past 001E -- is proven instead by
+    test_packing_downgrade_guard.py and the "blocked" tests above. This
+    test keeps proving CMP-017's own table/CHECK/trigger restoration
+    mechanics in isolation, which remain independently correct and
+    unaffected by 001E."""
     require_cmp_test(test_engine)
     # CARRIER-CONFIG-001A: this test's downgrade must succeed cleanly (no
     # dispatch history) -- grow_bag keeps the scenario free of a
     # carrier_specifications row, which would otherwise unconditionally
     # block via e5b8c3a72f04's own guard before this test's own downgrade
-    # is even attempted.
-    scenario = build_committed_scenario(test_engine, lot_a_count=None, carrier_type_code="grow_bag")
-    conn = test_engine.connect()
-    session = Session(bind=conn)
-    fg_lot_id, _ = pack_one(scenario, session, package_count=3, packed_output_weight_kg=Decimal("2.000"))
-    session.commit()
-
-    def _receipt_snapshot():
-        with test_engine.connect() as c:
-            return dict(
-                c.execute(
-                    text(
-                        "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                        "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                        "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                    ),
-                    {"lid": fg_lot_id},
-                ).mappings().one()
-            )
-
-    receipt_before = _receipt_snapshot()
-    session.close()
-    conn.close()
+    # is even attempted. POSTHARVEST-OPS-001E: grade_and_pack_spec=False
+    # keeps the scenario free of any GradedProduceLot/GradingEvent history
+    # too -- build_committed_scenario's own default now grades every lot,
+    # which would otherwise unconditionally block via 001C's own,
+    # earlier-in-chain (below 001E) guard before this test's downgrade
+    # ever reaches CMP-017's own state.
+    scenario = build_committed_scenario(
+        test_engine, lot_a_count=None, carrier_type_code="grow_bag", grade_and_pack_spec=False,
+    )
 
     with test_engine.connect() as c:
         # CMP-020 sits above CMP-017 at "head", so the currently-attached
@@ -472,16 +482,6 @@ def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp01
             ).scalar_one()
             assert original_after_downgrade == 1, "clean downgrade must restore the exact original CMP-016 trigger attachment"
 
-            receipt_still_present = c.execute(
-                text(
-                    "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                    "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                    "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                ),
-                {"lid": fg_lot_id},
-            ).mappings().one()
-            assert dict(receipt_still_present) == receipt_before, "the existing packing receipt must survive untouched"
-
         command.upgrade(_cfg(), "head")
         with test_engine.connect() as c:
             current = c.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
@@ -496,16 +496,5 @@ def test_clean_downgrade_with_no_dispatch_history_reupgrade_restores_exact_cmp01
                 )
             ).scalar_one()
             assert v4_after_reupgrade == 1, "re-upgrade must reattach the v4 trigger"
-            receipt_after_reupgrade = dict(
-                c.execute(
-                    text(
-                        "SELECT id, tenant_id, farm_id, finished_goods_lot_id, packing_event_id, entry_kind, "
-                        "weight_delta_kg, package_count_delta, effective_time, recorded_time, actor_user_id, note "
-                        "FROM finished_goods_ledger_entries WHERE finished_goods_lot_id = :lid"
-                    ),
-                    {"lid": fg_lot_id},
-                ).mappings().one()
-            )
-            assert receipt_after_reupgrade == receipt_before, "re-upgrade must leave the receipt byte-identical"
     finally:
         cleanup_scenario(test_engine, scenario["tenant_id"])
