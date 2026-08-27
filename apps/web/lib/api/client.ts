@@ -703,3 +703,227 @@ export function getLocationOccupants(
 ): Promise<TargetOccupantsRead> {
   return getJson<TargetOccupantsRead>(`/farms/${farmId}/locations/${locationId}/occupants`, signal);
 }
+
+// --- POSTHARVEST-OPS-001G --------------------------------------------------
+// Processing & Packing UI: Grading (Harvested Produce Lot -> Graded Produce
+// Lots), Graded Produce Lots read access, Packing (Graded Produce Lots ->
+// Finished Goods), Finished Goods read access + storage placement. Grade
+// Definition / Pack Specification config CRUD is out of scope here -- only
+// the read-only pickers these commands need (active versions) are exposed.
+
+export type HarvestedProduceLotRead = components["schemas"]["app__schemas__harvest__HarvestedProduceLotRead"];
+export type ProduceLotBalanceRead = components["schemas"]["ProduceLotBalanceRead"];
+
+export type GradeDefinitionRead = components["schemas"]["GradeDefinitionRead"];
+export type GradeDefinitionVersionRead = components["schemas"]["GradeDefinitionVersionRead"];
+export type GradingEventCreate = components["schemas"]["GradingEventCreate"];
+export type GradingOutputIn = components["schemas"]["GradingOutputIn"];
+export type GradingEventRead = components["schemas"]["app__schemas__grading__GradingEventRead"];
+export type GradedProduceLotRead = components["schemas"]["app__schemas__grading__GradedProduceLotRead"];
+export type GradedProduceLotLedgerEntryRead = components["schemas"]["GradedProduceLotLedgerEntryRead"];
+export type GradedProduceLotBalanceRead = components["schemas"]["GradedProduceLotBalanceRead"];
+
+export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
+export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
+export type PackingEventCreate = components["schemas"]["PackingEventCreate"];
+export type PackingInputLineIn = components["schemas"]["PackingInputLineIn"];
+export type PackingEventRead = components["schemas"]["app__schemas__packing__PackingEventRead"];
+export type FinishedGoodsLotRead = components["schemas"]["app__schemas__packing__FinishedGoodsLotRead"];
+export type FinishedGoodsLedgerEntryRead = components["schemas"]["FinishedGoodsLedgerEntryRead"];
+export type FinishedGoodsBalanceRead = components["schemas"]["FinishedGoodsBalanceRead"];
+export type FinishedGoodsPlacementRead = components["schemas"]["FinishedGoodsPlacementRead"];
+export type LocationInventoryRead = components["schemas"]["LocationInventoryRead"];
+
+export type RecallCaseSummaryRead = components["schemas"]["RecallCaseSummaryRead"];
+
+// Harvested Produce Lots read access (the write/record path is Harvest,
+// HARVEST-OPS-001) -- this is Grading's "pick a source Lot" surface.
+
+export function listHarvestedProduceLots(farmId: string, signal?: AbortSignal): Promise<HarvestedProduceLotRead[]> {
+  return getJson<HarvestedProduceLotRead[]>(`/farms/${farmId}/harvested-produce-lots`, signal);
+}
+
+export function getHarvestedProduceLotBalance(
+  farmId: string,
+  produceLotId: string,
+  signal?: AbortSignal,
+): Promise<ProduceLotBalanceRead> {
+  return getJson<ProduceLotBalanceRead>(`/farms/${farmId}/harvested-produce-lots/${produceLotId}/balance`, signal);
+}
+
+// Grade Definitions -- tenant-scoped config, read-only here (the version
+// picker Grading's output lines need). Creating/activating Grade
+// Definitions/Versions is out of this ticket's scope.
+
+export function listGradeDefinitions(
+  cropId?: string,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionRead[]> {
+  const query = cropId ? `?crop_id=${encodeURIComponent(cropId)}` : "";
+  return getJson<GradeDefinitionRead[]>(`/grade-definitions${query}`, signal);
+}
+
+export function listGradeDefinitionVersions(
+  gradeDefinitionId: string,
+  status: string | undefined,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<GradeDefinitionVersionRead[]>(`/grade-definitions/${gradeDefinitionId}/versions${query}`, signal);
+}
+
+// Grading -- the operator command that consumes a Harvested Produce Lot and
+// produces one or more Graded Produce Lots, with full reconciliation
+// (rejection/loss/sample/remainder).
+
+export function recordGrading(
+  farmId: string,
+  payload: GradingEventCreate,
+  signal?: AbortSignal,
+): Promise<GradingEventRead> {
+  return postJson<GradingEventRead>(`/farms/${farmId}/grading-events`, payload, signal);
+}
+
+export function listGradingEvents(
+  farmId: string,
+  sourceHarvestedProduceLotId?: string,
+  signal?: AbortSignal,
+): Promise<GradingEventRead[]> {
+  const query = sourceHarvestedProduceLotId
+    ? `?source_harvested_produce_lot_id=${encodeURIComponent(sourceHarvestedProduceLotId)}`
+    : "";
+  return getJson<GradingEventRead[]>(`/farms/${farmId}/grading-events${query}`, signal);
+}
+
+export function getGradingEvent(farmId: string, gradingEventId: string, signal?: AbortSignal): Promise<GradingEventRead> {
+  return getJson<GradingEventRead>(`/farms/${farmId}/grading-events/${gradingEventId}`, signal);
+}
+
+export function listGradedProduceLots(
+  farmId: string,
+  params: { cropId?: string; varietyId?: string; gradeDefinitionVersionId?: string } = {},
+  signal?: AbortSignal,
+): Promise<GradedProduceLotRead[]> {
+  const search = new URLSearchParams();
+  if (params.cropId) search.set("crop_id", params.cropId);
+  if (params.varietyId) search.set("variety_id", params.varietyId);
+  if (params.gradeDefinitionVersionId) search.set("grade_definition_version_id", params.gradeDefinitionVersionId);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return getJson<GradedProduceLotRead[]>(`/farms/${farmId}/graded-produce-lots${query}`, signal);
+}
+
+export function getGradedProduceLot(
+  farmId: string,
+  gradedProduceLotId: string,
+  signal?: AbortSignal,
+): Promise<GradedProduceLotRead> {
+  return getJson<GradedProduceLotRead>(`/farms/${farmId}/graded-produce-lots/${gradedProduceLotId}`, signal);
+}
+
+export function getGradedProduceLotLedger(
+  farmId: string,
+  gradedProduceLotId: string,
+  signal?: AbortSignal,
+): Promise<GradedProduceLotLedgerEntryRead[]> {
+  return getJson<GradedProduceLotLedgerEntryRead[]>(
+    `/farms/${farmId}/graded-produce-lots/${gradedProduceLotId}/ledger`, signal,
+  );
+}
+
+export function getGradedProduceLotBalance(
+  farmId: string,
+  gradedProduceLotId: string,
+  signal?: AbortSignal,
+): Promise<GradedProduceLotBalanceRead> {
+  return getJson<GradedProduceLotBalanceRead>(
+    `/farms/${farmId}/graded-produce-lots/${gradedProduceLotId}/balance`, signal,
+  );
+}
+
+// Pack Specifications -- tenant-scoped config, read-only here (the version
+// picker Packing needs). Creating/activating Pack Specifications/Versions is
+// out of this ticket's scope.
+
+export function listPackSpecifications(cropId?: string, signal?: AbortSignal): Promise<PackSpecificationRead[]> {
+  const query = cropId ? `?crop_id=${encodeURIComponent(cropId)}` : "";
+  return getJson<PackSpecificationRead[]>(`/pack-specifications${query}`, signal);
+}
+
+export function listPackSpecificationVersions(
+  packSpecificationId: string,
+  status: string | undefined,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<PackSpecificationVersionRead[]>(
+    `/pack-specifications/${packSpecificationId}/versions${query}`, signal,
+  );
+}
+
+// Packing -- the operator command that consumes one or more Graded Produce
+// Lots and produces one Finished Goods Lot, with reconciliation (process
+// loss/rejection).
+
+export function recordPacking(farmId: string, payload: PackingEventCreate, signal?: AbortSignal): Promise<PackingEventRead> {
+  return postJson<PackingEventRead>(`/farms/${farmId}/packing-events`, payload, signal);
+}
+
+export function listPackingEvents(farmId: string, signal?: AbortSignal): Promise<PackingEventRead[]> {
+  return getJson<PackingEventRead[]>(`/farms/${farmId}/packing-events`, signal);
+}
+
+export function getPackingEvent(farmId: string, packingEventId: string, signal?: AbortSignal): Promise<PackingEventRead> {
+  return getJson<PackingEventRead>(`/farms/${farmId}/packing-events/${packingEventId}`, signal);
+}
+
+export function listFinishedGoodsLots(farmId: string, signal?: AbortSignal): Promise<FinishedGoodsLotRead[]> {
+  return getJson<FinishedGoodsLotRead[]>(`/farms/${farmId}/finished-goods-lots`, signal);
+}
+
+export function getFinishedGoodsLot(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsLotRead> {
+  return getJson<FinishedGoodsLotRead>(`/farms/${farmId}/finished-goods-lots/${finishedGoodsLotId}`, signal);
+}
+
+export function getFinishedGoodsLedger(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsLedgerEntryRead[]> {
+  return getJson<FinishedGoodsLedgerEntryRead[]>(
+    `/farms/${farmId}/finished-goods-lots/${finishedGoodsLotId}/ledger`, signal,
+  );
+}
+
+export function getFinishedGoodsBalance(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsBalanceRead> {
+  return getJson<FinishedGoodsBalanceRead>(
+    `/farms/${farmId}/finished-goods-lots/${finishedGoodsLotId}/balance`, signal,
+  );
+}
+
+export function getFinishedGoodsPlacement(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsPlacementRead> {
+  return getJson<FinishedGoodsPlacementRead>(
+    `/farms/${farmId}/finished-goods-lots/${finishedGoodsLotId}/placements`, signal,
+  );
+}
+
+// Recall -- read-only here, so Graded Produce Lot / Finished Goods Lot
+// screens can flag "under an open recall" without a dedicated
+// recall-flag-per-lot endpoint (none exists; this is a client-side join
+// over the farm's recall case list, same approach documented for the
+// traceability surface).
+
+export function listRecallCases(farmId: string, signal?: AbortSignal): Promise<RecallCaseSummaryRead[]> {
+  return getJson<RecallCaseSummaryRead[]>(`/farms/${farmId}/recall-cases`, signal);
+}
