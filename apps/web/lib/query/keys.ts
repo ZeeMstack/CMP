@@ -112,4 +112,56 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", batchId] as const,
   leafyHarvest: (tenantId: string, farmId: string, harvestEventId: string) =>
     ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", "detail", harvestEventId] as const,
+
+  // --- POSTHARVEST-OPS-001G -------------------------------------------------
+  harvestedProduceLots: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "harvested-produce-lots"] as const,
+  harvestedProduceLotBalance: (tenantId: string, farmId: string, produceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "harvested-produce-lots", produceLotId, "balance"] as const,
+
+  // Tenant-scoped config reads. `cropId`/`status` default to "" so the
+  // unfiltered and filtered variants never collide in cache (mirrors
+  // NURSERY-OPS-005B's own convention).
+  gradeDefinitions: (tenantId: string, cropId: string) =>
+    ["tenant", tenantId, "grade-definitions", cropId] as const,
+  gradeDefinitionVersions: (tenantId: string, gradeDefinitionId: string, status: string) =>
+    ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions", status] as const,
+
+  gradingEvents: (tenantId: string, farmId: string, sourceHarvestedProduceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "grading-events", sourceHarvestedProduceLotId] as const,
+  gradingEvent: (tenantId: string, farmId: string, gradingEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "grading-events", "detail", gradingEventId] as const,
+  // `filterKey` defaults to "" (unfiltered) so the unfiltered and
+  // crop/variety-filtered variants never collide in cache.
+  gradedProduceLots: (tenantId: string, farmId: string, filterKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "graded-produce-lots", filterKey] as const,
+  gradedProduceLot: (tenantId: string, farmId: string, gradedProduceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "graded-produce-lots", "detail", gradedProduceLotId] as const,
+  gradedProduceLotLedger: (tenantId: string, farmId: string, gradedProduceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "graded-produce-lots", gradedProduceLotId, "ledger"] as const,
+  gradedProduceLotBalance: (tenantId: string, farmId: string, gradedProduceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "graded-produce-lots", gradedProduceLotId, "balance"] as const,
+
+  packSpecifications: (tenantId: string, cropId: string) =>
+    ["tenant", tenantId, "pack-specifications", cropId] as const,
+  packSpecificationVersions: (tenantId: string, packSpecificationId: string, status: string) =>
+    ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions", status] as const,
+
+  packingEvents: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "packing-events"] as const,
+  packingEvent: (tenantId: string, farmId: string, packingEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "packing-events", "detail", packingEventId] as const,
+  finishedGoodsLots: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots"] as const,
+  finishedGoodsLot: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots", "detail", finishedGoodsLotId] as const,
+  finishedGoodsLedger: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots", finishedGoodsLotId, "ledger"] as const,
+  finishedGoodsBalance: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots", finishedGoodsLotId, "balance"] as const,
+  finishedGoodsPlacement: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots", finishedGoodsLotId, "placements"] as const,
+
+  recallCases: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "recall-cases"] as const,
 };

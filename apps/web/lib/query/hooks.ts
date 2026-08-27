@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import * as api from "@/lib/api/client";
 import type {
@@ -10,9 +10,11 @@ import type {
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
+  GradingEventCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
   LeafyProductionTransferCreate,
+  PackingEventCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   RecordLeafyHarvestCreate,
@@ -868,6 +870,356 @@ export function useRecordLeafyHarvest(farmId: string) {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateLeafyHarvest(queryClient, tenantId, farmId);
     },
+  });
+}
+
+// --- POSTHARVEST-OPS-001G ---------------------------------------------------
+// Processing & Packing UI: Grading (Harvested Produce Lot -> Graded Produce
+// Lots), Graded Produce Lots read access, Packing (Graded Produce Lots ->
+// Finished Goods), Finished Goods read access + placement, and a farm-wide
+// Recall Cases read used only to flag "under an open recall" on a lot.
+
+export function useHarvestedProduceLots(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.harvestedProduceLots(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listHarvestedProduceLots(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** On-demand only (mirrors `useLocationSubtreeOccupancy`) -- fetched once a
+ * specific Harvested Produce Lot is selected as a Grading source, never for
+ * every row in the list up front (no bulk balance endpoint exists). */
+export function useHarvestedProduceLotBalance(farmId: string, produceLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.harvestedProduceLotBalance(tenantId ?? "", farmId, produceLotId ?? ""),
+    queryFn: ({ signal }) => api.getHarvestedProduceLotBalance(farmId, produceLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(produceLotId),
+  });
+}
+
+/** Unfiltered, tenant-wide -- the "" cache slot of `queryKeys.gradeDefinitions`
+ * doubles as the "all Definitions" entry (mirrors NURSERY-OPS-005B's own
+ * "" = unfiltered convention). Backs `useGradeVersionLabelMap` below. */
+export function useAllGradeDefinitions() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradeDefinitions(tenantId ?? "", ""),
+    queryFn: ({ signal }) => api.listGradeDefinitions(undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Builds `{ [gradeDefinitionVersionId]: "Definition Name vN" }` across
+ * every Grade Definition in the tenant. There is no "get a Version by id
+ * alone" endpoint -- Versions are nested under their Definition -- so any
+ * screen that needs a human label for a `grade_definition_version_id`
+ * (Graded Produce Lot rows, Grading history) resolves it via this one map
+ * rather than a per-row lookup. Tenant reference data (long staleTime); an
+ * acceptable one-time cost for a tenant's whole Grade Definition catalog. */
+export function useGradeVersionLabelMap(): { labels: Record<string, string>; isLoading: boolean } {
+  const tenantId = useSelectedTenantId();
+  const definitionsQuery = useAllGradeDefinitions();
+  const definitions = definitionsQuery.data ?? [];
+  const versionQueries = useQueries({
+    queries: definitions.map((d) => ({
+      queryKey: queryKeys.gradeDefinitionVersions(tenantId ?? "", d.id, ""),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listGradeDefinitionVersions(d.id, undefined, signal),
+      staleTime: STALE_REFERENCE_MS,
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const labels: Record<string, string> = {};
+  definitions.forEach((d, i) => {
+    for (const v of versionQueries[i]?.data ?? []) labels[v.id] = `${d.name} v${v.version_number}`;
+  });
+  return { labels, isLoading: definitionsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
+}
+
+/** Same rationale as `useAllGradeDefinitions`, for Pack Specifications. */
+export function useAllPackSpecifications() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packSpecifications(tenantId ?? "", ""),
+    queryFn: ({ signal }) => api.listPackSpecifications(undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Same rationale as `useGradeVersionLabelMap`, for
+ * `pack_specification_version_id`. */
+export function usePackVersionLabelMap(): { labels: Record<string, string>; isLoading: boolean } {
+  const tenantId = useSelectedTenantId();
+  const specsQuery = useAllPackSpecifications();
+  const specs = specsQuery.data ?? [];
+  const versionQueries = useQueries({
+    queries: specs.map((s) => ({
+      queryKey: queryKeys.packSpecificationVersions(tenantId ?? "", s.id, ""),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listPackSpecificationVersions(s.id, undefined, signal),
+      staleTime: STALE_REFERENCE_MS,
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const labels: Record<string, string> = {};
+  specs.forEach((s, i) => {
+    for (const v of versionQueries[i]?.data ?? []) labels[v.id] = `${s.name} v${v.version_number}`;
+  });
+  return { labels, isLoading: specsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
+}
+
+export function useGradeDefinitions(cropId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradeDefinitions(tenantId ?? "", cropId ?? ""),
+    queryFn: ({ signal }) => api.listGradeDefinitions(cropId, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(cropId),
+  });
+}
+
+/** PRE-COMMIT CORRECTION: fetches every Version regardless of lifecycle
+ * status (no `status` filter) -- a historically-valid RETIRED Version must
+ * remain selectable for a backdated transaction, so status alone can never
+ * be the filter. Callers narrow to what's selectable for a given
+ * `effective_time` via `selectableVersionsAt` (`lib/format/
+ * versionLifecycle.ts`), not via this query. Same "" cache slot as
+ * `useGradeVersionLabelMap`'s own all-versions fetch, so the two never
+ * duplicate the request. */
+export function useGradeDefinitionVersions(gradeDefinitionId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradeDefinitionVersions(tenantId ?? "", gradeDefinitionId ?? "", ""),
+    queryFn: ({ signal }) => api.listGradeDefinitionVersions(gradeDefinitionId as string, undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(gradeDefinitionId),
+  });
+}
+
+export function useGradingEvents(farmId: string, sourceHarvestedProduceLotId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradingEvents(tenantId ?? "", farmId, sourceHarvestedProduceLotId ?? ""),
+    queryFn: ({ signal }) => api.listGradingEvents(farmId, sourceHarvestedProduceLotId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** On-demand only -- used to resolve a Graded Produce Lot's source
+ * Harvested Produce Lot, since a GPL only carries `grading_event_id`, not
+ * the source Lot id/code directly (see the Grading Event's own
+ * `source_harvested_produce_lot_id`/`source_produce_lot_code`). */
+export function useGradingEvent(farmId: string, gradingEventId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradingEvent(tenantId ?? "", farmId, gradingEventId ?? ""),
+    queryFn: ({ signal }) => api.getGradingEvent(farmId, gradingEventId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(gradingEventId),
+  });
+}
+
+export function useGradedProduceLots(
+  farmId: string,
+  params: { cropId?: string; varietyId?: string; gradeDefinitionVersionId?: string } = {},
+) {
+  const tenantId = useSelectedTenantId();
+  const filterKey = JSON.stringify(params);
+  return useQuery({
+    queryKey: queryKeys.gradedProduceLots(tenantId ?? "", farmId, filterKey),
+    queryFn: ({ signal }) => api.listGradedProduceLots(farmId, params, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useGradedProduceLot(farmId: string, gradedProduceLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradedProduceLot(tenantId ?? "", farmId, gradedProduceLotId ?? ""),
+    queryFn: ({ signal }) => api.getGradedProduceLot(farmId, gradedProduceLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(gradedProduceLotId),
+  });
+}
+
+export function useGradedProduceLotLedger(farmId: string, gradedProduceLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradedProduceLotLedger(tenantId ?? "", farmId, gradedProduceLotId ?? ""),
+    queryFn: ({ signal }) => api.getGradedProduceLotLedger(farmId, gradedProduceLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(gradedProduceLotId),
+  });
+}
+
+/** On-demand per Lot -- used both for a single Lot's detail page and (via
+ * `useQueries` in the calling component) for the Graded Produce Lots list
+ * and the Packing input picker, where seeing "available weight/count" per
+ * row is operationally required and no bulk balance endpoint exists. */
+export function useGradedProduceLotBalance(farmId: string, gradedProduceLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradedProduceLotBalance(tenantId ?? "", farmId, gradedProduceLotId ?? ""),
+    queryFn: ({ signal }) => api.getGradedProduceLotBalance(farmId, gradedProduceLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(gradedProduceLotId),
+  });
+}
+
+function _invalidateGrading(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.harvestedProduceLots(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.gradingEvents(tenantId, farmId, "") });
+  // Prefix-only (no `filterKey`) so every crop/variety-filtered cache entry
+  // is invalidated too, not just the unfiltered one.
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "graded-produce-lots"] });
+}
+
+export function useRecordGrading(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradingEventCreate) => api.recordGrading(farmId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      _invalidateGrading(queryClient, tenantId, farmId);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.harvestedProduceLotBalance(tenantId, farmId, result.source_harvested_produce_lot_id),
+      });
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateGrading(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function usePackSpecifications(cropId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packSpecifications(tenantId ?? "", cropId ?? ""),
+    queryFn: ({ signal }) => api.listPackSpecifications(cropId, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(cropId),
+  });
+}
+
+/** Same rationale as `useGradeDefinitionVersions` -- fetches every Version
+ * regardless of lifecycle status; callers narrow via `selectableVersionsAt`. */
+export function usePackSpecificationVersions(packSpecificationId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packSpecificationVersions(tenantId ?? "", packSpecificationId ?? "", ""),
+    queryFn: ({ signal }) => api.listPackSpecificationVersions(packSpecificationId as string, undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(packSpecificationId),
+  });
+}
+
+export function usePackingEvents(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packingEvents(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listPackingEvents(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useFinishedGoodsLots(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsLots(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listFinishedGoodsLots(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useFinishedGoodsLot(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsLot(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.getFinishedGoodsLot(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+export function useFinishedGoodsLedger(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsLedger(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.getFinishedGoodsLedger(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+/** On-demand per Lot, same rationale as `useGradedProduceLotBalance`. */
+export function useFinishedGoodsBalance(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsBalance(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.getFinishedGoodsBalance(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+export function useFinishedGoodsPlacement(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsPlacement(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.getFinishedGoodsPlacement(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+function _invalidatePacking(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "graded-produce-lots"] });
+  queryClient.invalidateQueries({ queryKey: queryKeys.packingEvents(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.finishedGoodsLots(tenantId, farmId) });
+}
+
+export function useRecordPacking(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackingEventCreate) => api.recordPacking(farmId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      _invalidatePacking(queryClient, tenantId, farmId);
+      for (const line of result.input_lines) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradedProduceLotBalance(tenantId, farmId, line.graded_produce_lot_id),
+        });
+      }
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidatePacking(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+/** Farm-wide, read-only -- used only to flag "under an open recall" on a
+ * Graded Produce Lot / Finished Goods Lot row (no dedicated per-lot recall
+ * flag endpoint exists; see `lib/api/client.ts`'s own note). */
+export function useRecallCases(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.recallCases(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listRecallCases(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
   });
 }
 
