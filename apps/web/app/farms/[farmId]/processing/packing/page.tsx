@@ -8,11 +8,18 @@ import { PageHeader } from "@/components/PageHeader";
 import { GradedProduceLotSourcePanel } from "@/components/processing/GradedProduceLotSourcePanel";
 import { PackingForm } from "@/components/processing/PackingForm";
 import { PackingHistoryPanel } from "@/components/processing/PackingHistoryPanel";
+import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import type { GradedProduceLotRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useGradeVersionLabelMap, useGradedProduceLots, usePackingEvents, useRecallCases, useRecordPacking,
 } from "@/lib/query/hooks";
+
+const TABS = [
+  { id: "pack", label: "Pack Graded Lots" },
+  { id: "history", label: "Packing History" },
+] as const;
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -55,47 +62,36 @@ export default function PackingPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("pack")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "pack" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Pack Graded Lots
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "history" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Packing History
-        </button>
+      <div className="mb-6">
+        <Tabs
+          tabs={TABS.map(({ id, label }) => ({ id, label }))}
+          activeId={tab}
+          onChange={(id) => setTab(id as "pack" | "history")}
+          aria-label="Packing sections"
+        />
       </div>
 
       {tab === "pack" && (
         <div className="flex flex-col gap-4">
           {recordSuccess ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Packing recorded</h2>
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Packing recorded</h2>
               <p className="text-sm text-ink">
                 <span className="font-medium">{recordSuccess.code}</span> packed from{" "}
                 <span className="font-medium">{recordSuccess.inputCodes.join(", ")}</span>
               </p>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start"
                 onClick={() => {
                   setSelectedIds([]);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
               >
                 Done
-              </button>
+              </Button>
             </div>
           ) : (
             <>

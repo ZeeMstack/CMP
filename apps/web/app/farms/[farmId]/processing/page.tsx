@@ -54,9 +54,9 @@ export default function ProcessingLandingPage() {
           <Link
             key={href}
             href={href}
-            className="flex min-h-24 flex-col gap-1 rounded-lg border border-border-subtle bg-surface p-4 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            className="flex min-h-24 flex-col gap-1 rounded-xl border border-border-subtle bg-surface p-4 transition-colors hover:border-brand-300 hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <span className="flex items-center gap-2 font-serif text-sm font-semibold text-ink">
               <Icon aria-hidden="true" className="h-4 w-4 text-brand-700" />
               {title}
             </span>

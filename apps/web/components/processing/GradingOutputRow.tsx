@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { UseFormRegister, UseFormSetValue, UseFormWatch, FieldErrors } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import { selectableVersionsAt } from "@/lib/format/versionLifecycle";
 import { useGradeDefinitions, useGradeDefinitionVersions } from "@/lib/query/hooks";
 import type { RecordGradingFormValues } from "@/lib/validation/grading";
@@ -157,13 +158,9 @@ export function GradingOutputRow({
         )}
       </div>
       {removable && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="mt-2 min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" className="mt-2" onClick={onRemove}>
           Remove output
-        </button>
+        </Button>
       )}
     </li>
   );

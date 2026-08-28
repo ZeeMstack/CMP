@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ReconciliationSummary } from "@/components/processing/ReconciliationSummary";
 import { ReversalConfirmForm } from "@/components/processing/ReversalConfirmForm";
+import { Button } from "@/components/ui/Button";
 import type { GradingEventRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useGradingReversalEvent, useReverseGradingEvent } from "@/lib/query/hooks";
@@ -24,9 +25,9 @@ function GradingHistoryItem({ farmId, event }: { farmId: string; event: GradingE
   const reversal = reversalQuery.data;
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border-subtle p-3">
+    <li className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">Source {event.source_produce_lot_code}</span>
+        <span className="font-serif text-sm font-semibold text-ink">Source {event.source_produce_lot_code}</span>
         <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
       </div>
       <ReconciliationSummary
@@ -80,13 +81,9 @@ function GradingHistoryItem({ farmId, event }: { farmId: string; event: GradingE
         />
       ) : (
         !reversalQuery.isLoading && (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="min-h-11 self-start rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" className="self-start" onClick={() => setConfirming(true)}>
             Reverse
-          </button>
+          </Button>
         )
       )}
     </li>

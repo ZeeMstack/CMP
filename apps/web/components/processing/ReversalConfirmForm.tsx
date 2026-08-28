@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Button } from "@/components/ui/Button";
+
 const inputClass =
   "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
 const labelClass = "block text-sm font-medium text-ink";
@@ -42,7 +44,7 @@ export function ReversalConfirmForm({
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4"
+      className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4"
     >
       <div>
         <h4 className="text-sm font-semibold text-ink">{title}</h4>
@@ -74,21 +76,12 @@ export function ReversalConfirmForm({
       {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-red-700 px-4 text-sm font-medium text-white hover:bg-red-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="danger" disabled={isSubmitting}>
           {isSubmitting ? "Reversing…" : "Confirm reversal"}
-        </button>
+        </Button>
       </div>
     </form>
   );

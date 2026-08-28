@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ReconciliationSummary } from "@/components/processing/ReconciliationSummary";
 import { ReversalConfirmForm } from "@/components/processing/ReversalConfirmForm";
+import { Button } from "@/components/ui/Button";
 import type { PackingEventRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { usePackingReversalEvent, useReversePackingEvent } from "@/lib/query/hooks";
@@ -24,9 +25,9 @@ function PackingHistoryItem({ farmId, event }: { farmId: string; event: PackingE
   const reversal = reversalQuery.data;
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border-subtle p-3">
+    <li className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">
+        <span className="font-serif text-sm font-semibold text-ink">
           {event.finished_goods_lot.code} — {event.crop.common_name}
           {event.variety ? ` / ${event.variety.name}` : ""}
         </span>
@@ -81,13 +82,9 @@ function PackingHistoryItem({ farmId, event }: { farmId: string; event: PackingE
         />
       ) : (
         !reversalQuery.isLoading && (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="min-h-11 self-start rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" className="self-start" onClick={() => setConfirming(true)}>
             Reverse
-          </button>
+          </Button>
         )
       )}
     </li>

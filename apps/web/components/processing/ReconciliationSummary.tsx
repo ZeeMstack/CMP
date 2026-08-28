@@ -24,7 +24,7 @@ export function ReconciliationSummary({
 
   return (
     <div
-      className={`rounded-md border p-3 text-sm ${
+      className={`rounded-xl border p-3 text-sm ${
         balanced ? "border-border-subtle bg-surface-subtle" : "border-red-300 bg-red-50"
       }`}
     >

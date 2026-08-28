@@ -1,6 +1,7 @@
 "use client";
 
 import { GradedProduceLotListItem } from "@/components/processing/GradedProduceLotListItem";
+import { Button } from "@/components/ui/Button";
 import type { GradedProduceLotRead, RecallCaseSummaryRead } from "@/lib/api/client";
 
 /** POSTHARVEST-OPS-001G: the Graded Produce Lot picker for a new Packing
@@ -66,22 +67,18 @@ export function GradedProduceLotSourcePanel({
                     </span>
                   )}
                   {isSelected ? (
-                    <button
-                      type="button"
-                      onClick={() => onRemove(lot.id)}
-                      className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-                    >
+                    <Button type="button" variant="secondary" onClick={() => onRemove(lot.id)}>
                       Remove
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
                       disabled={isWrongCrop || !balance || !hasBalance}
                       onClick={() => onAdd(lot)}
-                      className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Add to Packing
-                    </button>
+                    </Button>
                   )}
                 </div>
               );

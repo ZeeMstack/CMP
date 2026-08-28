@@ -10,10 +10,19 @@ import { FilterableSelect } from "@/components/FilterableSelect";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { ColdStorageMovementForm } from "@/components/processing/ColdStorageMovementForm";
+import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useFinishedGoodsLots, useFinishedGoodsStorageMovements, useLocationsTree, useRecordFinishedGoodsStorageMovement,
 } from "@/lib/query/hooks";
+
+// Explicit labels for the three frozen movement kinds -- never invented,
+// never a 4th kind. PLACE reads as the "settled" state (active/green),
+// RELEASE as neutral (leaving Cold Storage entirely), TRANSFER as
+// attention (still in Cold Storage, but moving between Locations).
+const MOVEMENT_KIND_LABEL: Record<string, string> = { place: "Place", release: "Release", transfer: "Transfer" };
+const MOVEMENT_KIND_TONE: Record<string, StatusTone> = { place: "active", release: "neutral", transfer: "attention" };
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -87,15 +96,11 @@ export default function ColdStoragePage() {
           {selectedLot && (
             <>
               {recordSuccess ? (
-                <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-                  <h2 className="text-sm font-semibold text-ink">Movement recorded</h2>
-                  <button
-                    type="button"
-                    onClick={() => setRecordSuccess(false)}
-                    className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-                  >
+                <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+                  <h2 className="font-serif text-base font-semibold text-ink">Movement recorded</h2>
+                  <Button type="button" variant="primary" className="self-start" onClick={() => setRecordSuccess(false)}>
                     Record another
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <ColdStorageMovementForm
@@ -116,7 +121,7 @@ export default function ColdStoragePage() {
               )}
 
               <div>
-                <h3 className="mb-2 text-sm font-semibold text-ink">Movement history — {selectedLot.code}</h3>
+                <h3 className="mb-2 font-serif text-sm font-semibold text-ink">Movement history — {selectedLot.code}</h3>
                 {movementsQuery.isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
                 {!movementsQuery.isLoading && (movementsQuery.data ?? []).length === 0 && (
                   <p className="text-sm text-ink-muted">No storage movements recorded yet for this Lot.</p>
@@ -126,10 +131,13 @@ export default function ColdStoragePage() {
                     .slice()
                     .sort((a, b) => b.effective_time.localeCompare(a.effective_time))
                     .map((m) => (
-                      <li key={m.id} className="rounded-md border border-border-subtle p-3 text-sm">
-                        <span className="font-medium capitalize text-ink">{m.movement_kind}</span>{" "}
+                      <li
+                        key={m.id}
+                        className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-3 text-sm"
+                      >
+                        <StatusBadge label={MOVEMENT_KIND_LABEL[m.movement_kind] ?? m.movement_kind} tone={MOVEMENT_KIND_TONE[m.movement_kind] ?? "neutral"} />
                         <span className="text-ink-muted">
-                          — {m.moved_weight_kg} kg / {m.moved_package_count} pkg —{" "}
+                          {m.moved_weight_kg} kg / {m.moved_package_count} pkg —{" "}
                           {new Date(m.effective_time).toLocaleString()}
                         </span>
                       </li>
