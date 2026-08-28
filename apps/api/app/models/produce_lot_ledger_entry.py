@@ -46,6 +46,15 @@ class ProduceLotLedgerEntry(Base):
     only, from CMP-015C onward. `packing_event_id` no longer exists on this
     table.
 
+    POSTHARVEST-OPS-001H adds a fourth (surviving) kind, `grading_reversal`
+    — a typed positive credit restoring the exact quantity a
+    `GradingEvent`'s own `grading_consumption` debited, `id` equal to its
+    own `GradingReversalEvent`'s id (exactly one credit per reversal, the
+    same one-source-lot cardinality `grading_consumption` already has).
+    The weight equals `input_presented_weight_kg - remainder_weight_kg`
+    read off the ORIGINAL `GradingEvent` row (never a live balance) —
+    remainder was never debited, so it is never re-credited either.
+
     Each remaining kind is a deterministic, reconstructible projection of
     exactly one source row: a `harvest_receipt`'s `id`/`produce_lot_id`
     equal the lot's own id and `harvest_event_id` is populated; a
@@ -90,6 +99,11 @@ class ProduceLotLedgerEntry(Base):
     # New in POSTHARVEST-OPS-001C: populated for grading_consumption, NULL
     # for the other three kinds.
     grading_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("grading_events.id"), nullable=True)
+    # New in POSTHARVEST-OPS-001H: populated for grading_reversal, NULL for
+    # every other kind.
+    grading_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("grading_reversal_events.id"), nullable=True
+    )
     entry_kind: Mapped[str] = mapped_column(String, nullable=False)
     weight_delta_kg: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     whole_unit_count_delta: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -100,7 +114,7 @@ class ProduceLotLedgerEntry(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "entry_kind IN ('harvest_receipt', 'harvest_adjustment', 'grading_consumption')",
+            "entry_kind IN ('harvest_receipt', 'harvest_adjustment', 'grading_consumption', 'grading_reversal')",
             name="ck_produce_lot_ledger_entries_kind_allowed",
         ),
         # NUMERIC is deliberately unscoped, not NUMERIC(14,3) — see CMP-013's
@@ -125,13 +139,16 @@ class ProduceLotLedgerEntry(Base):
             "AND weight_delta_kg = trunc(weight_delta_kg, 3) "
             "AND weight_delta_kg > -100000000000 AND weight_delta_kg < 100000000000) "
             "OR (entry_kind = 'grading_consumption' AND weight_delta_kg < 0 "
-            "AND weight_delta_kg = trunc(weight_delta_kg, 3) AND weight_delta_kg > -100000000000)",
+            "AND weight_delta_kg = trunc(weight_delta_kg, 3) AND weight_delta_kg > -100000000000) "
+            "OR (entry_kind = 'grading_reversal' AND weight_delta_kg > 0 "
+            "AND weight_delta_kg = trunc(weight_delta_kg, 3) AND weight_delta_kg < 100000000000)",
             name="ck_produce_lot_ledger_entries_weight_envelope",
         ),
         CheckConstraint(
             "(entry_kind = 'harvest_receipt' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta > 0)) "
             "OR (entry_kind = 'harvest_adjustment' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta <> 0)) "
-            "OR (entry_kind = 'grading_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0))",
+            "OR (entry_kind = 'grading_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0)) "
+            "OR (entry_kind = 'grading_reversal' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta > 0))",
             name="ck_produce_lot_ledger_entries_count_positive",
         ),
         # A count-only correction has weight_delta_kg = 0; a weight-only
@@ -157,11 +174,17 @@ class ProduceLotLedgerEntry(Base):
         # table at all).
         CheckConstraint(
             "(entry_kind = 'harvest_receipt' AND harvest_event_id IS NOT NULL "
-            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NULL) "
+            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NULL "
+            "AND grading_reversal_event_id IS NULL) "
             "OR (entry_kind = 'harvest_adjustment' AND harvest_event_id IS NULL "
-            "AND harvest_source_line_correction_id IS NOT NULL AND grading_event_id IS NULL) "
+            "AND harvest_source_line_correction_id IS NOT NULL AND grading_event_id IS NULL "
+            "AND grading_reversal_event_id IS NULL) "
             "OR (entry_kind = 'grading_consumption' AND harvest_event_id IS NULL "
-            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NOT NULL)",
+            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NOT NULL "
+            "AND grading_reversal_event_id IS NULL) "
+            "OR (entry_kind = 'grading_reversal' AND harvest_event_id IS NULL "
+            "AND harvest_source_line_correction_id IS NULL AND grading_event_id IS NULL "
+            "AND grading_reversal_event_id IS NOT NULL)",
             name="ck_produce_lot_ledger_entries_typed_source_shape",
         ),
         UniqueConstraint("tenant_id", "farm_id", "id", name="uq_produce_lot_ledger_entries_tenant_farm_id"),
@@ -225,5 +248,23 @@ class ProduceLotLedgerEntry(Base):
             ["tenant_id", "farm_id", "grading_event_id"],
             ["grading_events.tenant_id", "grading_events.farm_id", "grading_events.id"],
             name="fk_produce_lot_ledger_entries_tenant_farm_grading_event",
+        ),
+        # New in POSTHARVEST-OPS-001H, same MATCH SIMPLE reasoning as above.
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "grading_reversal_event_id"],
+            [
+                "grading_reversal_events.tenant_id", "grading_reversal_events.farm_id",
+                "grading_reversal_events.id",
+            ],
+            name="fk_produce_lot_ledger_entries_tenant_farm_grading_reversal",
+        ),
+        # POSTHARVEST-OPS-001H: one GradingReversalEvent produces exactly
+        # one grading_reversal credit, ever -- mirrors the grading_consumption
+        # index above (deterministic id already makes duplicates unreachable
+        # via the primary key; this is defense in depth on a different
+        # column).
+        Index(
+            "ux_produce_lot_ledger_entries_event_grading_reversal", "grading_reversal_event_id", unique=True,
+            postgresql_where=text("entry_kind = 'grading_reversal'"),
         ),
     )

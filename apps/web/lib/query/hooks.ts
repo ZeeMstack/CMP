@@ -11,10 +11,12 @@ import type {
   CorrectSeedlingDispositionCreate,
   GerminationOutcomeCommandCreate,
   GradingEventCreate,
+  GradingReversalEventCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
   LeafyProductionTransferCreate,
   PackingEventCreate,
+  PackingReversalEventCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   RecordLeafyHarvestCreate,
@@ -1100,6 +1102,61 @@ export function useRecordGrading(farmId: string) {
   });
 }
 
+/** Whether the target GradingEvent has already been reversed -- 404 (never
+ * reversed) is a normal, expected outcome, not an error state. */
+export function useGradingReversalEvent(farmId: string, gradingEventId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.gradingReversalEvent(tenantId ?? "", farmId, gradingEventId ?? ""),
+    queryFn: async ({ signal }) => {
+      try {
+        return await api.getGradingReversalEvent(farmId, gradingEventId as string, signal);
+      } catch (error) {
+        if (error instanceof AppError && error.kind === "not_found") return null;
+        throw error;
+      }
+    },
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(gradingEventId),
+  });
+}
+
+/** POSTHARVEST-OPS-001H: whole-event reversal only -- never a field-by-field
+ * correction. `sourceHarvestedProduceLotId` is threaded through purely for
+ * cache invalidation (the reversal response itself does not carry it). */
+export function useReverseGradingEvent(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (variables: {
+      gradingEventId: string;
+      sourceHarvestedProduceLotId: string;
+      payload: GradingReversalEventCreate;
+    }) => api.reverseGradingEvent(farmId, variables.gradingEventId, variables.payload),
+    onSuccess: (result, variables) => {
+      if (!tenantId) return;
+      _invalidateGrading(queryClient, tenantId, farmId);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.gradingReversalEvent(tenantId, farmId, variables.gradingEventId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.harvestedProduceLotBalance(tenantId, farmId, variables.sourceHarvestedProduceLotId),
+      });
+      for (const output of result.outputs) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradedProduceLotBalance(tenantId, farmId, output.graded_produce_lot_id),
+        });
+      }
+    },
+    onError: (error, variables) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.gradingReversalEvent(tenantId, farmId, variables.gradingEventId),
+      });
+    },
+  });
+}
+
 export function usePackSpecifications(cropId: string | undefined) {
   const tenantId = useSelectedTenantId();
   return useQuery({
@@ -1206,6 +1263,61 @@ export function useRecordPacking(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidatePacking(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+/** Whether the target PackingEvent has already been reversed -- 404 (never
+ * reversed) is a normal, expected outcome, not an error state. */
+export function usePackingReversalEvent(farmId: string, packingEventId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packingReversalEvent(tenantId ?? "", farmId, packingEventId ?? ""),
+    queryFn: async ({ signal }) => {
+      try {
+        return await api.getPackingReversalEvent(farmId, packingEventId as string, signal);
+      } catch (error) {
+        if (error instanceof AppError && error.kind === "not_found") return null;
+        throw error;
+      }
+    },
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(packingEventId),
+  });
+}
+
+/** POSTHARVEST-OPS-001H: whole-event reversal only -- never a field-by-field
+ * correction. `finishedGoodsLotId` is threaded through purely for cache
+ * invalidation (the reversal response itself does not carry it). */
+export function useReversePackingEvent(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (variables: {
+      packingEventId: string;
+      finishedGoodsLotId: string;
+      payload: PackingReversalEventCreate;
+    }) => api.reversePackingEvent(farmId, variables.packingEventId, variables.payload),
+    onSuccess: (result, variables) => {
+      if (!tenantId) return;
+      _invalidatePacking(queryClient, tenantId, farmId);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.packingReversalEvent(tenantId, farmId, variables.packingEventId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.finishedGoodsBalance(tenantId, farmId, variables.finishedGoodsLotId),
+      });
+      for (const input of result.inputs) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gradedProduceLotBalance(tenantId, farmId, input.graded_produce_lot_id),
+        });
+      }
+    },
+    onError: (error, variables) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.packingReversalEvent(tenantId, farmId, variables.packingEventId),
+      });
     },
   });
 }

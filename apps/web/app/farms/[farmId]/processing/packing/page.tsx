@@ -138,7 +138,7 @@ export default function PackingPage() {
       )}
 
       {tab === "history" && (
-        <PackingHistoryPanel events={packingEventsQuery.data ?? []} isLoading={packingEventsQuery.isLoading} />
+        <PackingHistoryPanel farmId={farmId} events={packingEventsQuery.data ?? []} isLoading={packingEventsQuery.isLoading} />
       )}
     </div>
   );

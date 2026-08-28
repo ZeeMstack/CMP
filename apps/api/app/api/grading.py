@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import TenantContext
 from app.core.db import get_db
 from app.core.permissions import Permission, require_permission
-from app.schemas.grading import GradedProduceLotRead, GradingEventCreate, GradingEventRead
+from app.schemas.grading import (
+    GradedProduceLotRead,
+    GradingEventCreate,
+    GradingEventRead,
+    GradingReversalEventCreate,
+    GradingReversalEventRead,
+)
 from app.schemas.graded_produce_lot_ledger import GradedProduceLotBalanceRead, GradedProduceLotLedgerEntryRead
 from app.services import grading_service, graded_produce_lot_ledger_service
 from app.services.errors import (
@@ -15,11 +21,17 @@ from app.services.errors import (
     GradeDefinitionVersionNotFoundError,
     GradedProduceLotNotFoundError,
     GradingCommandReusedWithDifferentPayloadError,
+    GradingEventAlreadyReversedError,
     GradingEventNotFoundError,
+    GradingReversalBlockedByActivePackingError,
+    GradingReversalCommandReusedWithDifferentPayloadError,
+    GradingReversalEventNotFoundError,
+    GradingReversalValidationError,
     GradingSourceProduceLotNotFoundError,
     GradingValidationError,
     InsufficientHarvestedProduceLotBalanceError,
     InvalidGradingEffectiveTimeError,
+    InvalidGradingReversalEffectiveTimeError,
     ProcessingHallLocationInvalidError,
     QualityHoldOpenError,
     RecallContainmentOpenError,
@@ -118,6 +130,62 @@ def get_grading_event(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, grading_event_id=grading_event_id
         )
     except (FarmNotFoundError, GradingEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.post(
+    "/farms/{farm_id}/grading-events/{grading_event_id}/reversal",
+    response_model=GradingReversalEventRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def reverse_grading_event(
+    farm_id: uuid.UUID,
+    grading_event_id: uuid.UUID,
+    payload: GradingReversalEventCreate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_MANAGE)),
+) -> GradingReversalEventRead:
+    try:
+        grading_service.reverse_grading_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            farm_id=farm_id,
+            actor_user_id=ctx.user_id,
+            client_command_id=payload.client_command_id,
+            grading_event_id=grading_event_id,
+            effective_time=payload.effective_time,
+            reason_code=payload.reason_code,
+            note=payload.note,
+        )
+    except (FarmNotFoundError, GradingEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except (
+        GradingReversalCommandReusedWithDifferentPayloadError,
+        GradingEventAlreadyReversedError,
+        GradingReversalBlockedByActivePackingError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (GradingReversalValidationError, InvalidGradingReversalEffectiveTimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return grading_service.get_grading_reversal_event(
+        db, tenant_id=ctx.tenant_id, farm_id=farm_id, grading_event_id=grading_event_id
+    )
+
+
+@router.get(
+    "/farms/{farm_id}/grading-events/{grading_event_id}/reversal", response_model=GradingReversalEventRead
+)
+def get_grading_reversal_event(
+    farm_id: uuid.UUID,
+    grading_event_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+) -> GradingReversalEventRead:
+    try:
+        return grading_service.get_grading_reversal_event(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, grading_event_id=grading_event_id
+        )
+    except (FarmNotFoundError, GradingReversalEventNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
 
 

@@ -116,6 +116,11 @@ def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        # POSTHARVEST-OPS-001H: reversal tables, existence-guarded the same
+        # way as every other post-CMP-013 table in this cleanup.
+        for table in ("grading_reversal_outputs", "grading_reversal_events"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM recall_case_closures WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM recall_scope_finished_goods_lots WHERE tenant_id = :tid"), {"tid": tenant_id})
         if conn.execute(text("SELECT to_regclass('recall_scope_graded_produce_lots')")).scalar() is not None:

@@ -59,6 +59,13 @@ class PackingInputLine(Base):
         UniqueConstraint(
             "packing_event_id", "graded_produce_lot_id", name="ux_packing_input_lines_event_gpl"
         ),
+        # POSTHARVEST-OPS-001H: added so packing_reversal_inputs can use a
+        # real composite FK to this table -- mirrors CMP-018's own
+        # uq_locations_tenant_farm_id (locations had no such constraint
+        # before that ticket either).
+        UniqueConstraint(
+            "tenant_id", "farm_id", "id", name="uq_packing_input_lines_tenant_farm_id"
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "packing_event_id"],
             ["packing_events.tenant_id", "packing_events.farm_id", "packing_events.id"],

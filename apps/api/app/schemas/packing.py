@@ -178,6 +178,70 @@ class FinishedGoodsLotRead(BaseModel):
         return canonical_decimal_str(v)
 
 
+# --- POSTHARVEST-OPS-001H: reversal ------------------------------------------------
+
+
+class PackingReversalEventCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_command_id: uuid.UUID
+    effective_time: datetime
+    reason_code: str
+    # PRE-COMMIT AUDIT: optional -- only reason_code is mandatory (mirrors
+    # SeedlingDispositionEvent's own REVERSAL shape).
+    note: str | None = None
+
+    @field_validator("effective_time")
+    @classmethod
+    def validate_effective_time(cls, v: datetime) -> datetime:
+        return _require_tz_aware(v)
+
+    @field_validator("reason_code")
+    @classmethod
+    def validate_reason_code(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("reason_code must not be blank")
+        return v
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, v: str | None) -> str | None:
+        return _blank_to_none(v)
+
+
+class PackingReversalInputRead(BaseModel):
+    id: uuid.UUID
+    graded_produce_lot_id: uuid.UUID
+    graded_produce_lot_code: str
+    restored_weight_kg: Decimal
+    restored_whole_unit_count: int | None
+
+    @field_serializer("restored_weight_kg")
+    def serialize_weight(self, v: Decimal) -> str:
+        return canonical_decimal_str(v)
+
+
+class PackingReversalEventRead(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    farm_id: uuid.UUID
+    packing_event_id: uuid.UUID
+    effective_time: datetime
+    recorded_time: datetime
+    actor_user_id: uuid.UUID
+    client_command_id: uuid.UUID
+    reason_code: str
+    note: str | None
+    neutralized_finished_goods_weight_kg: Decimal
+    neutralized_finished_goods_package_count: int
+    inputs: list[PackingReversalInputRead]
+
+    @field_serializer("neutralized_finished_goods_weight_kg")
+    def serialize_weight(self, v: Decimal) -> str:
+        return canonical_decimal_str(v)
+
+
 __all__ = [
     "PackingInputLineIn",
     "PackingEventCreate",
@@ -185,4 +249,7 @@ __all__ = [
     "FinishedGoodsLotSummary",
     "PackingEventRead",
     "FinishedGoodsLotRead",
+    "PackingReversalEventCreate",
+    "PackingReversalInputRead",
+    "PackingReversalEventRead",
 ]

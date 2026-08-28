@@ -34,13 +34,22 @@ from app.models.graded_produce_lot_ledger_entry import GradedProduceLotLedgerEnt
 from app.models.grade_definition import GradeDefinition
 from app.models.grade_definition_version import GradeDefinitionVersion
 from app.models.grading_event import GradingEvent
+from app.models.grading_reversal_event import GradingReversalEvent
+from app.models.grading_reversal_output import GradingReversalOutput
 from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.location import Location
 from app.models.location_type import LocationType
+from app.models.packing_input_line import PackingInputLine
+from app.models.packing_reversal_event import PackingReversalEvent
 from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
 from app.models.variety import Variety
 from app.schemas.crop_batch import CropSummary, VarietySummary
-from app.schemas.grading import GradedProduceLotRead, GradingEventRead
+from app.schemas.grading import (
+    GradedProduceLotRead,
+    GradingEventRead,
+    GradingReversalEventRead,
+    GradingReversalOutputRead,
+)
 from app.schemas.harvest import MAX_WEIGHT_KG, canonical_decimal_str
 from app.services import farm_service, quality_hold_service, recall_service
 from app.services.audit import append_audit_event
@@ -50,11 +59,17 @@ from app.services.errors import (
     GradedProduceLotNotFoundError,
     GradeDefinitionVersionNotFoundError,
     GradingCommandReusedWithDifferentPayloadError,
+    GradingEventAlreadyReversedError,
     GradingEventNotFoundError,
+    GradingReversalBlockedByActivePackingError,
+    GradingReversalCommandReusedWithDifferentPayloadError,
+    GradingReversalEventNotFoundError,
+    GradingReversalValidationError,
     GradingSourceProduceLotNotFoundError,
     GradingValidationError,
     InsufficientHarvestedProduceLotBalanceError,
     InvalidGradingEffectiveTimeError,
+    InvalidGradingReversalEffectiveTimeError,
     ProcessingHallLocationInvalidError,
     QualityHoldOpenError,
     RecallContainmentOpenError,
@@ -431,6 +446,277 @@ def record_grading(
         raise
     db.refresh(event)
     return event
+
+
+# --- POSTHARVEST-OPS-001H: reversal -------------------------------------------------
+
+
+def _compute_grading_reversal_fingerprint(
+    *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, effective_time: datetime,
+    grading_event_id: uuid.UUID, reason_code: str, note: str | None,
+) -> str:
+    parts = [
+        str(tenant_id), str(farm_id), str(actor_user_id), effective_time.astimezone(timezone.utc).isoformat(),
+        str(grading_event_id), reason_code, note or "",
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _find_existing_grading_reversal_event(
+    db: Session, *, tenant_id: uuid.UUID, client_command_id: uuid.UUID
+) -> GradingReversalEvent | None:
+    return db.execute(
+        select(GradingReversalEvent).where(
+            GradingReversalEvent.tenant_id == tenant_id, GradingReversalEvent.client_command_id == client_command_id
+        )
+    ).scalar_one_or_none()
+
+
+def reverse_grading_event(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    grading_event_id: uuid.UUID,
+    effective_time: datetime,
+    reason_code: str,
+    note: str | None,
+) -> GradingReversalEvent:
+    """001H: whole-event reversal only -- never a field-by-field
+    correction. Restores the source HarvestedProduceLot's ledger balance by
+    the exact quantity `grading_consumption` debited, and zeroes every
+    output GradedProduceLot's balance back to zero. Blocked while any
+    output is still consumed by an ACTIVE (non-reversed) PackingEvent --
+    the safe unwind order is Packing reversal first, then Grading
+    reversal. `reason_code` is mandatory; `note` is optional (mirrors
+    `SeedlingDispositionEvent`'s own REVERSAL shape, the closest existing
+    "whole-event reversal" precedent in this codebase -- not
+    `HarvestSourceLineCorrection`'s stricter both-mandatory shape, which is
+    a linked-list field correction, not a reversal)."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    if effective_time > datetime.now(timezone.utc):
+        raise InvalidGradingReversalEffectiveTimeError("effective_time cannot be in the future")
+    if not reason_code.strip():
+        raise GradingReversalValidationError("reason_code is mandatory for a grading reversal")
+    note = note.strip() if note is not None and note.strip() else None
+
+    fingerprint = _compute_grading_reversal_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, effective_time=effective_time,
+        grading_event_id=grading_event_id, reason_code=reason_code, note=note,
+    )
+
+    existing = _find_existing_grading_reversal_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise GradingReversalCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    event = db.execute(
+        select(GradingEvent).where(
+            GradingEvent.id == grading_event_id, GradingEvent.tenant_id == tenant_id,
+            GradingEvent.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if event is None:
+        raise GradingEventNotFoundError(str(grading_event_id))
+
+    lot = db.execute(
+        select(HarvestedProduceLot).where(HarvestedProduceLot.id == event.source_harvested_produce_lot_id)
+    ).scalar_one()
+
+    # Lock order: CropBatch -> HarvestedProduceLot -> GradedProduceLot,
+    # matching record_grading's own global order exactly.
+    db.execute(select(CropBatch).where(CropBatch.id == lot.batch_id).with_for_update()).scalar_one()
+
+    existing = _find_existing_grading_reversal_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise GradingReversalCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    locked_lot = db.execute(
+        select(HarvestedProduceLot).where(HarvestedProduceLot.id == lot.id).with_for_update()
+    ).scalar_one()
+
+    outputs = list(
+        db.execute(
+            select(GradedProduceLot).where(GradedProduceLot.grading_event_id == event.id)
+            .order_by(GradedProduceLot.id).with_for_update()
+        ).scalars()
+    )
+
+    # Post-lock idempotency recheck -- a concurrent replay of this exact
+    # command could have committed while the locks above were being
+    # acquired.
+    existing = _find_existing_grading_reversal_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise GradingReversalCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    already_reversed = db.execute(
+        select(GradingReversalEvent.id).where(GradingReversalEvent.grading_event_id == event.id)
+    ).scalar_one_or_none()
+    if already_reversed is not None:
+        raise GradingEventAlreadyReversedError(str(grading_event_id))
+
+    if effective_time < event.effective_time:
+        raise InvalidGradingReversalEffectiveTimeError(
+            "effective_time cannot precede the target grading event's own effective_time"
+        )
+
+    # Downstream gate: block while any output GPL is still consumed by an
+    # ACTIVE (non-reversed) PackingEvent -- a PackingInputLine whose own
+    # PackingEvent has already been reversed does not block.
+    output_ids = [o.id for o in outputs]
+    if output_ids:
+        active_packing = db.execute(
+            select(PackingInputLine.graded_produce_lot_id)
+            .outerjoin(PackingReversalEvent, PackingReversalEvent.packing_event_id == PackingInputLine.packing_event_id)
+            .where(PackingInputLine.graded_produce_lot_id.in_(output_ids), PackingReversalEvent.id.is_(None))
+        ).first()
+        if active_packing is not None:
+            raise GradingReversalBlockedByActivePackingError(str(active_packing[0]))
+
+    processed_weight_kg = event.input_presented_weight_kg - event.remainder_weight_kg
+    processed_whole_unit_count = (
+        event.input_presented_whole_unit_count - event.remainder_whole_unit_count
+        if event.input_presented_whole_unit_count is not None
+        else None
+    )
+
+    reversal_id = uuid.uuid4()
+    output_row_ids = {o.id: uuid.uuid4() for o in outputs}
+
+    try:
+        reversal = GradingReversalEvent(
+            id=reversal_id, tenant_id=tenant_id, farm_id=farm_id, grading_event_id=event.id,
+            effective_time=effective_time, actor_user_id=actor_user_id, client_command_id=client_command_id,
+            request_fingerprint=fingerprint, reason_code=reason_code, note=note,
+        )
+        db.add(reversal)
+        db.flush()
+
+        # Restore the source HarvestedProduceLot's ledger balance --
+        # exactly the quantity grading_consumption debited, never the full
+        # presented amount (remainder was never debited).
+        db.add(
+            ProduceLotLedgerEntry(
+                id=reversal.id, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=locked_lot.id,
+                harvest_event_id=None, harvest_source_line_correction_id=None, grading_event_id=None,
+                grading_reversal_event_id=reversal.id, entry_kind="grading_reversal",
+                weight_delta_kg=processed_weight_kg, whole_unit_count_delta=processed_whole_unit_count,
+                effective_time=effective_time, recorded_time=reversal.recorded_time, actor_user_id=actor_user_id,
+                note=note,
+            )
+        )
+        db.flush()
+
+        output_rows: list[GradingReversalOutput] = []
+        for gpl in outputs:
+            row = GradingReversalOutput(
+                id=output_row_ids[gpl.id], tenant_id=tenant_id, farm_id=farm_id,
+                grading_reversal_event_id=reversal.id, graded_produce_lot_id=gpl.id,
+                reversed_weight_kg=gpl.original_received_weight_kg,
+                reversed_whole_unit_count=gpl.original_received_whole_unit_count,
+            )
+            db.add(row)
+            output_rows.append(row)
+        db.flush()
+
+        for row in output_rows:
+            db.add(
+                GradedProduceLotLedgerEntry(
+                    id=row.id, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_id=row.graded_produce_lot_id,
+                    grading_event_id=None, packing_event_id=None, grading_reversal_event_id=reversal.id,
+                    packing_reversal_event_id=None, entry_kind="grading_reversal",
+                    weight_delta_kg=-row.reversed_weight_kg,
+                    whole_unit_count_delta=(
+                        -row.reversed_whole_unit_count if row.reversed_whole_unit_count is not None else None
+                    ),
+                    effective_time=effective_time, recorded_time=reversal.recorded_time, actor_user_id=actor_user_id,
+                    note=note,
+                )
+            )
+        db.flush()
+
+        append_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="grading_event.reversed",
+            entity_type="grading_reversal_event", entity_id=reversal.id,
+            event_data={
+                "grading_reversal_event_id": str(reversal.id), "grading_event_id": str(event.id),
+                "source_harvested_produce_lot_id": str(locked_lot.id), "reason_code": reason_code,
+                "effective_time": effective_time.isoformat(), "client_command_id": str(client_command_id),
+                "restored_weight_kg": canonical_decimal_str(processed_weight_kg),
+                "output_count": len(output_rows),
+                "graded_produce_lot_ids": [str(r.graded_produce_lot_id) for r in output_rows],
+            },
+        )
+        db.flush()
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint = _constraint_name(exc)
+        if constraint == "ux_grading_reversal_events_tenant_client_command_id":
+            replay = _find_existing_grading_reversal_event(
+                db, tenant_id=tenant_id, client_command_id=client_command_id
+            )
+            if replay is not None and replay.request_fingerprint == fingerprint:
+                return replay
+            raise GradingReversalCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        if constraint == "ux_grading_reversal_events_grading_event_id":
+            raise GradingEventAlreadyReversedError(str(grading_event_id)) from exc
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(reversal)
+    return reversal
+
+
+def get_grading_reversal_event(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, grading_event_id: uuid.UUID
+) -> GradingReversalEventRead:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    reversal = db.execute(
+        select(GradingReversalEvent).where(
+            GradingReversalEvent.grading_event_id == grading_event_id, GradingReversalEvent.tenant_id == tenant_id,
+            GradingReversalEvent.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if reversal is None:
+        raise GradingReversalEventNotFoundError(str(grading_event_id))
+    return _row_to_grading_reversal_event_read(db, reversal)
+
+
+def _row_to_grading_reversal_event_read(db: Session, reversal: GradingReversalEvent) -> GradingReversalEventRead:
+    ledger_entry = db.execute(
+        select(ProduceLotLedgerEntry).where(ProduceLotLedgerEntry.id == reversal.id)
+    ).scalar_one()
+    output_rows = db.execute(
+        select(GradingReversalOutput, GradedProduceLot.code)
+        .join(GradedProduceLot, GradedProduceLot.id == GradingReversalOutput.graded_produce_lot_id)
+        .where(GradingReversalOutput.grading_reversal_event_id == reversal.id)
+        .order_by(GradedProduceLot.code)
+    ).all()
+    outputs = [
+        GradingReversalOutputRead(
+            id=row.id, graded_produce_lot_id=row.graded_produce_lot_id, graded_produce_lot_code=code,
+            reversed_weight_kg=row.reversed_weight_kg, reversed_whole_unit_count=row.reversed_whole_unit_count,
+        )
+        for row, code in output_rows
+    ]
+    return GradingReversalEventRead(
+        id=reversal.id, tenant_id=reversal.tenant_id, farm_id=reversal.farm_id,
+        grading_event_id=reversal.grading_event_id, effective_time=reversal.effective_time,
+        recorded_time=reversal.recorded_time, actor_user_id=reversal.actor_user_id,
+        client_command_id=reversal.client_command_id, reason_code=reversal.reason_code, note=reversal.note,
+        restored_produce_lot_weight_kg=ledger_entry.weight_delta_kg,
+        restored_produce_lot_whole_unit_count=ledger_entry.whole_unit_count_delta, outputs=outputs,
+    )
 
 
 # --- Reads ------------------------------------------------------------------------
