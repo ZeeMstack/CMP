@@ -1440,6 +1440,41 @@ export function useRecordDispatch(farmId: string) {
   });
 }
 
+// --- UI-OPT-001: Traceability (read-only) --------------------------------
+// Backed by backend endpoints that already existed before this ticket --
+// see the comment on `getFinishedGoodsLotTrace`/`getCropBatchImpact`/
+// `getHarvestedProduceLotImpact` in `lib/api/client.ts`.
+
+export function useFinishedGoodsLotTrace(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsLotTrace(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.getFinishedGoodsLotTrace(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+export function useCropBatchImpact(farmId: string, batchId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cropBatchImpact(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.getCropBatchImpact(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+export function useHarvestedProduceLotImpact(farmId: string, produceLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.harvestedProduceLotImpact(tenantId ?? "", farmId, produceLotId ?? ""),
+    queryFn: ({ signal }) => api.getHarvestedProduceLotImpact(farmId, produceLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(produceLotId),
+  });
+}
+
 export function useCorrectLeafyHarvestSourceLine(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();

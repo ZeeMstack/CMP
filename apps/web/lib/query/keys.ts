@@ -176,4 +176,12 @@ export const queryKeys = {
 
   dispatches: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "dispatches"] as const,
+
+  // --- UI-OPT-001 (Traceability, read-only) ---------------------------------
+  finishedGoodsLotTrace: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "traceability", "finished-goods-lots", finishedGoodsLotId] as const,
+  cropBatchImpact: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "traceability", "crop-batches", batchId, "impact"] as const,
+  harvestedProduceLotImpact: (tenantId: string, farmId: string, produceLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "traceability", "harvested-produce-lots", produceLotId, "impact"] as const,
 };

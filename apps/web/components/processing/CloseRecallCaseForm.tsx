@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { RecallCaseClose } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { closeRecallCaseFormSchema, type CloseRecallCaseFormValues } from "@/lib/validation/recall";
@@ -68,9 +69,9 @@ export function CloseRecallCaseForm({
   return (
     <form
       onSubmit={handleSubmit(submit)}
-      className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Close Recall Case</h2>
+      <h2 className="font-serif text-base font-semibold text-ink">Close Recall Case</h2>
       <Field label="Close reason" error={errors.close_reason?.message}>
         <textarea className={`${inputClass} min-h-20`} rows={2} {...register("close_reason")} />
       </Field>
@@ -88,13 +89,9 @@ export function CloseRecallCaseForm({
         </p>
       )}
       <div>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Closing…" : "Close Recall Case"}
-        </button>
+        </Button>
       </div>
     </form>
   );

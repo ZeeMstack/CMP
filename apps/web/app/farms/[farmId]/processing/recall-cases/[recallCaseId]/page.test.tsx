@@ -13,13 +13,22 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+const FG_LOT = {
+  id: "fg-1", tenant_id: "t", farm_id: "farm-1", code: "FG-001", crop: { id: "crop-1", code: "LET", common_name: "Lettuce" },
+  variety: null, packing_event_id: "pe-1", source_graded_produce_lot_ids: ["gpl-1"], net_packed_weight_kg: "100.000",
+  package_count: 10, effective_time: "2026-01-10T08:00:00Z", recorded_time: "2026-01-10T08:05:00Z",
+};
+
 function recallCaseDetail(overrides: Record<string, unknown> = {}) {
   return {
     recall_case_id: "rc-1", code: "RC-001", crop_batch_id: null, harvested_produce_lot_id: null,
     graded_produce_lot_id: null, finished_goods_lot_id: "fg-1", reason_code: "contamination",
     reason_text: "suspected contamination", effective_time: "2026-01-10T09:00:00Z",
     recorded_time: "2026-01-10T09:00:00Z", actor_user_id: "user-1", is_open: true, closure: null,
-    frozen_scope: { finished_goods_lots: ["fg-1"] }, live_state: { finished_goods_lots: ["fg-1"] },
+    frozen_scope: {
+      crop_batch_ids: [], harvested_produce_lot_ids: [], graded_produce_lot_ids: [], finished_goods_lot_ids: ["fg-1"],
+    },
+    live_state: { finished_goods_lots: [], storage: [], dispatches: [] },
     ...overrides,
   };
 }
@@ -42,6 +51,12 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
       if (url.includes("/recall-cases/rc-1")) {
         return jsonResponse(current);
       }
+      if (url.includes("/finished-goods-lots")) {
+        return jsonResponse([FG_LOT]);
+      }
+      if (url.includes("/locations/tree")) {
+        return jsonResponse([]);
+      }
       return jsonResponse([]);
     }),
   );
@@ -57,6 +72,15 @@ describe("RecallCaseDetailPage", () => {
     render(withQueryClient(<RecallCaseDetailPage />));
 
     await waitFor(() => expect(screen.getByText("Open")).toBeInTheDocument());
+
+    // UI-OPT-001: raw JSON is gone -- both scope sections render real
+    // structured facts, and the Finished Goods Lot scope id resolves to its
+    // real code rather than showing the raw uuid.
+    expect(document.querySelector("pre")).not.toBeInTheDocument();
+    expect(screen.getByText("Contained at time of opening")).toBeInTheDocument();
+    expect(screen.getByText("Currently affected")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("FG-001").length).toBeGreaterThan(0));
+
     fireEvent.change(screen.getByLabelText(/close reason/i), { target: { value: "resolved" } });
     fireEvent.click(screen.getByRole("button", { name: /^close recall case$/i }));
 
