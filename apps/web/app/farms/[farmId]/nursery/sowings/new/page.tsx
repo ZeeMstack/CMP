@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { PageHeader } from "@/components/PageHeader";
 import { SowingForm } from "@/components/nursery/SowingForm";
 import { AppError } from "@/lib/errors/adapter";
@@ -29,6 +30,7 @@ export default function NewSowingPage() {
           />
         }
       />
+      <NurseryJourney farmId={farmId} current="seeding" />
       <SowingForm
         farmId={farmId}
         isSubmitting={mutation.isPending}

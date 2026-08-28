@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { useCurrentGerminationOutcomes, useGerminationTrays, useRecordGerminationOutcomes } from "@/lib/query/hooks";
 import {
@@ -105,8 +106,8 @@ export function RecordOutcomeForm({
     const values = getValues();
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">
             {values.assessment_complete ? "Review before completing" : "Review provisional observation"}
           </h2>
           {!values.assessment_complete && (
@@ -158,22 +159,12 @@ export function RecordOutcomeForm({
         </div>
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={mutation.isPending}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={mutation.isPending}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={mutation.isPending}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={mutation.isPending}>
             {mutation.isPending ? "Recording…" : values.assessment_complete ? "Complete Outcome" : "Save Observation"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -187,7 +178,7 @@ export function RecordOutcomeForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seed Tray</legend>
         {traysQuery.isSuccess && trays.length === 0 ? (
           <p className="text-sm text-ink-muted">No Sown Seed Trays are eligible for a Germination outcome yet.</p>
@@ -254,8 +245,12 @@ export function RecordOutcomeForm({
 
       {selectedTray && (
         <>
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Seedling counts</legend>
+            <p className="text-xs text-ink-muted sm:col-span-2">
+              Normal and Abnormal seedlings are both living, emerged seedlings — record the actual counts observed,
+              not a loss assessment.
+            </p>
             <Field label="Normal seedlings" error={errors.normal_seedling_count?.message}>
               <input
                 type="number" min={0}
@@ -270,13 +265,14 @@ export function RecordOutcomeForm({
                 className={inputClass}
               />
             </Field>
-            <p className="text-sm text-ink-muted sm:col-span-2">
+            <p className="rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800 sm:col-span-2">
+              Normal + Abnormal = <span className="font-semibold">{living.toLocaleString()} living</span> seedlings.
               Living seedlings: {living.toLocaleString()} · Seeds not represented by living seedlings:{" "}
               {gap?.toLocaleString()}
             </p>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-3 rounded-lg border border-border-subtle p-4">
+          <fieldset className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
             <legend className="px-1 text-sm font-semibold text-ink">Assessment status</legend>
             <label className="flex items-center gap-2 text-sm text-ink">
               <input type="checkbox" {...register("assessment_complete")} className="h-5 w-5" />
@@ -287,7 +283,7 @@ export function RecordOutcomeForm({
             )}
           </fieldset>
 
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Observed date/time</legend>
             <Field label="Date" error={errors.effective_date?.message}>
               <input type="date" {...register("effective_date")} className={inputClass} />
@@ -297,7 +293,7 @@ export function RecordOutcomeForm({
             </Field>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+          <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
             <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
             <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
           </fieldset>
@@ -305,20 +301,12 @@ export function RecordOutcomeForm({
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!selectedTray}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={!selectedTray}>
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

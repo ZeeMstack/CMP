@@ -8,9 +8,16 @@ import { PageHeader } from "@/components/PageHeader";
 import { DispatchForm } from "@/components/processing/DispatchForm";
 import { DispatchHistoryPanel } from "@/components/processing/DispatchHistoryPanel";
 import { DispatchSourcePanel } from "@/components/processing/DispatchSourcePanel";
+import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import type { FinishedGoodsLotRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useDispatchEvents, useFinishedGoodsLots, useRecallCases, useRecordDispatch } from "@/lib/query/hooks";
+
+const TABS = [
+  { id: "dispatch", label: "Dispatch Finished Goods" },
+  { id: "history", label: "Dispatch History" },
+] as const;
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -53,47 +60,36 @@ export default function DispatchPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("dispatch")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "dispatch" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Dispatch Finished Goods
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "history" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Dispatch History
-        </button>
+      <div className="mb-6">
+        <Tabs
+          tabs={TABS.map(({ id, label }) => ({ id, label }))}
+          activeId={tab}
+          onChange={(id) => setTab(id as "dispatch" | "history")}
+          aria-label="Dispatch sections"
+        />
       </div>
 
       {tab === "dispatch" && (
         <div className="flex flex-col gap-4">
           {recordSuccess ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Dispatch recorded</h2>
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Dispatch recorded</h2>
               <p className="text-sm text-ink">
                 <span className="font-medium">{recordSuccess.code}</span> dispatched from{" "}
                 <span className="font-medium">{recordSuccess.lotCodes.join(", ")}</span>
               </p>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start"
                 onClick={() => {
                   setSelectedIds([]);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
               >
                 Done
-              </button>
+              </Button>
             </div>
           ) : (
             <>

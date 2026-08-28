@@ -17,18 +17,18 @@ function Branch({ label, defaultExpanded, children }: { label: ReactNode; defaul
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex min-h-11 w-full items-center gap-2 rounded px-1 text-left hover:bg-surface-subtle"
+        className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-surface-subtle"
       >
-        <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
-        <span className="text-sm text-ink">{label}</span>
+        <ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 text-ink-muted transition-transform ${expanded ? "rotate-90" : ""}`} />
+        <span className="text-sm font-medium text-ink">{label}</span>
       </button>
-      {expanded && <ul className="ml-6 border-l border-border-subtle pl-3">{children}</ul>}
+      {expanded && <ul className="ml-5 border-l border-border-subtle pl-3">{children}</ul>}
     </li>
   );
 }
 
 function Leaf({ label }: { label: ReactNode }) {
-  return <li className="flex min-h-11 items-center px-1 text-sm text-ink-muted">{label}</li>;
+  return <li className="flex min-h-11 items-center rounded-md px-2 text-sm text-ink-muted hover:bg-surface-subtle">{label}</li>;
 }
 
 export function GreenhouseStructureView({ structure }: { structure: GreenhouseStructureRead }) {

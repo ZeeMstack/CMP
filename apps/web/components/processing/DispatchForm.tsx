@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { DispatchLineRow } from "@/components/processing/DispatchLineRow";
+import { Button } from "@/components/ui/Button";
 import type { DispatchEventCreate, FinishedGoodsLotRead } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { recordDispatchFormSchema, type RecordDispatchFormValues } from "@/lib/validation/dispatch";
@@ -126,12 +127,19 @@ export function DispatchForm({
   if (step === "review") {
     const values = getValues();
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+      <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <StepIndicator step="review" />
+        <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <p className="text-sm text-ink-muted">
           {values.code} · {values.effective_date} {values.effective_time_of_day}
         </p>
-        <p className="text-sm text-ink">Dispatch temperature: {values.dispatch_temperature_c} °C</p>
+        {/* One reading for the whole vehicle/dispatch -- never per line/lot,
+            so it is deliberately shown once here, apart from the per-lot
+            list below, rather than folded into any one line's row. */}
+        <p className="rounded-md border border-border-subtle bg-surface-subtle px-3 py-2 text-sm text-ink">
+          Dispatch temperature: {values.dispatch_temperature_c} °C{" "}
+          <span className="text-xs text-ink-muted">— one reading for this entire dispatch</span>
+        </p>
         <ul className="flex flex-col gap-2">
           {values.lines.map((l) => (
             <li key={l.finished_goods_lot_id} className="rounded-md border border-border-subtle p-3 text-sm">
@@ -158,22 +166,12 @@ export function DispatchForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Confirm"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -182,9 +180,10 @@ export function DispatchForm({
   return (
     <form
       onSubmit={handleSubmit(goToReview)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Dispatch {lots.map((l) => l.code).join(", ")}</h2>
+      <StepIndicator step="configure" />
+      <h2 className="font-serif text-base font-semibold text-ink">Dispatch {lots.map((l) => l.code).join(", ")}</h2>
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-ink">Finished Goods Lots</h3>
@@ -201,16 +200,24 @@ export function DispatchForm({
         <Field label="Dispatch code" error={errors.code?.message}>
           <input className={inputClass} {...register("code")} />
         </Field>
+        <Field label="External reference (optional)" error={errors.external_reference?.message}>
+          <input className={inputClass} {...register("external_reference")} />
+        </Field>
+      </fieldset>
+
+      {/* Deliberately its own bordered block, separate from the code/
+          reference fieldset above -- this is the single reading for the
+          whole vehicle/dispatch (never per Lot/line/container), so it reads
+          as one distinct fact rather than just another form field. */}
+      <div className="rounded-md border border-border-subtle bg-surface-subtle p-3">
         <Field label="Dispatch Temperature (°C)" error={errors.dispatch_temperature_c?.message}>
           <input
             type="number" step={0.1} className={inputClass}
             {...register("dispatch_temperature_c", { valueAsNumber: true })}
           />
         </Field>
-        <Field label="External reference (optional)" error={errors.external_reference?.message}>
-          <input className={inputClass} {...register("external_reference")} />
-        </Field>
-      </fieldset>
+        <p className="mt-1 text-xs text-ink-muted">One reading for this entire dispatch — not per Lot or container.</p>
+      </div>
 
       <Field label="Note (optional)" error={errors.note?.message}>
         <textarea className={`${inputClass} min-h-20`} rows={2} {...register("note")} />
@@ -232,10 +239,22 @@ export function DispatchForm({
       )}
 
       <div>
-        <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` above); this just makes the two-step configure → review
+ * flow visible to the operator, mirroring `PackingForm.tsx`'s own
+ * `StepIndicator`. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }

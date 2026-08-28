@@ -7,6 +7,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { GradingOutputRow } from "@/components/processing/GradingOutputRow";
 import { LocationSelect } from "@/components/processing/LocationSelect";
 import { ReconciliationSummary } from "@/components/processing/ReconciliationSummary";
+import { Button } from "@/components/ui/Button";
 import type { GradingEventCreate, HarvestedProduceLotRead, LocationTreeNode, ProduceLotBalanceRead } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -158,8 +159,9 @@ export function GradingForm({
   if (step === "review") {
     const values = getValues();
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+      <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <StepIndicator step="review" />
+        <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <p className="text-sm text-ink-muted">
           Source <span className="font-medium text-ink">{values.source_produce_lot_code}</span> ·{" "}
           {values.effective_date} {values.effective_time_of_day}
@@ -199,22 +201,12 @@ export function GradingForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Confirm"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -223,9 +215,10 @@ export function GradingForm({
   return (
     <form
       onSubmit={handleSubmit(goToReview)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Grade {sourceLot.code}</h2>
+      <StepIndicator step="configure" />
+      <h2 className="font-serif text-base font-semibold text-ink">Grade {sourceLot.code}</h2>
       <p className="text-xs text-ink-muted">
         {sourceLot.crop.common_name}
         {sourceLot.variety ? ` / ${sourceLot.variety.name}` : ""} · Available{" "}
@@ -336,13 +329,9 @@ export function GradingForm({
         </ul>
         {errors.outputs?.root && <p className={errorClass}>{errors.outputs.root.message}</p>}
         {typeof errors.outputs?.message === "string" && <p className={errorClass}>{errors.outputs.message}</p>}
-        <button
-          type="button"
-          onClick={() => append({ ...DEFAULT_GRADING_OUTPUT_FORM_VALUES })}
-          className="mt-2 min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" className="mt-2" onClick={() => append({ ...DEFAULT_GRADING_OUTPUT_FORM_VALUES })}>
           Add another output
-        </button>
+        </Button>
       </div>
 
       <Field label="Note (optional)" error={errors.note?.message}>
@@ -365,10 +354,21 @@ export function GradingForm({
       )}
 
       <div>
-        <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` above); this just makes the two-step configure → review
+ * flow visible to the operator. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }

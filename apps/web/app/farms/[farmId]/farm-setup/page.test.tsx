@@ -51,4 +51,15 @@ describe("FarmSetupOverviewPage", () => {
     await waitFor(() => expect(screen.getByText("GH-01")).toBeInTheDocument());
     expect(screen.getByText("2 Zones · 4 Spans · 12 Tables")).toBeInTheDocument();
   });
+
+  it("provides a secondary navigation affordance to Locations & Occupancy, distinct from the greenhouse registry", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
+    render(withQueryClient(<FarmSetupOverviewPage />));
+
+    await waitFor(() => expect(screen.getByText("No greenhouses configured yet.")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /view locations & occupancy/i })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/locations",
+    );
+  });
 });

@@ -8,11 +8,18 @@ import { PageHeader } from "@/components/PageHeader";
 import { GradingForm } from "@/components/processing/GradingForm";
 import { GradingHistoryPanel } from "@/components/processing/GradingHistoryPanel";
 import { HarvestedProduceLotPicker } from "@/components/processing/HarvestedProduceLotPicker";
+import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import type { HarvestedProduceLotRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useGradingEvents, useHarvestedProduceLotBalance, useHarvestedProduceLots, useLocationsTree, useRecordGrading,
 } from "@/lib/query/hooks";
+
+const TABS = [
+  { id: "grade", label: "Grade a Lot" },
+  { id: "history", label: "Grading History" },
+] as const;
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -49,47 +56,36 @@ export default function GradingPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("grade")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "grade" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Grade a Lot
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "history" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Grading History
-        </button>
+      <div className="mb-6">
+        <Tabs
+          tabs={TABS.map(({ id, label }) => ({ id, label }))}
+          activeId={tab}
+          onChange={(id) => setTab(id as "grade" | "history")}
+          aria-label="Grading sections"
+        />
       </div>
 
       {tab === "grade" && (
         <div className="flex flex-col gap-4">
           {recordSuccess ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Grading recorded</h2>
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Grading recorded</h2>
               <p className="text-sm text-ink">
                 Source <span className="font-medium">{recordSuccess.sourceCode}</span> graded into{" "}
                 <span className="font-medium">{recordSuccess.outputCodes.join(", ")}</span>
               </p>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start"
                 onClick={() => {
                   setSelectedLot(null);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
               >
                 Done
-              </button>
+              </Button>
             </div>
           ) : (
             <>

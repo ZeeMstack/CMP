@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { CorrectHarvestForm } from "@/components/leafy/CorrectHarvestForm";
+import { Button } from "@/components/ui/Button";
 import type { CorrectLeafyHarvestSourceLineCreate, LeafyHarvestEventRead, LeafyHarvestSourceLineRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { HARVEST_CORRECTION_REASONS } from "@/lib/validation/leafyHarvest";
@@ -54,9 +55,9 @@ export function LeafyHarvestHistoryPanel({
   return (
     <ul className="flex flex-col gap-4">
       {events.map((event) => (
-        <li key={event.id} className="flex flex-col gap-3 rounded-lg border border-border-subtle p-3">
+        <li key={event.id} className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-ink">
+            <span className="font-serif text-sm font-semibold text-ink">
               {event.produce_lot_code} — {event.batch_code}
             </span>
             <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
@@ -129,13 +130,9 @@ export function LeafyHarvestHistoryPanel({
                       serverError={correctingLineId === line.id ? serverError : null}
                     />
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setOpenLineId(line.id)}
-                      className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-                    >
+                    <Button type="button" variant="secondary" onClick={() => setOpenLineId(line.id)}>
                       Correct Harvest
-                    </button>
+                    </Button>
                   )}
                 </div>
               </li>

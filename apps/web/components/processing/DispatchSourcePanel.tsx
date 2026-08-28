@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { findOpenRecallCase, RecallBadge } from "@/components/processing/RecallBadge";
+import { Button } from "@/components/ui/Button";
 import type { FinishedGoodsLotRead, RecallCaseSummaryRead } from "@/lib/api/client";
 import { useFinishedGoodsPlacement } from "@/lib/query/hooks";
 
@@ -26,9 +27,9 @@ function SourceRow({
   const hasUnplaced = placementQuery.data ? Number(placementQuery.data.unplaced_weight_kg) > 0 : false;
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border-subtle p-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
-        <Link href={`/farms/${farmId}/processing/finished-goods/${lot.id}`} className="text-sm font-semibold text-ink hover:underline">
+        <Link href={`/farms/${farmId}/processing/finished-goods/${lot.id}`} className="font-serif text-sm font-semibold text-ink hover:underline">
           {lot.code}
         </Link>
         <span className="text-xs text-ink-muted">
@@ -46,22 +47,13 @@ function SourceRow({
       </div>
       <div>
         {isSelected ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={onRemove}>
             Remove
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            disabled={!placementQuery.data || !hasUnplaced || Boolean(recallCase)}
-            onClick={onAdd}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <Button type="button" variant="primary" disabled={!placementQuery.data || !hasUnplaced || Boolean(recallCase)} onClick={onAdd}>
             Add to Dispatch
-          </button>
+          </Button>
         )}
       </div>
     </li>

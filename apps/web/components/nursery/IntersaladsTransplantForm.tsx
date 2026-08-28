@@ -170,7 +170,7 @@ function DestinationRow({
         />
       </Field>
 
-      <Field label="InterSalads Table" error={destErrors?.destination_location_id?.message}>
+      <Field label="Inter Leafy Greens Table" error={destErrors?.destination_location_id?.message}>
         <FilterableSelect
           aria-label={`Table for destination ${index + 1}`}
           options={tableOptions}
@@ -492,8 +492,8 @@ export function IntersaladsTransplantForm({
     const reviewValues = getValues();
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Review before transplanting</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Review before transplanting</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-ink-muted">Batch</dt>
@@ -604,7 +604,7 @@ export function IntersaladsTransplantForm({
       className="flex flex-col gap-6"
     >
       {nurseries.length > 1 && (
-        <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
           <legend className="px-1 text-sm font-semibold text-ink">Nursery Greenhouse</legend>
           <Field label="Nursery">
             <select
@@ -623,7 +623,7 @@ export function IntersaladsTransplantForm({
         </fieldset>
       )}
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Source Seedling Tray(s)</legend>
         {errors.sources?.message && <p className={errorClass}>{errors.sources.message}</p>}
         {establishedBatch && (
@@ -734,7 +734,7 @@ export function IntersaladsTransplantForm({
       </fieldset>
 
       {sourcesArray.fields.length > 0 && (
-        <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
           <legend className="px-1 text-sm font-semibold text-ink">Destination Plate(s)</legend>
           {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
           {tableOverCapacity && (
@@ -774,7 +774,7 @@ export function IntersaladsTransplantForm({
         </fieldset>
       )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-ink">Transplant date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
@@ -784,7 +784,7 @@ export function IntersaladsTransplantForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>

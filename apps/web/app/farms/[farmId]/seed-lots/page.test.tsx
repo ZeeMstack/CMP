@@ -51,4 +51,15 @@ describe("SeedLotsPage", () => {
     await waitFor(() => expect(screen.getByText("RZ-MAM-2026-001")).toBeInTheDocument());
     expect(screen.getByText(/iceberg lettuce/i)).toBeInTheDocument();
   });
+
+  it("links to Seeding so hiding Seed Lots from the primary nav does not make it unreachable from there", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
+    render(withQueryClient(<SeedLotsPage />));
+
+    await waitFor(() => expect(screen.getByText("No Seed Lots registered yet.")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Go to Seeding" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/nursery/sowings/new",
+    );
+  });
 });

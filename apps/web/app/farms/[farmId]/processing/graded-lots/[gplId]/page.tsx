@@ -60,34 +60,39 @@ export default function GradedProduceLotDetailPage() {
 
       <div className="flex flex-col gap-4">
         {recallCase && <RecallBadge recallCase={recallCase} />}
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border-subtle bg-surface p-4 text-sm sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-border-subtle bg-surface p-4 text-sm sm:grid-cols-3">
           <div>
-            <dt className="text-ink-muted">Crop / Variety</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Crop / Variety</dt>
             <dd className="text-ink">
               {lot.crop.common_name}
               {lot.variety ? ` / ${lot.variety.name}` : ""}
             </dd>
           </div>
           <div>
-            <dt className="text-ink-muted">Exact grade</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Exact grade</dt>
             <dd className="text-ink">{labels[lot.grade_definition_version_id] ?? lot.grade_definition_version_id}</dd>
           </div>
           <div>
-            <dt className="text-ink-muted">Source Harvested Produce Lot</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Source Harvested Produce Lot</dt>
             <dd className="text-ink">
               {gradingEventQuery.data?.source_produce_lot_code ?? (gradingEventQuery.isLoading ? "Loading…" : "—")}
             </dd>
           </div>
           <div>
-            <dt className="text-ink-muted">Original weight/count</dt>
+            {/* Immutable historical fact -- what this Lot originally
+                received, distinct from what's still available now. */}
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Original received</dt>
             <dd className="text-ink">
               {lot.original_received_weight_kg} kg
               {isCountMode ? ` / ${lot.original_received_whole_unit_count} units` : ""}
             </dd>
           </div>
           <div>
-            <dt className="text-ink-muted">Current available</dt>
-            <dd className="text-ink">
+            {/* The authoritative, live current balance -- never the same
+                number as Original received once any Packing has consumed
+                from this Lot. */}
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current available</dt>
+            <dd className="font-semibold text-ink">
               {balanceQuery.data
                 ? `${balanceQuery.data.available_weight_kg} kg${
                     isCountMode ? ` / ${balanceQuery.data.available_whole_unit_count} units` : ""
@@ -98,19 +103,19 @@ export default function GradedProduceLotDetailPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-ink-muted">Effective time</dt>
+            <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Effective time</dt>
             <dd className="text-ink">{new Date(lot.effective_time).toLocaleString()}</dd>
           </div>
         </dl>
 
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-ink">Ledger</h2>
+          <h2 className="mb-2 font-serif text-sm font-semibold text-ink">Ledger</h2>
           {ledgerQuery.isLoading && <LoadingSkeleton rows={2} label="Loading ledger" />}
           {ledgerQuery.data && ledgerQuery.data.length === 0 && (
             <p className="text-sm text-ink-muted">No ledger entries yet.</p>
           )}
           {ledgerQuery.data && ledgerQuery.data.length > 0 && (
-            <ul className="flex flex-col divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface text-sm">
+            <ul className="flex flex-col divide-y divide-border-subtle rounded-xl border border-border-subtle bg-surface text-sm">
               {ledgerQuery.data.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
                   <span className="text-ink">{GPL_LEDGER_ENTRY_KIND_LABEL[entry.entry_kind] ?? entry.entry_kind}</span>

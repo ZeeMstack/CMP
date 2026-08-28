@@ -1,9 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { SowNewBatchCreate } from "@/lib/api/client";
 import { useAssets, useAvailableSeedTrays, useGreenhouseSetupOverview, useGreenhouseStructure, useSeedLots } from "@/lib/query/hooks";
 import {
@@ -94,8 +96,9 @@ export function SowingForm({
     const totalSites = totalSownSiteCount(values.trays);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Review before sowing</h2>
+        <StepIndicator step="review" />
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Review before sowing</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-ink-muted">Batch code</dt>
@@ -159,26 +162,19 @@ export function SowingForm({
         </div>
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Sowing…" : "Sow"}
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
+
+  const watchedSeedLotId = watch("seed_lot_id");
+  const selectedSeedLot = seedLotsQuery.data?.find((l) => l.id === watchedSeedLotId);
 
   return (
     <form
@@ -188,7 +184,9 @@ export function SowingForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <StepIndicator step="configure" />
+
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Nursery / Seeding Station</legend>
         <Field label="Nursery">
           <select
@@ -258,8 +256,13 @@ export function SowingForm({
         />
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Seed Lot</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <div className="flex items-center justify-between gap-2">
+          <legend className="px-1 text-sm font-semibold text-ink">Seed Lot</legend>
+          <Link href={`/farms/${farmId}/seed-lots/new`} className="text-xs font-medium text-brand-700 hover:underline">
+            + Add Seed Lot
+          </Link>
+        </div>
         <Field label="Seed Lot" error={errors.seed_lot_id?.message}>
           <select {...register("seed_lot_id")} className={inputClass}>
             <option value="">Select a Seed Lot…</option>
@@ -270,9 +273,27 @@ export function SowingForm({
             ))}
           </select>
         </Field>
+        {selectedSeedLot && (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-ink-muted">Crop</dt>
+              <dd className="font-medium text-ink">{selectedSeedLot.crop.common_name}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-muted">Variety</dt>
+              <dd className="font-medium text-ink">{selectedSeedLot.variety.name}</dd>
+            </div>
+            {selectedSeedLot.supplier_name && (
+              <div>
+                <dt className="text-ink-muted">Supplier</dt>
+                <dd className="font-medium text-ink">{selectedSeedLot.supplier_name}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seeding Machine (optional)</legend>
         <p className="text-xs text-ink-muted">Farm-level equipment — recorded as provenance only.</p>
         <Field label="Seeding Machine">
@@ -287,7 +308,7 @@ export function SowingForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-ink">Sowing date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
@@ -297,7 +318,7 @@ export function SowingForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seed Trays</legend>
         {errors.trays?.message && <p className={errorClass}>{errors.trays.message}</p>}
         <Field label="Add a Seed Tray">
@@ -363,13 +384,9 @@ export function SowingForm({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(index)}
-                  className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-                >
+                <Button type="button" variant="secondary" onClick={() => remove(index)}>
                   Remove
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -382,19 +399,27 @@ export function SowingForm({
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
       <div>
-        <button
-          type="submit"
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-        >
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` above); this just makes the two-step configure → review
+ * flow visible to the operator. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }

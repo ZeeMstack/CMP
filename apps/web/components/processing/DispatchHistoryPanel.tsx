@@ -26,16 +26,19 @@ export function DispatchHistoryPanel({
   return (
     <ul className="flex flex-col gap-3">
       {sorted.map((event) => (
-        <li key={event.id} className="flex flex-col gap-1 rounded-lg border border-border-subtle p-3">
+        <li key={event.id} className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-ink">{event.code}</span>
+            <span className="font-serif text-sm font-semibold text-ink">{event.code}</span>
             <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
           </div>
           <span className="text-xs text-ink-muted">
             {event.total_dispatched_weight_kg} kg / {event.total_dispatched_package_count} packages across{" "}
             {event.lines.length} lot{event.lines.length === 1 ? "" : "s"}
           </span>
-          <span className="text-xs text-ink-muted">
+          {/* Vehicle/dispatch-level reading, shown once per event -- never
+              per line below -- same rationale as `DispatchForm`'s own
+              review-step temperature block. */}
+          <span className="w-fit rounded-md border border-border-subtle bg-surface-subtle px-2 py-1 text-xs text-ink">
             Temperature: {event.dispatch_temperature_c != null ? `${event.dispatch_temperature_c} °C` : "not recorded"}
           </span>
           {event.external_reference && <span className="text-xs text-ink-muted">Reference: {event.external_reference}</span>}

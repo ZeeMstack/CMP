@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 
+import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/Button";
 import type { CorrectProductionDispositionCreate, ProductionDispositionHistoryRead } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { PRODUCTION_DISPOSITION_REASONS, type CorrectPlantLossFormValues } from "@/lib/validation/productionDisposition";
@@ -156,18 +158,12 @@ function CorrectionForm({
       {validationError && <p className={errorClass}>{validationError}</p>}
       {serverError && <p className={errorClass}>{friendlyMutationErrorMessage(serverError)}</p>}
       <div className="flex gap-2">
-        <button
-          type="button" onClick={onCancel} disabled={isSubmitting}
-          className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
-        </button>
-        <button
-          type="button" onClick={submit} disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-3 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="button" variant="primary" onClick={submit} disabled={isSubmitting}>
           {isSubmitting ? "Submitting…" : "Submit correction"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -204,16 +200,23 @@ export function PlantLossHistoryPanel({
       {lineages.map((lineage) => (
         <li
           key={lineage.population_root_batch_carrier_assignment_id}
-          className="flex flex-col gap-2 rounded-lg border border-border-subtle p-3"
+          className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-ink">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-serif text-sm font-semibold text-ink">
               {lineage.plate_code} — {lineage.batch_code}
             </span>
-            <span className="text-xs text-ink-muted">
-              {lineage.is_active ? "Active" : "Released"} · Opening {lineage.opening_population.toLocaleString()} ·
-              Current {lineage.current_living_population.toLocaleString()}
-            </span>
+            <div className="flex items-center gap-2">
+              <StatusBadge label={lineage.is_active ? "Active" : "Released"} tone={lineage.is_active ? "active" : "closed"} />
+              {/* Current is the authoritative living population; Opening is
+                  historical/reconciliation context only -- both stay in one
+                  plain-text readout since they're read together, but Current
+                  is never merged into or replaced by Opening. */}
+              <span className="text-xs text-ink-muted">
+                Opening {lineage.opening_population.toLocaleString()} · Current{" "}
+                {lineage.current_living_population.toLocaleString()}
+              </span>
+            </div>
           </div>
           <ul className="divide-y divide-border-subtle text-sm">
             {lineage.events.map((event) => (
@@ -246,13 +249,9 @@ export function PlantLossHistoryPanel({
                         serverError={correctingEventId === event.id ? serverError : null}
                       />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setOpenEventId(event.id)}
-                        className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-                      >
+                      <Button type="button" variant="secondary" onClick={() => setOpenEventId(event.id)}>
                         Correct
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}

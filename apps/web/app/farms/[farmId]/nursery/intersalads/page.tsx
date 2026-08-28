@@ -5,7 +5,9 @@ import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { IntersaladsTransplantForm } from "@/components/nursery/IntersaladsTransplantForm";
+import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useRecordIntersaladsTransplant } from "@/lib/query/hooks";
@@ -42,21 +44,22 @@ export default function IntersaladsTransplantPage() {
   return (
     <div>
       <PageHeader
-        title="InterSalads"
+        title="Transfer to Inter Leafy Greens"
         breadcrumbs={
           <Breadcrumbs
             items={[
               { label: "Home", href: `/farms/${farmId}` },
               { label: "Batches", href: `/farms/${farmId}/crop-batches` },
-              { label: "InterSalads" },
+              { label: "Transfer to Inter Leafy Greens" },
             ]}
           />
         }
       />
+      <NurseryJourney farmId={farmId} current="intersalads" />
 
       {success ? (
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Transplant recorded</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Transplant recorded</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-ink-muted">Batch</dt>
@@ -103,20 +106,12 @@ export default function IntersaladsTransplantPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => startNew(success.transplant.batch_id)}
-              className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-            >
+            <Button type="button" variant="primary" onClick={() => startNew(success.transplant.batch_id)}>
               Continue this Batch
-            </button>
-            <button
-              type="button"
-              onClick={() => startNew(undefined)}
-              className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-            >
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => startNew(undefined)}>
               Start new transplant
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

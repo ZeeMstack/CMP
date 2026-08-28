@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { LocationSelect } from "@/components/processing/LocationSelect";
+import { Button } from "@/components/ui/Button";
 import type { FinishedGoodsLotRead, FinishedGoodsStorageMovementCreate, LocationTreeNode } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { useFinishedGoodsPlacement } from "@/lib/query/hooks";
@@ -114,9 +115,9 @@ export function ColdStorageMovementForm({
   return (
     <form
       onSubmit={handleSubmit(submit)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Cold Storage — {lot.code}</h2>
+      <h2 className="font-serif text-base font-semibold text-ink">Cold Storage — {lot.code}</h2>
       <p className="text-xs text-ink-muted">
         {placementQuery.data
           ? `Available ${placementQuery.data.available_weight_kg} kg — Placed ${placementQuery.data.total_placed_weight_kg} kg — Unplaced ${placementQuery.data.unplaced_weight_kg} kg`
@@ -181,13 +182,9 @@ export function ColdStorageMovementForm({
       )}
 
       <div>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Recording…" : "Record Movement"}
-        </button>
+        </Button>
       </div>
     </form>
   );

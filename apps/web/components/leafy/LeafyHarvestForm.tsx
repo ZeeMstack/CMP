@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { HarvestablePlateRead, RecordLeafyHarvestCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -125,8 +126,8 @@ export function LeafyHarvestForm({
     const totalHeads = values.lines.reduce((sum, l) => sum + (l.heads_harvested || 0), 0);
     const totalWeight = values.lines.reduce((sum, l) => sum + (l.raw_harvested_weight_kg || 0), 0);
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+      <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <p className="text-sm text-ink-muted">
           Batch <span className="font-medium text-ink">{values.batch_code}</span> · {values.effective_date}{" "}
           {values.effective_time_of_day}
@@ -184,22 +185,12 @@ export function LeafyHarvestForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Confirm"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -208,9 +199,9 @@ export function LeafyHarvestForm({
   return (
     <form
       onSubmit={handleSubmit(goToReview)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Record Harvest — {plates[0]?.batch_code}</h2>
+      <h2 className="font-serif text-base font-semibold text-ink">Record Harvest — {plates[0]?.batch_code}</h2>
 
       <ul className="flex flex-col gap-3">
         {fields.map((field, index) => (
@@ -268,9 +259,9 @@ export function LeafyHarvestForm({
       )}
 
       <div>
-        <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

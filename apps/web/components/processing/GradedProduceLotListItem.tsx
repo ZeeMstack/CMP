@@ -33,11 +33,11 @@ export function GradedProduceLotListItem({
   const isCountMode = lot.original_received_whole_unit_count != null;
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border-subtle p-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <Link
           href={`/farms/${farmId}/processing/graded-lots/${lot.id}`}
-          className="text-sm font-semibold text-ink hover:underline"
+          className="font-serif text-sm font-semibold text-ink hover:underline"
         >
           {lot.code}
         </Link>
@@ -47,11 +47,11 @@ export function GradedProduceLotListItem({
           {gradeLabel || `Grade version ${lot.grade_definition_version_id.slice(0, 8)}`}
         </span>
         <span className="text-xs text-ink-muted">
-          Original {lot.original_received_weight_kg} kg
+          Original received {lot.original_received_weight_kg} kg
           {isCountMode ? ` / ${lot.original_received_whole_unit_count} units` : ""}
         </span>
-        <span className="text-xs text-ink-muted">
-          Available{" "}
+        <span className="text-xs font-semibold text-ink">
+          Current available{" "}
           {balanceQuery.data
             ? `${balanceQuery.data.available_weight_kg} kg${
                 isCountMode ? ` / ${balanceQuery.data.available_whole_unit_count} units` : ""

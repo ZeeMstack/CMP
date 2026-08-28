@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { FilterableSelect } from "@/components/FilterableSelect";
+import { Button } from "@/components/ui/Button";
 import type { RecallCaseCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { useFinishedGoodsLots, useGradedProduceLots, useHarvestedProduceLots } from "@/lib/query/hooks";
@@ -103,9 +104,9 @@ export function OpenRecallCaseForm({
   return (
     <form
       onSubmit={handleSubmit(submit)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Open Recall Case</h2>
+      <h2 className="font-serif text-base font-semibold text-ink">Open Recall Case</h2>
 
       <Field label="Recall code" error={errors.code?.message}>
         <input className={inputClass} {...register("code")} />
@@ -191,13 +192,9 @@ export function OpenRecallCaseForm({
       )}
 
       <div>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Opening…" : "Open Recall Case"}
-        </button>
+        </Button>
       </div>
     </form>
   );

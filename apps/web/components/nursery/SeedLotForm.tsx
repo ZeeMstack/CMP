@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { SeedLotCreate } from "@/lib/api/client";
 import { useCrops, useVarieties } from "@/lib/query/hooks";
 import {
@@ -98,13 +99,9 @@ export function SeedLotForm({
       {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
 
       <div>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Saving…" : "Save Seed Lot"}
-        </button>
+        </Button>
       </div>
     </form>
   );

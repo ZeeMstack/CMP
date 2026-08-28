@@ -10,6 +10,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { OpenRecallCaseForm } from "@/components/processing/OpenRecallCaseForm";
 import { RecallCaseListItem } from "@/components/processing/RecallCaseListItem";
+import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { useOpenRecallCase, useRecallCases } from "@/lib/query/hooks";
 
@@ -47,13 +48,9 @@ export default function RecallCasesPage() {
         }
         actions={
           !showForm && (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-            >
+            <Button type="button" variant="primary" onClick={() => setShowForm(true)}>
               Open Recall Case
-            </button>
+            </Button>
           )
         }
       />

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { GradedProduceLotRead } from "@/lib/api/client";
 import { useGradedProduceLotBalance } from "@/lib/query/hooks";
 import type { RecordPackingFormValues } from "@/lib/validation/packing";
@@ -96,13 +97,9 @@ export function PackingInputLineRow({
         </label>
       </div>
       {removable && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="mt-2 min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" className="mt-2" onClick={onRemove}>
           Remove Lot
-        </button>
+        </Button>
       )}
     </li>
   );

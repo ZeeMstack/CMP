@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
 import type { HarvestedProduceLotRead } from "@/lib/api/client";
 
 /** POSTHARVEST-OPS-001G: the source-Lot picker for a new Grading command.
@@ -37,12 +38,12 @@ export function HarvestedProduceLotPicker({
         return (
           <li
             key={lot.id}
-            className={`flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${
-              isSelected ? "border-brand-700 bg-brand-100/40" : "border-border-subtle"
+            className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
+              isSelected ? "border-brand-700 bg-brand-100/40" : "border-border-subtle bg-surface"
             }`}
           >
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-ink">{lot.code}</span>
+              <span className="font-serif text-sm font-semibold text-ink">{lot.code}</span>
               <span className="text-xs text-ink-muted">
                 {lot.crop.common_name}
                 {lot.variety ? ` / ${lot.variety.name}` : ""} · Original {lot.total_harvested_weight_kg} kg
@@ -50,17 +51,14 @@ export function HarvestedProduceLotPicker({
               </span>
               <span className="text-xs text-ink-muted">{new Date(lot.effective_time).toLocaleString()}</span>
             </div>
-            <button
+            <Button
               type="button"
+              variant={isSelected ? "secondary" : "primary"}
+              className="self-start sm:self-center"
               onClick={() => onSelect(lot)}
-              className={`min-h-11 self-start rounded-md px-4 text-sm font-medium sm:self-center ${
-                isSelected
-                  ? "border border-brand-700 text-brand-800 hover:bg-brand-100"
-                  : "bg-brand-700 text-white hover:bg-brand-800"
-              }`}
             >
               {isSelected ? "Selected" : "Grade this Lot"}
-            </button>
+            </Button>
           </li>
         );
       })}

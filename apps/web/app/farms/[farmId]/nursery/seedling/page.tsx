@@ -7,10 +7,12 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { RecordDispositionForm } from "@/components/nursery/RecordDispositionForm";
 import { SeedlingDispositionHistoryPanel } from "@/components/nursery/SeedlingDispositionHistoryPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { useRecordSeedlingDisposition, useSeedlingBiologicalTrays } from "@/lib/query/hooks";
 
@@ -53,16 +55,13 @@ export default function SeedlingPage() {
         actions={
           recordingAssignmentId === null &&
           historyEntryId === null && (
-            <button
-              type="button"
-              onClick={() => setRecordingAssignmentId("new")}
-              className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-            >
+            <Button type="button" variant="primary" onClick={() => setRecordingAssignmentId("new")}>
               Record biological disposition
-            </button>
+            </Button>
           )
         }
       />
+      <NurseryJourney farmId={farmId} current="seedling" />
 
       {recordingAssignmentId !== null && (
         <RecordDispositionForm
@@ -100,15 +99,15 @@ export default function SeedlingPage() {
             />
           )}
           {traysQuery.isSuccess && traysQuery.data.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-border-subtle">
+            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
                   <tr>
                     <th className="px-4 py-2 font-medium">Batch</th>
                     <th className="px-4 py-2 font-medium">Seed Tray</th>
                     <th className="px-4 py-2 font-medium">Table</th>
-                    <th className="px-4 py-2 font-medium">Starting</th>
-                    <th className="px-4 py-2 font-medium">Current</th>
+                    <th className="px-4 py-2 font-medium">Starting Living</th>
+                    <th className="px-4 py-2 font-medium">Current Living</th>
                     <th className="px-4 py-2 font-medium">Status</th>
                     <th className="px-4 py-2 font-medium" />
                   </tr>
@@ -122,34 +121,34 @@ export default function SeedlingPage() {
                         : "closed";
                     const label = row.is_depleted ? "Depleted" : row.assignment_active ? "Active" : "Released";
                     return (
-                      <tr key={row.seedling_entry_id}>
-                        <td className="px-4 py-2 text-ink">{row.batch_code}</td>
+                      <tr key={row.seedling_entry_id} className="hover:bg-surface-subtle">
+                        <td className="px-4 py-2 font-medium text-ink">{row.batch_code}</td>
                         <td className="px-4 py-2 text-ink">{row.tray_code}</td>
                         <td className="px-4 py-2 text-ink-muted">{row.seedling_table_code ?? "—"}</td>
-                        <td className="px-4 py-2 text-ink">{row.starting_living_seedling_count.toLocaleString()}</td>
-                        <td className="px-4 py-2 text-ink">{row.current_living_seedling_count.toLocaleString()}</td>
+                        {/* Starting is historical/reconciliation context only --
+                            muted, never the authoritative figure. */}
+                        <td className="px-4 py-2 text-ink-muted">{row.starting_living_seedling_count.toLocaleString()}</td>
+                        {/* Current is the authoritative living quantity --
+                            emphasized so it's never mistaken for Starting. */}
+                        <td className="px-4 py-2 font-semibold text-ink">{row.current_living_seedling_count.toLocaleString()}</td>
                         <td className="px-4 py-2">
                           <StatusBadge label={label} tone={tone} />
                         </td>
                         <td className="px-4 py-2">
                           <div className="flex gap-2">
                             {row.assignment_active && !row.is_depleted && (
-                              <button
+                              <Button
                                 type="button"
+                                variant="secondary"
                                 onClick={() => setRecordingAssignmentId(row.batch_carrier_assignment_id)}
-                                className="min-h-11 rounded-md border border-border-subtle px-3 text-sm font-medium text-ink hover:bg-surface-subtle"
                               >
                                 Record
-                              </button>
+                              </Button>
                             )}
                             {row.event_count > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => setHistoryEntryId(row.seedling_entry_id)}
-                                className="min-h-11 rounded-md border border-border-subtle px-3 text-sm font-medium text-ink hover:bg-surface-subtle"
-                              >
+                              <Button type="button" variant="secondary" onClick={() => setHistoryEntryId(row.seedling_entry_id)}>
                                 History
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </td>

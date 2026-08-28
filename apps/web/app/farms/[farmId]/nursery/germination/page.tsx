@@ -9,10 +9,12 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { MoveToSeedlingForm } from "@/components/nursery/MoveToSeedlingForm";
 import { MoveTrayForm } from "@/components/nursery/MoveTrayForm";
+import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { PlaceTrolleyForm } from "@/components/nursery/PlaceTrolleyForm";
 import { RecordOutcomeForm } from "@/components/nursery/RecordOutcomeForm";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/Button";
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useGerminationTrays, usePlaceTray, usePlaceTrolley, useRecordSeedlingEntry } from "@/lib/query/hooks";
@@ -62,39 +64,27 @@ export default function GerminationPage() {
         }
         actions={
           activeAction === null && (
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveAction("trolley")}
-                className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-              >
+            <div className="flex flex-wrap gap-2">
+              {/* Physical placement actions (secondary) vs. the biological
+                  assessment action (primary) -- only one competing "primary"
+                  at a time, matching the existing action hierarchy. */}
+              <Button type="button" variant="secondary" onClick={() => setActiveAction("trolley")}>
                 Place Trolley
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveAction("tray")}
-                className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-              >
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setActiveAction("tray")}>
                 Move Tray to Germination
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveAction("outcome")}
-                className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-              >
+              </Button>
+              <Button type="button" variant="primary" onClick={() => setActiveAction("outcome")}>
                 Record Outcome
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveAction("seedling")}
-                className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-              >
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setActiveAction("seedling")}>
                 Move to Seedling
-              </button>
+              </Button>
             </div>
           )
         }
       />
+      <NurseryJourney farmId={farmId} current="germination" />
 
       {activeAction === "trolley" && (
         <PlaceTrolleyForm
@@ -159,7 +149,7 @@ export default function GerminationPage() {
             />
           )}
           {traysQuery.isSuccess && traysQuery.data.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-border-subtle">
+            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
                   <tr>
@@ -172,8 +162,8 @@ export default function GerminationPage() {
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {traysQuery.data.map((row) => (
-                    <tr key={row.tray.id}>
-                      <td className="px-4 py-2 text-ink">{row.batch_code}</td>
+                    <tr key={row.tray.id} className="hover:bg-surface-subtle">
+                      <td className="px-4 py-2 font-medium text-ink">{row.batch_code}</td>
                       <td className="px-4 py-2 text-ink">{row.tray.code}</td>
                       <td className="px-4 py-2 text-ink">{row.seeds_sown.toLocaleString()}</td>
                       <td className="px-4 py-2">

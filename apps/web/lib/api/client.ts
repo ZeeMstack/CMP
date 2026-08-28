@@ -1036,3 +1036,58 @@ export function recordDispatch(farmId: string, payload: DispatchEventCreate, sig
 export function listDispatchEvents(farmId: string, signal?: AbortSignal): Promise<DispatchEventRead[]> {
   return getJson<DispatchEventRead[]>(`/farms/${farmId}/dispatches`, signal);
 }
+
+// UI-OPT-001: Traceability -- read-only backward/forward trace, backed by
+// backend endpoints that already existed before this ticket (a full
+// backward trace from a Finished Goods Lot, and a forward "impact" trace
+// from a Crop Batch or a Harvested Produce Lot). No new backend genealogy
+// logic is introduced here -- this is only the frontend client for reads
+// that were already implemented.
+
+export type FinishedGoodsLotTraceRead = components["schemas"]["FinishedGoodsLotTraceRead"];
+export type CropBatchImpactRead = components["schemas"]["CropBatchImpactRead"];
+export type HarvestedProduceLotImpactRead = components["schemas"]["HarvestedProduceLotImpactRead"];
+export type ImpactSummary = components["schemas"]["ImpactSummary"];
+export type TraceCompleteness = components["schemas"]["Completeness"];
+export type TraceLineage = components["schemas"]["Lineage"];
+export type CropBatchNode = components["schemas"]["CropBatchNode"];
+export type FinishedGoodsLotImpactRead = components["schemas"]["FinishedGoodsLotImpactRead"];
+export type SeedOrigin = components["schemas"]["SeedOrigin"];
+export type StorageMovementRead = components["schemas"]["StorageMovementRead"];
+// Every `Trace*` alias below disambiguates the backend's trace-context
+// read model from the unrelated, differently-shaped, same-named schema
+// already exported above for the live write-side screens (Grading/Packing/
+// Dispatch) -- same rationale as the pre-existing `QualityHoldRead` split.
+export type TraceHarvestedProduceLotRead = components["schemas"]["app__schemas__traceability__HarvestedProduceLotRead"];
+export type TraceGradedProduceLotRead = components["schemas"]["app__schemas__traceability__GradedProduceLotRead"];
+export type TraceGradingEventRead = components["schemas"]["app__schemas__traceability__GradingEventRead"];
+export type TracePackingEventRead = components["schemas"]["app__schemas__traceability__PackingEventRead"];
+export type TracePackingInputLineRead = components["schemas"]["app__schemas__traceability__PackingInputLineRead"];
+export type TraceHarvestEventRead = components["schemas"]["app__schemas__traceability__HarvestEventRead"];
+export type TraceDispatchLineRead = components["schemas"]["app__schemas__traceability__DispatchLineRead"];
+export type TraceLocationBalanceRead = components["schemas"]["app__schemas__traceability__LocationBalanceRead"];
+export type TraceQualityHoldRead = components["schemas"]["app__schemas__traceability__QualityHoldRead"];
+
+export function getFinishedGoodsLotTrace(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsLotTraceRead> {
+  return getJson<FinishedGoodsLotTraceRead>(
+    `/farms/${farmId}/traceability/finished-goods-lots/${finishedGoodsLotId}`, signal,
+  );
+}
+
+export function getCropBatchImpact(farmId: string, batchId: string, signal?: AbortSignal): Promise<CropBatchImpactRead> {
+  return getJson<CropBatchImpactRead>(`/farms/${farmId}/traceability/crop-batches/${batchId}/impact`, signal);
+}
+
+export function getHarvestedProduceLotImpact(
+  farmId: string,
+  produceLotId: string,
+  signal?: AbortSignal,
+): Promise<HarvestedProduceLotImpactRead> {
+  return getJson<HarvestedProduceLotImpactRead>(
+    `/farms/${farmId}/traceability/harvested-produce-lots/${produceLotId}/impact`, signal,
+  );
+}

@@ -240,7 +240,7 @@ describe("LeafyProductionPage", () => {
     stubFetch({ history: releasedHistory });
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /plant loss history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/Released/)).toBeInTheDocument());
     expect(screen.getByText(/Loss 5/)).toBeInTheDocument();
@@ -277,7 +277,7 @@ describe("LeafyProductionPage", () => {
     stubFetch({ history: correctedHistory });
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /plant loss history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     // Original REDUCTION: immutable, still shown as "Loss 5 — Dead",
     // marked corrected.
@@ -315,7 +315,7 @@ describe("LeafyProductionPage", () => {
     stubFetch({ history: voidHistory });
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /plant loss history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/Loss 5 — Dead/)).toBeInTheDocument());
     expect(screen.getByText(/Restored 5 — Dead/)).toBeInTheDocument();
@@ -328,7 +328,7 @@ describe("LeafyProductionPage", () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /plant loss history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
     await waitFor(() => expect(screen.getByText(/Loss 5/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Correct" }));

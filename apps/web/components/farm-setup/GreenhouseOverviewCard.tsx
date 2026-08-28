@@ -14,11 +14,11 @@ export function GreenhouseOverviewCard({ item, farmId }: { item: GreenhouseOverv
   return (
     <Link
       href={`/farms/${farmId}/farm-setup/${item.greenhouse_id}`}
-      className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-surface p-4 hover:border-brand-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+      className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-4 transition-colors hover:border-brand-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold text-ink">{item.code}</p>
+          <p className="font-serif text-base font-semibold text-ink">{item.code}</p>
           <p className="text-xs text-ink-muted">{item.name}</p>
         </div>
         <StatusBadge label={setupStatusLabel(item.status)} tone={STATUS_TONE[item.status] ?? "neutral"} />

@@ -4,9 +4,14 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { PlantLossHistoryPanel } from "@/components/leafy/PlantLossHistoryPanel";
 import { RecordPlantLossForm } from "@/components/leafy/RecordPlantLossForm";
+import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import type { ActiveProductionPlateRead, CorrectProductionDispositionCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
@@ -15,6 +20,11 @@ import {
   useProductionDispositionHistory,
   useRecordProductionDisposition,
 } from "@/lib/query/hooks";
+
+const TABS = [
+  { id: "active", label: "Active Production Plates" },
+  { id: "history", label: "Plant Loss History" },
+] as const;
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -63,25 +73,13 @@ export default function LeafyProductionPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("active")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "active" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Active Production Plates
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "history" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Plant Loss History
-        </button>
+      <div className="mb-6">
+        <Tabs
+          tabs={TABS.map(({ id, label }) => ({ id, label }))}
+          activeId={tab}
+          onChange={(id) => setTab(id as "active" | "history")}
+          aria-label="Leafy Production sections"
+        />
       </div>
 
       {tab === "active" && (
@@ -91,8 +89,8 @@ export default function LeafyProductionPage() {
             // a zero-exhausting record removes the Plate from this list on
             // refetch (it's now released), which must never hide the
             // success screen for the operator who just recorded it.
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Plant loss recorded</h2>
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Plant loss recorded</h2>
               <dl className="text-sm">
                 <div>
                   <dt className="text-ink-muted">Plate</dt>
@@ -100,7 +98,7 @@ export default function LeafyProductionPage() {
                 </div>
                 <div>
                   <dt className="text-ink-muted">Current Living</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.resulting.toLocaleString()}</dd>
+                  <dd className="text-base font-semibold text-ink">{recordSuccess.resulting.toLocaleString()}</dd>
                 </div>
               </dl>
               {recordSuccess.released && (
@@ -109,17 +107,18 @@ export default function LeafyProductionPage() {
                   location — it has not been moved, sanitized, or marked available.
                 </p>
               )}
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start"
                 onClick={() => {
                   setSelectedPlateId(null);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
               >
                 Done
-              </button>
+              </Button>
             </div>
           ) : selectedPlate ? (
             <RecordPlantLossForm
@@ -150,53 +149,61 @@ export default function LeafyProductionPage() {
             // The selected Plate is no longer active (its lineage was
             // fully exhausted by another concurrent disposition before this
             // form could load/refresh) -- never a blank/frozen form.
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
               <p className="text-sm text-ink-muted">
                 This Plate is no longer active — its living population may have already reached zero elsewhere.
               </p>
-              <button
-                type="button"
-                onClick={() => setSelectedPlateId(null)}
-                className="min-h-11 self-start rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-              >
+              <Button type="button" variant="secondary" className="self-start" onClick={() => setSelectedPlateId(null)}>
                 Back to Active Production Plates
-              </button>
+              </Button>
             </div>
           ) : (
-            <ul className="flex flex-col gap-3">
-              {(activePlatesQuery.data ?? []).map((plate) => (
-                <li
-                  key={plate.batch_carrier_assignment_id}
-                  className="flex flex-col gap-2 rounded-lg border border-border-subtle p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-semibold text-ink">
-                      {plate.plate_code} — {plate.batch_code}
-                    </span>
-                    <span className="text-xs text-ink-muted">
-                      {plate.crop_common_name}
-                      {plate.variety_name ? ` / ${plate.variety_name}` : ""} · Living{" "}
-                      {plate.current_living_population.toLocaleString()}
-                    </span>
-                    {plate.current_location ? (
-                      <span className="text-xs text-ink-muted">{plate.current_location.ancestry_label}</span>
-                    ) : (
-                      <span className="text-xs text-red-700">No current Leafy location on record</span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
-                    className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 sm:self-center"
-                  >
-                    Record Plant Loss
-                  </button>
-                </li>
-              ))}
-              {activePlatesQuery.isSuccess && (activePlatesQuery.data ?? []).length === 0 && (
-                <p className="text-sm text-ink-muted">No active Production Plates in this Farm.</p>
+            <>
+              {activePlatesQuery.isLoading && <LoadingSkeleton rows={4} label="Loading active Production Plates" />}
+              {activePlatesQuery.isError && (
+                <ErrorState error={activePlatesQuery.error} onRetry={() => activePlatesQuery.refetch()} />
               )}
-            </ul>
+              {activePlatesQuery.isSuccess && (activePlatesQuery.data ?? []).length === 0 && (
+                <EmptyState
+                  title="No active Production Plates in this Farm."
+                  description="Plates appear here once a Production Transfer has placed living plants in Leafy Production."
+                />
+              )}
+              {activePlatesQuery.isSuccess && (activePlatesQuery.data ?? []).length > 0 && (
+                <ul className="flex flex-col gap-3">
+                  {(activePlatesQuery.data ?? []).map((plate) => (
+                    <li
+                      key={plate.batch_carrier_assignment_id}
+                      className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <span className="font-serif text-sm font-semibold text-ink">
+                          {plate.plate_code} — {plate.batch_code}
+                        </span>
+                        <span className="text-xs text-ink-muted">
+                          {plate.crop_common_name}
+                          {plate.variety_name ? ` / ${plate.variety_name}` : ""} · Living{" "}
+                          {plate.current_living_population.toLocaleString()}
+                        </span>
+                        {plate.current_location ? (
+                          <span className="text-xs text-ink-muted">{plate.current_location.ancestry_label}</span>
+                        ) : (
+                          <span className="text-xs text-red-700">No current Leafy location on record</span>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        className="self-start sm:self-center"
+                        onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
+                      >
+                        Record Plant Loss
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}

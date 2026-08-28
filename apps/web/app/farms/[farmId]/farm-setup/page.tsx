@@ -1,6 +1,6 @@
 "use client";
 
-import { PlusCircle } from "lucide-react";
+import { MapPin, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -24,15 +24,31 @@ export default function FarmSetupOverviewPage() {
           <Breadcrumbs items={[{ label: "Home", href: `/farms/${farmId}` }, { label: "Farm Setup" }]} />
         }
         actions={
-          <Link
-            href={`/farms/${farmId}/farm-setup/new`}
-            className="flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-3 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-          >
-            <PlusCircle aria-hidden="true" className="h-4 w-4" />
-            Add greenhouse
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Farm Setup (structure/registry) and Locations (operational
+                occupancy) are deliberately distinct routes/domain purposes --
+                this is a navigation affordance between them, not a merge. */}
+            <Link
+              href={`/farms/${farmId}/locations`}
+              className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <MapPin aria-hidden="true" className="h-4 w-4" />
+              View Locations &amp; Occupancy
+            </Link>
+            <Link
+              href={`/farms/${farmId}/farm-setup/new`}
+              className="flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-3 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <PlusCircle aria-hidden="true" className="h-4 w-4" />
+              Add greenhouse
+            </Link>
+          </div>
         }
       />
+      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+        This registry defines each greenhouse&apos;s physical structure. For current occupancy and what&apos;s
+        placed where, see Locations &amp; Occupancy.
+      </p>
       {isLoading && <LoadingSkeleton rows={4} label="Loading greenhouses" />}
       {error && <ErrorState error={error} onRetry={() => refetch()} />}
       {data && data.length === 0 && (

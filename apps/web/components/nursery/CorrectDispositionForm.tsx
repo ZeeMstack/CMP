@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { CorrectSeedlingDispositionCreate, SeedlingDispositionEventRead } from "@/lib/api/client";
 import { useSeedlingDispositionReasons } from "@/lib/query/hooks";
 import {
@@ -79,9 +80,9 @@ export function CorrectDispositionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
+    <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
       <div>
-        <h3 className="text-sm font-semibold text-ink">Correct this entry</h3>
+        <h3 className="font-serif text-sm font-semibold text-ink">Correct this entry</h3>
         <p className="text-sm text-ink-muted">
           Originally recorded {Math.abs(target.quantity_delta)} — {target.reason_code} on{" "}
           {new Date(target.effective_time).toLocaleString()}.
@@ -102,7 +103,7 @@ export function CorrectDispositionForm({
 
       {mode === "replace" && (
         <>
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Corrected facts</legend>
             <Field label="Quantity" error={errors.quantity?.message}>
               <input type="number" min={1} step={1} {...register("quantity")} className={inputClass} />
@@ -118,7 +119,7 @@ export function CorrectDispositionForm({
               </select>
             </Field>
           </fieldset>
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Occurred date/time</legend>
             <Field label="Date" error={errors.effective_date?.message}>
               <input type="date" {...register("effective_date")} className={inputClass} />
@@ -127,7 +128,7 @@ export function CorrectDispositionForm({
               <input type="time" {...register("effective_time_of_day")} className={inputClass} />
             </Field>
           </fieldset>
-          <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+          <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
             <legend className="px-1 text-sm font-semibold text-ink">
               Note {watchedReason === "OTHER" ? "(required for Other)" : "(optional)"}
             </legend>
@@ -140,21 +141,12 @@ export function CorrectDispositionForm({
       {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Saving…" : mode === "void" ? "Confirm void" : "Confirm correction"}
-        </button>
+        </Button>
       </div>
     </form>
   );

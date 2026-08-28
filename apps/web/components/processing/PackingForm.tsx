@@ -6,6 +6,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 
 import { PackingInputLineRow } from "@/components/processing/PackingInputLineRow";
 import { ReconciliationSummary } from "@/components/processing/ReconciliationSummary";
+import { Button } from "@/components/ui/Button";
 import type { GradedProduceLotRead, PackingEventCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { selectableVersionsAt } from "@/lib/format/versionLifecycle";
@@ -169,8 +170,9 @@ export function PackingForm({
   if (step === "review") {
     const values = getValues();
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+      <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <StepIndicator step="review" />
+        <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <p className="text-sm text-ink-muted">
           {values.finished_goods_lot_code} · {values.pack_specification_label} · {values.effective_date}{" "}
           {values.effective_time_of_day}
@@ -207,22 +209,12 @@ export function PackingForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Confirm"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -231,9 +223,10 @@ export function PackingForm({
   return (
     <form
       onSubmit={handleSubmit(goToReview)}
-      className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
-      <h2 className="text-sm font-semibold text-ink">Pack {lots.map((l) => l.code).join(", ")}</h2>
+      <StepIndicator step="configure" />
+      <h2 className="font-serif text-base font-semibold text-ink">Pack {lots.map((l) => l.code).join(", ")}</h2>
 
       <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
@@ -374,10 +367,21 @@ export function PackingForm({
       )}
 
       <div>
-        <button type="submit" className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` above); this just makes the two-step configure → review
+ * flow visible to the operator. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }

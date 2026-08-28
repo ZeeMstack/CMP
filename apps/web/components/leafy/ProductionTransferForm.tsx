@@ -6,6 +6,7 @@ import { Control, UseFormSetValue, useFieldArray, useForm, useWatch } from "reac
 
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
 import { LeafyLocationSelector, type LeafyLocationValue } from "@/components/leafy/LeafyLocationSelector";
+import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -452,8 +453,9 @@ export function ProductionTransferForm({
     const reviewValues = getValues();
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Review before transferring</h2>
+        <StepIndicator step="review" />
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Review before transferring</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-ink-muted">Batch</dt>
@@ -534,22 +536,12 @@ export function ProductionTransferForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Transferring…" : "Confirm transfer"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -563,7 +555,9 @@ export function ProductionTransferForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <StepIndicator step="configure" />
+
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Source Nursery Cultivation Plate(s)</legend>
         {errors.sources?.message && <p className={errorClass}>{errors.sources.message}</p>}
         {establishedBatch && (
@@ -686,7 +680,7 @@ export function ProductionTransferForm({
       </fieldset>
 
       {sourcesArray.fields.length > 0 && (
-        <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
           <legend className="px-1 text-sm font-semibold text-ink">Destination Production Plate(s)</legend>
           {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
           {tableOverCapacity && (
@@ -725,7 +719,7 @@ export function ProductionTransferForm({
         </fieldset>
       )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-ink">Transfer date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
@@ -735,7 +729,7 @@ export function ProductionTransferForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
@@ -747,14 +741,21 @@ export function ProductionTransferForm({
       )}
 
       <div>
-        <button
-          type="submit"
-          disabled={sourcesArray.fields.length === 0 || destinationsArray.fields.length === 0}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={sourcesArray.fields.length === 0 || destinationsArray.fields.length === 0}>
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` above); this just makes the two-step configure → review
+ * flow visible to the operator. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }
