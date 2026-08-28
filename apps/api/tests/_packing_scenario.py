@@ -328,6 +328,13 @@ def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        # POSTHARVEST-OPS-001H: reversal tables, existence-guarded the same
+        # way as every other post-CMP-013 table in this cleanup so it keeps
+        # working for the downgrade-guard scenario that runs it while
+        # cmp_test is deliberately downgraded below this ticket's migration.
+        for table in ("packing_reversal_inputs", "packing_reversal_events", "grading_reversal_outputs", "grading_reversal_events"):
+            if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM produce_lot_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_storage_movements WHERE tenant_id = :tid"), {"tid": tenant_id})

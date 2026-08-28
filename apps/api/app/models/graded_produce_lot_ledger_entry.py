@@ -44,7 +44,17 @@ class GradedProduceLotLedgerEntry(Base):
     (`ck_graded_produce_lot_ledger_entries_typed_source_shape`):
     `grading_receipt` populates `grading_event_id` (NULL `packing_event_id`);
     `packing_consumption` populates `packing_event_id` (NULL
-    `grading_event_id`)."""
+    `grading_event_id`).
+
+    POSTHARVEST-OPS-001H adds two more kinds, both whole-event reversal
+    credits/debits, never field-by-field corrections: `grading_reversal` —
+    a typed negative debit zeroing this lot's balance back to zero, `id`
+    equal to its own `GradingReversalOutput`'s id, `grading_reversal_event_id`
+    populated; `packing_reversal` — a typed positive credit restoring the
+    exact quantity a `packing_consumption` debited, `id` equal to its own
+    `PackingReversalInput`'s id, `packing_reversal_event_id` populated.
+    Exactly one of the four typed sources is ever populated, matching
+    `entry_kind` 1:1."""
 
     __tablename__ = "graded_produce_lot_ledger_entries"
 
@@ -60,6 +70,16 @@ class GradedProduceLotLedgerEntry(Base):
     # New in POSTHARVEST-OPS-001E: populated for packing_consumption, NULL
     # for grading_receipt.
     packing_event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("packing_events.id"), nullable=True)
+    # New in POSTHARVEST-OPS-001H: populated for grading_reversal, NULL for
+    # every other kind.
+    grading_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("grading_reversal_events.id"), nullable=True
+    )
+    # New in POSTHARVEST-OPS-001H: populated for packing_reversal, NULL for
+    # every other kind.
+    packing_reversal_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("packing_reversal_events.id"), nullable=True
+    )
     entry_kind: Mapped[str] = mapped_column(String, nullable=False)
     weight_delta_kg: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     whole_unit_count_delta: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -70,19 +90,23 @@ class GradedProduceLotLedgerEntry(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "entry_kind IN ('grading_receipt', 'packing_consumption')",
+            "entry_kind IN ('grading_receipt', 'packing_consumption', 'grading_reversal', 'packing_reversal')",
             name="ck_graded_produce_lot_ledger_entries_kind_allowed",
         ),
         CheckConstraint(
             "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
             "  (entry_kind = 'grading_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
             "  OR (entry_kind = 'packing_consumption' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+            "  OR (entry_kind = 'grading_reversal' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+            "  OR (entry_kind = 'packing_reversal' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
             ")",
             name="ck_graded_produce_lot_ledger_entries_weight_envelope",
         ),
         CheckConstraint(
             "(entry_kind = 'grading_receipt' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta > 0)) "
-            "OR (entry_kind = 'packing_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0))",
+            "OR (entry_kind = 'packing_consumption' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0)) "
+            "OR (entry_kind = 'grading_reversal' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta < 0)) "
+            "OR (entry_kind = 'packing_reversal' AND (whole_unit_count_delta IS NULL OR whole_unit_count_delta > 0))",
             name="ck_graded_produce_lot_ledger_entries_count_positive",
         ),
         CheckConstraint(
@@ -90,8 +114,14 @@ class GradedProduceLotLedgerEntry(Base):
             name="ck_graded_produce_lot_ledger_entries_receipt_note_null",
         ),
         CheckConstraint(
-            "(entry_kind = 'grading_receipt' AND grading_event_id IS NOT NULL AND packing_event_id IS NULL) "
-            "OR (entry_kind = 'packing_consumption' AND grading_event_id IS NULL AND packing_event_id IS NOT NULL)",
+            "(entry_kind = 'grading_receipt' AND grading_event_id IS NOT NULL AND packing_event_id IS NULL "
+            "  AND grading_reversal_event_id IS NULL AND packing_reversal_event_id IS NULL) "
+            "OR (entry_kind = 'packing_consumption' AND grading_event_id IS NULL AND packing_event_id IS NOT NULL "
+            "  AND grading_reversal_event_id IS NULL AND packing_reversal_event_id IS NULL) "
+            "OR (entry_kind = 'grading_reversal' AND grading_event_id IS NULL AND packing_event_id IS NULL "
+            "  AND grading_reversal_event_id IS NOT NULL AND packing_reversal_event_id IS NULL) "
+            "OR (entry_kind = 'packing_reversal' AND grading_event_id IS NULL AND packing_event_id IS NULL "
+            "  AND grading_reversal_event_id IS NULL AND packing_reversal_event_id IS NOT NULL)",
             name="ck_graded_produce_lot_ledger_entries_typed_source_shape",
         ),
         UniqueConstraint(
@@ -127,5 +157,35 @@ class GradedProduceLotLedgerEntry(Base):
             ["tenant_id", "farm_id", "packing_event_id"],
             ["packing_events.tenant_id", "packing_events.farm_id", "packing_events.id"],
             name="fk_graded_produce_lot_ledger_entries_tenant_farm_packing_event",
+        ),
+        # POSTHARVEST-OPS-001H: a graded produce lot may be reversed
+        # (zeroed) at most once, ever -- mirrors the grading_receipt index
+        # above (one row per lot, kind-scoped).
+        Index(
+            "ux_graded_produce_lot_ledger_entries_grading_reversal", "graded_produce_lot_id", unique=True,
+            postgresql_where=text("entry_kind = 'grading_reversal'"),
+        ),
+        # POSTHARVEST-OPS-001H: one graded produce lot appears at most once
+        # per packing reversal event -- mirrors the packing_consumption
+        # index above.
+        Index(
+            "ux_graded_produce_lot_ledger_entries_packing_reversal", "packing_reversal_event_id",
+            "graded_produce_lot_id", unique=True, postgresql_where=text("entry_kind = 'packing_reversal'"),
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "grading_reversal_event_id"],
+            [
+                "grading_reversal_events.tenant_id", "grading_reversal_events.farm_id",
+                "grading_reversal_events.id",
+            ],
+            name="fk_gpl_ledger_entries_tenant_farm_grading_reversal",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "packing_reversal_event_id"],
+            [
+                "packing_reversal_events.tenant_id", "packing_reversal_events.farm_id",
+                "packing_reversal_events.id",
+            ],
+            name="fk_gpl_ledger_entries_tenant_farm_packing_reversal",
         ),
     )

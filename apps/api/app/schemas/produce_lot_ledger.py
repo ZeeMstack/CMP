@@ -23,6 +23,7 @@ class ProduceLotLedgerEntryRead(BaseModel):
     # longer exists at all as of POSTHARVEST-OPS-001E -- Packing debits
     # GradedProduceLot balance exclusively, never HarvestedProduceLot's.
     harvest_event_id: uuid.UUID | None
+    grading_reversal_event_id: uuid.UUID | None
     actor_user_id: uuid.UUID
     weight_delta_kg: Decimal
     whole_unit_count_delta: int | None

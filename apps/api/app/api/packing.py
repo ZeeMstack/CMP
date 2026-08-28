@@ -7,7 +7,13 @@ from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.finished_goods_ledger import FinishedGoodsBalanceRead, FinishedGoodsLedgerEntryRead
-from app.schemas.packing import FinishedGoodsLotRead, PackingEventCreate, PackingEventRead
+from app.schemas.packing import (
+    FinishedGoodsLotRead,
+    PackingEventCreate,
+    PackingEventRead,
+    PackingReversalEventCreate,
+    PackingReversalEventRead,
+)
 from app.services import finished_goods_ledger_service, packing_service
 from app.services.errors import (
     DuplicateFinishedGoodsLotCodeError,
@@ -15,11 +21,17 @@ from app.services.errors import (
     FinishedGoodsLotNotFoundError,
     InsufficientGradedProduceLotBalanceError,
     InvalidPackingEffectiveTimeError,
+    InvalidPackingReversalEffectiveTimeError,
     PackingCommandReusedWithDifferentPayloadError,
     PackingCropVarietyMismatchError,
+    PackingEventAlreadyReversedError,
     PackingEventNotFoundError,
     PackingGradeVersionMismatchError,
     PackingInputGradedProduceLotNotFoundError,
+    PackingReversalBlockedByDownstreamActivityError,
+    PackingReversalCommandReusedWithDifferentPayloadError,
+    PackingReversalEventNotFoundError,
+    PackingReversalValidationError,
     PackingValidationError,
     PackSpecificationVersionNotFoundError,
     PackSpecificationVersionNotUsableError,
@@ -118,6 +130,62 @@ def get_packing_event(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, packing_event_id=packing_event_id
         )
     except (FarmNotFoundError, PackingEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.post(
+    "/farms/{farm_id}/packing-events/{packing_event_id}/reversal",
+    response_model=PackingReversalEventRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def reverse_packing_event(
+    farm_id: uuid.UUID,
+    packing_event_id: uuid.UUID,
+    payload: PackingReversalEventCreate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_MANAGE)),
+) -> PackingReversalEventRead:
+    try:
+        packing_service.reverse_packing_event(
+            db,
+            tenant_id=ctx.tenant_id,
+            farm_id=farm_id,
+            actor_user_id=ctx.user_id,
+            client_command_id=payload.client_command_id,
+            packing_event_id=packing_event_id,
+            effective_time=payload.effective_time,
+            reason_code=payload.reason_code,
+            note=payload.note,
+        )
+    except (FarmNotFoundError, PackingEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except (
+        PackingReversalCommandReusedWithDifferentPayloadError,
+        PackingEventAlreadyReversedError,
+        PackingReversalBlockedByDownstreamActivityError,
+    ) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (PackingReversalValidationError, InvalidPackingReversalEffectiveTimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return packing_service.get_packing_reversal_event(
+        db, tenant_id=ctx.tenant_id, farm_id=farm_id, packing_event_id=packing_event_id
+    )
+
+
+@router.get(
+    "/farms/{farm_id}/packing-events/{packing_event_id}/reversal", response_model=PackingReversalEventRead
+)
+def get_packing_reversal_event(
+    farm_id: uuid.UUID,
+    packing_event_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+) -> PackingReversalEventRead:
+    try:
+        return packing_service.get_packing_reversal_event(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, packing_event_id=packing_event_id
+        )
+    except (FarmNotFoundError, PackingReversalEventNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
 
 

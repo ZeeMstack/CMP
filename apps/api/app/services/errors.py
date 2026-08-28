@@ -1487,3 +1487,76 @@ class InsufficientHarvestedProduceLotBalanceError(DomainError):
     source HarvestedProduceLot's current available ledger balance --
     compared against the full PRESENTED quantity, never merely the
     processed quantity."""
+
+
+# --- POSTHARVEST-OPS-001H ----------------------------------------------------------
+
+
+class GradingReversalEventNotFoundError(DomainError):
+    pass
+
+
+class GradingReversalCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GradingReversalValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidGradingReversalEffectiveTimeError(DomainError):
+    pass
+
+
+class GradingEventAlreadyReversedError(DomainError):
+    """POSTHARVEST-OPS-001H: a GradingEvent may be reversed at most once,
+    ever -- enforced by `ux_grading_reversal_events_grading_event_id`
+    (DB-level)."""
+
+
+class GradingReversalBlockedByActivePackingError(DomainError):
+    """POSTHARVEST-OPS-001H: at least one output GradedProduceLot of the
+    target GradingEvent is still consumed by an ACTIVE (non-reversed)
+    PackingEvent -- the safe unwind order is Packing reversal first, then
+    Grading reversal. A PackingEvent that has itself already been reversed
+    does not block."""
+
+
+class PackingReversalEventNotFoundError(DomainError):
+    pass
+
+
+class PackingReversalCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class PackingReversalValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InvalidPackingReversalEffectiveTimeError(DomainError):
+    pass
+
+
+class PackingEventAlreadyReversedError(DomainError):
+    """POSTHARVEST-OPS-001H: a PackingEvent may be reversed at most once,
+    ever -- enforced by `ux_packing_reversal_events_packing_event_id`
+    (DB-level)."""
+
+
+class PackingReversalBlockedByDownstreamActivityError(DomainError):
+    """POSTHARVEST-OPS-001H: the target PackingEvent's own FinishedGoodsLot
+    has either (a) any `FinishedGoodsLedgerEntry` beyond its own
+    `packing_receipt` (currently only `dispatch_issue` exists, checked
+    generically by `entry_kind` so any future kind is covered too), or (b)
+    any `finished_goods_storage_movements` row at all, regardless of net
+    placement -- a lot placed and later fully released nets to zero but the
+    custody fact still happened and is never undone by any row in that
+    table. Neither dispatch nor storage placement/release has a reversal
+    mechanism in this ticket's scope, so neutralizing the lot's opening
+    quantity out from under any confirmed downstream fact is refused
+    outright -- never inferred safe from a live/net balance alone."""

@@ -12,6 +12,12 @@ import {
   useFinishedGoodsBalance, useFinishedGoodsLedger, useFinishedGoodsLot, useFinishedGoodsPlacement, useRecallCases,
 } from "@/lib/query/hooks";
 
+const FG_LEDGER_ENTRY_KIND_LABEL: Record<string, string> = {
+  packing_receipt: "Packing receipt",
+  dispatch_issue: "Dispatch issue",
+  packing_reversal: "Packing reversed",
+};
+
 /** POSTHARVEST-OPS-001G: Finished Goods Lot detail -- net packed weight,
  * source Graded Produce Lots (traceability back one step), current
  * available/placed/unplaced balance, cold-store placement by Location,
@@ -128,7 +134,7 @@ export default function FinishedGoodsLotDetailPage() {
               {ledgerQuery.data.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
                   <span className="text-ink">
-                    {entry.entry_kind === "packing_receipt" ? "Packing receipt" : entry.entry_kind}
+                    {FG_LEDGER_ENTRY_KIND_LABEL[entry.entry_kind] ?? entry.entry_kind}
                   </span>
                   <span className="text-ink">
                     {Number(entry.weight_delta_kg) > 0 ? "+" : ""}

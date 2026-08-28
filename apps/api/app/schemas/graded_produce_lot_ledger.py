@@ -23,6 +23,8 @@ class GradedProduceLotLedgerEntryRead(BaseModel):
     # rows do the reverse.
     grading_event_id: uuid.UUID | None
     packing_event_id: uuid.UUID | None
+    grading_reversal_event_id: uuid.UUID | None
+    packing_reversal_event_id: uuid.UUID | None
     actor_user_id: uuid.UUID
     weight_delta_kg: Decimal
     whole_unit_count_delta: int | None

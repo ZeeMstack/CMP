@@ -2384,6 +2384,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/grading-events/{grading_event_id}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Grading Reversal Event */
+        get: operations["get_grading_reversal_event_farms__farm_id__grading_events__grading_event_id__reversal_get"];
+        put?: never;
+        /** Reverse Grading Event */
+        post: operations["reverse_grading_event_farms__farm_id__grading_events__grading_event_id__reversal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/graded-produce-lots": {
         parameters: {
             query?: never;
@@ -2481,6 +2499,24 @@ export interface paths {
         get: operations["get_packing_event_farms__farm_id__packing_events__packing_event_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/packing-events/{packing_event_id}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Packing Reversal Event */
+        get: operations["get_packing_reversal_event_farms__farm_id__packing_events__packing_event_id__reversal_get"];
+        put?: never;
+        /** Reverse Packing Event */
+        post: operations["reverse_packing_event_farms__farm_id__packing_events__packing_event_id__reversal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4209,6 +4245,8 @@ export interface components {
             packing_event_id: string | null;
             /** Dispatch Line Id */
             dispatch_line_id: string | null;
+            /** Packing Reversal Event Id */
+            packing_reversal_event_id: string | null;
             /**
              * Actor User Id
              * Format: uuid
@@ -4926,6 +4964,10 @@ export interface components {
             grading_event_id: string | null;
             /** Packing Event Id */
             packing_event_id: string | null;
+            /** Grading Reversal Event Id */
+            grading_reversal_event_id: string | null;
+            /** Packing Reversal Event Id */
+            packing_reversal_event_id: string | null;
             /**
              * Actor User Id
              * Format: uuid
@@ -5008,6 +5050,95 @@ export interface components {
             output_weight_kg: number | string;
             /** Output Whole Unit Count */
             output_whole_unit_count?: number | null;
+        };
+        /** GradingReversalEventCreate */
+        GradingReversalEventCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** GradingReversalEventRead */
+        GradingReversalEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Grading Event Id
+             * Format: uuid
+             */
+            grading_event_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string | null;
+            /** Restored Produce Lot Weight Kg */
+            restored_produce_lot_weight_kg: string;
+            /** Restored Produce Lot Whole Unit Count */
+            restored_produce_lot_whole_unit_count: number | null;
+            /** Outputs */
+            outputs: components["schemas"]["GradingReversalOutputRead"][];
+        };
+        /** GradingReversalOutputRead */
+        GradingReversalOutputRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
+            /** Graded Produce Lot Code */
+            graded_produce_lot_code: string;
+            /** Reversed Weight Kg */
+            reversed_weight_kg: string;
+            /** Reversed Whole Unit Count */
+            reversed_whole_unit_count: number | null;
         };
         /**
          * GreenhouseOverviewItem
@@ -6770,6 +6901,95 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** PackingReversalEventCreate */
+        PackingReversalEventCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** PackingReversalEventRead */
+        PackingReversalEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Packing Event Id
+             * Format: uuid
+             */
+            packing_event_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string | null;
+            /** Neutralized Finished Goods Weight Kg */
+            neutralized_finished_goods_weight_kg: string;
+            /** Neutralized Finished Goods Package Count */
+            neutralized_finished_goods_package_count: number;
+            /** Inputs */
+            inputs: components["schemas"]["PackingReversalInputRead"][];
+        };
+        /** PackingReversalInputRead */
+        PackingReversalInputRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Graded Produce Lot Id
+             * Format: uuid
+             */
+            graded_produce_lot_id: string;
+            /** Graded Produce Lot Code */
+            graded_produce_lot_code: string;
+            /** Restored Weight Kg */
+            restored_weight_kg: string;
+            /** Restored Whole Unit Count */
+            restored_whole_unit_count: number | null;
+        };
         /** PathEntry */
         PathEntry: {
             /**
@@ -6899,6 +7119,8 @@ export interface components {
             produce_lot_code: string;
             /** Harvest Event Id */
             harvest_event_id: string | null;
+            /** Grading Reversal Event Id */
+            grading_reversal_event_id: string | null;
             /**
              * Actor User Id
              * Format: uuid
@@ -16052,6 +16274,84 @@ export interface operations {
             };
         };
     };
+    get_grading_reversal_event_farms__farm_id__grading_events__grading_event_id__reversal_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                grading_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingReversalEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_grading_event_farms__farm_id__grading_events__grading_event_id__reversal_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                grading_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradingReversalEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingReversalEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_graded_produce_lots_farms__farm_id__graded_produce_lots_get: {
         parameters: {
             query?: {
@@ -16304,6 +16604,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__schemas__packing__PackingEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_packing_reversal_event_farms__farm_id__packing_events__packing_event_id__reversal_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                packing_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackingReversalEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_packing_event_farms__farm_id__packing_events__packing_event_id__reversal_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                packing_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackingReversalEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackingReversalEventRead"];
                 };
             };
             /** @description Validation Error */

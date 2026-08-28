@@ -531,10 +531,20 @@ def test_downgrade_blocked_by_deterministic_id_mismatch(test_engine, alembic_hea
                 {"lid": fg_lot_id, "bid": bogus_id},
             )
             restore_conn.execute(text("SET session_replication_role = DEFAULT"))
+            # POSTHARVEST-OPS-001H: restores the CURRENT head shape (which
+            # this test never actually leaves -- the downgrade it attempts
+            # is blocked before any schema DDL survives), not the pre-001H
+            # 2-branch shape -- a bare 1-branch `CHECK (id =
+            # finished_goods_lot_id)` never matched even CMP-017's own
+            # dispatch-aware shape and predates this ticket only adding a
+            # third, `packing_reversal`, branch on top.
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
-                    "ck_finished_goods_ledger_entries_deterministic_id CHECK (id = finished_goods_lot_id)"
+                    "ck_finished_goods_ledger_entries_deterministic_id CHECK ("
+                    "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
+                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id) "
+                    "OR (entry_kind = 'packing_reversal' AND id = packing_reversal_event_id))"
                 )
             )
         except Exception:
@@ -724,11 +734,16 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_resto
         restore_conn = test_engine.connect()
         restore_trans = restore_conn.begin()
         try:
+            # POSTHARVEST-OPS-001H: restores the CURRENT head shape (this
+            # test never actually leaves head -- the downgrade it attempts
+            # is blocked before any schema DDL survives), not the pre-001H
+            # 2-branch shape -- this ticket adds a third, `packing_reversal`,
+            # branch on top of CMP-017's own dispatch-aware shape.
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_kind_allowed "
-                    "CHECK (entry_kind IN ('packing_receipt', 'dispatch_issue'))"
+                    "CHECK (entry_kind IN ('packing_receipt', 'dispatch_issue', 'packing_reversal'))"
                 )
             )
             restore_conn.execute(
@@ -736,15 +751,20 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_resto
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_deterministic_id CHECK ("
                     "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
-                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id))"
+                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id) "
+                    "OR (entry_kind = 'packing_reversal' AND id = packing_reversal_event_id))"
                 )
             )
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_typed_source_shape CHECK ("
-                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL) "
-                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL))"
+                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'packing_reversal' AND packing_event_id IS NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NOT NULL))"
                 )
             )
             restore_conn.execute(
@@ -754,6 +774,7 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_resto
                     "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
                     "  (entry_kind = 'packing_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
                     "  OR (entry_kind = 'dispatch_issue' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+                    "  OR (entry_kind = 'packing_reversal' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
                     "))"
                 )
             )
@@ -764,6 +785,8 @@ def test_downgrade_blocked_by_unknown_entry_kind(test_engine, alembic_head_resto
                     "(entry_kind = 'packing_receipt' AND package_count_delta > 0 "
                     "  AND package_count_delta <= 9223372036854775807)"
                     "OR (entry_kind = 'dispatch_issue' AND package_count_delta < 0 "
+                    "  AND package_count_delta >= -9223372036854775807)"
+                    "OR (entry_kind = 'packing_reversal' AND package_count_delta < 0 "
                     "  AND package_count_delta >= -9223372036854775807))"
                 )
             )

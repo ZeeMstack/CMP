@@ -128,7 +128,7 @@ export default function GradingPage() {
       )}
 
       {tab === "history" && (
-        <GradingHistoryPanel events={gradingEventsQuery.data ?? []} isLoading={gradingEventsQuery.isLoading} />
+        <GradingHistoryPanel farmId={farmId} events={gradingEventsQuery.data ?? []} isLoading={gradingEventsQuery.isLoading} />
       )}
     </div>
   );

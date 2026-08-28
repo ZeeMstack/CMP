@@ -722,12 +722,16 @@ export type GradingEventRead = components["schemas"]["app__schemas__grading__Gra
 export type GradedProduceLotRead = components["schemas"]["app__schemas__grading__GradedProduceLotRead"];
 export type GradedProduceLotLedgerEntryRead = components["schemas"]["GradedProduceLotLedgerEntryRead"];
 export type GradedProduceLotBalanceRead = components["schemas"]["GradedProduceLotBalanceRead"];
+export type GradingReversalEventCreate = components["schemas"]["GradingReversalEventCreate"];
+export type GradingReversalEventRead = components["schemas"]["GradingReversalEventRead"];
 
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
 export type PackingEventCreate = components["schemas"]["PackingEventCreate"];
 export type PackingInputLineIn = components["schemas"]["PackingInputLineIn"];
 export type PackingEventRead = components["schemas"]["app__schemas__packing__PackingEventRead"];
+export type PackingReversalEventCreate = components["schemas"]["PackingReversalEventCreate"];
+export type PackingReversalEventRead = components["schemas"]["PackingReversalEventRead"];
 export type FinishedGoodsLotRead = components["schemas"]["app__schemas__packing__FinishedGoodsLotRead"];
 export type FinishedGoodsLedgerEntryRead = components["schemas"]["FinishedGoodsLedgerEntryRead"];
 export type FinishedGoodsBalanceRead = components["schemas"]["FinishedGoodsBalanceRead"];
@@ -797,6 +801,29 @@ export function listGradingEvents(
 
 export function getGradingEvent(farmId: string, gradingEventId: string, signal?: AbortSignal): Promise<GradingEventRead> {
   return getJson<GradingEventRead>(`/farms/${farmId}/grading-events/${gradingEventId}`, signal);
+}
+
+// POSTHARVEST-OPS-001H: whole-event reversal only -- never a field-by-field
+// correction. Reversing a GradingEvent is blocked while any output Graded
+// Produce Lot is still consumed by an ACTIVE (non-reversed) Packing Event.
+
+export function reverseGradingEvent(
+  farmId: string,
+  gradingEventId: string,
+  payload: GradingReversalEventCreate,
+  signal?: AbortSignal,
+): Promise<GradingReversalEventRead> {
+  return postJson<GradingReversalEventRead>(
+    `/farms/${farmId}/grading-events/${gradingEventId}/reversal`, payload, signal,
+  );
+}
+
+export function getGradingReversalEvent(
+  farmId: string,
+  gradingEventId: string,
+  signal?: AbortSignal,
+): Promise<GradingReversalEventRead> {
+  return getJson<GradingReversalEventRead>(`/farms/${farmId}/grading-events/${gradingEventId}/reversal`, signal);
 }
 
 export function listGradedProduceLots(
@@ -874,6 +901,30 @@ export function listPackingEvents(farmId: string, signal?: AbortSignal): Promise
 
 export function getPackingEvent(farmId: string, packingEventId: string, signal?: AbortSignal): Promise<PackingEventRead> {
   return getJson<PackingEventRead>(`/farms/${farmId}/packing-events/${packingEventId}`, signal);
+}
+
+// POSTHARVEST-OPS-001H: whole-event reversal only -- never a field-by-field
+// correction. Reversing a PackingEvent is blocked while its Finished Goods
+// Lot has any dispatch activity or a nonzero net placed quantity in cold
+// storage.
+
+export function reversePackingEvent(
+  farmId: string,
+  packingEventId: string,
+  payload: PackingReversalEventCreate,
+  signal?: AbortSignal,
+): Promise<PackingReversalEventRead> {
+  return postJson<PackingReversalEventRead>(
+    `/farms/${farmId}/packing-events/${packingEventId}/reversal`, payload, signal,
+  );
+}
+
+export function getPackingReversalEvent(
+  farmId: string,
+  packingEventId: string,
+  signal?: AbortSignal,
+): Promise<PackingReversalEventRead> {
+  return getJson<PackingReversalEventRead>(`/farms/${farmId}/packing-events/${packingEventId}/reversal`, signal);
 }
 
 export function listFinishedGoodsLots(farmId: string, signal?: AbortSignal): Promise<FinishedGoodsLotRead[]> {

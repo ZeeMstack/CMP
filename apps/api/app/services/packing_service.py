@@ -30,6 +30,7 @@ from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_lot import FinishedGoodsLot
+from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.graded_produce_lot import GradedProduceLot
 from app.models.graded_produce_lot_ledger_entry import GradedProduceLotLedgerEntry
 from app.models.grading_event import GradingEvent
@@ -38,6 +39,8 @@ from app.models.pack_specification import PackSpecification
 from app.models.pack_specification_version import PackSpecificationVersion
 from app.models.packing_event import PackingEvent
 from app.models.packing_input_line import PackingInputLine
+from app.models.packing_reversal_event import PackingReversalEvent
+from app.models.packing_reversal_input import PackingReversalInput
 from app.models.variety import Variety
 from app.schemas.crop_batch import CropSummary, VarietySummary
 from app.schemas.harvest import MAX_WEIGHT_KG, canonical_decimal_str
@@ -46,6 +49,8 @@ from app.schemas.packing import (
     FinishedGoodsLotSummary,
     PackingEventRead,
     PackingInputLineRead,
+    PackingReversalEventRead,
+    PackingReversalInputRead,
 )
 from app.services import farm_service, quality_hold_service, recall_service
 from app.services.audit import append_audit_event
@@ -55,11 +60,17 @@ from app.services.errors import (
     FinishedGoodsLotNotFoundError,
     InsufficientGradedProduceLotBalanceError,
     InvalidPackingEffectiveTimeError,
+    InvalidPackingReversalEffectiveTimeError,
     PackingCommandReusedWithDifferentPayloadError,
     PackingCropVarietyMismatchError,
+    PackingEventAlreadyReversedError,
     PackingEventNotFoundError,
     PackingGradeVersionMismatchError,
     PackingInputGradedProduceLotNotFoundError,
+    PackingReversalBlockedByDownstreamActivityError,
+    PackingReversalCommandReusedWithDifferentPayloadError,
+    PackingReversalEventNotFoundError,
+    PackingReversalValidationError,
     PackingValidationError,
     PackSpecificationVersionNotFoundError,
     PackSpecificationVersionNotUsableError,
@@ -488,6 +499,291 @@ def record_packing(
         raise
     db.refresh(event)
     return event
+
+
+# --- POSTHARVEST-OPS-001H: reversal -------------------------------------------------
+
+
+def _compute_packing_reversal_fingerprint(
+    *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, effective_time: datetime,
+    packing_event_id: uuid.UUID, reason_code: str, note: str | None,
+) -> str:
+    parts = [
+        str(tenant_id), str(farm_id), str(actor_user_id), effective_time.astimezone(timezone.utc).isoformat(),
+        str(packing_event_id), reason_code, note or "",
+    ]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _find_existing_packing_reversal_event(
+    db: Session, *, tenant_id: uuid.UUID, client_command_id: uuid.UUID
+) -> PackingReversalEvent | None:
+    return db.execute(
+        select(PackingReversalEvent).where(
+            PackingReversalEvent.tenant_id == tenant_id, PackingReversalEvent.client_command_id == client_command_id
+        )
+    ).scalar_one_or_none()
+
+
+def reverse_packing_event(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    packing_event_id: uuid.UUID,
+    effective_time: datetime,
+    reason_code: str,
+    note: str | None,
+) -> PackingReversalEvent:
+    """001H: whole-event reversal only -- never a field-by-field
+    correction. Restores every source GradedProduceLot's ledger balance by
+    the exact quantity each `packing_consumption` debited, and neutralizes
+    the FinishedGoodsLot's opening quantity. Blocked while the
+    FinishedGoodsLot's own ledger carries any entry beyond its own
+    `packing_receipt` (currently: any `dispatch_issue`), or while its
+    storage-movement history is non-empty at all (never inferred from a
+    live/net placed balance -- see `PRE-COMMIT AUDIT` comments at the gate
+    itself) -- none of dispatch, storage placement/release has a reversal
+    mechanism in this ticket's scope. `reason_code` is mandatory; `note` is
+    optional (mirrors `SeedlingDispositionEvent`'s own REVERSAL shape, the
+    closest existing "whole-event reversal" precedent in this codebase --
+    not `HarvestSourceLineCorrection`'s stricter both-mandatory shape,
+    which is a linked-list field correction, not a reversal)."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    if effective_time > datetime.now(timezone.utc):
+        raise InvalidPackingReversalEffectiveTimeError("effective_time cannot be in the future")
+    if not reason_code.strip():
+        raise PackingReversalValidationError("reason_code is mandatory for a packing reversal")
+    note = note.strip() if note is not None and note.strip() else None
+
+    fingerprint = _compute_packing_reversal_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, effective_time=effective_time,
+        packing_event_id=packing_event_id, reason_code=reason_code, note=note,
+    )
+
+    existing = _find_existing_packing_reversal_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise PackingReversalCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    event = db.execute(
+        select(PackingEvent).where(
+            PackingEvent.id == packing_event_id, PackingEvent.tenant_id == tenant_id,
+            PackingEvent.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if event is None:
+        raise PackingEventNotFoundError(str(packing_event_id))
+
+    fg_lot = db.execute(
+        select(FinishedGoodsLot).where(FinishedGoodsLot.packing_event_id == event.id)
+    ).scalar_one()
+
+    input_lines = list(
+        db.execute(
+            select(PackingInputLine).where(PackingInputLine.packing_event_id == event.id)
+            .order_by(PackingInputLine.graded_produce_lot_id)
+        ).scalars()
+    )
+    gpl_ids = sorted({line.graded_produce_lot_id for line in input_lines})
+
+    # Lock order: GradedProduceLot (tier 3) before FinishedGoodsLot
+    # (tier 4), matching the codebase's global ascending lock order.
+    db.execute(
+        select(GradedProduceLot).where(GradedProduceLot.id.in_(gpl_ids)).order_by(GradedProduceLot.id)
+        .with_for_update()
+    ).scalars().all()
+    locked_fg_lot = db.execute(
+        select(FinishedGoodsLot).where(FinishedGoodsLot.id == fg_lot.id).with_for_update()
+    ).scalar_one()
+
+    # Post-lock idempotency recheck -- a concurrent replay of this exact
+    # command could have committed while the locks above were being
+    # acquired.
+    existing = _find_existing_packing_reversal_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise PackingReversalCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    already_reversed = db.execute(
+        select(PackingReversalEvent.id).where(PackingReversalEvent.packing_event_id == event.id)
+    ).scalar_one_or_none()
+    if already_reversed is not None:
+        raise PackingEventAlreadyReversedError(str(packing_event_id))
+
+    if effective_time < event.effective_time:
+        raise InvalidPackingReversalEffectiveTimeError(
+            "effective_time cannot precede the target packing event's own effective_time"
+        )
+
+    # Downstream gate, PRE-COMMIT AUDIT (POSTHARVEST-OPS-001H): neither
+    # dispatch nor storage placement has a reversal mechanism in this
+    # ticket's scope, so this must never infer safety from a live/net
+    # balance -- only from the complete absence of any downstream fact.
+    #
+    # (1) Ledger-based: the finished-goods ledger is this codebase's own
+    # sole source of truth for a lot's commercial activity (see
+    # `FinishedGoodsStorageMovement`'s own docstring: storage movements
+    # never touch it). ANY ledger entry beyond the lot's own
+    # `packing_receipt` blocks reversal outright -- currently that means
+    # `dispatch_issue` (the only other kind that exists today), but this
+    # check is written against `entry_kind` generically, not a `DispatchLine`
+    # existence check, so it automatically covers any future ledger kind
+    # too without needing to be revisited.
+    has_other_ledger_activity = db.execute(
+        select(FinishedGoodsLedgerEntry.id).where(
+            FinishedGoodsLedgerEntry.finished_goods_lot_id == locked_fg_lot.id,
+            FinishedGoodsLedgerEntry.entry_kind != "packing_receipt",
+        )
+    ).first()
+    if has_other_ledger_activity is not None:
+        raise PackingReversalBlockedByDownstreamActivityError(str(locked_fg_lot.id))
+
+    # (2) Storage-history-based: `finished_goods_storage_movements` is its
+    # own immutable, insert-only custody history -- a lot placed into cold
+    # storage and later fully released back to "unplaced" nets to zero, but
+    # the physical custody fact (it WAS placed) still happened and is never
+    # undone by any row in this table. Net/live balance is never a proxy
+    # for "this never happened" -- ANY committed movement row for this lot,
+    # regardless of current net placement, blocks reversal.
+    has_storage_history = db.execute(
+        select(FinishedGoodsStorageMovement.id).where(
+            FinishedGoodsStorageMovement.finished_goods_lot_id == locked_fg_lot.id
+        )
+    ).first()
+    if has_storage_history is not None:
+        raise PackingReversalBlockedByDownstreamActivityError(str(locked_fg_lot.id))
+
+    reversal_id = uuid.uuid4()
+    input_row_ids = {line.id: uuid.uuid4() for line in input_lines}
+
+    try:
+        reversal = PackingReversalEvent(
+            id=reversal_id, tenant_id=tenant_id, farm_id=farm_id, packing_event_id=event.id,
+            effective_time=effective_time, actor_user_id=actor_user_id, client_command_id=client_command_id,
+            request_fingerprint=fingerprint, reason_code=reason_code, note=note,
+        )
+        db.add(reversal)
+        db.flush()
+
+        input_rows: list[PackingReversalInput] = []
+        for line in input_lines:
+            row = PackingReversalInput(
+                id=input_row_ids[line.id], tenant_id=tenant_id, farm_id=farm_id,
+                packing_reversal_event_id=reversal.id, packing_input_line_id=line.id,
+                graded_produce_lot_id=line.graded_produce_lot_id, restored_weight_kg=line.consumed_weight_kg,
+                restored_whole_unit_count=line.consumed_whole_unit_count,
+            )
+            db.add(row)
+            input_rows.append(row)
+        db.flush()
+
+        for row in input_rows:
+            db.add(
+                GradedProduceLotLedgerEntry(
+                    id=row.id, tenant_id=tenant_id, farm_id=farm_id, graded_produce_lot_id=row.graded_produce_lot_id,
+                    grading_event_id=None, packing_event_id=None, grading_reversal_event_id=None,
+                    packing_reversal_event_id=reversal.id, entry_kind="packing_reversal",
+                    weight_delta_kg=row.restored_weight_kg, whole_unit_count_delta=row.restored_whole_unit_count,
+                    effective_time=effective_time, recorded_time=reversal.recorded_time, actor_user_id=actor_user_id,
+                    note=note,
+                )
+            )
+        db.flush()
+
+        # Neutralize the FinishedGoodsLot's opening quantity -- a negative
+        # entry equal to the original packing_receipt (the downstream gate
+        # above guarantees this always exactly zeroes the lot's balance).
+        db.add(
+            FinishedGoodsLedgerEntry(
+                id=reversal.id, tenant_id=tenant_id, farm_id=farm_id, finished_goods_lot_id=locked_fg_lot.id,
+                packing_event_id=None, dispatch_line_id=None, packing_reversal_event_id=reversal.id,
+                entry_kind="packing_reversal", weight_delta_kg=-locked_fg_lot.net_packed_weight_kg,
+                package_count_delta=-locked_fg_lot.package_count, effective_time=effective_time,
+                recorded_time=reversal.recorded_time, actor_user_id=actor_user_id, note=None,
+            )
+        )
+        db.flush()
+
+        append_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="packing_event.reversed",
+            entity_type="packing_reversal_event", entity_id=reversal.id,
+            event_data={
+                "packing_reversal_event_id": str(reversal.id), "packing_event_id": str(event.id),
+                "finished_goods_lot_id": str(locked_fg_lot.id), "reason_code": reason_code,
+                "effective_time": effective_time.isoformat(), "client_command_id": str(client_command_id),
+                "neutralized_weight_kg": canonical_decimal_str(locked_fg_lot.net_packed_weight_kg),
+                "input_count": len(input_rows),
+                "graded_produce_lot_ids": [str(r.graded_produce_lot_id) for r in input_rows],
+            },
+        )
+        db.flush()
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint = _constraint_name(exc)
+        if constraint == "ux_packing_reversal_events_tenant_client_command_id":
+            replay = _find_existing_packing_reversal_event(
+                db, tenant_id=tenant_id, client_command_id=client_command_id
+            )
+            if replay is not None and replay.request_fingerprint == fingerprint:
+                return replay
+            raise PackingReversalCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        if constraint == "ux_packing_reversal_events_packing_event_id":
+            raise PackingEventAlreadyReversedError(str(packing_event_id)) from exc
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(reversal)
+    return reversal
+
+
+def get_packing_reversal_event(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, packing_event_id: uuid.UUID
+) -> PackingReversalEventRead:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    reversal = db.execute(
+        select(PackingReversalEvent).where(
+            PackingReversalEvent.packing_event_id == packing_event_id,
+            PackingReversalEvent.tenant_id == tenant_id, PackingReversalEvent.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if reversal is None:
+        raise PackingReversalEventNotFoundError(str(packing_event_id))
+    return _row_to_packing_reversal_event_read(db, reversal)
+
+
+def _row_to_packing_reversal_event_read(db: Session, reversal: PackingReversalEvent) -> PackingReversalEventRead:
+    ledger_entry = db.execute(
+        select(FinishedGoodsLedgerEntry).where(FinishedGoodsLedgerEntry.id == reversal.id)
+    ).scalar_one()
+    input_rows = db.execute(
+        select(PackingReversalInput, GradedProduceLot.code)
+        .join(GradedProduceLot, GradedProduceLot.id == PackingReversalInput.graded_produce_lot_id)
+        .where(PackingReversalInput.packing_reversal_event_id == reversal.id)
+        .order_by(GradedProduceLot.code)
+    ).all()
+    inputs = [
+        PackingReversalInputRead(
+            id=row.id, graded_produce_lot_id=row.graded_produce_lot_id, graded_produce_lot_code=code,
+            restored_weight_kg=row.restored_weight_kg, restored_whole_unit_count=row.restored_whole_unit_count,
+        )
+        for row, code in input_rows
+    ]
+    return PackingReversalEventRead(
+        id=reversal.id, tenant_id=reversal.tenant_id, farm_id=reversal.farm_id,
+        packing_event_id=reversal.packing_event_id, effective_time=reversal.effective_time,
+        recorded_time=reversal.recorded_time, actor_user_id=reversal.actor_user_id,
+        client_command_id=reversal.client_command_id, reason_code=reversal.reason_code, note=reversal.note,
+        neutralized_finished_goods_weight_kg=-ledger_entry.weight_delta_kg,
+        neutralized_finished_goods_package_count=-ledger_entry.package_count_delta, inputs=inputs,
+    )
 
 
 # --- Reads ------------------------------------------------------------------------

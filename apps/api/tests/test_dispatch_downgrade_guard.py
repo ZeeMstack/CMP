@@ -204,11 +204,16 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
         restore_conn = test_engine.connect()
         restore_trans = restore_conn.begin()
         try:
+            # POSTHARVEST-OPS-001H: restores the CURRENT head shape (this
+            # test never actually leaves head -- the downgrade it attempts
+            # is blocked before any schema DDL survives), not the pre-001H
+            # 2-branch shape -- this ticket adds a third, `packing_reversal`,
+            # branch on top of CMP-017's own dispatch-aware shape.
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_kind_allowed "
-                    "CHECK (entry_kind IN ('packing_receipt', 'dispatch_issue'))"
+                    "CHECK (entry_kind IN ('packing_receipt', 'dispatch_issue', 'packing_reversal'))"
                 )
             )
             restore_conn.execute(
@@ -216,15 +221,20 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_deterministic_id CHECK ("
                     "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
-                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id))"
+                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id) "
+                    "OR (entry_kind = 'packing_reversal' AND id = packing_reversal_event_id))"
                 )
             )
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_typed_source_shape CHECK ("
-                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL) "
-                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL))"
+                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'packing_reversal' AND packing_event_id IS NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NOT NULL))"
                 )
             )
             restore_conn.execute(
@@ -234,6 +244,7 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
                     "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
                     "  (entry_kind = 'packing_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
                     "  OR (entry_kind = 'dispatch_issue' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+                    "  OR (entry_kind = 'packing_reversal' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
                     "))"
                 )
             )
@@ -244,6 +255,8 @@ def test_downgrade_blocked_by_unknown_future_kind(test_engine, alembic_head_rest
                     "(entry_kind = 'packing_receipt' AND package_count_delta > 0 "
                     "  AND package_count_delta <= 9223372036854775807)"
                     "OR (entry_kind = 'dispatch_issue' AND package_count_delta < 0 "
+                    "  AND package_count_delta >= -9223372036854775807)"
+                    "OR (entry_kind = 'packing_reversal' AND package_count_delta < 0 "
                     "  AND package_count_delta >= -9223372036854775807))"
                 )
             )
@@ -313,20 +326,30 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
         restore_conn = test_engine.connect()
         restore_trans = restore_conn.begin()
         try:
+            # POSTHARVEST-OPS-001H: restores the CURRENT head shape (this
+            # test never actually leaves head -- the downgrade it attempts
+            # is blocked before any schema DDL survives), not the pre-001H
+            # 2-branch shape -- this ticket adds a third, `packing_reversal`,
+            # branch on top of CMP-017's own dispatch-aware shape.
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_deterministic_id CHECK ("
                     "(entry_kind = 'packing_receipt' AND id = finished_goods_lot_id) "
-                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id))"
+                    "OR (entry_kind = 'dispatch_issue' AND id = dispatch_line_id) "
+                    "OR (entry_kind = 'packing_reversal' AND id = packing_reversal_event_id))"
                 )
             )
             restore_conn.execute(
                 text(
                     "ALTER TABLE finished_goods_ledger_entries ADD CONSTRAINT "
                     "ck_finished_goods_ledger_entries_typed_source_shape CHECK ("
-                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL) "
-                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL))"
+                    "(entry_kind = 'packing_receipt' AND packing_event_id IS NOT NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'dispatch_issue' AND packing_event_id IS NULL AND dispatch_line_id IS NOT NULL "
+                    "  AND packing_reversal_event_id IS NULL) "
+                    "OR (entry_kind = 'packing_reversal' AND packing_event_id IS NULL AND dispatch_line_id IS NULL "
+                    "  AND packing_reversal_event_id IS NOT NULL))"
                 )
             )
             restore_conn.execute(
@@ -336,6 +359,7 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
                     "weight_delta_kg = trunc(weight_delta_kg, 3) AND ("
                     "  (entry_kind = 'packing_receipt' AND weight_delta_kg > 0 AND weight_delta_kg < 100000000000)"
                     "  OR (entry_kind = 'dispatch_issue' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
+                    "  OR (entry_kind = 'packing_reversal' AND weight_delta_kg < 0 AND weight_delta_kg > -100000000000)"
                     "))"
                 )
             )
@@ -346,6 +370,8 @@ def test_downgrade_blocked_by_dangling_dispatch_line_id_with_manipulated_kind(te
                     "(entry_kind = 'packing_receipt' AND package_count_delta > 0 "
                     "  AND package_count_delta <= 9223372036854775807)"
                     "OR (entry_kind = 'dispatch_issue' AND package_count_delta < 0 "
+                    "  AND package_count_delta >= -9223372036854775807)"
+                    "OR (entry_kind = 'packing_reversal' AND package_count_delta < 0 "
                     "  AND package_count_delta >= -9223372036854775807))"
                 )
             )

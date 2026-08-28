@@ -12,6 +12,13 @@ import {
   useGradingEvent, useRecallCases,
 } from "@/lib/query/hooks";
 
+const GPL_LEDGER_ENTRY_KIND_LABEL: Record<string, string> = {
+  grading_receipt: "Grading receipt",
+  packing_consumption: "Packing consumption",
+  grading_reversal: "Grading reversed",
+  packing_reversal: "Packing reversed",
+};
+
 /** POSTHARVEST-OPS-001G: Graded Produce Lot detail -- exact grade, source
  * Harvested Produce Lot (resolved via its own Grading Event, since a GPL
  * only carries `grading_event_id`), original vs. current available
@@ -106,9 +113,7 @@ export default function GradedProduceLotDetailPage() {
             <ul className="flex flex-col divide-y divide-border-subtle rounded-lg border border-border-subtle bg-surface text-sm">
               {ledgerQuery.data.map((entry) => (
                 <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
-                  <span className="text-ink">
-                    {entry.entry_kind === "grading_receipt" ? "Grading receipt" : "Packing consumption"}
-                  </span>
+                  <span className="text-ink">{GPL_LEDGER_ENTRY_KIND_LABEL[entry.entry_kind] ?? entry.entry_kind}</span>
                   <span className="text-ink">
                     {Number(entry.weight_delta_kg) > 0 ? "+" : ""}
                     {entry.weight_delta_kg} kg

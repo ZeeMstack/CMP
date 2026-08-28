@@ -131,6 +131,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "grading-events", sourceHarvestedProduceLotId] as const,
   gradingEvent: (tenantId: string, farmId: string, gradingEventId: string) =>
     ["tenant", tenantId, "farms", farmId, "grading-events", "detail", gradingEventId] as const,
+  gradingReversalEvent: (tenantId: string, farmId: string, gradingEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "grading-events", gradingEventId, "reversal"] as const,
   // `filterKey` defaults to "" (unfiltered) so the unfiltered and
   // crop/variety-filtered variants never collide in cache.
   gradedProduceLots: (tenantId: string, farmId: string, filterKey: string) =>
@@ -151,6 +153,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "packing-events"] as const,
   packingEvent: (tenantId: string, farmId: string, packingEventId: string) =>
     ["tenant", tenantId, "farms", farmId, "packing-events", "detail", packingEventId] as const,
+  packingReversalEvent: (tenantId: string, farmId: string, packingEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "packing-events", packingEventId, "reversal"] as const,
   finishedGoodsLots: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "finished-goods-lots"] as const,
   finishedGoodsLot: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
