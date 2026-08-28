@@ -18,7 +18,13 @@
   --color-ink: #16201a;
   --color-ink-muted: #4b564f;
 
+  /* Warm off-white application canvas (CEO-ALIGN-001 visual direction) --
+     distinct from --color-surface-subtle, which stays a neutral fill used
+     throughout existing cards/skeletons/hover states. */
+  --color-paper: #faf9f4;
+
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 }
 
 :root {
@@ -40,7 +46,7 @@ body {
   display: flex;
   flex-direction: column;
   color: var(--color-ink);
-  background: var(--color-surface-subtle);
+  background: var(--color-paper);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
