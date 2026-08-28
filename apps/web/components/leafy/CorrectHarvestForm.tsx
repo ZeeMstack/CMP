@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { CorrectLeafyHarvestSourceLineCreate, LeafyHarvestSourceLineRead } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -215,18 +216,12 @@ export function CorrectHarvestForm({
         <p className="text-xs text-ink-muted">{biologicalPopulationMessage(headsDelta)}</p>
         {serverError && <p role="alert" className={errorClass}>{correctionErrorMessage(serverError)}</p>}
         <div className="flex gap-2">
-          <button
-            type="button" onClick={() => setStep("values")} disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("values")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button" onClick={confirm} disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-3 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Submitting…" : "Confirm correction"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -285,18 +280,12 @@ export function CorrectHarvestForm({
       </Field>
       {serverError && <p role="alert" className={errorClass}>{correctionErrorMessage(serverError)}</p>}
       <div className="flex gap-2">
-        <button
-          type="button" onClick={onCancel} disabled={isSubmitting}
-          className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
-        </button>
-        <button
-          type="submit" disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-3 text-xs font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

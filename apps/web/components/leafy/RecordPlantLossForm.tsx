@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { RecordProductionDispositionCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -137,8 +138,8 @@ export function RecordPlantLossForm({
   if (step === "review") {
     const values = getValues();
     return (
-      <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-        <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+      <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+        <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <div>
             <dt className="text-ink-muted">Plate</dt>
@@ -186,38 +187,24 @@ export function RecordPlantLossForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Confirm"}
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit(goToReview)} className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
+    <form onSubmit={handleSubmit(goToReview)} className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-ink">Record Plant Loss — {plateCode}</h2>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-        >
+        <h2 className="font-serif text-base font-semibold text-ink">Record Plant Loss — {plateCode}</h2>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
       <dl className="text-sm">
         <div>
@@ -267,12 +254,9 @@ export function RecordPlantLossForm({
       )}
 
       <div>
-        <button
-          type="submit"
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-        >
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

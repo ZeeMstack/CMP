@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
 import type { HarvestablePlateRead } from "@/lib/api/client";
 
 function locationLabel(location: HarvestablePlateRead["location"]): string | null {
@@ -49,10 +50,10 @@ export function HarvestablePlatesPanel({
         return (
           <li
             key={plate.current_batch_carrier_assignment_id}
-            className="flex flex-col gap-2 rounded-lg border border-border-subtle p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-ink">
+              <span className="font-serif text-sm font-semibold text-ink">
                 {plate.production_plate_code} — {plate.batch_code}
               </span>
               <span className="text-xs text-ink-muted">
@@ -78,22 +79,24 @@ export function HarvestablePlatesPanel({
               )}
             </div>
             {isSelected ? (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                className="self-start sm:self-center"
                 onClick={() => onRemove(plate.current_batch_carrier_assignment_id)}
-                className="min-h-11 self-start rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle sm:self-center"
               >
                 Remove from Harvest
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start sm:self-center"
                 disabled={plate.quality_hold_open || isWrongBatch}
                 onClick={() => onAdd(plate)}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 sm:self-center"
               >
                 Add to Harvest
-              </button>
+              </Button>
             )}
           </li>
         );

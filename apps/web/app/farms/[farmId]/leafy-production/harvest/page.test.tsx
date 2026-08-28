@@ -266,7 +266,7 @@ describe("LeafyHarvestPage", () => {
     });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
 
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
     const originalTotalDd = screen.getByText("Original total").closest("div")?.querySelector("dd");
@@ -306,7 +306,7 @@ describe("LeafyHarvestPage", () => {
     });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
 
     expect(screen.getByText(/Data entry error/)).toBeInTheDocument();
@@ -319,7 +319,7 @@ describe("LeafyHarvestPage", () => {
     stubFetch();
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Correct Harvest" }));
@@ -344,7 +344,7 @@ describe("LeafyHarvestPage", () => {
     });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Correct Harvest" }));
@@ -367,7 +367,7 @@ describe("LeafyHarvestPage", () => {
     });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Correct Harvest" }));
@@ -395,7 +395,7 @@ describe("LeafyHarvestPage", () => {
     });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Correct Harvest" }));
@@ -423,7 +423,7 @@ describe("LeafyHarvestPage", () => {
     stubFetch();
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
     expect(screen.getByText("Harvested at: LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
   });
@@ -432,7 +432,7 @@ describe("LeafyHarvestPage", () => {
     stubFetch({ events: [harvestEvent({ source_lines: [sourceLine({ harvest_location: null })] })] });
     render(withQueryClient(<LeafyHarvestPage />));
     await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /harvest history/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
     expect(screen.getByText("Harvest-time location unavailable")).toBeInTheDocument();
   });

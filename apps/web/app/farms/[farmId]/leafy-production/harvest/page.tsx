@@ -8,11 +8,18 @@ import { PageHeader } from "@/components/PageHeader";
 import { HarvestablePlatesPanel } from "@/components/leafy/HarvestablePlatesPanel";
 import { LeafyHarvestForm } from "@/components/leafy/LeafyHarvestForm";
 import { LeafyHarvestHistoryPanel } from "@/components/leafy/LeafyHarvestHistoryPanel";
+import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import type { CorrectLeafyHarvestSourceLineCreate, HarvestablePlateRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useCorrectLeafyHarvestSourceLine, useHarvestablePlates, useLeafyHarvests, useRecordLeafyHarvest,
 } from "@/lib/query/hooks";
+
+const TABS = [
+  { id: "harvestable", label: "Harvestable Plates" },
+  { id: "history", label: "Harvest History" },
+] as const;
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -64,32 +71,20 @@ export default function LeafyHarvestPage() {
         }
       />
 
-      <div className="mb-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("harvestable")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "harvestable" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Harvestable Plates
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("history")}
-          className={`min-h-11 rounded-md border px-4 text-sm font-medium ${
-            tab === "history" ? "border-brand-700 bg-brand-700 text-white" : "border-border-subtle text-ink hover:bg-surface-subtle"
-          }`}
-        >
-          Harvest History
-        </button>
+      <div className="mb-6">
+        <Tabs
+          tabs={TABS.map(({ id, label }) => ({ id, label }))}
+          activeId={tab}
+          onChange={(id) => setTab(id as "harvestable" | "history")}
+          aria-label="Harvest sections"
+        />
       </div>
 
       {tab === "harvestable" && (
         <div className="flex flex-col gap-4">
           {recordSuccess ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-              <h2 className="text-sm font-semibold text-ink">Harvest recorded</h2>
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Harvest recorded</h2>
               <dl className="text-sm">
                 <div>
                   <dt className="text-ink-muted">Harvest Lot code</dt>
@@ -112,17 +107,18 @@ export default function LeafyHarvestPage() {
                   <dd className="font-medium text-ink">{recordSuccess.plateCount}</dd>
                 </div>
               </dl>
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                className="self-start"
                 onClick={() => {
                   setSelectedAssignmentIds([]);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
-                className="min-h-11 self-start rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
               >
                 Done
-              </button>
+              </Button>
             </div>
           ) : (
             <>
