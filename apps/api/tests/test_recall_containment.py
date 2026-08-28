@@ -202,7 +202,7 @@ def test_dispatch_blocked_for_recalled_lot(test_engine) -> None:
             with pytest.raises(RecallContainmentOpenError):
                 dispatch_service.record_dispatch(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
     finally:
@@ -228,7 +228,7 @@ def test_dispatch_resumes_after_close(test_engine) -> None:
             with pytest.raises(RecallContainmentOpenError):
                 dispatch_service.record_dispatch(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
 
@@ -237,7 +237,7 @@ def test_dispatch_resumes_after_close(test_engine) -> None:
 
             event = dispatch_service.record_dispatch(
                 session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
             )
             assert event.id is not None
@@ -266,7 +266,7 @@ def test_quality_hold_and_recall_containment_are_independent(test_engine) -> Non
             with pytest.raises(RecallContainmentOpenError):
                 dispatch_service.record_dispatch(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
 
@@ -284,7 +284,7 @@ def test_quality_hold_and_recall_containment_are_independent(test_engine) -> Non
             with pytest.raises(QualityHoldOpenError):
                 dispatch_service.record_dispatch(
                     session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
 
@@ -301,7 +301,7 @@ def test_quality_hold_and_recall_containment_are_independent(test_engine) -> Non
             # Dispatch now succeeds -- neither gate blocks it anymore.
             event = dispatch_service.record_dispatch(
                 session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-                effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
             )
             assert event.id is not None

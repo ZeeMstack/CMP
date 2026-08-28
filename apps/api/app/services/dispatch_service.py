@@ -51,12 +51,13 @@ def _constraint_name(exc: IntegrityError) -> str | None:
 
 def _compute_dispatch_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, effective_time: datetime,
-    code: str, external_reference: str | None, note: str | None, lines: list[dict],
+    code: str, external_reference: str | None, note: str | None, dispatch_temperature_c: Decimal,
+    lines: list[dict],
 ) -> str:
     sorted_lines = sorted(lines, key=lambda line: str(line["finished_goods_lot_id"]))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), effective_time.astimezone(timezone.utc).isoformat(),
-        code, external_reference or "", note or "",
+        code, external_reference or "", note or "", canonical_decimal_str(dispatch_temperature_c),
     ]
     for line in sorted_lines:
         parts.extend(
@@ -92,6 +93,7 @@ def record_dispatch(
     code: str,
     external_reference: str | None,
     note: str | None,
+    dispatch_temperature_c: Decimal,
     lines: list[dict],
 ) -> DispatchEvent:
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
@@ -105,7 +107,8 @@ def record_dispatch(
 
     fingerprint = _compute_dispatch_fingerprint(
         tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, effective_time=effective_time,
-        code=code, external_reference=external_reference, note=note, lines=lines,
+        code=code, external_reference=external_reference, note=note,
+        dispatch_temperature_c=dispatch_temperature_c, lines=lines,
     )
 
     existing = _find_existing_dispatch_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
@@ -289,7 +292,7 @@ def record_dispatch(
         event = DispatchEvent(
             id=event_id, tenant_id=tenant_id, farm_id=farm_id, code=code, effective_time=effective_time,
             actor_user_id=actor_user_id, client_command_id=client_command_id, request_fingerprint=fingerprint,
-            external_reference=external_reference, note=note,
+            external_reference=external_reference, note=note, dispatch_temperature_c=dispatch_temperature_c,
         )
         db.add(event)
         db.flush()
@@ -341,6 +344,7 @@ def record_dispatch(
                 ),
                 "total_dispatched_package_count": sum(line_objs[lid].dispatched_package_count for lid in lot_ids),
                 "external_reference": external_reference,
+                "dispatch_temperature_c": canonical_decimal_str(dispatch_temperature_c),
             },
         )
         db.flush()
@@ -394,6 +398,7 @@ def _row_to_dispatch_event_read(event: DispatchEvent, lines: list[DispatchLineRe
         total_dispatched_package_count=sum(l.dispatched_package_count for l in lines),
         effective_time=event.effective_time, recorded_time=event.recorded_time, actor_user_id=event.actor_user_id,
         client_command_id=event.client_command_id, external_reference=event.external_reference, note=event.note,
+        dispatch_temperature_c=event.dispatch_temperature_c,
     )
 
 

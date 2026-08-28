@@ -19,6 +19,7 @@ from app.services.errors import (
     FarmNotFoundError,
     InvalidBatchDerivationEffectiveTimeError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
     SourceAssignmentAlreadyReleasedError,
     SourceAssignmentNotFoundError,
     TooManyBatchDerivationLinesError,
@@ -60,6 +61,7 @@ def split_crop_batch(
     except (
         CropBatchClosedError,
         QualityHoldOpenError,
+        RecallContainmentOpenError,
         SourceAssignmentAlreadyReleasedError,
         BatchDerivationCommandReusedWithDifferentPayloadError,
         DuplicateBatchCodeError,
@@ -104,6 +106,7 @@ def merge_crop_batches(
     except (
         CropBatchClosedError,
         QualityHoldOpenError,
+        RecallContainmentOpenError,
         BatchDerivationCommandReusedWithDifferentPayloadError,
         DuplicateBatchCodeError,
     ) as exc:

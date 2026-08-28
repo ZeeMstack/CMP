@@ -19,6 +19,7 @@ from app.services.errors import (
     InsufficientUnplacedQuantityError,
     InvalidDispatchEffectiveTimeError,
     QualityHoldOpenError,
+    RecallContainmentOpenError,
 )
 
 router = APIRouter(tags=["dispatch"])
@@ -54,12 +55,14 @@ def record_dispatch(
             code=payload.code,
             external_reference=payload.external_reference,
             note=payload.note,
+            dispatch_temperature_c=payload.dispatch_temperature_c,
             lines=lines,
         )
     except (FarmNotFoundError, DispatchFinishedGoodsLotNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except (
         QualityHoldOpenError,
+        RecallContainmentOpenError,
         DispatchCommandReusedWithDifferentPayloadError,
         DuplicateDispatchCodeError,
         InsufficientFinishedGoodsBalanceError,

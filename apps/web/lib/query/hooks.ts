@@ -9,6 +9,8 @@ import type {
   CorrectLeafyHarvestSourceLineCreate,
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
+  DispatchEventCreate,
+  FinishedGoodsStorageMovementCreate,
   GerminationOutcomeCommandCreate,
   GradingEventCreate,
   GradingReversalEventCreate,
@@ -19,6 +21,8 @@ import type {
   PackingReversalEventCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  RecallCaseClose,
+  RecallCaseCreate,
   RecordLeafyHarvestCreate,
   RecordProductionDispositionCreate,
   RecordSeedlingDispositionCreate,
@@ -1332,6 +1336,107 @@ export function useRecallCases(farmId: string) {
     queryFn: ({ signal }) => api.listRecallCases(farmId, signal),
     staleTime: STALE_LIST_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+export function useRecallCase(farmId: string, recallCaseId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.recallCase(tenantId ?? "", farmId, recallCaseId ?? ""),
+    queryFn: ({ signal }) => api.getRecallCase(farmId, recallCaseId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(recallCaseId),
+  });
+}
+
+function _invalidateRecallCases(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.recallCases(tenantId, farmId) });
+}
+
+export function useOpenRecallCase(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecallCaseCreate) => api.openRecallCase(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateRecallCases(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useCloseRecallCase(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (variables: { recallCaseId: string; payload: RecallCaseClose }) =>
+      api.closeRecallCase(farmId, variables.recallCaseId, variables.payload),
+    onSuccess: (_result, variables) => {
+      if (!tenantId) return;
+      _invalidateRecallCases(queryClient, tenantId, farmId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.recallCase(tenantId, farmId, variables.recallCaseId) });
+    },
+  });
+}
+
+// --- PILOT-READY-001: Cold Storage -------------------------------------
+
+export function useFinishedGoodsStorageMovements(farmId: string, finishedGoodsLotId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.finishedGoodsStorageMovements(tenantId ?? "", farmId, finishedGoodsLotId ?? ""),
+    queryFn: ({ signal }) => api.listFinishedGoodsStorageMovements(farmId, finishedGoodsLotId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(finishedGoodsLotId),
+  });
+}
+
+export function useRecordFinishedGoodsStorageMovement(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: FinishedGoodsStorageMovementCreate) => api.recordFinishedGoodsStorageMovement(farmId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.finishedGoodsPlacement(tenantId, farmId, result.finished_goods_lot_id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.finishedGoodsStorageMovements(tenantId, farmId, result.finished_goods_lot_id),
+      });
+    },
+  });
+}
+
+// --- PILOT-READY-001: Dispatch -------------------------------------------
+
+export function useDispatchEvents(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.dispatches(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listDispatchEvents(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useRecordDispatch(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: DispatchEventCreate) => api.recordDispatch(farmId, payload),
+    onSuccess: (result) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.dispatches(tenantId, farmId) });
+      for (const line of result.lines) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.finishedGoodsPlacement(tenantId, farmId, line.finished_goods_lot_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.finishedGoodsBalance(tenantId, farmId, line.finished_goods_lot_id),
+        });
+      }
+    },
   });
 }
 

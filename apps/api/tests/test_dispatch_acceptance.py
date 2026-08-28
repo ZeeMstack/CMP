@@ -222,7 +222,7 @@ def test_dispatch_acceptance_flow(client, active_context, db_session) -> None:
     dispatch_command_id = str(uuid.uuid4())
     dispatch_payload = {
         "client_command_id": dispatch_command_id, "effective_time": _now_iso(), "code": f"disp-{suffix}",
-        "external_reference": "PO-123", "note": None,
+        "external_reference": "PO-123", "note": None, "dispatch_temperature_c": "4.0",
         "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "3.000", "dispatched_package_count": 4}],
     }
     dispatch_resp = client.post(f"/farms/{farm_id}/dispatches", headers=headers, json=dispatch_payload)
@@ -271,7 +271,7 @@ def test_dispatch_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/dispatches", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(), "code": f"disp-over-{suffix}",
-            "external_reference": None, "note": None,
+            "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
             "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "99.000", "dispatched_package_count": 1}],
         },
     )
@@ -291,7 +291,7 @@ def test_dispatch_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/dispatches", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(), "code": f"disp-held-{suffix}",
-            "external_reference": None, "note": None,
+            "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
             "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "1.000", "dispatched_package_count": 1}],
         },
     )
@@ -314,7 +314,7 @@ def test_dispatch_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/dispatches", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(), "code": f"disp-{suffix}",
-            "external_reference": None, "note": None,
+            "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
             "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "1.000", "dispatched_package_count": 1}],
         },
     )

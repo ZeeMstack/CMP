@@ -55,6 +55,7 @@ def dispatch_one(
     scenario, db: Session, *, finished_goods_lot_id, dispatched_weight_kg: Decimal = Decimal("3.000"),
     dispatched_package_count: int = 4, code_suffix: str = "", client_command_id=None, effective_time=None,
     external_reference: str | None = None, note: str | None = None,
+    dispatch_temperature_c: Decimal = Decimal("4.0"),
 ):
     """Dispatches one line for the given finished-goods lot. Returns the
     DispatchEvent ORM object."""
@@ -62,6 +63,7 @@ def dispatch_one(
         db, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
         client_command_id=client_command_id or uuid.uuid4(), effective_time=effective_time or now(),
         code=f"DISP-{scenario['suffix']}{code_suffix}", external_reference=external_reference, note=note,
+        dispatch_temperature_c=dispatch_temperature_c,
         lines=[
             {
                 "finished_goods_lot_id": finished_goods_lot_id, "dispatched_weight_kg": dispatched_weight_kg,

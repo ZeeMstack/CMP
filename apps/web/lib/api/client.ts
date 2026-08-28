@@ -739,6 +739,16 @@ export type FinishedGoodsPlacementRead = components["schemas"]["FinishedGoodsPla
 export type LocationInventoryRead = components["schemas"]["LocationInventoryRead"];
 
 export type RecallCaseSummaryRead = components["schemas"]["RecallCaseSummaryRead"];
+export type RecallCaseDetailRead = components["schemas"]["RecallCaseDetailRead"];
+export type RecallCaseCreate = components["schemas"]["RecallCaseCreate"];
+export type RecallCaseClose = components["schemas"]["RecallCaseClose"];
+
+export type DispatchEventCreate = components["schemas"]["DispatchEventCreate"];
+export type DispatchLineIn = components["schemas"]["DispatchLineIn"];
+export type DispatchEventRead = components["schemas"]["DispatchEventRead"];
+
+export type FinishedGoodsStorageMovementCreate = components["schemas"]["FinishedGoodsStorageMovementCreate"];
+export type FinishedGoodsStorageMovementRead = components["schemas"]["FinishedGoodsStorageMovementRead"];
 
 // Harvested Produce Lots read access (the write/record path is Harvest,
 // HARVEST-OPS-001) -- this is Grading's "pick a source Lot" surface.
@@ -977,4 +987,52 @@ export function getFinishedGoodsPlacement(
 
 export function listRecallCases(farmId: string, signal?: AbortSignal): Promise<RecallCaseSummaryRead[]> {
   return getJson<RecallCaseSummaryRead[]>(`/farms/${farmId}/recall-cases`, signal);
+}
+
+export function getRecallCase(farmId: string, recallCaseId: string, signal?: AbortSignal): Promise<RecallCaseDetailRead> {
+  return getJson<RecallCaseDetailRead>(`/farms/${farmId}/recall-cases/${recallCaseId}`, signal);
+}
+
+export function openRecallCase(farmId: string, payload: RecallCaseCreate, signal?: AbortSignal): Promise<RecallCaseDetailRead> {
+  return postJson<RecallCaseDetailRead>(`/farms/${farmId}/recall-cases`, payload, signal);
+}
+
+export function closeRecallCase(
+  farmId: string,
+  recallCaseId: string,
+  payload: RecallCaseClose,
+  signal?: AbortSignal,
+): Promise<RecallCaseDetailRead> {
+  return postJson<RecallCaseDetailRead>(`/farms/${farmId}/recall-cases/${recallCaseId}/close`, payload, signal);
+}
+
+// PILOT-READY-001: Cold Storage (place/transfer/release a Finished Goods
+// Lot against a Location) and Dispatch (consume a Finished Goods Lot's
+// currently-unplaced balance, CMP-018) -- both previously had no frontend
+// write path despite full backend support.
+
+export function recordFinishedGoodsStorageMovement(
+  farmId: string,
+  payload: FinishedGoodsStorageMovementCreate,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsStorageMovementRead> {
+  return postJson<FinishedGoodsStorageMovementRead>(`/farms/${farmId}/finished-goods-storage-movements`, payload, signal);
+}
+
+export function listFinishedGoodsStorageMovements(
+  farmId: string,
+  finishedGoodsLotId: string,
+  signal?: AbortSignal,
+): Promise<FinishedGoodsStorageMovementRead[]> {
+  return getJson<FinishedGoodsStorageMovementRead[]>(
+    `/farms/${farmId}/finished-goods-lots/${finishedGoodsLotId}/storage-movements`, signal,
+  );
+}
+
+export function recordDispatch(farmId: string, payload: DispatchEventCreate, signal?: AbortSignal): Promise<DispatchEventRead> {
+  return postJson<DispatchEventRead>(`/farms/${farmId}/dispatches`, payload, signal);
+}
+
+export function listDispatchEvents(farmId: string, signal?: AbortSignal): Promise<DispatchEventRead[]> {
+  return getJson<DispatchEventRead[]>(`/farms/${farmId}/dispatches`, signal);
 }

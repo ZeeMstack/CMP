@@ -284,7 +284,7 @@ def test_storage_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/dispatches", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(), "code": f"disp-over-{suffix}",
-            "external_reference": None, "note": None,
+            "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
             "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "5.000", "dispatched_package_count": 5}],
         },
     )
@@ -305,7 +305,7 @@ def test_storage_acceptance_flow(client, active_context, db_session) -> None:
         f"/farms/{farm_id}/dispatches", headers=headers,
         json={
             "client_command_id": str(uuid.uuid4()), "effective_time": _now_iso(), "code": f"disp-{suffix}",
-            "external_reference": None, "note": None,
+            "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
             "lines": [{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": "5.000", "dispatched_package_count": 5}],
         },
     )

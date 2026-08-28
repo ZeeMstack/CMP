@@ -434,7 +434,7 @@ def test_recall_open_vs_dispatch_one_serial_truth(test_engine) -> None:
                 barrier.wait(timeout=10)
                 event = dispatch_service.record_dispatch(
                     session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id, client_command_id=uuid.uuid4(),
-                    effective_time=effective_time, code=f"DISP-RACE-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=effective_time, code=f"DISP-RACE-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
                 session.commit()
@@ -521,7 +521,7 @@ def test_close_vs_dispatch_one_serial_truth(test_engine) -> None:
                 barrier.wait(timeout=10)
                 event = dispatch_service.record_dispatch(
                     session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id, client_command_id=uuid.uuid4(),
-                    effective_time=effective_time, code=f"DISP-RACE-{uuid.uuid4().hex[:8]}", external_reference=None, note=None,
+                    effective_time=effective_time, code=f"DISP-RACE-{uuid.uuid4().hex[:8]}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
                 session.commit()
@@ -551,7 +551,7 @@ def test_close_vs_dispatch_one_serial_truth(test_engine) -> None:
                 event = dispatch_service.record_dispatch(
                     retry_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id,
                     client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-RETRY-{uuid.uuid4().hex[:8]}",
-                    external_reference=None, note=None,
+                    external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
                 retry_session.commit()

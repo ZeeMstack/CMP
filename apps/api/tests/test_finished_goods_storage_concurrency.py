@@ -319,7 +319,7 @@ def test_dispatch_vs_place_race_serializes_through_lot_lock(test_engine) -> None
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                code=f"DISP-RACE-{scenario['suffix']}", external_reference=None, note=None,
+                code=f"DISP-RACE-{scenario['suffix']}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("8.000"), "dispatched_package_count": 8}],
             )
             results["dispatch"] = ("ok", event.id)
@@ -408,7 +408,7 @@ def test_release_vs_dispatch_maintains_release_before_dispatch_invariant(test_en
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                code=f"DISP-RVD-{scenario['suffix']}", external_reference=None, note=None,
+                code=f"DISP-RVD-{scenario['suffix']}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("8.000"), "dispatched_package_count": 8}],
             )
             results["dispatch"] = ("ok", event.id)

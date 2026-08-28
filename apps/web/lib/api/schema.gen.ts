@@ -4097,6 +4097,8 @@ export interface components {
             external_reference?: string | null;
             /** Note */
             note?: string | null;
+            /** Dispatch Temperature C */
+            dispatch_temperature_c: number | string;
             /** Lines */
             lines: components["schemas"]["DispatchLineIn"][];
         };
@@ -4149,6 +4151,8 @@ export interface components {
             external_reference: string | null;
             /** Note */
             note: string | null;
+            /** Dispatch Temperature C */
+            dispatch_temperature_c: string | null;
         };
         /** DispatchLineIn */
         DispatchLineIn: {

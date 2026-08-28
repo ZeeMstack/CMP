@@ -60,7 +60,7 @@ def test_trace_snapshot_is_never_mixed_across_a_concurrent_dispatch_commit(test_
             dispatch_service.record_dispatch(
                 mutate_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=user_id,
                 client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{uuid.uuid4().hex[:8]}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("3.000"), "dispatched_package_count": 3}],
             )
             mutate_session.commit()

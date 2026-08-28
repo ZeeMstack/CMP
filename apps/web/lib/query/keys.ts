@@ -168,4 +168,12 @@ export const queryKeys = {
 
   recallCases: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "recall-cases"] as const,
+  recallCase: (tenantId: string, farmId: string, recallCaseId: string) =>
+    ["tenant", tenantId, "farms", farmId, "recall-cases", "detail", recallCaseId] as const,
+
+  finishedGoodsStorageMovements: (tenantId: string, farmId: string, finishedGoodsLotId: string) =>
+    ["tenant", tenantId, "farms", farmId, "finished-goods-lots", finishedGoodsLotId, "storage-movements"] as const,
+
+  dispatches: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "dispatches"] as const,
 };

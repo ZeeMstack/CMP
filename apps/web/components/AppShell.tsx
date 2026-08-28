@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, Boxes, ClipboardList, Layers, Leaf, LayoutGrid, LogOut, Map, Menu, Package, PackageCheck, Scale, Sprout, Table2, Thermometer, Warehouse, Wheat, Wrench, X } from "lucide-react";
+import { ArrowRightLeft, Boxes, ClipboardList, Layers, Leaf, LayoutGrid, LogOut, Map, Menu, Package, PackageCheck, Scale, ShieldAlert, Snowflake, Sprout, Table2, Thermometer, Truck, Warehouse, Wheat, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -32,6 +32,9 @@ function navItems(farmId: string) {
     { href: `/farms/${farmId}/processing/graded-lots`, label: "Graded Produce Lots", icon: Layers, exact: false },
     { href: `/farms/${farmId}/processing/packing`, label: "Packing", icon: PackageCheck, exact: false },
     { href: `/farms/${farmId}/processing/finished-goods`, label: "Finished Goods", icon: Warehouse, exact: false },
+    { href: `/farms/${farmId}/processing/cold-storage`, label: "Cold Storage", icon: Snowflake, exact: false },
+    { href: `/farms/${farmId}/processing/dispatch`, label: "Dispatch", icon: Truck, exact: false },
+    { href: `/farms/${farmId}/processing/recall-cases`, label: "Recall Cases", icon: ShieldAlert, exact: false },
     { href: `/farms/${farmId}/farm-setup`, label: "Farm Setup", icon: Wrench, exact: false },
   ];
 }
