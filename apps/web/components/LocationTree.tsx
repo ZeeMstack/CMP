@@ -93,14 +93,17 @@ function TreeNode({
 
   return (
     <li>
-      <div className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 py-1" style={{ paddingLeft: depth * 16 }}>
+      <div
+        className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1 hover:bg-surface-subtle"
+        style={{ paddingLeft: depth * 16 }}
+      >
         {hasChildren ? (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
             aria-label={`${expanded ? "Collapse" : "Expand"} ${node.name}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-surface-subtle"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-muted hover:bg-surface"
           >
             <ChevronRight
               aria-hidden="true"

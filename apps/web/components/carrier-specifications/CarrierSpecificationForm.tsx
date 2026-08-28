@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { CarrierSpecificationCreate, CarrierSpecificationRead, CarrierSpecificationUpdate, CarrierTypeRead } from "@/lib/api/client";
 import {
   DEFAULT_CARRIER_SPECIFICATION_FORM_VALUES,
@@ -89,7 +90,7 @@ export function CarrierSpecificationForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-6">
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-ink">Identity</legend>
         <Field label="Carrier type" error={errors.carrier_type_code?.message}>
           <select {...register("carrier_type_code")} disabled={locked} className={inputClass}>
@@ -109,7 +110,7 @@ export function CarrierSpecificationForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-3">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-3">
         <legend className="px-1 text-sm font-semibold text-ink">
           Dimensions {requiresDimensions ? "(required for this carrier type)" : "(optional)"}
         </legend>
@@ -145,7 +146,7 @@ export function CarrierSpecificationForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-3">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-3">
         <legend className="px-1 text-sm font-semibold text-ink">
           {positionLabel} {requiresDimensions ? "(required for this carrier type)" : "(optional)"}
         </legend>
@@ -175,21 +176,12 @@ export function CarrierSpecificationForm({
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={isSubmitting}>
           {isSubmitting ? "Saving…" : existing ? "Save changes" : "Create specification"}
-        </button>
+        </Button>
       </div>
     </form>
   );

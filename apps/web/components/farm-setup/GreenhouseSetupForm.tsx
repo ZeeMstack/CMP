@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { GreenhouseSetupCreate } from "@/lib/api/client";
 import {
   DEFAULT_FORM_VALUES,
@@ -70,25 +71,16 @@ export function GreenhouseSetupForm({
     const payload = buildGreenhouseSetupPayload(values, clientCommandId);
     return (
       <div className="flex flex-col gap-4">
+        <StepIndicator step="review" />
         <ReviewSummary payload={payload} />
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Creating…" : "Create greenhouse"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -102,6 +94,8 @@ export function GreenhouseSetupForm({
       }}
       className="flex flex-col gap-6"
     >
+      <StepIndicator step="configure" />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Greenhouse code" error={errors.code?.message}>
           <input {...register("code")} className={inputClass} placeholder="GH-01" />
@@ -119,8 +113,8 @@ export function GreenhouseSetupForm({
           {CLASSIFICATIONS.map((c) => (
             <label
               key={c.value}
-              className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm ${
-                classification === c.value ? "border-brand-600 bg-brand-100 text-brand-800" : "border-border-subtle text-ink"
+              className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
+                classification === c.value ? "border-brand-600 bg-brand-100 text-brand-800" : "border-border-subtle text-ink hover:border-brand-300"
               }`}
             >
               <input type="radio" value={c.value} {...register("classification")} className="sr-only" />
@@ -135,21 +129,29 @@ export function GreenhouseSetupForm({
       {classification === "nursery" && <NurseryFields register={register} watch={watch} errors={errors} />}
 
       <div>
-        <button
-          type="submit"
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-        >
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
+  );
+}
+
+/** Purely presentational -- both steps already exist as real form/review
+ * state (`step` in the parent); this just makes the two-step configure →
+ * review flow visible to the operator. */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function LeafyFields({ register, errors }: { register: any; errors: any }) {
   return (
-    <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+    <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
       <legend className="px-1 text-sm font-semibold text-ink">Leafy Greens structure</legend>
       <p className="text-xs text-ink-muted">Greenhouse → Zone → Span → Table. No Table Position.</p>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -182,7 +184,7 @@ function LeafyFields({ register, errors }: { register: any; errors: any }) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function VinesFields({ register, control, errors }: { register: any; control: any; errors: any }) {
   return (
-    <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+    <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
       <legend className="px-1 text-sm font-semibold text-ink">Vines structure</legend>
       <p className="text-xs text-ink-muted">
         Greenhouse → Zone → Span → Grow Gutter → Grow Bag Position. No Gutter Side. Bag Position capacity is
@@ -244,7 +246,7 @@ function NurseryFields({ register, watch, errors }: { register: any; watch: any;
   const includeSeedingMachine = watch("nursery.includeSeedingMachine");
 
   return (
-    <fieldset className="flex flex-col gap-5 rounded-lg border border-border-subtle p-4">
+    <fieldset className="flex flex-col gap-5 rounded-xl border border-border-subtle bg-surface p-4">
       <legend className="px-1 text-sm font-semibold text-ink">Nursery structure</legend>
       <p className="text-xs text-ink-muted">No Zone/Span. Every Nursery section below is optional -- configure any combination.</p>
 
@@ -437,8 +439,8 @@ function ReviewSummary({ payload }: { payload: GreenhouseSetupCreate }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-      <h2 className="text-sm font-semibold text-ink">Review before creating</h2>
+    <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+      <h2 className="font-serif text-base font-semibold text-ink">Review before creating</h2>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
         {rows.map(([label, value]) => (
           <div key={label}>
