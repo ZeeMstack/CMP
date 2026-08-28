@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { PlaceTrolleyCreate } from "@/lib/api/client";
 import { useAssets, useAvailableChambers } from "@/lib/query/hooks";
 import {
@@ -81,8 +82,8 @@ export function PlaceTrolleyForm({
     const chamber = chambers.find((c) => c.id === values.chamber_id);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Review before placing</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Review before placing</h2>
           <p className="text-sm text-ink">
             Place <span className="font-medium">{trolley?.code}</span> in Germination Chamber{" "}
             <span className="font-medium">{chamber?.code}</span>
@@ -110,22 +111,12 @@ export function PlaceTrolleyForm({
         </div>
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Placing…" : "Place Trolley"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -139,7 +130,7 @@ export function PlaceTrolleyForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Trolley</legend>
         <Field label="Trolley" error={errors.trolley_id?.message}>
           <select {...register("trolley_id")} className={inputClass}>
@@ -153,7 +144,7 @@ export function PlaceTrolleyForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Germination Chamber</legend>
         {chambersQuery.isSuccess && chambers.length === 0 ? (
           <p className="text-sm text-ink-muted">No Germination Chambers are configured for this farm yet.</p>
@@ -171,7 +162,7 @@ export function PlaceTrolleyForm({
         )}
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-ink">Placement date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
@@ -181,25 +172,18 @@ export function PlaceTrolleyForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Reason (optional)</legend>
         <textarea {...register("reason")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800"
-        >
+        </Button>
+        <Button type="submit" variant="primary">
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

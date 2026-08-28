@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { RecordSeedlingDispositionCreate } from "@/lib/api/client";
 import { useSeedlingBiologicalTrays, useSeedlingDispositionReasons } from "@/lib/query/hooks";
 import {
@@ -96,8 +97,8 @@ export function RecordDispositionForm({
     const reason = reasons.find((r) => r.code === values.reason_code);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <h2 className="text-sm font-semibold text-ink">Review before recording</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+          <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
           <p className="text-sm text-ink-muted">
             This will record {values.quantity} seedling(s) as no longer continuing on this Tray. The system will
             confirm the resulting living count after you submit.
@@ -139,22 +140,12 @@ export function RecordDispositionForm({
         </div>
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Recording…" : "Record disposition"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -168,7 +159,7 @@ export function RecordDispositionForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seed Tray</legend>
         {traysQuery.isSuccess && eligibleTrays.length === 0 ? (
           <p className="text-sm text-ink-muted">No Seed Trays are currently eligible for a disposition.</p>
@@ -214,7 +205,7 @@ export function RecordDispositionForm({
 
       {selectedTray && (
         <>
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Seedlings no longer continuing</legend>
             <Field label="Quantity" error={errors.quantity?.message}>
               <input type="number" min={1} step={1} {...register("quantity")} className={inputClass} />
@@ -231,7 +222,7 @@ export function RecordDispositionForm({
             </Field>
           </fieldset>
 
-          <fieldset className="grid grid-cols-1 gap-4 rounded-lg border border-border-subtle p-4 sm:grid-cols-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
             <legend className="px-1 text-sm font-semibold text-ink">Occurred date/time</legend>
             <Field label="Date" error={errors.effective_date?.message}>
               <input type="date" {...register("effective_date")} className={inputClass} />
@@ -241,7 +232,7 @@ export function RecordDispositionForm({
             </Field>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-4 rounded-lg border border-border-subtle p-4">
+          <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
             <legend className="px-1 text-sm font-semibold text-ink">
               Note {watchedReason === "OTHER" ? "(required for Other)" : "(optional)"}
             </legend>
@@ -252,20 +243,12 @@ export function RecordDispositionForm({
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={!selectedTray}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-        >
+        </Button>
+        <Button type="submit" variant="primary" disabled={!selectedTray}>
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

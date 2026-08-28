@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CorrectDispositionForm } from "@/components/nursery/CorrectDispositionForm";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Button } from "@/components/ui/Button";
 import type { SeedlingDispositionEventRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useCorrectSeedlingDisposition, useSeedlingDispositionHistory } from "@/lib/query/hooks";
@@ -43,16 +44,12 @@ export function SeedlingDispositionHistoryPanel({
   const correctingTarget = events.find((e) => e.id === correctingEventId) ?? null;
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface p-4">
+    <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-ink">Disposition history</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-        >
+        <h2 className="font-serif text-base font-semibold text-ink">Disposition history</h2>
+        <Button type="button" variant="secondary" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
 
       {historyQuery.isLoading && <LoadingSkeleton />}
@@ -74,7 +71,7 @@ export function SeedlingDispositionHistoryPanel({
           {events.length === 0 ? (
             <p className="text-sm text-ink-muted">No dispositions have been recorded for this Tray yet.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border-subtle">
+            <div className="overflow-x-auto rounded-xl border border-border-subtle">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
                   <tr>
@@ -91,7 +88,7 @@ export function SeedlingDispositionHistoryPanel({
                   {events.map((event) => {
                     const correctable = event.event_kind === "REDUCTION" && !reversedTargetIds.has(event.id);
                     return (
-                      <tr key={event.id}>
+                      <tr key={event.id} className="hover:bg-surface-subtle">
                         <td className="px-4 py-2 text-ink-muted">{new Date(event.effective_time).toLocaleString()}</td>
                         <td className="px-4 py-2 text-ink">{KIND_LABEL[event.event_kind]}</td>
                         <td className="px-4 py-2 text-ink">{event.reason_code}</td>
@@ -104,16 +101,16 @@ export function SeedlingDispositionHistoryPanel({
                         </td>
                         <td className="px-4 py-2">
                           {correctable && (
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
                               onClick={() => {
                                 setServerError(null);
                                 setCorrectingEventId(event.id);
                               }}
-                              className="min-h-11 rounded-md border border-border-subtle px-3 text-sm font-medium text-ink hover:bg-surface-subtle"
                             >
                               Correct
-                            </button>
+                            </Button>
                           )}
                         </td>
                       </tr>

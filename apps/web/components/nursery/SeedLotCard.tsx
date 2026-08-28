@@ -6,9 +6,9 @@ export function SeedLotCard({ seedLot, farmId }: { seedLot: SeedLotRead; farmId:
   return (
     <Link
       href={`/farms/${farmId}/seed-lots/${seedLot.id}`}
-      className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface p-4 hover:border-brand-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+      className="flex flex-col gap-1 rounded-xl border border-border-subtle bg-surface p-4 transition-colors hover:border-brand-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
     >
-      <p className="text-sm font-semibold text-ink">{seedLot.code}</p>
+      <p className="font-serif text-base font-semibold text-ink">{seedLot.code}</p>
       <p className="text-xs text-ink-muted">
         {seedLot.crop.common_name} — {seedLot.variety.name}
       </p>

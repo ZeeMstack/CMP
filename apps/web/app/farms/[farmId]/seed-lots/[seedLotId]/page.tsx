@@ -73,7 +73,7 @@ export default function SeedLotDetailPage() {
       </dl>
 
       <div className="mt-8 border-t border-border-subtle pt-4">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">Crop Batches sown from this Seed Lot</h2>
+        <h2 className="mb-2 font-serif text-sm font-semibold text-ink">Crop Batches sown from this Seed Lot</h2>
         {batchesQuery.isLoading && <LoadingSkeleton rows={2} label="Loading batches" />}
         {batchesQuery.error && <ErrorState error={batchesQuery.error} onRetry={() => batchesQuery.refetch()} />}
         {batchesQuery.data && batchesQuery.data.length === 0 && (
@@ -85,7 +85,7 @@ export default function SeedLotDetailPage() {
               <li key={batch.id}>
                 <Link
                   href={`/farms/${farmId}/crop-batches/${batch.id}`}
-                  className="flex min-h-11 items-center justify-between rounded-md border border-border-subtle p-3 text-sm hover:border-brand-300"
+                  className="flex min-h-11 items-center justify-between rounded-xl border border-border-subtle bg-surface p-3 text-sm transition-colors hover:border-brand-300"
                 >
                   <span className="font-medium text-ink">{batch.code}</span>
                   <span className="text-xs text-ink-muted">
