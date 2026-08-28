@@ -21,6 +21,7 @@ from app.services.errors import (
     InsufficientStorageLocationBalanceError,
     InsufficientUnplacedQuantityError,
     InvalidStorageMovementEffectiveTimeError,
+    RecallContainmentOpenError,
     StorageCommandReusedWithDifferentPayloadError,
     StorageLocationNotFoundError,
     StorageMovementValidationError,
@@ -62,6 +63,7 @@ def record_movement(
         StorageCommandReusedWithDifferentPayloadError,
         InsufficientUnplacedQuantityError,
         InsufficientStorageLocationBalanceError,
+        RecallContainmentOpenError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (

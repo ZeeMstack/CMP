@@ -152,14 +152,14 @@ def test_duplicate_dispatch_code_rollback_leaves_no_partial_rows(db_session, act
 
     dispatch_service.record_dispatch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=_now(), code=colliding_code, external_reference=None, note=None,
+        effective_time=_now(), code=colliding_code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
         lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
     )
 
     with pytest.raises(DuplicateDispatchCodeError):
         dispatch_service.record_dispatch(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-            effective_time=_now(), code=colliding_code, external_reference=None, note=None,
+            effective_time=_now(), code=colliding_code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
             lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 2}],
         )
 
@@ -200,20 +200,20 @@ def test_reused_command_id_after_rollback_creates_exactly_one_issue(db_session, 
 
     dispatch_service.record_dispatch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=_now(), code=colliding_code, external_reference=None, note=None,
+        effective_time=_now(), code=colliding_code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
         lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
     )
     with pytest.raises(DuplicateDispatchCodeError):
         dispatch_service.record_dispatch(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
-            effective_time=_now(), code=colliding_code, external_reference=None, note=None,
+            effective_time=_now(), code=colliding_code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
             lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 2}],
         )
     _assert_session_usable(db_session)
 
     event = dispatch_service.record_dispatch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
-        effective_time=_now(), code=f"FRESH-{suffix}", external_reference=None, note=None,
+        effective_time=_now(), code=f"FRESH-{suffix}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
         lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 2}],
     )
     issue_count = db_session.execute(

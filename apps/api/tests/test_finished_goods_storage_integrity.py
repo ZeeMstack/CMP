@@ -694,7 +694,7 @@ def test_storage_movement_before_latest_ledger_entry_rejected(test_engine) -> No
             dispatch_service.record_dispatch(
                 session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
                 client_command_id=uuid.uuid4(), effective_time=t1, code=f"DISP-{s['suffix']}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 2}],
             )
             session.commit()
@@ -857,7 +857,7 @@ def test_dispatch_then_earlier_storage_movement_rejected(test_engine) -> None:
             dispatch_service.record_dispatch(
                 session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
                 client_command_id=uuid.uuid4(), effective_time=t_dispatch, code=f"DISP-{s['suffix']}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 2}],
             )
             session.commit()
@@ -914,7 +914,7 @@ def test_release_then_dispatch_at_exact_same_time_allowed(test_engine) -> None:
         dispatch_service.record_dispatch(
             session, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
             client_command_id=uuid.uuid4(), effective_time=t, code=f"DISP-{s['suffix']}",
-            external_reference=None, note=None,
+            external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
             lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("5.000"), "dispatched_package_count": 5}],
         )
     finally:

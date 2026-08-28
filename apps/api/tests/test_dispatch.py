@@ -144,7 +144,7 @@ def test_multiple_lines_one_event_each_own_lot(test_engine) -> None:
         event = dispatch_service.record_dispatch(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
             client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{scenario['suffix']}",
-            external_reference=None, note=None,
+            external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
             lines=[
                 {"finished_goods_lot_id": fg_lot_a, "dispatched_weight_kg": Decimal("2.000"), "dispatched_package_count": 3},
                 {"finished_goods_lot_id": fg_lot_b, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 2},
@@ -175,7 +175,7 @@ def test_duplicate_lot_within_one_command_rejected(test_engine) -> None:
             dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
                 client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{scenario['suffix']}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[
                     {"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1},
                     {"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1},
@@ -200,7 +200,7 @@ def test_weight_overdraw_rejected_independently(test_engine) -> None:
             dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
                 client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{scenario['suffix']}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("99.000"), "dispatched_package_count": 1}],
             )
     finally:
@@ -222,7 +222,7 @@ def test_count_overdraw_rejected_independently(test_engine) -> None:
             dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
                 client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{scenario['suffix']}",
-                external_reference=None, note=None,
+                external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 999}],
             )
     finally:
@@ -266,7 +266,7 @@ def test_schema_accepts_more_than_fifty_lines() -> None:
 
     payload = DispatchEventCreate(
         client_command_id=uuid.uuid4(), effective_time=now(), code="DISP-MANYLINES",
-        external_reference=None, note=None,
+        external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
         lines=[
             {
                 "finished_goods_lot_id": uuid.uuid4(), "dispatched_weight_kg": "1.000",
@@ -296,7 +296,7 @@ def test_dispatch_with_more_than_fifty_lots_not_rejected_for_line_count(test_eng
         event = dispatch_service.record_dispatch(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
             client_command_id=uuid.uuid4(), effective_time=now(), code=f"DISP-{scenario['suffix']}",
-            external_reference=None, note=None,
+            external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
             lines=[
                 {"finished_goods_lot_id": lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}
                 for lot_id in lot_ids

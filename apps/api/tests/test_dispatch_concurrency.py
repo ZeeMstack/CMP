@@ -49,7 +49,7 @@ def test_overlapping_concurrent_dispatch_cannot_overdraw(test_engine) -> None:
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None,
+                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("5.000"), "dispatched_package_count": 5}],
             )
             results[name] = ("ok", event.id)
@@ -112,7 +112,7 @@ def test_exact_duplicate_dispatch_command_race_creates_one_event(test_engine) ->
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=command_id, effective_time=effective_time,
-                code=code, external_reference=None, note=None,
+                code=code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("3.000"), "dispatched_package_count": 3}],
             )
             results[name] = ("ok", event.id)
@@ -182,7 +182,7 @@ def test_same_command_id_different_payload_race_leaves_one_winner(test_engine) -
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=command_id, effective_time=effective_time,
-                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None,
+                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal(weight), "dispatched_package_count": count}],
             )
             results[name] = ("ok", event.id)
@@ -240,7 +240,7 @@ def test_same_dispatch_code_race_leaves_one_winner(test_engine) -> None:
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                code=code, external_reference=None, note=None,
+                code=code, external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[{"finished_goods_lot_id": lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
             )
             results[name] = ("ok", event.id)
@@ -309,7 +309,7 @@ def test_overlapping_multi_lot_dispatches_reversed_order_no_deadlock(test_engine
             event = dispatch_service.record_dispatch(
                 session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
                 actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), effective_time=effective_time,
-                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None,
+                code=f"DISP-{name}-{scenario['suffix']}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                 lines=[
                     {"finished_goods_lot_id": first_lot, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1},
                     {"finished_goods_lot_id": second_lot, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1},

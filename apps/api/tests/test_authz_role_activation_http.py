@@ -334,7 +334,7 @@ def test_cold_store_supervisor_can_manage_storage_but_not_dispatch(
 
     dispatch_response = client.post(f"/farms/{scenario['farm_id']}/dispatches", json={
         "client_command_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
-        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None,
+        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
         "lines": [{
             "finished_goods_lot_id": str(fg_lot_id), "dispatched_weight_kg": "1.000",
             "dispatched_package_count": 1,
@@ -357,7 +357,7 @@ def test_dispatch_officer_can_dispatch_but_not_pack(_scenario_cleanup, client, d
 
     dispatch_response = client.post(f"/farms/{scenario['farm_id']}/dispatches", json={
         "client_command_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
-        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None,
+        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
         "lines": [{
             "finished_goods_lot_id": str(fg_lot_id), "dispatched_weight_kg": "1.000",
             "dispatched_package_count": 1,
@@ -458,7 +458,7 @@ def test_farm_manager_minimum_policy(client, db_session, active_context_with_far
 
     dispatch_response = client.post(f"/farms/{farm.id}/dispatches", json={
         "client_command_id": str(uuid.uuid4()), "effective_time": _now().isoformat(),
-        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None,
+        "code": f"DS-{uuid.uuid4().hex[:8]}", "external_reference": None, "note": None, "dispatch_temperature_c": "4.0",
         "lines": [{
             "finished_goods_lot_id": str(uuid.uuid4()), "dispatched_weight_kg": "1.000",
             "dispatched_package_count": 1,

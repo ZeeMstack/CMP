@@ -529,7 +529,7 @@ def test_incomplete_lineage_rejects_dispatch(test_engine) -> None:
                 dispatch_service.record_dispatch(
                     session2, tenant_id=s["tenant_id"], farm_id=s["farm_id"], actor_user_id=s["user_id"],
                     client_command_id=uuid.uuid4(), effective_time=_now(), code=f"DISP-{s['suffix']}",
-                    external_reference=None, note=None,
+                    external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
                     lines=[{"finished_goods_lot_id": fg_lot_id, "dispatched_weight_kg": Decimal("1.000"), "dispatched_package_count": 1}],
                 )
         finally:

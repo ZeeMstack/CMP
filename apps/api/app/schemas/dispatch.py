@@ -2,11 +2,46 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.schemas.harvest import MAX_WHOLE_UNIT_COUNT, _parse_strict_decimal, canonical_decimal_str
+
+# PILOT-READY-001: a data-sanity bound only (rejects garbage input like a
+# mistyped extra digit) -- deliberately NOT a cold-chain acceptability
+# threshold, so it is wide enough to admit any real dispatch, ambient or
+# frozen. No decimal-place truncation is enforced (no documented CMP
+# temperature-precision convention exists to justify inventing one).
+_MIN_DISPATCH_TEMPERATURE_C = Decimal("-100")
+_MAX_DISPATCH_TEMPERATURE_C = Decimal("100")
+
+
+def _parse_strict_temperature(v: object) -> Decimal:
+    """Exact-Decimal parser for `dispatch_temperature_c`, mirroring
+    `_parse_strict_decimal`'s no-bool/no-binary-float/finite rules, but
+    -- unlike every weight field -- explicitly allowing negative values
+    (frozen dispatches) and applying no decimal-place truncation."""
+    if isinstance(v, bool):
+        raise ValueError("dispatch_temperature_c must be a string, integer, or Decimal, not a boolean")
+    if isinstance(v, float):
+        raise ValueError(
+            "dispatch_temperature_c must not be a binary float — send it as a JSON string, e.g. \"-18.5\""
+        )
+    if isinstance(v, Decimal):
+        d = v
+    elif isinstance(v, (str, int)):
+        try:
+            d = Decimal(str(v))
+        except InvalidOperation as exc:
+            raise ValueError("dispatch_temperature_c is not a valid decimal value") from exc
+    else:
+        raise ValueError("dispatch_temperature_c must be a string, integer, or Decimal")
+    if not d.is_finite():
+        raise ValueError("dispatch_temperature_c must be a finite value")
+    if d <= _MIN_DISPATCH_TEMPERATURE_C or d >= _MAX_DISPATCH_TEMPERATURE_C:
+        raise ValueError("dispatch_temperature_c is outside the supported range")
+    return d
 
 
 def _blank_to_none(v: str | None) -> str | None:
@@ -53,12 +88,22 @@ class DispatchEventCreate(BaseModel):
     code: str
     external_reference: str | None = None
     note: str | None = None
+    # PILOT-READY-001: exactly one Celsius reading per dispatch/vehicle,
+    # applying to the whole dispatch -- never per line/lot/product. Lives
+    # here, at the event (header) level, only -- DispatchLineIn never gets
+    # this field.
+    dispatch_temperature_c: Decimal
     lines: list[DispatchLineIn] = Field(min_length=1)
 
     @field_validator("effective_time")
     @classmethod
     def validate_effective_time(cls, v: datetime) -> datetime:
         return _require_tz_aware(v)
+
+    @field_validator("dispatch_temperature_c", mode="before")
+    @classmethod
+    def validate_dispatch_temperature(cls, v: object) -> Decimal:
+        return _parse_strict_temperature(v)
 
     @field_validator("code")
     @classmethod
@@ -108,10 +153,17 @@ class DispatchEventRead(BaseModel):
     client_command_id: uuid.UUID
     external_reference: str | None
     note: str | None
+    # Nullable only to honestly represent a row inserted before this
+    # column existed -- never backfilled with an invented reading.
+    dispatch_temperature_c: Decimal | None
 
     @field_serializer("total_dispatched_weight_kg")
     def serialize_total_weight(self, v: Decimal) -> str:
         return canonical_decimal_str(v)
+
+    @field_serializer("dispatch_temperature_c")
+    def serialize_dispatch_temperature(self, v: Decimal | None) -> str | None:
+        return canonical_decimal_str(v) if v is not None else None
 
 
 __all__ = [

@@ -373,7 +373,7 @@ def dispatch(db: Session, tenant, user, farm, *, finished_goods_lot_id, weight=D
     suffix = suffix or uuid.uuid4().hex[:8]
     return dispatch_service.record_dispatch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        effective_time=now(), code=f"DISP-{suffix}", external_reference=None, note=None,
+        effective_time=now(), code=f"DISP-{suffix}", external_reference=None, note=None, dispatch_temperature_c=Decimal("4.0"),
         lines=[{"finished_goods_lot_id": finished_goods_lot_id, "dispatched_weight_kg": weight, "dispatched_package_count": count}],
     )
 
