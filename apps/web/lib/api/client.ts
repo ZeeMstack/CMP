@@ -883,7 +883,11 @@ export type HarvestedProduceLotRead = components["schemas"]["app__schemas__harve
 export type ProduceLotBalanceRead = components["schemas"]["ProduceLotBalanceRead"];
 
 export type GradeDefinitionRead = components["schemas"]["GradeDefinitionRead"];
+export type GradeDefinitionCreate = components["schemas"]["GradeDefinitionCreate"];
 export type GradeDefinitionVersionRead = components["schemas"]["GradeDefinitionVersionRead"];
+export type GradeDefinitionVersionCreate = components["schemas"]["GradeDefinitionVersionCreate"];
+export type GradeDefinitionVersionActivate = components["schemas"]["GradeDefinitionVersionActivate"];
+export type GradeDefinitionVersionRetire = components["schemas"]["GradeDefinitionVersionRetire"];
 export type GradingEventCreate = components["schemas"]["GradingEventCreate"];
 export type GradingOutputIn = components["schemas"]["GradingOutputIn"];
 export type GradingEventRead = components["schemas"]["app__schemas__grading__GradingEventRead"];
@@ -893,8 +897,16 @@ export type GradedProduceLotBalanceRead = components["schemas"]["GradedProduceLo
 export type GradingReversalEventCreate = components["schemas"]["GradingReversalEventCreate"];
 export type GradingReversalEventRead = components["schemas"]["GradingReversalEventRead"];
 
+export type PackagingUnitRead = components["schemas"]["PackagingUnitRead"];
+export type PackagingUnitCreate = components["schemas"]["PackagingUnitCreate"];
+export type PackagingUnitRetire = components["schemas"]["PackagingUnitRetire"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
+export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
+export type PackSpecificationVersionCreate = components["schemas"]["PackSpecificationVersionCreate"];
+export type PackSpecificationVersionActivate = components["schemas"]["PackSpecificationVersionActivate"];
+export type PackSpecificationVersionRetire = components["schemas"]["PackSpecificationVersionRetire"];
 export type PackingEventCreate = components["schemas"]["PackingEventCreate"];
 export type PackingInputLineIn = components["schemas"]["PackingInputLineIn"];
 export type PackingEventRead = components["schemas"]["app__schemas__packing__PackingEventRead"];
@@ -933,9 +945,9 @@ export function getHarvestedProduceLotBalance(
   return getJson<ProduceLotBalanceRead>(`/farms/${farmId}/harvested-produce-lots/${produceLotId}/balance`, signal);
 }
 
-// Grade Definitions -- tenant-scoped config, read-only here (the version
-// picker Grading's output lines need). Creating/activating Grade
-// Definitions/Versions is out of this ticket's scope.
+// Grade Definitions -- tenant-scoped config. PILOT-SETUP-001B7 adds the
+// create/version/activate/retire commands; the read-only list functions
+// below predate this ticket (POSTHARVEST-OPS-001G's Grading version picker).
 
 export function listGradeDefinitions(
   cropId?: string,
@@ -945,6 +957,13 @@ export function listGradeDefinitions(
   return getJson<GradeDefinitionRead[]>(`/grade-definitions${query}`, signal);
 }
 
+export function createGradeDefinition(
+  payload: GradeDefinitionCreate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionRead> {
+  return postJson<GradeDefinitionRead>("/grade-definitions", payload, signal);
+}
+
 export function listGradeDefinitionVersions(
   gradeDefinitionId: string,
   status: string | undefined,
@@ -952,6 +971,58 @@ export function listGradeDefinitionVersions(
 ): Promise<GradeDefinitionVersionRead[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return getJson<GradeDefinitionVersionRead[]>(`/grade-definitions/${gradeDefinitionId}/versions${query}`, signal);
+}
+
+export function createGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  payload: GradeDefinitionVersionCreate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(`/grade-definitions/${gradeDefinitionId}/versions`, payload, signal);
+}
+
+export function activateGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  versionId: string,
+  payload: GradeDefinitionVersionActivate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(
+    `/grade-definitions/${gradeDefinitionId}/versions/${versionId}/activate`, payload, signal,
+  );
+}
+
+export function retireGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  versionId: string,
+  payload: GradeDefinitionVersionRetire,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(
+    `/grade-definitions/${gradeDefinitionId}/versions/${versionId}/retire`, payload, signal,
+  );
+}
+
+// Packaging Units -- tenant-scoped, unversioned master data (PILOT-SETUP-001B7).
+
+export function listPackagingUnits(status?: string, signal?: AbortSignal): Promise<PackagingUnitRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<PackagingUnitRead[]>(`/packaging-units${query}`, signal);
+}
+
+export function createPackagingUnit(
+  payload: PackagingUnitCreate,
+  signal?: AbortSignal,
+): Promise<PackagingUnitRead> {
+  return postJson<PackagingUnitRead>("/packaging-units", payload, signal);
+}
+
+export function retirePackagingUnit(
+  packagingUnitId: string,
+  payload: PackagingUnitRetire,
+  signal?: AbortSignal,
+): Promise<PackagingUnitRead> {
+  return postJson<PackagingUnitRead>(`/packaging-units/${packagingUnitId}/retire`, payload, signal);
 }
 
 // Grading -- the operator command that consumes a Harvested Produce Lot and
@@ -1045,13 +1116,20 @@ export function getGradedProduceLotBalance(
   );
 }
 
-// Pack Specifications -- tenant-scoped config, read-only here (the version
-// picker Packing needs). Creating/activating Pack Specifications/Versions is
-// out of this ticket's scope.
+// Pack Specifications -- tenant-scoped config. PILOT-SETUP-001B7 adds the
+// create/version/activate/retire commands; the read-only list functions
+// below predate this ticket (POSTHARVEST-OPS-001G's Packing version picker).
 
 export function listPackSpecifications(cropId?: string, signal?: AbortSignal): Promise<PackSpecificationRead[]> {
   const query = cropId ? `?crop_id=${encodeURIComponent(cropId)}` : "";
   return getJson<PackSpecificationRead[]>(`/pack-specifications${query}`, signal);
+}
+
+export function createPackSpecification(
+  payload: PackSpecificationCreate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationRead> {
+  return postJson<PackSpecificationRead>("/pack-specifications", payload, signal);
 }
 
 export function listPackSpecificationVersions(
@@ -1062,6 +1140,38 @@ export function listPackSpecificationVersions(
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return getJson<PackSpecificationVersionRead[]>(
     `/pack-specifications/${packSpecificationId}/versions${query}`, signal,
+  );
+}
+
+export function createPackSpecificationVersion(
+  packSpecificationId: string,
+  payload: PackSpecificationVersionCreate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions`, payload, signal,
+  );
+}
+
+export function activatePackSpecificationVersion(
+  packSpecificationId: string,
+  versionId: string,
+  payload: PackSpecificationVersionActivate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions/${versionId}/activate`, payload, signal,
+  );
+}
+
+export function retirePackSpecificationVersion(
+  packSpecificationId: string,
+  versionId: string,
+  payload: PackSpecificationVersionRetire,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions/${versionId}/retire`, payload, signal,
   );
 }
 

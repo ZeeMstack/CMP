@@ -16,6 +16,10 @@ import type {
   FarmCreate,
   FinishedGoodsStorageMovementCreate,
   GerminationOutcomeCommandCreate,
+  GradeDefinitionCreate,
+  GradeDefinitionVersionActivate,
+  GradeDefinitionVersionCreate,
+  GradeDefinitionVersionRetire,
   GradingEventCreate,
   GradingReversalEventCreate,
   GreenhouseSetupCreate,
@@ -23,8 +27,14 @@ import type {
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
   LocationCreate,
+  PackagingUnitCreate,
+  PackagingUnitRetire,
   PackingEventCreate,
   PackingReversalEventCreate,
+  PackSpecificationCreate,
+  PackSpecificationVersionActivate,
+  PackSpecificationVersionCreate,
+  PackSpecificationVersionRetire,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   PlatformTenantOnboardingCreate,
@@ -1209,6 +1219,40 @@ export function useGradeVersionLabelMap(): { labels: Record<string, string>; isL
   return { labels, isLoading: definitionsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
 }
 
+/** PILOT-SETUP-001B7: every non-draft Grade Definition Version across the
+ * tenant, labeled for the Pack Specification Version form's optional grade
+ * picker. A DRAFT version can never be referenced by a Pack Specification
+ * Version (`pack_specification_versions_enforce_insert_integrity` requires
+ * non-DRAFT), so this excludes drafts up front rather than letting the
+ * backend reject the choice after submission. Shares the same per-definition
+ * version queries `useGradeVersionLabelMap` subscribes to (same query keys),
+ * so this never doubles the network requests -- only the derived shape
+ * differs (a filtered list here, a flat label map there). */
+export function useSelectableGradeDefinitionVersions(): {
+  versions: { id: string; label: string; status: string }[];
+  isLoading: boolean;
+} {
+  const tenantId = useSelectedTenantId();
+  const definitionsQuery = useAllGradeDefinitions();
+  const definitions = definitionsQuery.data ?? [];
+  const versionQueries = useQueries({
+    queries: definitions.map((d) => ({
+      queryKey: queryKeys.gradeDefinitionVersions(tenantId ?? "", d.id, ""),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listGradeDefinitionVersions(d.id, undefined, signal),
+      staleTime: STALE_REFERENCE_MS,
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const versions: { id: string; label: string; status: string }[] = [];
+  definitions.forEach((d, i) => {
+    for (const v of versionQueries[i]?.data ?? []) {
+      if (v.status === "draft") continue;
+      versions.push({ id: v.id, label: `${d.name} v${v.version_number} (${v.status})`, status: v.status });
+    }
+  });
+  return { versions, isLoading: definitionsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
+}
+
 /** Same rationale as `useAllGradeDefinitions`, for Pack Specifications. */
 export function useAllPackSpecifications() {
   const tenantId = useSelectedTenantId();
@@ -1442,6 +1486,170 @@ export function usePackSpecificationVersions(packSpecificationId: string | null)
     queryFn: ({ signal }) => api.listPackSpecificationVersions(packSpecificationId as string, undefined, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId) && Boolean(packSpecificationId),
+  });
+}
+
+// --- PILOT-SETUP-001B7 -------------------------------------------------------
+// Grade Definitions / Packaging Units / Pack Specifications master-data
+// setup UI: create/version/activate/retire commands, plus Packaging Unit
+// reads (list-only, no versioning). Every read hook these commands depend on
+// (useAllGradeDefinitions, useGradeDefinitionVersions, useAllPackSpecifications,
+// usePackSpecificationVersions) already existed for the Grading/Packing
+// operator pickers above -- reused unchanged here, so both surfaces share one
+// cache. Invalidation is prefix-only (no trailing cropId/status segment) so
+// every filtered cache slot for the affected resource is refreshed, not just
+// the unfiltered "" one this page itself reads.
+
+export function useCreateGradeDefinition() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradeDefinitionCreate) => api.createGradeDefinition(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "grade-definitions"] });
+    },
+  });
+}
+
+export function useCreateGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradeDefinitionVersionCreate) =>
+      api.createGradeDefinitionVersion(gradeDefinitionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+/** Activation may also retire a previously-active version (supersession) --
+ * the version catalog's full state is refreshed, not just this one version. */
+export function useActivateGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GradeDefinitionVersionActivate }) =>
+      api.activateGradeDefinitionVersion(gradeDefinitionId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+export function useRetireGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GradeDefinitionVersionRetire }) =>
+      api.retireGradeDefinitionVersion(gradeDefinitionId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+export function usePackagingUnits() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packagingUnits(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listPackagingUnits(undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreatePackagingUnit() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackagingUnitCreate) => api.createPackagingUnit(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.packagingUnits(tenantId) });
+    },
+  });
+}
+
+export function useRetirePackagingUnit() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packagingUnitId, payload }: { packagingUnitId: string; payload: PackagingUnitRetire }) =>
+      api.retirePackagingUnit(packagingUnitId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.packagingUnits(tenantId) });
+    },
+  });
+}
+
+export function useCreatePackSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackSpecificationCreate) => api.createPackSpecification(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "pack-specifications"] });
+    },
+  });
+}
+
+export function useCreatePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackSpecificationVersionCreate) =>
+      api.createPackSpecificationVersion(packSpecificationId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
+  });
+}
+
+/** Activation may also retire a previously-active version (supersession) --
+ * the version catalog's full state is refreshed, not just this one version. */
+export function useActivatePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: PackSpecificationVersionActivate }) =>
+      api.activatePackSpecificationVersion(packSpecificationId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
+  });
+}
+
+export function useRetirePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: PackSpecificationVersionRetire }) =>
+      api.retirePackSpecificationVersion(packSpecificationId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
   });
 }
 

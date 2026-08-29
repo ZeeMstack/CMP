@@ -94,6 +94,9 @@ function navGroups(farmId: string): NavGroupDef[] {
         { label: "Crops & Varieties", href: "/crops" },
         { label: "Production Systems", href: "/production-systems" },
         { label: "Workflows", href: "/workflows" },
+        { label: "Grade Definitions", href: "/grade-definitions" },
+        { label: "Packaging Units", href: "/packaging-units" },
+        { label: "Pack Specifications", href: "/pack-specifications" },
       ],
     },
   ];

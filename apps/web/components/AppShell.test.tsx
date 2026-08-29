@@ -167,6 +167,9 @@ describe("AppShell frozen navigation tree", () => {
       ["Crops & Varieties", "/crops"],
       ["Production Systems", "/production-systems"],
       ["Workflows", "/workflows"],
+      ["Grade Definitions", "/grade-definitions"],
+      ["Packaging Units", "/packaging-units"],
+      ["Pack Specifications", "/pack-specifications"],
     ];
     for (const [label, href] of expectations) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);

@@ -174,6 +174,10 @@ export const queryKeys = {
   packSpecificationVersions: (tenantId: string, packSpecificationId: string, status: string) =>
     ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions", status] as const,
 
+  // --- PILOT-SETUP-001B7 -----------------------------------------------------
+  // Packaging Units -- tenant-scoped, unversioned master data.
+  packagingUnits: (tenantId: string) => ["tenant", tenantId, "packaging-units"] as const,
+
   packingEvents: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "packing-events"] as const,
   packingEvent: (tenantId: string, farmId: string, packingEventId: string) =>
