@@ -79,6 +79,19 @@ def list_workflows(
     return [WorkflowRead.model_validate(workflow) for workflow in workflows]
 
 
+@router.get("/workflows/{workflow_id}", response_model=WorkflowRead)
+def get_workflow(
+    workflow_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_READ)),
+) -> WorkflowRead:
+    try:
+        workflow = workflow_service.get_workflow(db, tenant_id=ctx.tenant_id, workflow_id=workflow_id)
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found") from exc
+    return WorkflowRead.model_validate(workflow)
+
+
 @router.post(
     "/workflows/{workflow_id}/versions",
     response_model=WorkflowVersionRead,
@@ -96,6 +109,19 @@ def create_draft_version(
     except WorkflowNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found") from exc
     return WorkflowVersionRead.model_validate(version)
+
+
+@router.get("/workflows/{workflow_id}/versions", response_model=list[WorkflowVersionRead])
+def list_workflow_versions(
+    workflow_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WORKFLOW_READ)),
+) -> list[WorkflowVersionRead]:
+    try:
+        versions = workflow_service.list_versions(db, tenant_id=ctx.tenant_id, workflow_id=workflow_id)
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found") from exc
+    return [WorkflowVersionRead.model_validate(v) for v in versions]
 
 
 @router.get(

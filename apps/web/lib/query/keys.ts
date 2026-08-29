@@ -42,6 +42,22 @@ export const queryKeys = {
   // --- NURSERY-OPS-001 -----------------------------------------------------
   crops: (tenantId: string) => ["tenant", tenantId, "crops"] as const,
   varieties: (tenantId: string, cropId: string) => ["tenant", tenantId, "crops", cropId, "varieties"] as const,
+
+  // --- PILOT-SETUP-001B6 ----------------------------------------------------
+  // Tenant-scoped master data (Crop/Variety reuse the keys above).
+  productionSystems: (tenantId: string) => ["tenant", tenantId, "production-systems"] as const,
+  workflows: (tenantId: string) => ["tenant", tenantId, "workflows"] as const,
+  workflowVersion: (tenantId: string, workflowId: string, versionId: string) =>
+    ["tenant", tenantId, "workflows", workflowId, "versions", versionId] as const,
+
+  // --- PILOT-SETUP-001B6A ----------------------------------------------------
+  // `GET /workflows/{id}` and `GET /workflows/{id}/versions` close the
+  // resumability gap B6 discovered -- a single Workflow's own shell fields,
+  // and its full draft/published/retired version catalog, are each now
+  // directly fetchable without already holding a specific version id.
+  workflow: (tenantId: string, workflowId: string) => ["tenant", tenantId, "workflows", workflowId] as const,
+  workflowVersions: (tenantId: string, workflowId: string) =>
+    ["tenant", tenantId, "workflows", workflowId, "versions"] as const,
   seedLots: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "seed-lots"] as const,
   seedLot: (tenantId: string, farmId: string, seedLotId: string) =>
     ["tenant", tenantId, "farms", farmId, "seed-lots", seedLotId] as const,

@@ -38,6 +38,19 @@ export type CropSummary = components["schemas"]["CropSummary"];
 export type VarietySummary = components["schemas"]["VarietySummary"];
 export type CropRead = components["schemas"]["CropRead"];
 export type VarietyRead = components["schemas"]["VarietyRead"];
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+export type CropCreate = components["schemas"]["CropCreate"];
+export type VarietyCreate = components["schemas"]["VarietyCreate"];
+export type ProductionSystemRead = components["schemas"]["ProductionSystemRead"];
+export type ProductionSystemCreate = components["schemas"]["ProductionSystemCreate"];
+export type WorkflowRead = components["schemas"]["WorkflowRead"];
+export type WorkflowCreate = components["schemas"]["WorkflowCreate"];
+export type WorkflowVersionRead = components["schemas"]["WorkflowVersionRead"];
+export type WorkflowVersionDetailRead = components["schemas"]["WorkflowVersionDetailRead"];
+export type WorkflowStageRead = components["schemas"]["WorkflowStageRead"];
+export type WorkflowStageCreate = components["schemas"]["WorkflowStageCreate"];
+export type WorkflowTransitionRead = components["schemas"]["WorkflowTransitionRead"];
+export type WorkflowTransitionCreate = components["schemas"]["WorkflowTransitionCreate"];
 export type SeedLotBatchSummary = components["schemas"]["SeedLotBatchSummary"];
 export type AssetRead = components["schemas"]["AssetRead"];
 export type PlaceTrolleyCreate = components["schemas"]["PlaceTrolleyCreate"];
@@ -326,6 +339,96 @@ export function listCrops(signal?: AbortSignal): Promise<CropRead[]> {
 
 export function listVarieties(cropId: string, signal?: AbortSignal): Promise<VarietyRead[]> {
   return getJson<VarietyRead[]>(`/crops/${cropId}/varieties`, signal);
+}
+
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+// Crop / Variety / Production System / Workflow master-data setup UI, layered
+// on the existing tenant-scoped catalog + workflow-configuration backend (no
+// new backend behavior). Registration/configuration only -- never a Crop
+// Batch, Sowing, Seed Lot, Movement, or Occupancy call.
+
+export function createCrop(payload: CropCreate, signal?: AbortSignal): Promise<CropRead> {
+  return postJson<CropRead>("/crops", payload, signal);
+}
+
+export function createVariety(cropId: string, payload: VarietyCreate, signal?: AbortSignal): Promise<VarietyRead> {
+  return postJson<VarietyRead>(`/crops/${cropId}/varieties`, payload, signal);
+}
+
+export function listProductionSystems(signal?: AbortSignal): Promise<ProductionSystemRead[]> {
+  return getJson<ProductionSystemRead[]>("/production-systems", signal);
+}
+
+export function createProductionSystem(
+  payload: ProductionSystemCreate,
+  signal?: AbortSignal,
+): Promise<ProductionSystemRead> {
+  return postJson<ProductionSystemRead>("/production-systems", payload, signal);
+}
+
+export function listWorkflows(signal?: AbortSignal): Promise<WorkflowRead[]> {
+  return getJson<WorkflowRead[]>("/workflows", signal);
+}
+
+// --- PILOT-SETUP-001B6A ------------------------------------------------------
+// The two read endpoints that close the resumability gap identified in B6:
+// a single Workflow can now be fetched directly by id, and its full version
+// catalog (draft/published/retired, ascending by version_number) can be
+// listed without already knowing a specific version's id.
+
+export function getWorkflow(workflowId: string, signal?: AbortSignal): Promise<WorkflowRead> {
+  return getJson<WorkflowRead>(`/workflows/${workflowId}`, signal);
+}
+
+export function listWorkflowVersions(workflowId: string, signal?: AbortSignal): Promise<WorkflowVersionRead[]> {
+  return getJson<WorkflowVersionRead[]>(`/workflows/${workflowId}/versions`, signal);
+}
+
+export function createWorkflow(payload: WorkflowCreate, signal?: AbortSignal): Promise<WorkflowRead> {
+  return postJson<WorkflowRead>("/workflows", payload, signal);
+}
+
+/** No request body on this command -- the backend derives the next
+ * `version_number` itself (`max(version_number) + 1`), so there is nothing
+ * for a caller to supply. */
+export function createWorkflowDraftVersion(workflowId: string, signal?: AbortSignal): Promise<WorkflowVersionRead> {
+  return postJson<WorkflowVersionRead>(`/workflows/${workflowId}/versions`, {}, signal);
+}
+
+export function getWorkflowVersion(
+  workflowId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowVersionDetailRead> {
+  return getJson<WorkflowVersionDetailRead>(`/workflows/${workflowId}/versions/${versionId}`, signal);
+}
+
+export function addWorkflowStage(
+  workflowId: string,
+  versionId: string,
+  payload: WorkflowStageCreate,
+  signal?: AbortSignal,
+): Promise<WorkflowStageRead> {
+  return postJson<WorkflowStageRead>(`/workflows/${workflowId}/versions/${versionId}/stages`, payload, signal);
+}
+
+export function addWorkflowTransition(
+  workflowId: string,
+  versionId: string,
+  payload: WorkflowTransitionCreate,
+  signal?: AbortSignal,
+): Promise<WorkflowTransitionRead> {
+  return postJson<WorkflowTransitionRead>(`/workflows/${workflowId}/versions/${versionId}/transitions`, payload, signal);
+}
+
+/** No request body -- publish is a pure state transition on the already-
+ * fully-configured draft version. */
+export function publishWorkflowVersion(
+  workflowId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowVersionRead> {
+  return postJson<WorkflowVersionRead>(`/workflows/${workflowId}/versions/${versionId}/publish`, {}, signal);
 }
 
 export function listSeedLots(farmId: string, signal?: AbortSignal): Promise<SeedLotRead[]> {

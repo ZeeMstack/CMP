@@ -11,6 +11,7 @@ import type {
   CorrectLeafyHarvestSourceLineCreate,
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
+  CropCreate,
   DispatchEventCreate,
   FarmCreate,
   FinishedGoodsStorageMovementCreate,
@@ -27,6 +28,7 @@ import type {
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   PlatformTenantOnboardingCreate,
+  ProductionSystemCreate,
   RecallCaseClose,
   RecallCaseCreate,
   RecordLeafyHarvestCreate,
@@ -35,6 +37,10 @@ import type {
   SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
+  VarietyCreate,
+  WorkflowCreate,
+  WorkflowStageCreate,
+  WorkflowTransitionCreate,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { AppError } from "@/lib/errors/adapter";
@@ -268,6 +274,172 @@ export function useVarieties(cropId: string | undefined) {
     queryFn: ({ signal }) => api.listVarieties(cropId as string, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId) && Boolean(cropId),
+  });
+}
+
+export function useCreateCrop() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CropCreate) => api.createCrop(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.crops(tenantId) });
+    },
+  });
+}
+
+export function useCreateVariety(cropId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: VarietyCreate) => api.createVariety(cropId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.varieties(tenantId, cropId) });
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+// Production System master data -- tenant-scoped, mirrors the Crop pattern
+// immediately above (list + create only, no update/deactivate endpoint
+// exists on the backend for this resource).
+
+export function useProductionSystems() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.productionSystems(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listProductionSystems(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateProductionSystem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionSystemCreate) => api.createProductionSystem(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionSystems(tenantId) });
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B6 / B6A --------------------------------------------------
+// Workflow master configuration: Workflow (crop/variety/production-system
+// shell) -> draft WorkflowVersion -> Stages/Transitions -> explicit Publish.
+// B6A closed the resumability gap B6 identified: `GET /workflows/{id}` and
+// `GET /workflows/{id}/versions` now exist (mirroring the GradeDefinition/
+// PackSpecification version-catalog pattern), so a Workflow's own shell
+// fields and its full draft/published/retired version catalog are each
+// directly fetchable -- an unfinished draft is rediscoverable after
+// navigating away, not just within the tab that created it.
+
+export function useWorkflows() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflows(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listWorkflows(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateWorkflow() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowCreate) => api.createWorkflow(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflows(tenantId) });
+    },
+  });
+}
+
+export function useWorkflow(workflowId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflow(tenantId ?? "", workflowId),
+    queryFn: ({ signal }) => api.getWorkflow(workflowId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(workflowId),
+  });
+}
+
+export function useWorkflowVersions(workflowId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflowVersions(tenantId ?? "", workflowId),
+    queryFn: ({ signal }) => api.listWorkflowVersions(workflowId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(workflowId),
+  });
+}
+
+export function useCreateWorkflowDraftVersion() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (workflowId: string) => api.createWorkflowDraftVersion(workflowId),
+    onSuccess: (_version, workflowId) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersions(tenantId, workflowId) });
+    },
+  });
+}
+
+export function useWorkflowVersion(workflowId: string, versionId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflowVersion(tenantId ?? "", workflowId, versionId ?? ""),
+    queryFn: ({ signal }) => api.getWorkflowVersion(workflowId, versionId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(versionId),
+  });
+}
+
+export function useAddWorkflowStage(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowStageCreate) => api.addWorkflowStage(workflowId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+    },
+  });
+}
+
+export function useAddWorkflowTransition(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowTransitionCreate) => api.addWorkflowTransition(workflowId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+    },
+  });
+}
+
+export function usePublishWorkflowVersion(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.publishWorkflowVersion(workflowId, versionId),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflows(tenantId) });
+      // Publishing this version may also retire a previously-published one
+      // (see workflow_service.publish_version) -- the version catalog's
+      // states must be refreshed, not just this one version's own detail.
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersions(tenantId, workflowId) });
+    },
   });
 }
 

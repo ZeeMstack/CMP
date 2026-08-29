@@ -22,6 +22,7 @@ from app.services.errors import (
     ProductionSystemNotFoundError,
     SelfTransitionError,
     VarietyCropMismatchError,
+    WorkflowNotFoundError,
     WorkflowStageNotFoundError,
     WorkflowVersionNotDraftError,
 )
@@ -178,6 +179,112 @@ def test_draft_version_numbers_are_sequential(db_session, active_context) -> Non
     )
     assert v1.version_number == 1
     assert v2.version_number == 2
+
+
+@pytest.mark.integration
+def test_get_workflow_returns_workflow_in_tenant(db_session, active_context) -> None:
+    tenant, _user, _headers = active_context
+    crop, production_system = _setup(db_session, tenant)
+    workflow = _register_workflow(db_session, tenant, crop, production_system)
+    found = workflow_service.get_workflow(db_session, tenant_id=tenant.id, workflow_id=workflow.id)
+    assert found.id == workflow.id
+    assert found.code == workflow.code
+
+
+@pytest.mark.integration
+def test_get_workflow_unknown_id_raises_not_found(db_session, active_context) -> None:
+    tenant, _user, _headers = active_context
+    with pytest.raises(WorkflowNotFoundError):
+        workflow_service.get_workflow(db_session, tenant_id=tenant.id, workflow_id=uuid.uuid4())
+
+
+@pytest.mark.integration
+def test_get_workflow_cross_tenant_raises_not_found(db_session, active_context) -> None:
+    tenant_a, _user, _headers = active_context
+    tenant_b = tenant_service.create_tenant(db_session, code="wf-tenant-g", name="Tenant G")
+    crop_b, production_system_b = _setup(db_session, tenant_b)
+    workflow_b = _register_workflow(db_session, tenant_b, crop_b, production_system_b)
+    with pytest.raises(WorkflowNotFoundError):
+        workflow_service.get_workflow(db_session, tenant_id=tenant_a.id, workflow_id=workflow_b.id)
+
+
+@pytest.mark.integration
+def test_list_versions_ascending_by_version_number(db_session, active_context) -> None:
+    tenant, _user, _headers = active_context
+    crop, production_system = _setup(db_session, tenant)
+    workflow = _register_workflow(db_session, tenant, crop, production_system)
+    v1 = workflow_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id
+    )
+    v2 = workflow_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id
+    )
+    versions = workflow_service.list_versions(db_session, tenant_id=tenant.id, workflow_id=workflow.id)
+    assert [v.id for v in versions] == [v1.id, v2.id]
+    assert [v.version_number for v in versions] == [1, 2]
+
+
+@pytest.mark.integration
+def test_list_versions_reflects_draft_published_retired_truthfully(db_session, active_context) -> None:
+    tenant, _user, _headers = active_context
+    crop, production_system = _setup(db_session, tenant)
+    workflow = _register_workflow(db_session, tenant, crop, production_system)
+
+    v1 = workflow_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id
+    )
+    workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id, version_id=v1.id,
+        code="S1", name="Stage 1", display_order=0, stage_category="seeding",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=True, is_terminal=True,
+    )
+    workflow_service.publish_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id, version_id=v1.id
+    )
+    v2 = workflow_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id
+    )
+    workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id, version_id=v2.id,
+        code="S1", name="Stage 1", display_order=0, stage_category="seeding",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=True, is_terminal=True,
+    )
+    # Publishing v2 is what retires v1 -- a version stays "published" until a
+    # later one is actually published, never merely because a new draft exists.
+    workflow_service.publish_version(
+        db_session, tenant_id=tenant.id, actor_user_id=None, workflow_id=workflow.id, version_id=v2.id
+    )
+
+    versions = workflow_service.list_versions(db_session, tenant_id=tenant.id, workflow_id=workflow.id)
+    assert len(versions) == 2
+    assert versions[0].id == v1.id
+    assert versions[0].state == "retired"
+    assert versions[0].published_at is not None
+    assert versions[1].id == v2.id
+    assert versions[1].state == "published"
+    assert versions[1].published_at is not None
+
+
+@pytest.mark.integration
+def test_list_versions_unknown_workflow_raises_not_found(db_session, active_context) -> None:
+    tenant, _user, _headers = active_context
+    with pytest.raises(WorkflowNotFoundError):
+        workflow_service.list_versions(db_session, tenant_id=tenant.id, workflow_id=uuid.uuid4())
+
+
+@pytest.mark.integration
+def test_list_versions_cross_tenant_raises_not_found(db_session, active_context) -> None:
+    tenant_a, _user, _headers = active_context
+    tenant_b = tenant_service.create_tenant(db_session, code="wf-tenant-h", name="Tenant H")
+    crop_b, production_system_b = _setup(db_session, tenant_b)
+    workflow_b = _register_workflow(db_session, tenant_b, crop_b, production_system_b)
+    workflow_service.create_draft_version(
+        db_session, tenant_id=tenant_b.id, actor_user_id=None, workflow_id=workflow_b.id
+    )
+    with pytest.raises(WorkflowNotFoundError):
+        workflow_service.list_versions(db_session, tenant_id=tenant_a.id, workflow_id=workflow_b.id)
 
 
 @pytest.mark.integration

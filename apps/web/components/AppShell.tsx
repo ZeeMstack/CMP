@@ -91,6 +91,9 @@ function navGroups(farmId: string): NavGroupDef[] {
       items: [
         { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup` },
         { label: "Carrier Specifications", href: "/carrier-specifications" },
+        { label: "Crops & Varieties", href: "/crops" },
+        { label: "Production Systems", href: "/production-systems" },
+        { label: "Workflows", href: "/workflows" },
       ],
     },
   ];
