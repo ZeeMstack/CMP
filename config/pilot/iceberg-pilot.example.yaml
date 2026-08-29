@@ -1,0 +1,338 @@
+# PILOT-SETUP-001A -- Iceberg pilot master-data configuration TEMPLATE.
+#
+# This is a TEMPLATE, not real pilot data. Every REQUIRED_* string and
+# every bare `0` left in a required numeric field is a deliberate
+# non-value -- the bootstrap script (scripts/bootstrap_pilot_master_data.py)
+# refuses to --apply while any REQUIRED_* placeholder remains, and Pydantic
+# itself refuses to load the file at all while a required numeric field is
+# still its `0` sentinel (every such field rejects 0 as an invalid value on
+# its own domain terms -- a capacity, count, or dimension of 0 is never
+# valid), so a half-filled-in copy of this file fails loudly rather than
+# silently running with fabricated numbers.
+#
+# Copy this file (e.g. to config/pilot/<your-farm>.yaml -- outside version
+# control if it will ever carry real commercial figures) and replace every
+# placeholder with a real, confirmed value. Do not invent values to make
+# the file "look complete" -- an omitted optional field or an unresolved
+# REQUIRED_* is always preferable to a guess.
+#
+# Who confirms each value is documented inline as one of:
+#   [FARM]        the farm/CTO confirms this administrative/physical fact
+#   [HEAD GROWER] an agronomic design decision (workflow stages, structure)
+#   [QA/COMMERCIAL] a quality-release or commercial packing decision
+#   [SYSTEM]      resolved automatically -- never fill this in by hand
+#
+# Full field-by-field reference: docs/pilot/PILOT_SETUP.md
+
+# ---------------------------------------------------------------------
+# target: the Tenant and administrative actor this bootstrap runs as.
+# Both MUST already exist -- provisioning them is a DEPLOY-001
+# prerequisite, never something this file or this script does. [FARM]
+# ---------------------------------------------------------------------
+target:
+  tenant_code: REQUIRED_TENANT_CODE
+  actor:
+    oidc_issuer: REQUIRED_ACTOR_OIDC_ISSUER
+    oidc_subject: REQUIRED_ACTOR_OIDC_SUBJECT
+
+# ---------------------------------------------------------------------
+# farm: administrative facts about the physical farm. [FARM]
+# ---------------------------------------------------------------------
+farm:
+  code: REQUIRED_FARM_CODE
+  name: REQUIRED_FARM_NAME
+  country_code: REQUIRED_FARM_COUNTRY_CODE   # ISO-2, e.g. two letters
+  city_region: null                          # optional free text, or null
+  timezone: REQUIRED_FARM_TIMEZONE           # a real IANA zone, e.g. Asia/Kuala_Lumpur
+
+# ---------------------------------------------------------------------
+# greenhouses: one Nursery + one entry per Leafy Greens production
+# greenhouse. Vines is out of scope for this pilot and has no field here
+# at all. [FARM] for codes/counts, [HEAD GROWER] confirms the structure
+# genuinely matches how this farm will operate the space.
+# ---------------------------------------------------------------------
+greenhouses:
+  - code: REQUIRED_NURSERY_GREENHOUSE_CODE
+    name: REQUIRED_NURSERY_GREENHOUSE_NAME
+    classification: nursery
+    nursery:
+      seeding_station:
+        code: REQUIRED_SEEDING_STATION_CODE
+      germination_chamber:
+        code: REQUIRED_GERMINATION_CHAMBER_CODE
+        trolley_capacity: 0   # [FARM] number of trolleys this chamber holds -- must be > 0
+      seedling_tables:
+        code_prefix: REQUIRED_SEEDLING_TABLE_PREFIX
+        start: 0              # [FARM] must be >= 1
+        end: 0                # [FARM] must be >= start
+        pad_width: 0          # [FARM] must be >= 1, e.g. 2 for "01".."20"
+      intersalads_tables:     # "Inter Leafy Greens" tables (internal name: InterSalads)
+        code_prefix: REQUIRED_INTERSALADS_TABLE_PREFIX
+        start: 0
+        end: 0
+        pad_width: 0
+      trolleys:
+        - code: REQUIRED_TROLLEY_CODE
+          levels:
+            shelf_count: 0         # [FARM] must be >= 1
+            slots_per_shelf: 0     # [FARM] must be >= 1 (one Seed Tray per slot)
+            shelf_prefix: REQUIRED_TROLLEY_SHELF_PREFIX
+            slot_prefix: REQUIRED_TROLLEY_SLOT_PREFIX
+            shelf_pad_width: 0     # [FARM] must be >= 1
+            slot_pad_width: 0      # [FARM] must be >= 1
+
+  - code: REQUIRED_LEAFY_GH1_CODE
+    name: REQUIRED_LEAFY_GH1_NAME
+    classification: leafy_greens
+    leafy:
+      zones:
+        - code: REQUIRED_GH1_ZONE_A_CODE
+          spans:
+            - code: REQUIRED_GH1_ZONE_A_SPAN_1_CODE
+              tables:
+                code_prefix: REQUIRED_GH1_ZA_SP1_TABLE_PREFIX
+                start: 0        # [FARM] table numbering restarts per span automatically --
+                end: 0          #        each span below gets its own start/end range.
+                pad_width: 0
+        # Add one entry per additional Span in this Zone, and one Zone
+        # block per additional Zone, mirroring the pair above.
+
+  - code: REQUIRED_LEAFY_GH2_CODE
+    name: REQUIRED_LEAFY_GH2_NAME
+    classification: leafy_greens
+    leafy:
+      zones:
+        - code: REQUIRED_GH2_ZONE_A_CODE
+          spans:
+            - code: REQUIRED_GH2_ZONE_A_SPAN_1_CODE
+              tables:
+                code_prefix: REQUIRED_GH2_ZA_SP1_TABLE_PREFIX
+                start: 0
+                end: 0
+                pad_width: 0
+
+# ---------------------------------------------------------------------
+# locations: Cold Store and Packing Hall. Neither has a Farm Setup
+# template today (confirmed by the PILOT-SETUP-001 discovery audit) --
+# this bootstrap creates them via the generic Location API instead.
+# [FARM]
+# ---------------------------------------------------------------------
+locations:
+  packing_hall:
+    code: REQUIRED_PACKING_HALL_CODE
+    name: REQUIRED_PACKING_HALL_NAME
+  cold_store:
+    code: REQUIRED_COLD_STORE_CODE
+    name: REQUIRED_COLD_STORE_NAME
+    positions:
+      code_prefix: REQUIRED_COLD_STORE_POSITION_PREFIX
+      start: 0            # [FARM] must be >= 1
+      end: 0               # [FARM] must be >= start
+      pad_width: 0          # [FARM] must be >= 1
+      capacity: null        # optional; null means exclusive (one occupant per position)
+
+# ---------------------------------------------------------------------
+# carrier_specifications: Seed Tray, Nursery Cultivation Plate, and
+# Production Cultivation Plate are all REQUIRED to have a specification
+# before any physical Carrier of that type can be registered. `key` is a
+# local reference used by `carriers` below -- it is never sent to the
+# database. [FARM] physical dimensions/position counts.
+# ---------------------------------------------------------------------
+carrier_specifications:
+  - key: seed_tray_spec
+    carrier_type_code: seed_tray
+    code: REQUIRED_SEED_TRAY_SPEC_CODE
+    name: REQUIRED_SEED_TRAY_SPEC_NAME
+    length_mm: 0                    # [FARM] must be > 0
+    width_mm: 0                     # [FARM] must be > 0
+    height_mm: null                 # optional
+    biological_position_count: 0    # [FARM] tray cell/hole count, must be > 0
+
+  - key: nursery_plate_spec
+    carrier_type_code: nursery_cultivation_plate
+    code: REQUIRED_NURSERY_PLATE_SPEC_CODE
+    name: REQUIRED_NURSERY_PLATE_SPEC_NAME
+    length_mm: 0
+    width_mm: 0
+    height_mm: null
+    biological_position_count: 0
+
+  - key: production_plate_spec
+    carrier_type_code: production_cultivation_plate
+    code: REQUIRED_PRODUCTION_PLATE_SPEC_CODE
+    name: REQUIRED_PRODUCTION_PLATE_SPEC_NAME
+    length_mm: 0
+    width_mm: 0
+    height_mm: null
+    biological_position_count: 0
+
+# ---------------------------------------------------------------------
+# carriers: physical carrier REGISTRATION only (master/asset data). This
+# never creates biological occupancy or living population -- carrier
+# capacity above is a physical fact, never a plant count. [FARM] quantity
+# and code convention.
+# ---------------------------------------------------------------------
+carriers:
+  - specification_key: seed_tray_spec
+    code_prefix: REQUIRED_SEED_TRAY_CODE_PREFIX
+    start: 0        # [FARM] must be >= 1
+    end: 0           # [FARM] must be >= start -- this is the real tray quantity
+    pad_width: 0      # [FARM] must be >= 1
+
+  - specification_key: nursery_plate_spec
+    code_prefix: REQUIRED_NURSERY_PLATE_CODE_PREFIX
+    start: 0
+    end: 0
+    pad_width: 0
+
+  - specification_key: production_plate_spec
+    code_prefix: REQUIRED_PRODUCTION_PLATE_CODE_PREFIX
+    start: 0
+    end: 0
+    pad_width: 0
+
+# ---------------------------------------------------------------------
+# crop / variety / production_system: the real Iceberg identity. Do NOT
+# reuse ICEBERG / MAMUTIK-RZ / ICE / MAM / LET -- those are test/demo
+# fixture codes found elsewhere in this repository, not real pilot
+# identities (see the PILOT-SETUP-001 discovery audit, section 7).
+# [FARM] crop/production-system facts; [HEAD GROWER] confirms the real
+# variety.
+# ---------------------------------------------------------------------
+crop:
+  code: REQUIRED_CROP_CODE
+  common_name: REQUIRED_CROP_COMMON_NAME
+  scientific_name: null
+  crop_category: leafy_green   # frozen/obvious for Iceberg lettuce -- do not change
+
+variety:
+  code: REQUIRED_VARIETY_CODE
+  name: REQUIRED_VARIETY_NAME
+  supplier_reference: null
+
+production_system:
+  code: REQUIRED_PRODUCTION_SYSTEM_CODE
+  name: REQUIRED_PRODUCTION_SYSTEM_NAME
+  description: null
+
+# ---------------------------------------------------------------------
+# workflow: [HEAD GROWER] design decision -- CMP will not invent stage
+# durations, transitions, or harvest mode. The stage codes/categories
+# below are an ILLUSTRATIVE shape only, matching the pilot's own named
+# chain (Seed Lot -> Sowing -> Germination -> Seedling -> Inter Leafy
+# Greens -> Production Transfer -> Leafy Production -> Harvest) --
+# confirm or redesign every stage before this is real. `stage_category`
+# must be one of: seeding, germination, nursery, transplanting,
+# intermediate, production, harvest_ready, harvesting, completed,
+# rejected. `required_carrier_type_code` marks the stage where a batch
+# newly picks up that carrier type.
+# ---------------------------------------------------------------------
+workflow:
+  code: REQUIRED_WORKFLOW_CODE
+  name: REQUIRED_WORKFLOW_NAME
+  stages:
+    - code: SOWING
+      name: Sowing
+      display_order: 1
+      stage_category: seeding
+      required_carrier_type_code: seed_tray
+      is_start: true
+    - code: GERMINATION
+      name: Germination
+      display_order: 2
+      stage_category: germination
+    - code: SEEDLING
+      name: Seedling
+      display_order: 3
+      stage_category: nursery
+    - code: INTER_LEAFY_GREENS
+      name: Inter Leafy Greens
+      display_order: 4
+      stage_category: transplanting
+      required_carrier_type_code: nursery_cultivation_plate
+    - code: PRODUCTION_TRANSFER
+      name: Production Transfer
+      display_order: 5
+      stage_category: transplanting
+      required_carrier_type_code: production_cultivation_plate
+    - code: LEAFY_PRODUCTION
+      name: Leafy Production
+      display_order: 6
+      stage_category: production
+    - code: HARVEST_READY
+      name: Harvest Ready
+      display_order: 7
+      stage_category: harvest_ready
+    - code: HARVESTING
+      name: Harvesting
+      display_order: 8
+      stage_category: harvesting
+    - code: COMPLETED
+      name: Completed
+      display_order: 9
+      stage_category: completed
+      is_terminal: true
+  transitions:
+    - {code: ADV-1, name: "Sowing -> Germination", from_stage_code: SOWING, to_stage_code: GERMINATION}
+    - {code: ADV-2, name: "Germination -> Seedling", from_stage_code: GERMINATION, to_stage_code: SEEDLING}
+    - {code: ADV-3, name: "Seedling -> Inter Leafy Greens", from_stage_code: SEEDLING, to_stage_code: INTER_LEAFY_GREENS}
+    - {code: ADV-4, name: "Inter Leafy Greens -> Production Transfer", from_stage_code: INTER_LEAFY_GREENS, to_stage_code: PRODUCTION_TRANSFER}
+    - {code: ADV-5, name: "Production Transfer -> Leafy Production", from_stage_code: PRODUCTION_TRANSFER, to_stage_code: LEAFY_PRODUCTION}
+    - {code: ADV-6, name: "Leafy Production -> Harvest Ready", from_stage_code: LEAFY_PRODUCTION, to_stage_code: HARVEST_READY}
+    - {code: ADV-7, name: "Harvest Ready -> Harvesting", from_stage_code: HARVEST_READY, to_stage_code: HARVESTING}
+    - {code: ADV-8, name: "Harvesting -> Completed", from_stage_code: HARVESTING, to_stage_code: COMPLETED}
+
+# ---------------------------------------------------------------------
+# grade_definitions: [QA/COMMERCIAL] real grading thresholds -- CMP will
+# not invent these. `version.activate: false` by default so this file
+# never demands a real effective_date until you are ready to make one
+# active; set `activate: true` and supply `effective_date` when the real
+# spec is confirmed.
+# ---------------------------------------------------------------------
+grade_definitions:
+  - code: REQUIRED_GRADE_DEFINITION_CODE
+    name: REQUIRED_GRADE_DEFINITION_NAME
+    description: null
+    version:
+      spec_notes: null
+      activate: false
+      effective_date: null   # required once activate: true -- a real commercial decision, e.g. 2026-09-01
+
+# ---------------------------------------------------------------------
+# packaging_units / pack_specifications: [QA/COMMERCIAL] real pack
+# format. Same activate/effective_date convention as grade_definitions.
+# ---------------------------------------------------------------------
+packaging_units:
+  - code: REQUIRED_PACKAGING_UNIT_CODE
+    name: REQUIRED_PACKAGING_UNIT_NAME
+
+pack_specifications:
+  - code: REQUIRED_PACK_SPECIFICATION_CODE
+    name: REQUIRED_PACK_SPECIFICATION_NAME
+    customer_reference: null
+    version:
+      packaging_unit_code: REQUIRED_PACKAGING_UNIT_CODE   # must match a packaging_units[].code above
+      grade_definition_code: REQUIRED_GRADE_DEFINITION_CODE  # must match a grade_definitions[].code above, or null
+      nominal_net_weight_kg: null   # at least one of nominal_net_weight_kg / whole_units_per_pack is required
+      whole_units_per_pack: null
+      spec_notes: null
+      activate: false
+      effective_date: null
+
+# ---------------------------------------------------------------------
+# seed_lot: OPTIONAL. Omit this entire section (as it is here, commented
+# out) until the real starting Seed Lot has actually arrived -- setup can
+# be validated and applied completely without it. Registering a Seed Lot
+# is the one legitimate exception to "master data only": it carries no
+# quantity-on-hand, cost, or biological data (it is an identity/catalog
+# record), but it IS the first real traceability link, so do not
+# uncomment this until the real supplier/lot facts are confirmed.
+# [FARM]
+#
+# seed_lot:
+#   code: REQUIRED_SEED_LOT_CODE
+#   supplier_name: null
+#   supplier_lot_reference: null
+#   received_date: null   # e.g. 2026-09-01
+#   expiry_date: null     # e.g. 2027-09-01
+# ---------------------------------------------------------------------
