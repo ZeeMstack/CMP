@@ -123,7 +123,8 @@ export default function CarrierSpecificationsPage() {
           }
         />
         <p className="-mt-3 mb-6 text-xs text-ink-muted">
-          Reusable carrier designs shared across every farm in this tenant -- not tied to a single farm.
+          Reusable carrier designs shared across every farm in this tenant -- not tied to a single farm. To register
+          individual physical carriers against a specification, open a farm and use its Physical Carriers page.
         </p>
 
         {editing !== null && !isLoading && !loadError && (

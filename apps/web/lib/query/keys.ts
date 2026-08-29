@@ -90,6 +90,10 @@ export const queryKeys = {
   carrierSpecification: (tenantId: string, specificationId: string) =>
     ["tenant", tenantId, "carrier-specifications", specificationId] as const,
 
+  // --- PILOT-SETUP-001B5 ----------------------------------------------------
+  // Physical Carriers -- farm-scoped, unlike CarrierSpecification above.
+  carriers: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "carriers"] as const,
+
   // --- NURSERY-OPS-004B.2 -----------------------------------------------------
   availableIntersaladsPlates: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "nursery", "intersalads", "available-plates"] as const,

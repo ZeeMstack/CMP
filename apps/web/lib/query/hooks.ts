@@ -4,6 +4,8 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 
 import * as api from "@/lib/api/client";
 import type {
+  CarrierBulkCreate,
+  CarrierCreate,
   CarrierSpecificationCreate,
   CarrierSpecificationUpdate,
   CorrectLeafyHarvestSourceLineCreate,
@@ -18,6 +20,8 @@ import type {
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
   LeafyProductionTransferCreate,
+  LocationBulkChildrenCreate,
+  LocationCreate,
   PackingEventCreate,
   PackingReversalEventCreate,
   PlaceTrayCreate,
@@ -99,6 +103,35 @@ export function useLocationsTree(farmId: string) {
     queryFn: ({ signal }) => api.getLocationsTree(farmId, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+/** PILOT-SETUP-001B5: generic Location setup -- single create and
+ * range/generator bulk-children, against the existing generic Location
+ * domain. Both invalidate the same `locationsTree` key the read side
+ * already uses, mirroring `useCreateGreenhouseSetup`'s own invalidation. */
+export function useCreateLocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LocationCreate) => api.createLocation(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+export function useBulkCreateLocationChildren(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, payload }: { parentId: string; payload: LocationBulkChildrenCreate }) =>
+      api.bulkCreateLocationChildren(farmId, parentId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
   });
 }
 
@@ -623,6 +656,45 @@ export function useReactivateCarrierSpecification() {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecifications(tenantId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.carrierSpecification(tenantId, result.id) });
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Physical Carrier registration -- farm-scoped (unlike CarrierSpecification
+// above). Registration only: creates the reusable physical object, never an
+// Occupancy/Movement/Crop Batch population.
+
+export function useCarriers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.carriers(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listCarriers(farmId, undefined, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useRegisterCarrier(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CarrierCreate) => api.registerCarrier(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carriers(tenantId, farmId) });
+    },
+  });
+}
+
+export function useBulkRegisterCarriers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CarrierBulkCreate) => api.bulkRegisterCarriers(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carriers(tenantId, farmId) });
     },
   });
 }

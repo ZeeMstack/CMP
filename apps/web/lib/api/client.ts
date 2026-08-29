@@ -6,6 +6,8 @@ export type FarmRead = components["schemas"]["FarmRead"];
 export type FarmCreate = components["schemas"]["FarmCreate"];
 export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
+export type LocationCreate = components["schemas"]["LocationCreate"];
+export type LocationBulkChildrenCreate = components["schemas"]["LocationBulkChildrenCreate"];
 export type CropBatchRead = components["schemas"]["CropBatchRead"];
 export type BatchStageRunRead = components["schemas"]["BatchStageRunRead"];
 export type BatchLineageRead = components["schemas"]["BatchLineageRead"];
@@ -67,6 +69,9 @@ export type CarrierTypeRead = components["schemas"]["CarrierTypeRead"];
 export type CarrierSpecificationRead = components["schemas"]["CarrierSpecificationRead"];
 export type CarrierSpecificationCreate = components["schemas"]["CarrierSpecificationCreate"];
 export type CarrierSpecificationUpdate = components["schemas"]["CarrierSpecificationUpdate"];
+export type CarrierRead = components["schemas"]["CarrierRead"];
+export type CarrierCreate = components["schemas"]["CarrierCreate"];
+export type CarrierBulkCreate = components["schemas"]["CarrierBulkCreate"];
 export type IntersaladsTransplantCreate = components["schemas"]["IntersaladsTransplantCreate"];
 export type IntersaladsTransplantRead = components["schemas"]["IntersaladsTransplantRead"];
 export type AvailableNurseryCultivationPlateRead = components["schemas"]["AvailableNurseryCultivationPlateRead"];
@@ -211,6 +216,27 @@ export function createFarm(payload: FarmCreate, signal?: AbortSignal): Promise<F
 
 export function getLocationsTree(farmId: string, signal?: AbortSignal): Promise<LocationTreeNode[]> {
   return getJson<LocationTreeNode[]>(`/farms/${farmId}/locations/tree`, signal);
+}
+
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Generic Location creation: single create and range/generator bulk-children,
+// against the existing generic Location domain (no new backend behavior).
+
+export function createLocation(
+  farmId: string,
+  payload: LocationCreate,
+  signal?: AbortSignal,
+): Promise<LocationRead> {
+  return postJson<LocationRead>(`/farms/${farmId}/locations`, payload, signal);
+}
+
+export function bulkCreateLocationChildren(
+  farmId: string,
+  parentId: string,
+  payload: LocationBulkChildrenCreate,
+  signal?: AbortSignal,
+): Promise<LocationRead[]> {
+  return postJson<LocationRead[]>(`/farms/${farmId}/locations/${parentId}/bulk-children`, payload, signal);
 }
 
 export function getOperationalSummary(
@@ -537,6 +563,29 @@ export function reactivateCarrierSpecification(
   signal?: AbortSignal,
 ): Promise<CarrierSpecificationRead> {
   return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/reactivate`, {}, signal);
+}
+
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Physical Carrier registration -- farm-scoped (unlike CarrierSpecification
+// above), against the existing carrier registry (no new backend behavior).
+// Registration only: never places a Carrier into a Location, never creates
+// Occupancy/Crop Batch population.
+
+export function listCarriers(farmId: string, carrierType?: string, signal?: AbortSignal): Promise<CarrierRead[]> {
+  const query = carrierType ? `?carrier_type=${encodeURIComponent(carrierType)}` : "";
+  return getJson<CarrierRead[]>(`/farms/${farmId}/carriers${query}`, signal);
+}
+
+export function registerCarrier(farmId: string, payload: CarrierCreate, signal?: AbortSignal): Promise<CarrierRead> {
+  return postJson<CarrierRead>(`/farms/${farmId}/carriers`, payload, signal);
+}
+
+export function bulkRegisterCarriers(
+  farmId: string,
+  payload: CarrierBulkCreate,
+  signal?: AbortSignal,
+): Promise<CarrierRead[]> {
+  return postJson<CarrierRead[]>(`/farms/${farmId}/carriers/bulk`, payload, signal);
 }
 
 // --- NURSERY-OPS-004B.1/004B.2 ----------------------------------------------
