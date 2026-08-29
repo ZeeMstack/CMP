@@ -1,3 +1,6 @@
+import uuid
+
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,3 +31,17 @@ def create_tenant(db: Session, *, code: str, name: str) -> Tenant:
     db.commit()
     db.refresh(tenant)
     return tenant
+
+
+def list_tenants(db: Session) -> list[Tenant]:
+    """PILOT-SETUP-001B2: platform-level Tenant metadata listing (no
+    operational data of any kind). Deterministic order -- name, then code --
+    mirroring `membership_service.list_active_memberships_for_user`'s own
+    tie-break convention."""
+    return list(db.execute(select(Tenant).order_by(Tenant.name, Tenant.code)).scalars())
+
+
+def get_tenant(db: Session, *, tenant_id: uuid.UUID) -> Tenant | None:
+    """PILOT-SETUP-001B2: single-Tenant platform-level read by id. Returns
+    None for an unknown id -- callers map that to 404."""
+    return db.get(Tenant, tenant_id)

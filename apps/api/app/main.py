@@ -30,6 +30,7 @@ from app.api.movements import router as movements_router
 from app.api.observation_definitions import router as observation_definitions_router
 from app.api.observations import router as observations_router
 from app.api.packing import router as packing_router
+from app.api.platform_tenants import router as platform_tenants_router
 from app.api.production_systems import router as production_systems_router
 from app.api.quality_holds import router as quality_holds_router
 from app.api.ready import router as ready_router
@@ -52,6 +53,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(health_router)
     api.include_router(ready_router)
     api.include_router(auth_router)
+    api.include_router(platform_tenants_router)
     api.include_router(memberships_router)
     api.include_router(farms_router)
     api.include_router(locations_router)

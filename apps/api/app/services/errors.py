@@ -14,6 +14,19 @@ class DuplicateMembershipError(DomainError):
     pass
 
 
+class AdminIdentityEmailMismatchError(DomainError):
+    """PILOT-SETUP-001B2: platform Tenant onboarding resolved an existing
+    User by exact (oidc_issuer, oidc_subject) match, but the caller-supplied
+    email does not match that User's own already-recorded email. Never
+    silently overwritten -- the identity binding a Platform Admin is
+    administratively vouching for must not be allowed to quietly retarget an
+    unrelated person's account."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class DuplicateFarmCodeError(DomainError):
     pass
 

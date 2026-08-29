@@ -43,7 +43,7 @@ Two invariants worth repeating, because they are easy to blur in casual conversa
 
 ## 4. Tenant/User prerequisite — product-owned, not this bootstrap's
 
-Production-safe Tenant/User/Membership provisioning is a **CMP product** concern (PILOT-SETUP-001B: controlled platform-admin-gated tenant onboarding, built on the platform-admin authority primitive added in PILOT-SETUP-001B1 — see `docs/domain/AUTHORIZATION_MODEL.md`'s "Platform-level authority" section), not this bootstrap's, and not exclusively DEPLOY-001's as earlier assumed (DEPLOY-001 remains responsible for infrastructure/auth-provider deployment). This module:
+Production-safe Tenant/User/Membership provisioning is a **CMP product** concern (PILOT-SETUP-001B: controlled platform-admin-gated tenant onboarding — the platform-admin authority primitive (PILOT-SETUP-001B1) and `POST /platform/tenants` onboarding itself (PILOT-SETUP-001B2) are both built; see `docs/domain/AUTHORIZATION_MODEL.md`'s "Platform-level authority" and "Platform Tenant onboarding" sections), not this bootstrap's, and not exclusively DEPLOY-001's as earlier assumed (DEPLOY-001 remains responsible for infrastructure/auth-provider deployment). This module:
 
 - never weakens the development-only `dev_bootstrap` guard,
 - never enables dev bootstrap outside a development environment,
