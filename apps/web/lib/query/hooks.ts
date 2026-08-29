@@ -10,6 +10,7 @@ import type {
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
   DispatchEventCreate,
+  FarmCreate,
   FinishedGoodsStorageMovementCreate,
   GerminationOutcomeCommandCreate,
   GradingEventCreate,
@@ -72,6 +73,22 @@ export function useFarm(farmId: string) {
     queryFn: ({ signal }) => api.getFarm(farmId, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+/** PILOT-SETUP-001B4: tenant identity is never part of the payload -- the
+ * backend derives it from the request's own tenant context (same mechanism
+ * every other command here relies on), so this mutation carries only the
+ * `FarmCreate` fields the operator actually filled in. */
+export function useCreateFarm() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: FarmCreate) => api.createFarm(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.farms(tenantId) });
+    },
   });
 }
 

@@ -3,6 +3,7 @@ import { errorFromNetworkFailure, errorFromResponse } from "@/lib/errors/adapter
 import type { components } from "@/lib/api/schema.gen";
 
 export type FarmRead = components["schemas"]["FarmRead"];
+export type FarmCreate = components["schemas"]["FarmCreate"];
 export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
 export type CropBatchRead = components["schemas"]["CropBatchRead"];
@@ -202,6 +203,10 @@ export function listFarms(signal?: AbortSignal): Promise<FarmRead[]> {
 
 export function getFarm(farmId: string, signal?: AbortSignal): Promise<FarmRead> {
   return getJson<FarmRead>(`/farms/${farmId}`, signal);
+}
+
+export function createFarm(payload: FarmCreate, signal?: AbortSignal): Promise<FarmRead> {
+  return postJson<FarmRead>("/farms", payload, signal);
 }
 
 export function getLocationsTree(farmId: string, signal?: AbortSignal): Promise<LocationTreeNode[]> {
