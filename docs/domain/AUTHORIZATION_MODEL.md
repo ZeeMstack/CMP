@@ -15,6 +15,24 @@ Authentication and authorization are deliberately separate concerns, resolved in
 
 Auth0 dashboard roles, Auth0 RBAC, and Auth0 Organizations are not used for CMP business authorization and are not referenced anywhere in this model (`app.core.permissions` imports nothing Auth0-shaped — enforced by `tests/test_authz_architecture.py`). Authorization decisions are made entirely server-side, on every request, from the database's current membership/role state; nothing about the policy or a caller's specific permissions is ever exposed to browser-side bearer handling.
 
+## Platform-level authority (PILOT-SETUP-001B1)
+
+Everything in "Layered trust model" above is **tenant-scoped**: it answers "what may this user do inside a tenant it already belongs to?" It has no answer for "who may create a tenant in the first place?" — before this ticket, nothing did (see PILOT-SETUP-001B's discovery). PILOT-SETUP-001B1 adds exactly one new, deliberately separate primitive for that question:
+
+- **`PlatformAdmin`** (`app.models.platform_admin`) — a User either currently holds active platform-admin authority (`revoked_at IS NULL`) or does not. It has **no `tenant_id`** and **no `role_code`**, and is **never a `TenantMembership`** row — a platform admin grant/revoke cycle is its own permanent historical row (`granted_at`/`granted_by_user_id`/`revoked_at`/`revoked_by_user_id`/`reason`), never hard-deleted.
+- **`app.services.platform_admin_service`** — `grant_platform_admin`/`revoke_platform_admin` (idempotent; revoke is a soft state change, never a delete) and `is_platform_admin`.
+- **`app.core.platform_auth.require_platform_admin`** — a FastAPI dependency built strictly on top of `require_authenticated_principal` (the same WHO-only, no-tenant-selection resolution `GET /auth/me` already uses), plus one check: does this resolved User currently hold active platform-admin authority? It never touches `require_tenant_context`, never returns or implies a `TenantContext`, and requires no tenant header of any kind (real bearer or dev).
+
+**Platform admin is explicitly NOT `tenant_admin`, and implies nothing about tenant access:**
+
+- `tenant_admin` is the maximal role *within one tenant*, resolved from that tenant's own `TenantMembership.role_code` — it has no reach into any other tenant and no reach outside tenant-scoped authorization at all.
+- Platform-admin authority is global but grants **zero tenant data access by itself**. A platform admin who wants to act inside a specific tenant's data still needs their own, ordinary, active `TenantMembership` for that tenant — `require_platform_admin` and `require_tenant_context`/`require_permission` are entirely independent checks; neither one satisfies the other, and no route may treat a `require_platform_admin` pass as implying anything about `require_permission`.
+- Tenant isolation (this document's existing layers, and `MULTI_TENANCY.md`) is completely unchanged by this addition — no read/write path gains cross-tenant visibility because a caller happens to hold platform-admin authority.
+
+Bootstrapping the first platform admin: `scripts/manage_platform_admin.py grant --oidc-issuer ... --oidc-subject ...` — a controlled administrative CLI, not an HTTP route (there is deliberately no unauthenticated "make me a platform admin" endpoint). It requires an already-provisioned CMP `User` (real OIDC issuer+subject) and never creates one — production User provisioning is separately scoped, tracked for PILOT-SETUP-001B2.
+
+**Not yet built (out of scope for PILOT-SETUP-001B1):** any HTTP route gated by `require_platform_admin` (in particular, tenant creation itself), any web UI for granting/revoking platform authority, and production User provisioning. This ticket adds only the authority primitive so those can be built safely on top of it.
+
 ## Permission catalog
 
 Stable, dotted `<domain>.read` / `<domain>.manage` strings (`app.core.permissions.Permission`), derived from a full endpoint audit — not the ticket's own illustrative example list. `manage` covers every mutation/command in that domain: CMP has no `PUT`/`PATCH`/`DELETE` endpoints anywhere (every mutation is an append-only `POST` — a create or a domain command), so a narrower per-verb split was not justified by current behavior. A handful of domains have only one tier where the endpoint audit gave no reason for the other (no read-only domain has a `.manage` value it doesn't need; `movement` and `tenant.members` currently have no standalone read endpoint; `traceability` has no mutation endpoint at all).

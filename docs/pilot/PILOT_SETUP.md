@@ -41,9 +41,9 @@ Two invariants worth repeating, because they are easy to blur in casual conversa
 - **Carrier capacity is never living population.** A CarrierSpecification's `biological_position_count` is a physical/theoretical capacity fact (cells, holes). This bootstrap never derives or seeds a plant count, a biological occupancy row, or any "current population" from it.
 - **Physical Carrier registration is never occupancy.** Registering a Carrier (a Seed Tray, a Cultivation Plate) creates a traceable physical asset row. It does not place that Carrier anywhere, and it does not imply anything is growing in it.
 
-## 4. Tenant/User prerequisite — DEPLOY-001 ownership
+## 4. Tenant/User prerequisite — product-owned, not this bootstrap's
 
-Production-safe Tenant/User/Membership provisioning is **DEPLOY-001's** responsibility, not this bootstrap's. This module:
+Production-safe Tenant/User/Membership provisioning is a **CMP product** concern (PILOT-SETUP-001B: controlled platform-admin-gated tenant onboarding, built on the platform-admin authority primitive added in PILOT-SETUP-001B1 — see `docs/domain/AUTHORIZATION_MODEL.md`'s "Platform-level authority" section), not this bootstrap's, and not exclusively DEPLOY-001's as earlier assumed (DEPLOY-001 remains responsible for infrastructure/auth-provider deployment). This module:
 
 - never weakens the development-only `dev_bootstrap` guard,
 - never enables dev bootstrap outside a development environment,
