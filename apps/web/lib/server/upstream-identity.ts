@@ -6,7 +6,9 @@
  * assembles the right *headers* for two distinct call shapes:
  *
  *  - `resolveIdentityForAuthMe`: the tenant-UNSCOPED shape used to call
- *    GET /auth/me. Never carries a tenant header in any mode.
+ *    GET /auth/me, and (PILOT-SETUP-001B3) every `/platform/*` call --
+ *    both are WHO-only authorization with no tenant relevance. Never
+ *    carries a tenant header in any mode.
  *  - `resolveIdentityForTenantScopedCall`: the shape used for every other
  *    (tenant-scoped) backend call, given whatever tenant is currently
  *    selected (or null).
@@ -44,7 +46,8 @@ function resolveBypassIdentityOrError(
 }
 
 /**
- * Resolves headers for the tenant-unscoped GET /auth/me call. In dev/test
+ * Resolves headers for a tenant-unscoped call -- GET /auth/me, and
+ * (PILOT-SETUP-001B3) every `/platform/*` call. In dev/test
  * mode, only X-Dev-User-Id is sent -- FastAPI's `require_authenticated_principal`
  * (the dependency /auth/me uses) never consults X-Dev-Tenant-Id, and
  * omitting it here keeps the "bootstrap identity tenant" configuration

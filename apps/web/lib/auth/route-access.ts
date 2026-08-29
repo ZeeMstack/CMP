@@ -52,6 +52,7 @@ export type RouteClass =
   | "select-tenant"
   | "access-denied"
   | "protected"
+  | "platform-admin"
   | "sdk-auth"
   | "api"
   | "unclassified";
@@ -62,6 +63,7 @@ export function classifyRoute(pathname: string): RouteClass {
   if (pathname === "/access-denied") return "access-denied";
   if (pathname.startsWith("/auth/") || pathname.startsWith("/auth")) return "sdk-auth";
   if (pathname.startsWith("/api/") || pathname.startsWith("/api")) return "api";
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return "platform-admin";
   if (pathname === "/" || pathname === "/farms" || pathname.startsWith("/farms/")) return "protected";
   return "unclassified";
 }
@@ -115,6 +117,25 @@ export function decideRouteAccess(params: {
           return { kind: "error" };
       }
       break;
+
+    // Platform-level (PILOT-SETUP-001B3): authentication is all this model
+    // gates -- whether the signed-in principal actually holds platform-admin
+    // authority is a backend-only fact (`require_platform_admin`), never
+    // knowable here (AuthBootstrap carries no platform-admin flag). Unlike
+    // "protected", a real Platform Admin may legitimately have zero tenant
+    // memberships and no tenant selected, so those phases still render this
+    // route -- its own pages surface a 403 from the backend instead.
+    case "platform-admin":
+      switch (phase) {
+        case "unauthenticated":
+          return loginRedirectFor(pathname, search);
+        case "not_provisioned":
+          return { kind: "redirect", to: "/access-denied" };
+        case "error":
+          return { kind: "error" };
+        default:
+          return { kind: "allow" };
+      }
 
     case "login":
       switch (phase) {

@@ -10,6 +10,11 @@
 export const queryKeys = {
   authBootstrap: () => ["auth", "bootstrap"] as const,
 
+  // PILOT-SETUP-001B3: platform-level, tenant-independent -- same
+  // rationale as authBootstrap above, never tenant-prefixed.
+  platformTenants: () => ["platform", "tenants"] as const,
+  platformTenant: (tenantId: string) => ["platform", "tenants", tenantId] as const,
+
   farms: (tenantId: string) => ["tenant", tenantId, "farms"] as const,
   farm: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId] as const,
   locationsTree: (tenantId: string, farmId: string) =>

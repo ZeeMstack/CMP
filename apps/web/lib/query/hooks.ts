@@ -21,6 +21,7 @@ import type {
   PackingReversalEventCreate,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  PlatformTenantOnboardingCreate,
   RecallCaseClose,
   RecallCaseCreate,
   RecordLeafyHarvestCreate,
@@ -1491,6 +1492,39 @@ export function useCorrectLeafyHarvestSourceLine(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B3 -------------------------------------------------------
+// Platform Admin Tenant onboarding. Deliberately does NOT use
+// useSelectedTenantId()/tenant-prefixed query keys -- these calls are
+// platform-level and tenant-independent (see queryKeys.platformTenants(),
+// app/api/[...path]/route.ts), unlike every tenant-scoped hook above.
+
+export function usePlatformTenants() {
+  return useQuery({
+    queryKey: queryKeys.platformTenants(),
+    queryFn: ({ signal }) => api.listPlatformTenants(signal),
+    staleTime: STALE_LIST_MS,
+  });
+}
+
+export function usePlatformTenant(tenantId: string) {
+  return useQuery({
+    queryKey: queryKeys.platformTenant(tenantId),
+    queryFn: ({ signal }) => api.getPlatformTenant(tenantId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreatePlatformTenant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PlatformTenantOnboardingCreate) => api.createPlatformTenant(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.platformTenants() });
     },
   });
 }

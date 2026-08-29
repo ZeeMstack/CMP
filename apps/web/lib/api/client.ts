@@ -83,6 +83,17 @@ export type ProductionDispositionEventRead = components["schemas"]["ProductionDi
 export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
 export type OccupancyRead = components["schemas"]["OccupancyRead"];
 
+// --- PILOT-SETUP-001B3 -----------------------------------------------------
+// Platform Admin Tenant onboarding: read the Tenant list/detail and run the
+// one onboarding command (create Tenant + resolve/create its initial admin
+// User + establish an active tenant_admin Membership). Deliberately never
+// under /farms/{farmId} or gated by a selected tenant -- see
+// app/api/[...path]/route.ts, which routes every `/platform/*` call through
+// the same tenant-unscoped identity resolution as GET /auth/me.
+export type TenantRead = components["schemas"]["TenantRead"];
+export type PlatformTenantOnboardingCreate = components["schemas"]["PlatformTenantOnboardingCreate"];
+export type PlatformTenantOnboardingResponse = components["schemas"]["PlatformTenantOnboardingResponse"];
+
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
  * can't drift from what the backend actually accepts. */
@@ -1090,4 +1101,21 @@ export function getHarvestedProduceLotImpact(
   return getJson<HarvestedProduceLotImpactRead>(
     `/farms/${farmId}/traceability/harvested-produce-lots/${produceLotId}/impact`, signal,
   );
+}
+
+// --- PILOT-SETUP-001B3 -----------------------------------------------------
+
+export function listPlatformTenants(signal?: AbortSignal): Promise<TenantRead[]> {
+  return getJson<TenantRead[]>("/platform/tenants", signal);
+}
+
+export function getPlatformTenant(tenantId: string, signal?: AbortSignal): Promise<TenantRead> {
+  return getJson<TenantRead>(`/platform/tenants/${tenantId}`, signal);
+}
+
+export function createPlatformTenant(
+  payload: PlatformTenantOnboardingCreate,
+  signal?: AbortSignal,
+): Promise<PlatformTenantOnboardingResponse> {
+  return postJson<PlatformTenantOnboardingResponse>("/platform/tenants", payload, signal);
 }
