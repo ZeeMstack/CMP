@@ -63,6 +63,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Platform Tenants */
+        get: operations["list_platform_tenants_platform_tenants_get"];
+        put?: never;
+        /**
+         * Onboard Platform Tenant
+         * @description Creates a Tenant, resolves-or-creates its initial administrative
+         *     User (by exact OIDC issuer+subject identity), and establishes an
+         *     active `tenant_admin` Membership -- atomically (see
+         *     `app.services.platform_tenant_service.onboard_tenant`). The requesting
+         *     Platform Admin themselves receives no Membership of any kind; only the
+         *     requested `initial_admin` identity does.
+         */
+        post: operations["onboard_platform_tenant_platform_tenants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/tenants/{tenant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Platform Tenant */
+        get: operations["get_platform_tenant_platform_tenants__tenant_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/memberships": {
         parameters: {
             query?: never;
@@ -320,6 +363,23 @@ export interface paths {
         };
         /** Get Greenhouse Structure */
         get: operations["get_greenhouse_structure_farms__farm_id__farm_setup_greenhouses__greenhouse_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/setup-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Farm Setup Readiness */
+        get: operations["get_farm_setup_readiness_farms__farm_id__setup_readiness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -833,6 +893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workflows/{workflow_id}/versions": {
         parameters: {
             query?: never;
@@ -840,7 +917,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Workflow Versions */
+        get: operations["list_workflow_versions_workflows__workflow_id__versions_get"];
         put?: never;
         /** Create Draft Version */
         post: operations["create_draft_version_workflows__workflow_id__versions_post"];
@@ -2797,63 +2875,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/dev/bootstrap/tenants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap Tenant */
-        post: operations["bootstrap_tenant_dev_bootstrap_tenants_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap User */
-        post: operations["bootstrap_user_dev_bootstrap_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/memberships": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bootstrap Membership
-         * @description Development-only: creates a tenant's first membership. No active
-         *     membership is required to call this — that's the whole point of a
-         *     bootstrap route. `POST /memberships` (not under /dev/bootstrap) is for
-         *     an already-active member to add further members.
-         */
-        post: operations["bootstrap_membership_dev_bootstrap_memberships_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/": {
         parameters: {
             query?: never;
@@ -3569,25 +3590,6 @@ export interface components {
             /** Code */
             code: string;
         };
-        /**
-         * BootstrapMembershipCreate
-         * @description Development-only: creates a membership without requiring an existing
-         *     active membership, to bootstrap a tenant's first member.
-         */
-        BootstrapMembershipCreate: {
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
-            /** Role Code */
-            role_code: string;
-        };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
             /** Carrier Type Code */
@@ -4203,6 +4205,52 @@ export interface components {
             timezone: string;
             /** Status */
             status: string;
+        };
+        /** FarmSetupReadinessItem */
+        FarmSetupReadinessItem: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "missing" | "warning" | "not_applicable";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+        };
+        /** FarmSetupReadinessMilestone */
+        FarmSetupReadinessMilestone: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "sowing" | "production" | "post_harvest" | "full_pilot";
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "incomplete";
+            /** Items */
+            items: components["schemas"]["FarmSetupReadinessItem"][];
+        };
+        /** FarmSetupReadinessRead */
+        FarmSetupReadinessRead: {
+            /** Farm Id */
+            farm_id: string;
+            /**
+             * Overall
+             * @enum {string}
+             */
+            overall: "ready" | "incomplete";
+            /** Milestones */
+            milestones: components["schemas"]["FarmSetupReadinessMilestone"][];
         };
         /** FinishedGoodsBalanceRead */
         FinishedGoodsBalanceRead: {
@@ -7080,6 +7128,50 @@ export interface components {
             /** Common Ancestor Path */
             common_ancestor_path: components["schemas"]["LocationPathSegment"][] | null;
         };
+        /**
+         * PlatformTenantOnboardingAdminCreate
+         * @description The initial tenant_admin identity a Platform Admin is
+         *     administratively vouching for -- an OIDC binding, never a password or
+         *     local credential (see `app.services.platform_tenant_service`). Mirrors
+         *     `app.schemas.user.UserCreate`'s exact field/validation shape, since the
+         *     resulting User (new or resolved) must satisfy the same User model
+         *     requirements either way.
+         */
+        PlatformTenantOnboardingAdminCreate: {
+            /** Oidc Issuer */
+            oidc_issuer: string;
+            /** Oidc Subject */
+            oidc_subject: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+        };
+        /**
+         * PlatformTenantOnboardingCreate
+         * @description `POST /platform/tenants` request body -- one onboarding command from
+         *     the caller's perspective: create the Tenant, resolve-or-create its
+         *     initial admin User, establish an active tenant_admin Membership.
+         */
+        PlatformTenantOnboardingCreate: {
+            tenant: components["schemas"]["TenantCreate"];
+            initial_admin: components["schemas"]["PlatformTenantOnboardingAdminCreate"];
+        };
+        /**
+         * PlatformTenantOnboardingResponse
+         * @description Purpose-built response combining the three existing read schemas --
+         *     enough for the future B3 UI to confirm all three onboarding facts
+         *     without exposing any secret/token. `admin_user_created` distinguishes a
+         *     brand-new User from a resolved pre-existing one, since both are valid,
+         *     non-error outcomes of the same command.
+         */
+        PlatformTenantOnboardingResponse: {
+            tenant: components["schemas"]["TenantRead"];
+            admin_user: components["schemas"]["UserRead"];
+            /** Admin User Created */
+            admin_user_created: boolean;
+            membership: components["schemas"]["MembershipRead"];
+        };
         /** ProduceLotBalanceRead */
         ProduceLotBalanceRead: {
             /**
@@ -9154,17 +9246,6 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** UserCreate */
-        UserCreate: {
-            /** Oidc Issuer */
-            oidc_issuer: string;
-            /** Oidc Subject */
-            oidc_subject: string;
-            /** Email */
-            email: string;
-            /** Display Name */
-            display_name: string;
-        };
         /** UserRead */
         UserRead: {
             /**
@@ -10359,6 +10440,111 @@ export interface operations {
             };
         };
     };
+    list_platform_tenants_platform_tenants_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Dev-User-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    onboard_platform_tenant_platform_tenants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Dev-User-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformTenantOnboardingCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformTenantOnboardingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_platform_tenant_platform_tenants__tenant_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Dev-User-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+            };
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_membership_memberships_post: {
         parameters: {
             query?: never;
@@ -10944,6 +11130,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GreenhouseStructureRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_farm_setup_readiness_farms__farm_id__setup_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmSetupReadinessRead"];
                 };
             };
             /** @description Validation Error */
@@ -12288,6 +12510,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_versions_workflows__workflow_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionRead"][];
                 };
             };
             /** @description Validation Error */
@@ -17362,105 +17656,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallCaseDetailRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_tenant_dev_bootstrap_tenants_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TenantCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_user_dev_bootstrap_users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_membership_dev_bootstrap_memberships_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BootstrapMembershipCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MembershipRead"];
                 };
             };
             /** @description Validation Error */

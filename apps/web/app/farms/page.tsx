@@ -1,5 +1,6 @@
 "use client";
 
+import { PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -83,8 +84,17 @@ export default function FarmsPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyState
-          title="No farms available"
-          description="Your account has no accessible farms. Contact an administrator."
+          title="No farms have been set up for this tenant yet."
+          description="Create the first Farm to start configuring its physical structure."
+          action={
+            <Link
+              href="/farms/new"
+              className="mt-2 flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <PlusCircle aria-hidden="true" className="h-4 w-4" />
+              Create Farm
+            </Link>
+          }
         />
       </div>
     );
@@ -97,8 +107,19 @@ export default function FarmsPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16">
-      <h1 className="mb-1 text-xl font-semibold text-ink">CMP</h1>
-      <p className="mb-6 text-sm text-ink-muted">Choose a farm.</p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="mb-1 text-xl font-semibold text-ink">CMP</h1>
+          <p className="text-sm text-ink-muted">Choose a farm.</p>
+        </div>
+        <Link
+          href="/farms/new"
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+        >
+          <PlusCircle aria-hidden="true" className="h-4 w-4" />
+          Create Farm
+        </Link>
+      </div>
       <ul className="space-y-2">
         {farms.map((farm) => (
           <li key={farm.id}>

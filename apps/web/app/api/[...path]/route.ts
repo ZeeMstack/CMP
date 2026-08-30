@@ -15,6 +15,15 @@ import { resolveIdentityForAuthMe, resolveIdentityForTenantScopedCall } from "@/
  * (shared with the bootstrap and tenant-selection routes):
  *  - GET /auth/me is tenant-unscoped in every mode -- no X-CMP-Tenant-Id,
  *    no X-Dev-Tenant-Id are ever attached to it.
+ *  - Every `/platform/*` path (PILOT-SETUP-001B3) is likewise
+ *    tenant-unscoped: `require_platform_admin` is WHO-only authorization
+ *    (see app/core/platform_auth.py), structurally independent of any
+ *    TenantContext, and a genuine Platform Admin may legitimately hold
+ *    zero tenant memberships / have no tenant selected. Routing these
+ *    through the tenant-scoped resolver would wrongly attach whatever
+ *    tenant happens to be selected in real mode, and would hard-fail with
+ *    `tenant_selection_required` in dev/test mode even though no tenant
+ *    is relevant to the call at all.
  *  - Every other path is treated as tenant-scoped. In real mode, the
  *    currently-selected tenant (from the `cmp_tenant_id` cookie, if any)
  *    is attached as X-CMP-Tenant-Id; if none is selected, no tenant
@@ -69,8 +78,9 @@ async function resolveProxyContext(request: NextRequest, path: string[]) {
   }
 
   const isAuthMe = path.length === 2 && path[0] === "auth" && path[1] === "me";
+  const isPlatformScoped = path.length > 0 && path[0] === "platform";
 
-  const identity = isAuthMe
+  const identity = isAuthMe || isPlatformScoped
     ? await resolveIdentityForAuthMe(mode)
     : await resolveIdentityForTenantScopedCall(mode, readSelectedTenantId(request));
 

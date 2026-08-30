@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
 import type { CarrierSpecificationCreate, CarrierSpecificationRead, CarrierSpecificationUpdate, CarrierTypeRead } from "@/lib/api/client";
@@ -17,6 +17,19 @@ const inputClass =
   "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-ink-muted";
 const labelClass = "block text-sm font-medium text-ink";
 const errorClass = "text-xs text-red-700";
+
+/** FINAL INTEGRITY CLEANUP: react-hook-form routes an untouched field's
+ * own `null` default through this same `setValueAs` transform (not just a
+ * raw DOM change-event string) -- the previous `v === "" ? null :
+ * Number(v)` therefore computed `Number(null)` (which is `0`, not `NaN`)
+ * for every optional dimension/position-count field left blank, tripping
+ * the schema's `.positive()` check and silently blocking an otherwise
+ * valid create/update. Guarding for `null`/`undefined` alongside `""`
+ * fixes this without changing which fields are required/optional or any
+ * backend validation. */
+function toOptionalPositiveInt(v: unknown): number | null {
+  return v === "" || v === null || v === undefined ? null : Number(v);
+}
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -57,7 +70,7 @@ export function CarrierSpecificationForm({
 
   const {
     register,
-    watch,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CarrierSpecificationFormValues>({
@@ -76,7 +89,11 @@ export function CarrierSpecificationForm({
     mode: "onBlur",
   });
 
-  const selectedTypeCode = watch("carrier_type_code");
+  // useWatch (not the `watch()` function useForm returns) -- the plain
+  // function is a react-hook-form API the React Compiler cannot memoize
+  // safely; useWatch is itself a proper hook subscription and compiles
+  // cleanly.
+  const selectedTypeCode = useWatch({ control, name: "carrier_type_code" });
   const selectedType = carrierTypes.find((t) => t.code === selectedTypeCode);
   const positionLabel = selectedType?.biological_position_label ?? "Biological positions";
   const requiresDimensions = selectedType?.requires_specification ?? false;
@@ -120,7 +137,7 @@ export function CarrierSpecificationForm({
             min={1}
             step={1}
             disabled={locked}
-            {...register("length_mm", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
+            {...register("length_mm", { setValueAs: toOptionalPositiveInt })}
             className={inputClass}
           />
         </Field>
@@ -130,7 +147,7 @@ export function CarrierSpecificationForm({
             min={1}
             step={1}
             disabled={locked}
-            {...register("width_mm", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
+            {...register("width_mm", { setValueAs: toOptionalPositiveInt })}
             className={inputClass}
           />
         </Field>
@@ -140,7 +157,7 @@ export function CarrierSpecificationForm({
             min={1}
             step={1}
             disabled={locked}
-            {...register("height_mm", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
+            {...register("height_mm", { setValueAs: toOptionalPositiveInt })}
             className={inputClass}
           />
         </Field>
@@ -156,7 +173,7 @@ export function CarrierSpecificationForm({
             min={1}
             step={1}
             disabled={locked}
-            {...register("biological_position_count", { setValueAs: (v) => (v === "" ? null : Number(v)) })}
+            {...register("biological_position_count", { setValueAs: toOptionalPositiveInt })}
             className={inputClass}
           />
         </Field>

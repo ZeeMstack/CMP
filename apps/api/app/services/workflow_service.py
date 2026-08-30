@@ -168,6 +168,25 @@ def create_draft_version(
     return version
 
 
+def list_versions(db: Session, *, tenant_id: uuid.UUID, workflow_id: uuid.UUID) -> list[WorkflowVersion]:
+    """PILOT-SETUP-001B6A: mirrors `grade_definition_service.list_versions`/
+    `pack_specification_service.list_versions` exactly -- confirms the
+    parent Workflow exists in this tenant first (so an unknown/cross-tenant
+    `workflow_id` raises `WorkflowNotFoundError`, never a bare empty list),
+    then returns every version row (draft/published/retired) ordered
+    ascending by `version_number`, the same deterministic ordering those two
+    siblings already use. No stage/transition content is loaded here --
+    `get_workflow_version` remains the sole source for that."""
+    get_workflow(db, tenant_id=tenant_id, workflow_id=workflow_id)
+    return list(
+        db.execute(
+            select(WorkflowVersion)
+            .where(WorkflowVersion.tenant_id == tenant_id, WorkflowVersion.workflow_id == workflow_id)
+            .order_by(WorkflowVersion.version_number)
+        ).scalars()
+    )
+
+
 def get_workflow_version(
     db: Session, *, tenant_id: uuid.UUID, workflow_id: uuid.UUID, version_id: uuid.UUID
 ) -> WorkflowVersion:

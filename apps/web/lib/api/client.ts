@@ -3,8 +3,11 @@ import { errorFromNetworkFailure, errorFromResponse } from "@/lib/errors/adapter
 import type { components } from "@/lib/api/schema.gen";
 
 export type FarmRead = components["schemas"]["FarmRead"];
+export type FarmCreate = components["schemas"]["FarmCreate"];
 export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
+export type LocationCreate = components["schemas"]["LocationCreate"];
+export type LocationBulkChildrenCreate = components["schemas"]["LocationBulkChildrenCreate"];
 export type CropBatchRead = components["schemas"]["CropBatchRead"];
 export type BatchStageRunRead = components["schemas"]["BatchStageRunRead"];
 export type BatchLineageRead = components["schemas"]["BatchLineageRead"];
@@ -35,7 +38,24 @@ export type CropSummary = components["schemas"]["CropSummary"];
 export type VarietySummary = components["schemas"]["VarietySummary"];
 export type CropRead = components["schemas"]["CropRead"];
 export type VarietyRead = components["schemas"]["VarietyRead"];
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+export type CropCreate = components["schemas"]["CropCreate"];
+export type VarietyCreate = components["schemas"]["VarietyCreate"];
+export type ProductionSystemRead = components["schemas"]["ProductionSystemRead"];
+export type ProductionSystemCreate = components["schemas"]["ProductionSystemCreate"];
+export type WorkflowRead = components["schemas"]["WorkflowRead"];
+export type WorkflowCreate = components["schemas"]["WorkflowCreate"];
+export type WorkflowVersionRead = components["schemas"]["WorkflowVersionRead"];
+export type WorkflowVersionDetailRead = components["schemas"]["WorkflowVersionDetailRead"];
+export type WorkflowStageRead = components["schemas"]["WorkflowStageRead"];
+export type WorkflowStageCreate = components["schemas"]["WorkflowStageCreate"];
+export type WorkflowTransitionRead = components["schemas"]["WorkflowTransitionRead"];
+export type WorkflowTransitionCreate = components["schemas"]["WorkflowTransitionCreate"];
 export type SeedLotBatchSummary = components["schemas"]["SeedLotBatchSummary"];
+// --- PILOT-SETUP-001B8 -------------------------------------------------------
+export type FarmSetupReadinessItem = components["schemas"]["FarmSetupReadinessItem"];
+export type FarmSetupReadinessMilestone = components["schemas"]["FarmSetupReadinessMilestone"];
+export type FarmSetupReadinessRead = components["schemas"]["FarmSetupReadinessRead"];
 export type AssetRead = components["schemas"]["AssetRead"];
 export type PlaceTrolleyCreate = components["schemas"]["PlaceTrolleyCreate"];
 export type PlaceTrayCreate = components["schemas"]["PlaceTrayCreate"];
@@ -66,6 +86,9 @@ export type CarrierTypeRead = components["schemas"]["CarrierTypeRead"];
 export type CarrierSpecificationRead = components["schemas"]["CarrierSpecificationRead"];
 export type CarrierSpecificationCreate = components["schemas"]["CarrierSpecificationCreate"];
 export type CarrierSpecificationUpdate = components["schemas"]["CarrierSpecificationUpdate"];
+export type CarrierRead = components["schemas"]["CarrierRead"];
+export type CarrierCreate = components["schemas"]["CarrierCreate"];
+export type CarrierBulkCreate = components["schemas"]["CarrierBulkCreate"];
 export type IntersaladsTransplantCreate = components["schemas"]["IntersaladsTransplantCreate"];
 export type IntersaladsTransplantRead = components["schemas"]["IntersaladsTransplantRead"];
 export type AvailableNurseryCultivationPlateRead = components["schemas"]["AvailableNurseryCultivationPlateRead"];
@@ -82,6 +105,17 @@ export type ProductionDispositionHistoryRead = components["schemas"]["Production
 export type ProductionDispositionEventRead = components["schemas"]["ProductionDispositionEventRead"];
 export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
 export type OccupancyRead = components["schemas"]["OccupancyRead"];
+
+// --- PILOT-SETUP-001B3 -----------------------------------------------------
+// Platform Admin Tenant onboarding: read the Tenant list/detail and run the
+// one onboarding command (create Tenant + resolve/create its initial admin
+// User + establish an active tenant_admin Membership). Deliberately never
+// under /farms/{farmId} or gated by a selected tenant -- see
+// app/api/[...path]/route.ts, which routes every `/platform/*` call through
+// the same tenant-unscoped identity resolution as GET /auth/me.
+export type TenantRead = components["schemas"]["TenantRead"];
+export type PlatformTenantOnboardingCreate = components["schemas"]["PlatformTenantOnboardingCreate"];
+export type PlatformTenantOnboardingResponse = components["schemas"]["PlatformTenantOnboardingResponse"];
 
 /** `state` filter for the operational-summary list: `active` (Home) vs
  * `all` (Batch Register) -- kept as a literal union so callers/cache keys
@@ -193,8 +227,33 @@ export function getFarm(farmId: string, signal?: AbortSignal): Promise<FarmRead>
   return getJson<FarmRead>(`/farms/${farmId}`, signal);
 }
 
+export function createFarm(payload: FarmCreate, signal?: AbortSignal): Promise<FarmRead> {
+  return postJson<FarmRead>("/farms", payload, signal);
+}
+
 export function getLocationsTree(farmId: string, signal?: AbortSignal): Promise<LocationTreeNode[]> {
   return getJson<LocationTreeNode[]>(`/farms/${farmId}/locations/tree`, signal);
+}
+
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Generic Location creation: single create and range/generator bulk-children,
+// against the existing generic Location domain (no new backend behavior).
+
+export function createLocation(
+  farmId: string,
+  payload: LocationCreate,
+  signal?: AbortSignal,
+): Promise<LocationRead> {
+  return postJson<LocationRead>(`/farms/${farmId}/locations`, payload, signal);
+}
+
+export function bulkCreateLocationChildren(
+  farmId: string,
+  parentId: string,
+  payload: LocationBulkChildrenCreate,
+  signal?: AbortSignal,
+): Promise<LocationRead[]> {
+  return postJson<LocationRead[]>(`/farms/${farmId}/locations/${parentId}/bulk-children`, payload, signal);
 }
 
 export function getOperationalSummary(
@@ -268,6 +327,10 @@ export function getGreenhouseStructure(
   return getJson<GreenhouseStructureRead>(`/farms/${farmId}/farm-setup/greenhouses/${greenhouseId}`, signal);
 }
 
+export function getFarmSetupReadiness(farmId: string, signal?: AbortSignal): Promise<FarmSetupReadinessRead> {
+  return getJson<FarmSetupReadinessRead>(`/farms/${farmId}/setup-readiness`, signal);
+}
+
 export function createGreenhouseSetup(
   farmId: string,
   payload: GreenhouseSetupCreate,
@@ -284,6 +347,96 @@ export function listCrops(signal?: AbortSignal): Promise<CropRead[]> {
 
 export function listVarieties(cropId: string, signal?: AbortSignal): Promise<VarietyRead[]> {
   return getJson<VarietyRead[]>(`/crops/${cropId}/varieties`, signal);
+}
+
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+// Crop / Variety / Production System / Workflow master-data setup UI, layered
+// on the existing tenant-scoped catalog + workflow-configuration backend (no
+// new backend behavior). Registration/configuration only -- never a Crop
+// Batch, Sowing, Seed Lot, Movement, or Occupancy call.
+
+export function createCrop(payload: CropCreate, signal?: AbortSignal): Promise<CropRead> {
+  return postJson<CropRead>("/crops", payload, signal);
+}
+
+export function createVariety(cropId: string, payload: VarietyCreate, signal?: AbortSignal): Promise<VarietyRead> {
+  return postJson<VarietyRead>(`/crops/${cropId}/varieties`, payload, signal);
+}
+
+export function listProductionSystems(signal?: AbortSignal): Promise<ProductionSystemRead[]> {
+  return getJson<ProductionSystemRead[]>("/production-systems", signal);
+}
+
+export function createProductionSystem(
+  payload: ProductionSystemCreate,
+  signal?: AbortSignal,
+): Promise<ProductionSystemRead> {
+  return postJson<ProductionSystemRead>("/production-systems", payload, signal);
+}
+
+export function listWorkflows(signal?: AbortSignal): Promise<WorkflowRead[]> {
+  return getJson<WorkflowRead[]>("/workflows", signal);
+}
+
+// --- PILOT-SETUP-001B6A ------------------------------------------------------
+// The two read endpoints that close the resumability gap identified in B6:
+// a single Workflow can now be fetched directly by id, and its full version
+// catalog (draft/published/retired, ascending by version_number) can be
+// listed without already knowing a specific version's id.
+
+export function getWorkflow(workflowId: string, signal?: AbortSignal): Promise<WorkflowRead> {
+  return getJson<WorkflowRead>(`/workflows/${workflowId}`, signal);
+}
+
+export function listWorkflowVersions(workflowId: string, signal?: AbortSignal): Promise<WorkflowVersionRead[]> {
+  return getJson<WorkflowVersionRead[]>(`/workflows/${workflowId}/versions`, signal);
+}
+
+export function createWorkflow(payload: WorkflowCreate, signal?: AbortSignal): Promise<WorkflowRead> {
+  return postJson<WorkflowRead>("/workflows", payload, signal);
+}
+
+/** No request body on this command -- the backend derives the next
+ * `version_number` itself (`max(version_number) + 1`), so there is nothing
+ * for a caller to supply. */
+export function createWorkflowDraftVersion(workflowId: string, signal?: AbortSignal): Promise<WorkflowVersionRead> {
+  return postJson<WorkflowVersionRead>(`/workflows/${workflowId}/versions`, {}, signal);
+}
+
+export function getWorkflowVersion(
+  workflowId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowVersionDetailRead> {
+  return getJson<WorkflowVersionDetailRead>(`/workflows/${workflowId}/versions/${versionId}`, signal);
+}
+
+export function addWorkflowStage(
+  workflowId: string,
+  versionId: string,
+  payload: WorkflowStageCreate,
+  signal?: AbortSignal,
+): Promise<WorkflowStageRead> {
+  return postJson<WorkflowStageRead>(`/workflows/${workflowId}/versions/${versionId}/stages`, payload, signal);
+}
+
+export function addWorkflowTransition(
+  workflowId: string,
+  versionId: string,
+  payload: WorkflowTransitionCreate,
+  signal?: AbortSignal,
+): Promise<WorkflowTransitionRead> {
+  return postJson<WorkflowTransitionRead>(`/workflows/${workflowId}/versions/${versionId}/transitions`, payload, signal);
+}
+
+/** No request body -- publish is a pure state transition on the already-
+ * fully-configured draft version. */
+export function publishWorkflowVersion(
+  workflowId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<WorkflowVersionRead> {
+  return postJson<WorkflowVersionRead>(`/workflows/${workflowId}/versions/${versionId}/publish`, {}, signal);
 }
 
 export function listSeedLots(farmId: string, signal?: AbortSignal): Promise<SeedLotRead[]> {
@@ -523,6 +676,29 @@ export function reactivateCarrierSpecification(
   return postJson<CarrierSpecificationRead>(`/carrier-specifications/${specificationId}/reactivate`, {}, signal);
 }
 
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Physical Carrier registration -- farm-scoped (unlike CarrierSpecification
+// above), against the existing carrier registry (no new backend behavior).
+// Registration only: never places a Carrier into a Location, never creates
+// Occupancy/Crop Batch population.
+
+export function listCarriers(farmId: string, carrierType?: string, signal?: AbortSignal): Promise<CarrierRead[]> {
+  const query = carrierType ? `?carrier_type=${encodeURIComponent(carrierType)}` : "";
+  return getJson<CarrierRead[]>(`/farms/${farmId}/carriers${query}`, signal);
+}
+
+export function registerCarrier(farmId: string, payload: CarrierCreate, signal?: AbortSignal): Promise<CarrierRead> {
+  return postJson<CarrierRead>(`/farms/${farmId}/carriers`, payload, signal);
+}
+
+export function bulkRegisterCarriers(
+  farmId: string,
+  payload: CarrierBulkCreate,
+  signal?: AbortSignal,
+): Promise<CarrierRead[]> {
+  return postJson<CarrierRead[]>(`/farms/${farmId}/carriers/bulk`, payload, signal);
+}
+
 // --- NURSERY-OPS-004B.1/004B.2 ----------------------------------------------
 // InterSalads Transplant: composite biological Transplant + physical Plate
 // placement, one atomic command. `listAvailableIntersaladsPlates` is the
@@ -715,7 +891,11 @@ export type HarvestedProduceLotRead = components["schemas"]["app__schemas__harve
 export type ProduceLotBalanceRead = components["schemas"]["ProduceLotBalanceRead"];
 
 export type GradeDefinitionRead = components["schemas"]["GradeDefinitionRead"];
+export type GradeDefinitionCreate = components["schemas"]["GradeDefinitionCreate"];
 export type GradeDefinitionVersionRead = components["schemas"]["GradeDefinitionVersionRead"];
+export type GradeDefinitionVersionCreate = components["schemas"]["GradeDefinitionVersionCreate"];
+export type GradeDefinitionVersionActivate = components["schemas"]["GradeDefinitionVersionActivate"];
+export type GradeDefinitionVersionRetire = components["schemas"]["GradeDefinitionVersionRetire"];
 export type GradingEventCreate = components["schemas"]["GradingEventCreate"];
 export type GradingOutputIn = components["schemas"]["GradingOutputIn"];
 export type GradingEventRead = components["schemas"]["app__schemas__grading__GradingEventRead"];
@@ -725,8 +905,16 @@ export type GradedProduceLotBalanceRead = components["schemas"]["GradedProduceLo
 export type GradingReversalEventCreate = components["schemas"]["GradingReversalEventCreate"];
 export type GradingReversalEventRead = components["schemas"]["GradingReversalEventRead"];
 
+export type PackagingUnitRead = components["schemas"]["PackagingUnitRead"];
+export type PackagingUnitCreate = components["schemas"]["PackagingUnitCreate"];
+export type PackagingUnitRetire = components["schemas"]["PackagingUnitRetire"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
+export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
+export type PackSpecificationVersionCreate = components["schemas"]["PackSpecificationVersionCreate"];
+export type PackSpecificationVersionActivate = components["schemas"]["PackSpecificationVersionActivate"];
+export type PackSpecificationVersionRetire = components["schemas"]["PackSpecificationVersionRetire"];
 export type PackingEventCreate = components["schemas"]["PackingEventCreate"];
 export type PackingInputLineIn = components["schemas"]["PackingInputLineIn"];
 export type PackingEventRead = components["schemas"]["app__schemas__packing__PackingEventRead"];
@@ -765,9 +953,9 @@ export function getHarvestedProduceLotBalance(
   return getJson<ProduceLotBalanceRead>(`/farms/${farmId}/harvested-produce-lots/${produceLotId}/balance`, signal);
 }
 
-// Grade Definitions -- tenant-scoped config, read-only here (the version
-// picker Grading's output lines need). Creating/activating Grade
-// Definitions/Versions is out of this ticket's scope.
+// Grade Definitions -- tenant-scoped config. PILOT-SETUP-001B7 adds the
+// create/version/activate/retire commands; the read-only list functions
+// below predate this ticket (POSTHARVEST-OPS-001G's Grading version picker).
 
 export function listGradeDefinitions(
   cropId?: string,
@@ -777,6 +965,13 @@ export function listGradeDefinitions(
   return getJson<GradeDefinitionRead[]>(`/grade-definitions${query}`, signal);
 }
 
+export function createGradeDefinition(
+  payload: GradeDefinitionCreate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionRead> {
+  return postJson<GradeDefinitionRead>("/grade-definitions", payload, signal);
+}
+
 export function listGradeDefinitionVersions(
   gradeDefinitionId: string,
   status: string | undefined,
@@ -784,6 +979,58 @@ export function listGradeDefinitionVersions(
 ): Promise<GradeDefinitionVersionRead[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return getJson<GradeDefinitionVersionRead[]>(`/grade-definitions/${gradeDefinitionId}/versions${query}`, signal);
+}
+
+export function createGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  payload: GradeDefinitionVersionCreate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(`/grade-definitions/${gradeDefinitionId}/versions`, payload, signal);
+}
+
+export function activateGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  versionId: string,
+  payload: GradeDefinitionVersionActivate,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(
+    `/grade-definitions/${gradeDefinitionId}/versions/${versionId}/activate`, payload, signal,
+  );
+}
+
+export function retireGradeDefinitionVersion(
+  gradeDefinitionId: string,
+  versionId: string,
+  payload: GradeDefinitionVersionRetire,
+  signal?: AbortSignal,
+): Promise<GradeDefinitionVersionRead> {
+  return postJson<GradeDefinitionVersionRead>(
+    `/grade-definitions/${gradeDefinitionId}/versions/${versionId}/retire`, payload, signal,
+  );
+}
+
+// Packaging Units -- tenant-scoped, unversioned master data (PILOT-SETUP-001B7).
+
+export function listPackagingUnits(status?: string, signal?: AbortSignal): Promise<PackagingUnitRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<PackagingUnitRead[]>(`/packaging-units${query}`, signal);
+}
+
+export function createPackagingUnit(
+  payload: PackagingUnitCreate,
+  signal?: AbortSignal,
+): Promise<PackagingUnitRead> {
+  return postJson<PackagingUnitRead>("/packaging-units", payload, signal);
+}
+
+export function retirePackagingUnit(
+  packagingUnitId: string,
+  payload: PackagingUnitRetire,
+  signal?: AbortSignal,
+): Promise<PackagingUnitRead> {
+  return postJson<PackagingUnitRead>(`/packaging-units/${packagingUnitId}/retire`, payload, signal);
 }
 
 // Grading -- the operator command that consumes a Harvested Produce Lot and
@@ -877,13 +1124,20 @@ export function getGradedProduceLotBalance(
   );
 }
 
-// Pack Specifications -- tenant-scoped config, read-only here (the version
-// picker Packing needs). Creating/activating Pack Specifications/Versions is
-// out of this ticket's scope.
+// Pack Specifications -- tenant-scoped config. PILOT-SETUP-001B7 adds the
+// create/version/activate/retire commands; the read-only list functions
+// below predate this ticket (POSTHARVEST-OPS-001G's Packing version picker).
 
 export function listPackSpecifications(cropId?: string, signal?: AbortSignal): Promise<PackSpecificationRead[]> {
   const query = cropId ? `?crop_id=${encodeURIComponent(cropId)}` : "";
   return getJson<PackSpecificationRead[]>(`/pack-specifications${query}`, signal);
+}
+
+export function createPackSpecification(
+  payload: PackSpecificationCreate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationRead> {
+  return postJson<PackSpecificationRead>("/pack-specifications", payload, signal);
 }
 
 export function listPackSpecificationVersions(
@@ -894,6 +1148,38 @@ export function listPackSpecificationVersions(
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
   return getJson<PackSpecificationVersionRead[]>(
     `/pack-specifications/${packSpecificationId}/versions${query}`, signal,
+  );
+}
+
+export function createPackSpecificationVersion(
+  packSpecificationId: string,
+  payload: PackSpecificationVersionCreate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions`, payload, signal,
+  );
+}
+
+export function activatePackSpecificationVersion(
+  packSpecificationId: string,
+  versionId: string,
+  payload: PackSpecificationVersionActivate,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions/${versionId}/activate`, payload, signal,
+  );
+}
+
+export function retirePackSpecificationVersion(
+  packSpecificationId: string,
+  versionId: string,
+  payload: PackSpecificationVersionRetire,
+  signal?: AbortSignal,
+): Promise<PackSpecificationVersionRead> {
+  return postJson<PackSpecificationVersionRead>(
+    `/pack-specifications/${packSpecificationId}/versions/${versionId}/retire`, payload, signal,
   );
 }
 
@@ -1090,4 +1376,21 @@ export function getHarvestedProduceLotImpact(
   return getJson<HarvestedProduceLotImpactRead>(
     `/farms/${farmId}/traceability/harvested-produce-lots/${produceLotId}/impact`, signal,
   );
+}
+
+// --- PILOT-SETUP-001B3 -----------------------------------------------------
+
+export function listPlatformTenants(signal?: AbortSignal): Promise<TenantRead[]> {
+  return getJson<TenantRead[]>("/platform/tenants", signal);
+}
+
+export function getPlatformTenant(tenantId: string, signal?: AbortSignal): Promise<TenantRead> {
+  return getJson<TenantRead>(`/platform/tenants/${tenantId}`, signal);
+}
+
+export function createPlatformTenant(
+  payload: PlatformTenantOnboardingCreate,
+  signal?: AbortSignal,
+): Promise<PlatformTenantOnboardingResponse> {
+  return postJson<PlatformTenantOnboardingResponse>("/platform/tenants", payload, signal);
 }

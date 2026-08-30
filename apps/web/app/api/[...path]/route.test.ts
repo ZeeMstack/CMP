@@ -443,6 +443,61 @@ describe("real mode", () => {
   });
 });
 
+describe("platform-scoped calls (PILOT-SETUP-001B3)", () => {
+  it("dev bypass: /platform/tenants works with no tenant selected, and sends no X-Dev-Tenant-Id", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant-1");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    const response = await callProxy(["platform", "tenants"]); // no cookie, no tenant selected
+
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Dev-User-Id"]).toBe("dev-user-1");
+    expect(headers["X-Dev-Tenant-Id"]).toBeUndefined();
+  });
+
+  it("dev bypass: a platform-scoped POST also never requires a selected tenant", async () => {
+    vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");
+    vi.stubEnv("CMP_DEV_TENANT_ID", "dev-tenant-1");
+    vi.stubEnv("CMP_DEV_USER_ID", "dev-user-1");
+    fetchMock.mockResolvedValue(jsonResponse({ tenant: { id: "t1" } }, 201));
+
+    const response = await callProxyPost(["platform", "tenants"], {}); // no cookie
+
+    expect(response.status).toBe(201);
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-Dev-Tenant-Id"]).toBeUndefined();
+  });
+
+  it("real mode: never sends X-CMP-Tenant-Id for GET /platform/tenants, even when a tenant is selected", async () => {
+    mockGetCmpApiAccessToken.mockResolvedValue("t");
+    fetchMock.mockResolvedValue(jsonResponse([]));
+
+    await callProxy(["platform", "tenants"], SELECTED_TENANT_COOKIE);
+
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/platform/tenants");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-CMP-Tenant-Id"]).toBeUndefined();
+    expect(headers.Authorization).toBe("Bearer t");
+  });
+
+  it("real mode: GET /platform/tenants/{id} is also tenant-unscoped", async () => {
+    mockGetCmpApiAccessToken.mockResolvedValue("t");
+    fetchMock.mockResolvedValue(jsonResponse({ id: "tenant-1" }));
+
+    await callProxy(["platform", "tenants", "tenant-1"], SELECTED_TENANT_COOKIE);
+
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["X-CMP-Tenant-Id"]).toBeUndefined();
+  });
+});
+
 describe("dev bypass mode", () => {
   it("forwards only X-Dev-Tenant-Id / X-Dev-User-Id for a selected-tenant call, and no Authorization header", async () => {
     vi.stubEnv("CMP_DEV_AUTH_BYPASS", "true");

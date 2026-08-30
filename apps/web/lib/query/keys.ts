@@ -10,6 +10,11 @@
 export const queryKeys = {
   authBootstrap: () => ["auth", "bootstrap"] as const,
 
+  // PILOT-SETUP-001B3: platform-level, tenant-independent -- same
+  // rationale as authBootstrap above, never tenant-prefixed.
+  platformTenants: () => ["platform", "tenants"] as const,
+  platformTenant: (tenantId: string) => ["platform", "tenants", tenantId] as const,
+
   farms: (tenantId: string) => ["tenant", tenantId, "farms"] as const,
   farm: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId] as const,
   locationsTree: (tenantId: string, farmId: string) =>
@@ -33,10 +38,28 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses"] as const,
   greenhouseStructure: (tenantId: string, farmId: string, greenhouseId: string) =>
     ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses", greenhouseId] as const,
+  farmSetupReadiness: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "setup-readiness"] as const,
 
   // --- NURSERY-OPS-001 -----------------------------------------------------
   crops: (tenantId: string) => ["tenant", tenantId, "crops"] as const,
   varieties: (tenantId: string, cropId: string) => ["tenant", tenantId, "crops", cropId, "varieties"] as const,
+
+  // --- PILOT-SETUP-001B6 ----------------------------------------------------
+  // Tenant-scoped master data (Crop/Variety reuse the keys above).
+  productionSystems: (tenantId: string) => ["tenant", tenantId, "production-systems"] as const,
+  workflows: (tenantId: string) => ["tenant", tenantId, "workflows"] as const,
+  workflowVersion: (tenantId: string, workflowId: string, versionId: string) =>
+    ["tenant", tenantId, "workflows", workflowId, "versions", versionId] as const,
+
+  // --- PILOT-SETUP-001B6A ----------------------------------------------------
+  // `GET /workflows/{id}` and `GET /workflows/{id}/versions` close the
+  // resumability gap B6 discovered -- a single Workflow's own shell fields,
+  // and its full draft/published/retired version catalog, are each now
+  // directly fetchable without already holding a specific version id.
+  workflow: (tenantId: string, workflowId: string) => ["tenant", tenantId, "workflows", workflowId] as const,
+  workflowVersions: (tenantId: string, workflowId: string) =>
+    ["tenant", tenantId, "workflows", workflowId, "versions"] as const,
   seedLots: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "seed-lots"] as const,
   seedLot: (tenantId: string, farmId: string, seedLotId: string) =>
     ["tenant", tenantId, "farms", farmId, "seed-lots", seedLotId] as const,
@@ -84,6 +107,10 @@ export const queryKeys = {
   carrierSpecifications: (tenantId: string) => ["tenant", tenantId, "carrier-specifications"] as const,
   carrierSpecification: (tenantId: string, specificationId: string) =>
     ["tenant", tenantId, "carrier-specifications", specificationId] as const,
+
+  // --- PILOT-SETUP-001B5 ----------------------------------------------------
+  // Physical Carriers -- farm-scoped, unlike CarrierSpecification above.
+  carriers: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "carriers"] as const,
 
   // --- NURSERY-OPS-004B.2 -----------------------------------------------------
   availableIntersaladsPlates: (tenantId: string, farmId: string) =>
@@ -148,6 +175,10 @@ export const queryKeys = {
     ["tenant", tenantId, "pack-specifications", cropId] as const,
   packSpecificationVersions: (tenantId: string, packSpecificationId: string, status: string) =>
     ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions", status] as const,
+
+  // --- PILOT-SETUP-001B7 -----------------------------------------------------
+  // Packaging Units -- tenant-scoped, unversioned master data.
+  packagingUnits: (tenantId: string) => ["tenant", tenantId, "packaging-units"] as const,
 
   packingEvents: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "packing-events"] as const,

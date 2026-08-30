@@ -74,6 +74,12 @@ describe("classifyRoute", () => {
     expect(classifyRoute("/farms/abc/crop-batches/xyz")).toBe("protected");
   });
 
+  it("classifies /admin routes as platform-admin, never protected (PILOT-SETUP-001B3)", () => {
+    expect(classifyRoute("/admin/tenants")).toBe("platform-admin");
+    expect(classifyRoute("/admin/tenants/new")).toBe("platform-admin");
+    expect(classifyRoute("/admin/tenants/abc-123")).toBe("platform-admin");
+  });
+
   it("classifies Auth0 SDK-owned routes", () => {
     expect(classifyRoute("/auth/login")).toBe("sdk-auth");
     expect(classifyRoute("/auth/logout")).toBe("sdk-auth");
@@ -252,6 +258,42 @@ describe("decideRouteAccess: /access-denied", () => {
     const decision = decideRouteAccess({ ...base, phase: "unauthenticated" });
     expect(decision.kind).toBe("redirect");
     expect((decision as { to: string }).to).toMatch(/^\/login\?returnTo=/);
+  });
+});
+
+describe("decideRouteAccess: platform-admin routes (PILOT-SETUP-001B3)", () => {
+  const base = { routeClass: "platform-admin" as const, pathname: "/admin/tenants", search: "" };
+
+  it("loading -> loading", () => {
+    expect(decideRouteAccess({ ...base, phase: "loading" })).toEqual({ kind: "loading" });
+  });
+
+  it("ready -> allow", () => {
+    expect(decideRouteAccess({ ...base, phase: "ready" })).toEqual({ kind: "allow" });
+  });
+
+  it("zero_memberships -> allow (a Platform Admin may legitimately have no Tenant membership at all)", () => {
+    expect(decideRouteAccess({ ...base, phase: "zero_memberships" })).toEqual({ kind: "allow" });
+  });
+
+  it("needs_tenant_selection -> allow (never forced through /select-tenant)", () => {
+    expect(decideRouteAccess({ ...base, phase: "needs_tenant_selection" })).toEqual({ kind: "allow" });
+  });
+
+  it("not_provisioned -> redirect to /access-denied (no CMP User at all, like protected routes)", () => {
+    expect(decideRouteAccess({ ...base, phase: "not_provisioned" })).toEqual({
+      kind: "redirect",
+      to: "/access-denied",
+    });
+  });
+
+  it("unauthenticated -> redirect to /login with returnTo", () => {
+    const decision = decideRouteAccess({ ...base, phase: "unauthenticated" });
+    expect(decision).toEqual({ kind: "redirect", to: `/login?returnTo=${encodeURIComponent("/admin/tenants")}` });
+  });
+
+  it("error -> error", () => {
+    expect(decideRouteAccess({ ...base, phase: "error" })).toEqual({ kind: "error" });
   });
 });
 

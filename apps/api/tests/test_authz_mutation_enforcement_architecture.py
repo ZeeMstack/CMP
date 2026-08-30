@@ -36,7 +36,15 @@ EXEMPT_PATHS = {
         "that is the whole point of a bootstrap route."
     ),
 }
-EXEMPT_PREFIXES: dict[str, str] = {}
+EXEMPT_PREFIXES: dict[str, str] = {
+    "/platform/tenants": (
+        "PILOT-SETUP-001B2: platform-level Tenant onboarding (POST), gated "
+        "by app.core.platform_auth.require_platform_admin -- a structurally "
+        "separate, tenant-UNscoped authority, never require_permission. "
+        "Creates a Tenant (and its initial tenant_admin Membership) before "
+        "any tenant-scoped Permission can apply to it."
+    ),
+}
 
 
 def _all_api_routes() -> list[APIRoute]:

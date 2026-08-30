@@ -28,6 +28,7 @@ from app.models.observation_event import ObservationEvent
 from app.models.observation_value import ObservationValue
 from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
+from app.models.platform_admin import PlatformAdmin
 from app.models.production_system import ProductionSystem
 from app.models.quality_hold import QualityHold
 from app.models.quality_hold_release import QualityHoldRelease
@@ -92,6 +93,7 @@ __all__ = [
     "ObservationValue",
     "Occupancy",
     "OccupancyCompatibilityRule",
+    "PlatformAdmin",
     "ProductionSystem",
     "QualityHold",
     "QualityHoldRelease",

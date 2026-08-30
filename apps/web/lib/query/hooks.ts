@@ -4,23 +4,41 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 
 import * as api from "@/lib/api/client";
 import type {
+  CarrierBulkCreate,
+  CarrierCreate,
   CarrierSpecificationCreate,
   CarrierSpecificationUpdate,
   CorrectLeafyHarvestSourceLineCreate,
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
+  CropCreate,
   DispatchEventCreate,
+  FarmCreate,
   FinishedGoodsStorageMovementCreate,
   GerminationOutcomeCommandCreate,
+  GradeDefinitionCreate,
+  GradeDefinitionVersionActivate,
+  GradeDefinitionVersionCreate,
+  GradeDefinitionVersionRetire,
   GradingEventCreate,
   GradingReversalEventCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
   LeafyProductionTransferCreate,
+  LocationBulkChildrenCreate,
+  LocationCreate,
+  PackagingUnitCreate,
+  PackagingUnitRetire,
   PackingEventCreate,
   PackingReversalEventCreate,
+  PackSpecificationCreate,
+  PackSpecificationVersionActivate,
+  PackSpecificationVersionCreate,
+  PackSpecificationVersionRetire,
   PlaceTrayCreate,
   PlaceTrolleyCreate,
+  PlatformTenantOnboardingCreate,
+  ProductionSystemCreate,
   RecallCaseClose,
   RecallCaseCreate,
   RecordLeafyHarvestCreate,
@@ -29,6 +47,10 @@ import type {
   SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
+  VarietyCreate,
+  WorkflowCreate,
+  WorkflowStageCreate,
+  WorkflowTransitionCreate,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { AppError } from "@/lib/errors/adapter";
@@ -74,6 +96,22 @@ export function useFarm(farmId: string) {
   });
 }
 
+/** PILOT-SETUP-001B4: tenant identity is never part of the payload -- the
+ * backend derives it from the request's own tenant context (same mechanism
+ * every other command here relies on), so this mutation carries only the
+ * `FarmCreate` fields the operator actually filled in. */
+export function useCreateFarm() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: FarmCreate) => api.createFarm(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.farms(tenantId) });
+    },
+  });
+}
+
 export function useLocationsTree(farmId: string) {
   const tenantId = useSelectedTenantId();
   return useQuery({
@@ -81,6 +119,35 @@ export function useLocationsTree(farmId: string) {
     queryFn: ({ signal }) => api.getLocationsTree(farmId, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId),
+  });
+}
+
+/** PILOT-SETUP-001B5: generic Location setup -- single create and
+ * range/generator bulk-children, against the existing generic Location
+ * domain. Both invalidate the same `locationsTree` key the read side
+ * already uses, mirroring `useCreateGreenhouseSetup`'s own invalidation. */
+export function useCreateLocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LocationCreate) => api.createLocation(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+export function useBulkCreateLocationChildren(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, payload }: { parentId: string; payload: LocationBulkChildrenCreate }) =>
+      api.bulkCreateLocationChildren(farmId, parentId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
   });
 }
 
@@ -180,6 +247,21 @@ export function useGreenhouseStructure(farmId: string, greenhouseId: string) {
   });
 }
 
+// --- PILOT-SETUP-001B8 -----------------------------------------------------
+// Persisted-state Setup Checklist / Readiness -- a short staleTime (rather
+// than the reference-data tier above) so returning to the page after making
+// a setup change elsewhere reflects it without requiring a manual refresh,
+// while a manual refetch() (exposed by useQuery itself) covers the rest.
+export function useFarmSetupReadiness(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.farmSetupReadiness(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getFarmSetupReadiness(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
 /** The idempotency key (`client_command_id`) lives in the payload itself
  * (set once by the caller before the first submit attempt) -- an
  * accidental double-click or a network-retry-triggered resubmit reuses
@@ -217,6 +299,172 @@ export function useVarieties(cropId: string | undefined) {
     queryFn: ({ signal }) => api.listVarieties(cropId as string, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId) && Boolean(cropId),
+  });
+}
+
+export function useCreateCrop() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CropCreate) => api.createCrop(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.crops(tenantId) });
+    },
+  });
+}
+
+export function useCreateVariety(cropId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: VarietyCreate) => api.createVariety(cropId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.varieties(tenantId, cropId) });
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B6 -------------------------------------------------------
+// Production System master data -- tenant-scoped, mirrors the Crop pattern
+// immediately above (list + create only, no update/deactivate endpoint
+// exists on the backend for this resource).
+
+export function useProductionSystems() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.productionSystems(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listProductionSystems(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateProductionSystem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionSystemCreate) => api.createProductionSystem(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionSystems(tenantId) });
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B6 / B6A --------------------------------------------------
+// Workflow master configuration: Workflow (crop/variety/production-system
+// shell) -> draft WorkflowVersion -> Stages/Transitions -> explicit Publish.
+// B6A closed the resumability gap B6 identified: `GET /workflows/{id}` and
+// `GET /workflows/{id}/versions` now exist (mirroring the GradeDefinition/
+// PackSpecification version-catalog pattern), so a Workflow's own shell
+// fields and its full draft/published/retired version catalog are each
+// directly fetchable -- an unfinished draft is rediscoverable after
+// navigating away, not just within the tab that created it.
+
+export function useWorkflows() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflows(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listWorkflows(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateWorkflow() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowCreate) => api.createWorkflow(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflows(tenantId) });
+    },
+  });
+}
+
+export function useWorkflow(workflowId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflow(tenantId ?? "", workflowId),
+    queryFn: ({ signal }) => api.getWorkflow(workflowId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(workflowId),
+  });
+}
+
+export function useWorkflowVersions(workflowId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflowVersions(tenantId ?? "", workflowId),
+    queryFn: ({ signal }) => api.listWorkflowVersions(workflowId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(workflowId),
+  });
+}
+
+export function useCreateWorkflowDraftVersion() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (workflowId: string) => api.createWorkflowDraftVersion(workflowId),
+    onSuccess: (_version, workflowId) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersions(tenantId, workflowId) });
+    },
+  });
+}
+
+export function useWorkflowVersion(workflowId: string, versionId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workflowVersion(tenantId ?? "", workflowId, versionId ?? ""),
+    queryFn: ({ signal }) => api.getWorkflowVersion(workflowId, versionId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(versionId),
+  });
+}
+
+export function useAddWorkflowStage(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowStageCreate) => api.addWorkflowStage(workflowId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+    },
+  });
+}
+
+export function useAddWorkflowTransition(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WorkflowTransitionCreate) => api.addWorkflowTransition(workflowId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+    },
+  });
+}
+
+export function usePublishWorkflowVersion(workflowId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.publishWorkflowVersion(workflowId, versionId),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersion(tenantId, workflowId, versionId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflows(tenantId) });
+      // Publishing this version may also retire a previously-published one
+      // (see workflow_service.publish_version) -- the version catalog's
+      // states must be refreshed, not just this one version's own detail.
+      queryClient.invalidateQueries({ queryKey: queryKeys.workflowVersions(tenantId, workflowId) });
+    },
   });
 }
 
@@ -609,6 +857,45 @@ export function useReactivateCarrierSpecification() {
   });
 }
 
+// --- PILOT-SETUP-001B5 -------------------------------------------------------
+// Physical Carrier registration -- farm-scoped (unlike CarrierSpecification
+// above). Registration only: creates the reusable physical object, never an
+// Occupancy/Movement/Crop Batch population.
+
+export function useCarriers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.carriers(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listCarriers(farmId, undefined, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useRegisterCarrier(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CarrierCreate) => api.registerCarrier(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carriers(tenantId, farmId) });
+    },
+  });
+}
+
+export function useBulkRegisterCarriers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CarrierBulkCreate) => api.bulkRegisterCarriers(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.carriers(tenantId, farmId) });
+    },
+  });
+}
+
 // --- NURSERY-OPS-004B.2 -----------------------------------------------------
 // InterSalads Transplant operator UI: destination-Plate eligibility read,
 // per-Table live occupancy (used only once a Table is selected -- never a
@@ -947,6 +1234,40 @@ export function useGradeVersionLabelMap(): { labels: Record<string, string>; isL
   return { labels, isLoading: definitionsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
 }
 
+/** PILOT-SETUP-001B7: every non-draft Grade Definition Version across the
+ * tenant, labeled for the Pack Specification Version form's optional grade
+ * picker. A DRAFT version can never be referenced by a Pack Specification
+ * Version (`pack_specification_versions_enforce_insert_integrity` requires
+ * non-DRAFT), so this excludes drafts up front rather than letting the
+ * backend reject the choice after submission. Shares the same per-definition
+ * version queries `useGradeVersionLabelMap` subscribes to (same query keys),
+ * so this never doubles the network requests -- only the derived shape
+ * differs (a filtered list here, a flat label map there). */
+export function useSelectableGradeDefinitionVersions(): {
+  versions: { id: string; label: string; status: string }[];
+  isLoading: boolean;
+} {
+  const tenantId = useSelectedTenantId();
+  const definitionsQuery = useAllGradeDefinitions();
+  const definitions = definitionsQuery.data ?? [];
+  const versionQueries = useQueries({
+    queries: definitions.map((d) => ({
+      queryKey: queryKeys.gradeDefinitionVersions(tenantId ?? "", d.id, ""),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listGradeDefinitionVersions(d.id, undefined, signal),
+      staleTime: STALE_REFERENCE_MS,
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const versions: { id: string; label: string; status: string }[] = [];
+  definitions.forEach((d, i) => {
+    for (const v of versionQueries[i]?.data ?? []) {
+      if (v.status === "draft") continue;
+      versions.push({ id: v.id, label: `${d.name} v${v.version_number} (${v.status})`, status: v.status });
+    }
+  });
+  return { versions, isLoading: definitionsQuery.isLoading || versionQueries.some((q) => q.isLoading) };
+}
+
 /** Same rationale as `useAllGradeDefinitions`, for Pack Specifications. */
 export function useAllPackSpecifications() {
   const tenantId = useSelectedTenantId();
@@ -1180,6 +1501,170 @@ export function usePackSpecificationVersions(packSpecificationId: string | null)
     queryFn: ({ signal }) => api.listPackSpecificationVersions(packSpecificationId as string, undefined, signal),
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId) && Boolean(packSpecificationId),
+  });
+}
+
+// --- PILOT-SETUP-001B7 -------------------------------------------------------
+// Grade Definitions / Packaging Units / Pack Specifications master-data
+// setup UI: create/version/activate/retire commands, plus Packaging Unit
+// reads (list-only, no versioning). Every read hook these commands depend on
+// (useAllGradeDefinitions, useGradeDefinitionVersions, useAllPackSpecifications,
+// usePackSpecificationVersions) already existed for the Grading/Packing
+// operator pickers above -- reused unchanged here, so both surfaces share one
+// cache. Invalidation is prefix-only (no trailing cropId/status segment) so
+// every filtered cache slot for the affected resource is refreshed, not just
+// the unfiltered "" one this page itself reads.
+
+export function useCreateGradeDefinition() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradeDefinitionCreate) => api.createGradeDefinition(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "grade-definitions"] });
+    },
+  });
+}
+
+export function useCreateGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GradeDefinitionVersionCreate) =>
+      api.createGradeDefinitionVersion(gradeDefinitionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+/** Activation may also retire a previously-active version (supersession) --
+ * the version catalog's full state is refreshed, not just this one version. */
+export function useActivateGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GradeDefinitionVersionActivate }) =>
+      api.activateGradeDefinitionVersion(gradeDefinitionId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+export function useRetireGradeDefinitionVersion(gradeDefinitionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GradeDefinitionVersionRetire }) =>
+      api.retireGradeDefinitionVersion(gradeDefinitionId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "grade-definitions", gradeDefinitionId, "versions"],
+      });
+    },
+  });
+}
+
+export function usePackagingUnits() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.packagingUnits(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listPackagingUnits(undefined, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreatePackagingUnit() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackagingUnitCreate) => api.createPackagingUnit(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.packagingUnits(tenantId) });
+    },
+  });
+}
+
+export function useRetirePackagingUnit() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packagingUnitId, payload }: { packagingUnitId: string; payload: PackagingUnitRetire }) =>
+      api.retirePackagingUnit(packagingUnitId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.packagingUnits(tenantId) });
+    },
+  });
+}
+
+export function useCreatePackSpecification() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackSpecificationCreate) => api.createPackSpecification(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "pack-specifications"] });
+    },
+  });
+}
+
+export function useCreatePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PackSpecificationVersionCreate) =>
+      api.createPackSpecificationVersion(packSpecificationId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
+  });
+}
+
+/** Activation may also retire a previously-active version (supersession) --
+ * the version catalog's full state is refreshed, not just this one version. */
+export function useActivatePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: PackSpecificationVersionActivate }) =>
+      api.activatePackSpecificationVersion(packSpecificationId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
+  });
+}
+
+export function useRetirePackSpecificationVersion(packSpecificationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: PackSpecificationVersionRetire }) =>
+      api.retirePackSpecificationVersion(packSpecificationId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "pack-specifications", packSpecificationId, "versions"],
+      });
+    },
   });
 }
 
@@ -1491,6 +1976,39 @@ export function useCorrectLeafyHarvestSourceLine(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+// --- PILOT-SETUP-001B3 -------------------------------------------------------
+// Platform Admin Tenant onboarding. Deliberately does NOT use
+// useSelectedTenantId()/tenant-prefixed query keys -- these calls are
+// platform-level and tenant-independent (see queryKeys.platformTenants(),
+// app/api/[...path]/route.ts), unlike every tenant-scoped hook above.
+
+export function usePlatformTenants() {
+  return useQuery({
+    queryKey: queryKeys.platformTenants(),
+    queryFn: ({ signal }) => api.listPlatformTenants(signal),
+    staleTime: STALE_LIST_MS,
+  });
+}
+
+export function usePlatformTenant(tenantId: string) {
+  return useQuery({
+    queryKey: queryKeys.platformTenant(tenantId),
+    queryFn: ({ signal }) => api.getPlatformTenant(tenantId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreatePlatformTenant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PlatformTenantOnboardingCreate) => api.createPlatformTenant(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.platformTenants() });
     },
   });
 }

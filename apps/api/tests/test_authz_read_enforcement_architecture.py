@@ -45,6 +45,15 @@ EXEMPT_PREFIXES = {
         "before any membership -- and therefore any permission -- can "
         "exist."
     ),
+    "/platform/tenants": (
+        "PILOT-SETUP-001B2: platform-level Tenant onboarding routes, gated "
+        "by app.core.platform_auth.require_platform_admin -- a structurally "
+        "separate, tenant-UNscoped authority (see AUTHORIZATION_MODEL.md's "
+        "'Platform-level authority' section), never require_permission/"
+        "TenantContext. Same class of exemption as /auth/me: these routes "
+        "exist to create/read Tenants, before any tenant-scoped role_code "
+        "or Permission can apply."
+    ),
 }
 
 
