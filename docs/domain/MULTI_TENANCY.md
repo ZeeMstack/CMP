@@ -13,7 +13,7 @@ Cross-tenant access must be provably impossible, including in automated cross-te
 
 ## Authentication
 
-Authentication is **OIDC-compatible**, implemented behind an application adapter so the specific identity provider can be selected or changed independently of the rest of the system. The provider is not yet selected (`docs/product/OPEN_QUESTIONS.md`, technical decisions).
+Authentication is **OIDC-compatible**, implemented behind an application adapter so the specific identity provider can be selected or changed independently of the rest of the system. The implemented production provider is **Auth0** (`docs/domain/AUTHORIZATION_MODEL.md`, "Layered trust model").
 
 ## Administrative hierarchy
 

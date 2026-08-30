@@ -2,7 +2,7 @@
 
 CMP is a multi-tenant SaaS platform for commercial hydroponic greenhouse farms. It maps the farm and traces inputs, crop batches, carriers, movements, harvest, packing, cold storage, and dispatch, providing complete forward and backward traceability from supplier lot to customer dispatch.
 
-This repository currently contains the CMP-001 minimal application scaffold: a FastAPI backend health check and a Next.js placeholder page. No domain models, authentication, or business APIs exist yet — see `docs/acceptance/FIRST_TECHNICAL_PROOF.md` for what's next.
+This repository implements CMP's domain model, tenant/platform authentication and authorization, farm/location/carrier setup, and the full production lifecycle (nursery through dispatch) behind a FastAPI backend and a Next.js frontend. Authentication is OIDC-compatible; the implemented production identity provider is Auth0 (`docs/domain/AUTHORIZATION_MODEL.md`). See `docs/acceptance/FIRST_TECHNICAL_PROOF.md` for the original technical proof and `docs/deployment/PILOT_DEPLOYMENT.md` for pilot/production deployment.
 
 ## Rules and specifications
 
@@ -21,6 +21,8 @@ This repository currently contains the CMP-001 minimal application scaffold: a F
 `apps/api` (FastAPI backend) and `apps/web` (Next.js frontend), per [`docs/adr/001-modular-monolith.md`](docs/adr/001-modular-monolith.md).
 
 ## Setup and run
+
+The steps below are **local development only** — `docker compose up -d` starts a local, unauthenticated PostgreSQL container, not a production database, and `ENABLE_DEV_AUTH`/`CMP_DEV_AUTH_BYPASS` (used below) must never be enabled outside development. For pilot/production deployment, see `docs/deployment/PILOT_DEPLOYMENT.md`.
 
 Requires Python 3.12+, Node.js 20.9+, and npm.
 

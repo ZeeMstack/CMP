@@ -72,3 +72,45 @@ export function devIdentity(): BypassIdentity {
 export function testIdentity(): BypassIdentity {
   return { tenantId: requireEnv("CMP_TEST_TENANT_ID"), userId: requireEnv("CMP_TEST_USER_ID") };
 }
+
+/** Every server-only variable `getAuth0Client()` (auth0.ts) will eventually
+ * read via `requireEnv()` when real bearer auth is actually exercised. */
+const REQUIRED_REAL_AUTH_ENV_VARS = [
+  "AUTH0_DOMAIN",
+  "AUTH0_CLIENT_ID",
+  "AUTH0_CLIENT_SECRET",
+  "AUTH0_SECRET",
+  "APP_BASE_URL",
+  "CMP_API_AUDIENCE",
+] as const;
+
+/**
+ * Production-only startup check (DEPLOY-001A), mirroring the backend's own
+ * fail-closed pattern (`app/core/settings.py::check_oidc_startup_
+ * invariant`): a production-shaped deployment (`NODE_ENV=production`)
+ * resolving to "real" auth mode must have every Auth0/CMP variable `auth0.
+ * ts::getAuth0Client()` will eventually need actually present -- rather
+ * than booting successfully and failing only lazily, on whichever request
+ * happens to be first to construct the Auth0 client.
+ *
+ * Deliberately scoped to `mode === "real" && NODE_ENV === "production"`
+ * only: `getAuth0Client()`'s own lazy-construction contract (see auth0.ts)
+ * is exactly what lets `next dev`/local "real" mode and `next build` run
+ * without a configured Auth0 tenant, and this check must not defeat that --
+ * it only closes the gap for an actual production boot.
+ *
+ * Takes the already-resolved `AuthMode` rather than calling
+ * `resolveAuthMode()` itself, so callers (instrumentation.ts) compute the
+ * mode exactly once per startup.
+ */
+export function checkAuthStartupInvariant(mode: AuthMode): void {
+  if (mode !== "real" || !isProductionRuntime()) return;
+  const missing = REQUIRED_REAL_AUTH_ENV_VARS.filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required Auth0/CMP configuration under NODE_ENV=production: ${missing.join(", ")}. ` +
+        "A production deployment must not start without real bearer-auth configuration -- there is no silent " +
+        "fallback to a bypass mode.",
+    );
+  }
+}
