@@ -371,6 +371,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/setup-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Farm Setup Readiness */
+        get: operations["get_farm_setup_readiness_farms__farm_id__setup_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/assets": {
         parameters: {
             query?: never;
@@ -876,6 +893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow */
+        get: operations["get_workflow_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workflows/{workflow_id}/versions": {
         parameters: {
             query?: never;
@@ -883,7 +917,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Workflow Versions */
+        get: operations["list_workflow_versions_workflows__workflow_id__versions_get"];
         put?: never;
         /** Create Draft Version */
         post: operations["create_draft_version_workflows__workflow_id__versions_post"];
@@ -4170,6 +4205,52 @@ export interface components {
             timezone: string;
             /** Status */
             status: string;
+        };
+        /** FarmSetupReadinessItem */
+        FarmSetupReadinessItem: {
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "missing" | "warning" | "not_applicable";
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+        };
+        /** FarmSetupReadinessMilestone */
+        FarmSetupReadinessMilestone: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "sowing" | "production" | "post_harvest" | "full_pilot";
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "incomplete";
+            /** Items */
+            items: components["schemas"]["FarmSetupReadinessItem"][];
+        };
+        /** FarmSetupReadinessRead */
+        FarmSetupReadinessRead: {
+            /** Farm Id */
+            farm_id: string;
+            /**
+             * Overall
+             * @enum {string}
+             */
+            overall: "ready" | "incomplete";
+            /** Milestones */
+            milestones: components["schemas"]["FarmSetupReadinessMilestone"][];
         };
         /** FinishedGoodsBalanceRead */
         FinishedGoodsBalanceRead: {
@@ -11062,6 +11143,42 @@ export interface operations {
             };
         };
     };
+    get_farm_setup_readiness_farms__farm_id__setup_readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmSetupReadinessRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_assets_farms__farm_id__assets_get: {
         parameters: {
             query?: {
@@ -12393,6 +12510,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_versions_workflows__workflow_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionRead"][];
                 };
             };
             /** @description Validation Error */

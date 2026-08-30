@@ -52,6 +52,10 @@ export type WorkflowStageCreate = components["schemas"]["WorkflowStageCreate"];
 export type WorkflowTransitionRead = components["schemas"]["WorkflowTransitionRead"];
 export type WorkflowTransitionCreate = components["schemas"]["WorkflowTransitionCreate"];
 export type SeedLotBatchSummary = components["schemas"]["SeedLotBatchSummary"];
+// --- PILOT-SETUP-001B8 -------------------------------------------------------
+export type FarmSetupReadinessItem = components["schemas"]["FarmSetupReadinessItem"];
+export type FarmSetupReadinessMilestone = components["schemas"]["FarmSetupReadinessMilestone"];
+export type FarmSetupReadinessRead = components["schemas"]["FarmSetupReadinessRead"];
 export type AssetRead = components["schemas"]["AssetRead"];
 export type PlaceTrolleyCreate = components["schemas"]["PlaceTrolleyCreate"];
 export type PlaceTrayCreate = components["schemas"]["PlaceTrayCreate"];
@@ -321,6 +325,10 @@ export function getGreenhouseStructure(
   signal?: AbortSignal,
 ): Promise<GreenhouseStructureRead> {
   return getJson<GreenhouseStructureRead>(`/farms/${farmId}/farm-setup/greenhouses/${greenhouseId}`, signal);
+}
+
+export function getFarmSetupReadiness(farmId: string, signal?: AbortSignal): Promise<FarmSetupReadinessRead> {
+  return getJson<FarmSetupReadinessRead>(`/farms/${farmId}/setup-readiness`, signal);
 }
 
 export function createGreenhouseSetup(

@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, PlusCircle } from "lucide-react";
+import { ClipboardCheck, MapPin, PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -28,6 +28,13 @@ export default function FarmSetupOverviewPage() {
             {/* Farm Setup (structure/registry) and Locations (operational
                 occupancy) are deliberately distinct routes/domain purposes --
                 this is a navigation affordance between them, not a merge. */}
+            <Link
+              href={`/farms/${farmId}/setup-readiness`}
+              className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
+              Setup Readiness
+            </Link>
             <Link
               href={`/farms/${farmId}/locations`}
               className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"

@@ -108,13 +108,40 @@ Safe to rerun at any time, including after a partial or fully successful prior r
 
 "Conflict" always means: something matching this code already exists, and it does not match what the config asked for. The bootstrap **never** silently renames a record, overwrites a capacity, changes a hierarchy, deactivates/reactivates a record, changes which version is active, or rewrites existing master history to make a conflict "go away." It reports the exact mismatched fields and stops (`--apply`) or continues past it to report everything else (`--dry-run`).
 
-## 11. Readiness verification
+## 11. Bootstrap readiness verification (admin/CLI mechanism)
 
 ```
 python scripts/bootstrap_pilot_master_data.py --config <path> --readiness
 ```
 
-A separate, **read-only** check, safe to run at any time — including long after real UAT operations have created genuine operational history, which readiness deliberately does not look at. It answers one question: *does the environment this config describes have everything the first real Sowing needs?* Every check is `PASS`, `MISSING`, or `CONFLICT`; the Seed Lot check is special-cased — if `seed_lot` was never configured, it reports `MISSING — BLOCKS FIRST SOWING` as an **informational** item that does not fail the overall readiness verdict on its own (every other item still must `PASS`), matching §12.
+A separate, **read-only** check, safe to run at any time — including long after real UAT operations have created genuine operational history, which readiness deliberately does not look at. It answers one question: *does the environment **this config file** describes have everything the first real Sowing needs?* Every check is `PASS`, `MISSING`, or `CONFLICT`; the Seed Lot check is special-cased — if `seed_lot` was never configured, it reports `MISSING — BLOCKS FIRST SOWING` as an **informational** item that does not fail the overall readiness verdict on its own (every other item still must `PASS`), matching §12.
+
+This is `pilot_bootstrap_service.run_readiness_check` — a config-aware admin/CLI mechanism, compared entity-by-entity against a hand-authored `PilotConfig` (`REQUIRED_*` placeholders included). It has no HTTP route, no UI, and is never the backend for the product Setup Checklist described next: a config file's contents are an intent to compare against, not the same question as "what has this Farm actually configured."
+
+## 11a. Product Setup Readiness (persisted state, UI-facing)
+
+**PILOT-SETUP-001B8** adds a second, entirely distinct readiness mechanism for real operators, not administrators:
+
+```
+GET /farms/{farm_id}/setup-readiness
+```
+
+exposed in the UI at `/farms/{farmId}/setup-readiness` (linked from Farm Setup). Implemented by `app.services.farm_setup_readiness_service.evaluate_farm_setup_readiness` — a read-only query over the **actual persisted Tenant/Farm state already in the database**. It takes no config file, no file path, no uploaded YAML, and never runs (or requires) the bootstrap CLI; it answers "what has this Farm actually configured" directly from Crop/Variety/Workflow/CarrierSpecification/Carrier/Location/SeedLot/GradeDefinition/PackagingUnit/PackSpecification rows.
+
+Unlike §11's single pass/fail list, this view is staged into four milestones, because a Farm's operational milestones become ready at different times:
+
+| Milestone | Question | Depends on |
+|---|---|---|
+| **Sowing** | Can this Farm start the first real Sowing? | Farm, Nursery structure, a coherent Crop/Variety/Production-System/published-Workflow chain, the Workflow's Sowing-stage carrier (Specification + physical Carriers), a real Seed Lot |
+| **Production** | Can material move Nursery → Inter Leafy Greens → Leafy Production? | Nursery InterSalads structure, Nursery/Production Cultivation Plate Specifications + physical Carriers, Leafy Production Zone→Span→Grow-Table structure |
+| **Post-Harvest** | Can harvested product be graded, packed, and structurally stored? | Packing Hall, Cold Store + position structure, an active Grade Definition version, an active Packaging Unit, an active Pack Specification version |
+| **Full Pilot** | Is setup complete for the whole pilot through Dispatch/Traceability/Recall? | The union of the three milestones above — Dispatch/Traceability/Recall themselves add no extra master-data item because neither service has a structural master-data dependency the way Grading/Packing genuinely do |
+
+**Sowing Readiness is deliberately unaffected by Grade/Pack/Cold Store configuration** — those items only ever appear under Post-Harvest/Full Pilot, never under Sowing or Production. An operator can be told "ready to sow" long before packing/commercial configuration exists.
+
+Each item reports `pass` / `missing` / `warning` / `not_applicable`; each milestone reports `ready` (every item `pass`/`not_applicable`) or `incomplete`. There is no `CONFLICT`/`BLOCKED` state here — this is a V1 completeness view, not a validity/conflict engine. Because a tenant may configure multiple Crops/Workflows at once (CMP is crop-agnostic), the Sowing chain is found by walking every structurally coherent `Crop → Variety → Workflow(published) → Production System` link and reporting the most-complete one — never by assuming "any Crop plus any Workflow plus any Seed Lot existing somewhere" is sufficient. See the module docstring in `farm_setup_readiness_service.py` for the exact algorithm.
+
+The endpoint enforces normal tenant isolation and the `farm.read` permission — no platform-admin authority is used or needed, and a cross-tenant Farm id returns a plain 404.
 
 ## 12. Seed Lot handling
 

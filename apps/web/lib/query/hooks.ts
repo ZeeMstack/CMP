@@ -247,6 +247,21 @@ export function useGreenhouseStructure(farmId: string, greenhouseId: string) {
   });
 }
 
+// --- PILOT-SETUP-001B8 -----------------------------------------------------
+// Persisted-state Setup Checklist / Readiness -- a short staleTime (rather
+// than the reference-data tier above) so returning to the page after making
+// a setup change elsewhere reflects it without requiring a manual refresh,
+// while a manual refetch() (exposed by useQuery itself) covers the rest.
+export function useFarmSetupReadiness(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.farmSetupReadiness(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getFarmSetupReadiness(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
 /** The idempotency key (`client_command_id`) lives in the payload itself
  * (set once by the caller before the first submit attempt) -- an
  * accidental double-click or a network-retry-triggered resubmit reuses
