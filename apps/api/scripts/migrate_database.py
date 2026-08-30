@@ -2,8 +2,10 @@
 Alembic migration entrypoint.
 
 TEST-ONLY escape hatch is `--allow-non-production-database` -- everything
-else in this file is written for a real DigitalOcean Managed PostgreSQL
-pilot target. This script is intentionally narrow: it only ever upgrades
+else in this file is written for a real managed PostgreSQL pilot target
+(DigitalOcean, Render, or any other provider -- this script is deliberately
+provider-neutral and never detects or branches on a specific provider).
+This script is intentionally narrow: it only ever upgrades
 the already-connected database to this repository's own Alembic head. It
 never downgrades, never creates/drops/resets a database, and is never
 invoked from application startup (`app/main.py` has no migration call of
@@ -43,6 +45,18 @@ invariant this script deliberately never weakens):
     `--backup-confirmed` is an operator acknowledgement that a current,
     recoverable managed-Postgres backup/snapshot already exists -- it is
     NOT itself a backup mechanism, and `--yes` never substitutes for it.
+  * The one exception to the TLS/sslmode requirement is
+    `--allow-private-network-without-tls`, for a target reachable only over
+    a verified private network (e.g. a cloud provider's internal database
+    hostname that is never publicly routable). It requires `--expect-host`
+    and `--expect-database` to also be supplied, refuses unless the target
+    hostname resolves exclusively to private-network addresses (RFC1918
+    IPv4 or IPv6 unique-local -- never loopback, link-local, or a public
+    address), and every other check above (dev/test-database refusal,
+    `--backup-confirmed`, typed confirmation unless `--yes`) still applies
+    in full. Mutually exclusive with `--allow-non-production-database`.
+    Provider-neutral by design -- never auto-detects a provider or silently
+    bypasses TLS.
   * A typed confirmation is required unless `--yes` is supplied.
   * Before upgrading, the database's current Alembic revision is read and
     validated: a blank/unversioned database and a database already at any
@@ -64,7 +78,9 @@ invariant this script deliberately never weakens):
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
+import socket
 import sys
 from pathlib import Path
 from typing import Mapping
@@ -88,6 +104,19 @@ _KNOWN_DEV_DATABASE_NAMES = {"cmp", "cmp_test"}
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _SAFE_SSLMODES = {"require", "verify-ca", "verify-full"}
 _CONFIRMATION_PHRASE = "migrate"
+
+# Provider-neutral private-network address space accepted by
+# --allow-private-network-without-tls -- deliberately narrower than
+# ipaddress's own broad `.is_private` (which also covers loopback,
+# link-local, and reserved/documentation ranges never appropriate for a
+# real private-network database host): RFC1918 IPv4 space and IPv6
+# unique-local addresses (ULA, fc00::/7) only.
+_IPV4_PRIVATE_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
+_IPV6_PRIVATE_NETWORKS = (ipaddress.ip_network("fc00::/7"),)
 
 
 def _fail(message: str) -> None:
@@ -169,16 +198,83 @@ def check_expected_identity(identity: dict, *, expect_host: str | None, expect_d
         )
 
 
-def check_tls_posture(identity: dict, *, allow_non_production: bool) -> None:
+def resolve_hostname_addresses(host: str) -> list[str]:
+    """Resolves `host` via the system resolver -- `socket.getaddrinfo` also
+    accepts a literal IP address and returns it unchanged with no actual DNS
+    lookup, so a raw public/private IP in DATABASE_URL is handled by the
+    same path as a real hostname. Returns the de-duplicated list of numeric
+    address strings (IPv4 and IPv6). Refuses -- rather than returning an
+    empty list -- if resolution fails or yields nothing, since an
+    unresolvable host must never be silently treated as having "no public
+    addresses"."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        _fail(f"--allow-private-network-without-tls: could not resolve hostname {host!r}: {exc}")
+    addresses: list[str] = []
+    for info in infos:
+        addr = info[4][0]
+        if addr not in addresses:
+            addresses.append(addr)
+    if not addresses:
+        _fail(f"--allow-private-network-without-tls: hostname {host!r} resolved to no addresses.")
+    return addresses
+
+
+def _is_acceptable_private_network_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True only for RFC1918 IPv4 space or IPv6 unique-local (ULA) -- a
+    resolved loopback, link-local, multicast, unspecified, or other
+    reserved address is refused exactly like a public one, never treated as
+    an acceptable private-network database target."""
+    if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+        return False
+    networks = _IPV4_PRIVATE_NETWORKS if ip.version == 4 else _IPV6_PRIVATE_NETWORKS
+    return any(ip in network for network in networks)
+
+
+def check_private_network_addresses(host: str) -> list[str]:
+    """Resolves `host` and refuses -- before any migration runs -- unless
+    every resolved address is a private-network address (RFC1918 IPv4 or
+    IPv6 unique-local). Returns the validated address list so the caller can
+    print it for operator visibility; never includes credentials since it
+    only ever handles a hostname and numeric IP addresses."""
+    addresses = resolve_hostname_addresses(host)
+    public = [
+        addr
+        for addr in addresses
+        if not _is_acceptable_private_network_address(ipaddress.ip_address(addr.split("%", 1)[0]))
+    ]
+    if public:
+        _fail(
+            f"--allow-private-network-without-tls requires every address {host!r} resolves to be a "
+            "private-network address (RFC1918 IPv4 or IPv6 unique-local); refusing due to non-private "
+            f"resolved address(es): {public!r}."
+        )
+    return addresses
+
+
+def check_tls_posture(
+    identity: dict, *, allow_non_production: bool, allow_private_network_without_tls: bool = False
+) -> None:
     if allow_non_production:
         return
     sslmode = identity["sslmode"]
-    if sslmode not in _SAFE_SSLMODES:
-        _fail(
-            f"a production-style invocation requires DATABASE_URL to include "
-            f"sslmode=require|verify-ca|verify-full (found: {sslmode!r}). See "
-            "docs/deployment/PILOT_DEPLOYMENT.md, 'Database'."
+    if sslmode in _SAFE_SSLMODES:
+        return
+    if allow_private_network_without_tls:
+        addresses = check_private_network_addresses(identity["host"] or "")
+        print(
+            "\nPRIVATE-NETWORK MODE: --allow-private-network-without-tls was explicitly supplied. TLS/sslmode "
+            f"is not required because every address {identity['host']!r} resolves to was verified to be a "
+            f"private-network address (never publicly routable): {addresses!r}."
         )
+        return
+    _fail(
+        f"a production-style invocation requires DATABASE_URL to include "
+        f"sslmode=require|verify-ca|verify-full (found: {sslmode!r}), or --allow-private-network-without-tls "
+        "together with a verified private-network target. See docs/deployment/PILOT_DEPLOYMENT.md, 'Database', "
+        "and docs/deployment/RENDER_PILOT_DEPLOYMENT.md, 'Migration'."
+    )
 
 
 def check_backup_confirmation(*, backup_confirmed: bool, allow_non_production: bool) -> None:
@@ -315,11 +411,45 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "pilot/production target."
         ),
     )
+    parser.add_argument(
+        "--allow-private-network-without-tls",
+        action="store_true",
+        help=(
+            "Explicit exception to the TLS/sslmode requirement for a target reachable only over a "
+            "verified private network (e.g. a cloud provider's internal database hostname, never "
+            "reachable from the public internet). Provider-neutral -- never auto-detects a provider. "
+            "Requires --expect-host and --expect-database to also be supplied, and refuses unless the "
+            "target hostname resolves exclusively to private-network addresses (RFC1918 IPv4 or IPv6 "
+            "unique-local) -- never loopback, link-local, or any publicly routable address. Every other "
+            "production safety check (dev/test-database refusal, --backup-confirmed, typed confirmation "
+            "unless --yes) still applies in full; mutually exclusive with "
+            "--allow-non-production-database."
+        ),
+    )
     return parser
+
+
+def check_private_network_flag_prerequisites(args: argparse.Namespace) -> None:
+    """Enforces `--allow-private-network-without-tls`'s own prerequisites
+    before anything else runs: `--expect-host`/`--expect-database` must both
+    be supplied explicitly (there is no default target for this path), and
+    it may never be combined with `--allow-non-production-database` -- a
+    distinct, deliberately much more permissive escape hatch reserved for
+    this script's own automated tests against a disposable database, whose
+    semantics would otherwise be ambiguous stacked with this one."""
+    if not args.allow_private_network_without_tls:
+        return
+    if args.allow_non_production_database:
+        _fail("--allow-private-network-without-tls and --allow-non-production-database are mutually exclusive.")
+    if not args.expect_host:
+        _fail("--allow-private-network-without-tls requires --expect-host to be supplied explicitly.")
+    if not args.expect_database:
+        _fail("--allow-private-network-without-tls requires --expect-database to be supplied explicitly.")
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    check_private_network_flag_prerequisites(args)
 
     database_url = resolve_database_url(os.environ)
     identity = sanitize_target_identity(database_url)
@@ -337,7 +467,11 @@ def main(argv: list[str] | None = None) -> int:
                 "against a disposable database -- never against a real deployment target."
             )
 
-    check_tls_posture(identity, allow_non_production=args.allow_non_production_database)
+    check_tls_posture(
+        identity,
+        allow_non_production=args.allow_non_production_database,
+        allow_private_network_without_tls=args.allow_private_network_without_tls,
+    )
     check_backup_confirmation(
         backup_confirmed=args.backup_confirmed, allow_non_production=args.allow_non_production_database
     )
