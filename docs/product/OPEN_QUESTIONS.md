@@ -6,7 +6,7 @@ None of the items below are treated as invented values; they are recorded as ope
 
 ## Technical decisions
 
-- **OIDC provider selection.** Authentication will be OIDC-compatible behind an application adapter (approved), but the specific identity provider is not yet chosen. Does not block application scaffolding — the adapter can be built against the OIDC standard first.
+- ~~**OIDC provider selection.**~~ Resolved: Auth0 is the implemented production identity provider, behind the OIDC-compatible application adapter approved here (`docs/domain/AUTHORIZATION_MODEL.md`, "Layered trust model").
 - **PostgreSQL RLS policy detail.** RLS is approved as defence in depth alongside mandatory application-level tenant scoping, but concrete policy definitions (per-table policies, role setup) are not yet specified. Does not block application scaffolding.
 
 ## Operational greenhouse decisions

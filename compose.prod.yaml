@@ -1,0 +1,108 @@
+# Production/pilot runtime topology (DEPLOY-001B). See
+# docs/deployment/PILOT_DEPLOYMENT.md for the full environment contract,
+# every variable below, and start/stop/migration procedures.
+#
+# Approved architecture:
+#
+#   Internet --HTTPS--> caddy --> web (Next.js) --> api (FastAPI) --TLS--> managed PostgreSQL
+#
+# - Only `caddy` publishes host ports (80/443). `web` and `api` are reachable
+#   only from other containers on the private `cmp_internal` network.
+# - PostgreSQL is NOT part of this Compose file -- production Postgres is a
+#   DigitalOcean Managed PostgreSQL instance reached over TLS via `api`'s own
+#   DATABASE_URL. No 5432 mapping exists anywhere in this file.
+# - No secrets are written here. Every variable below is resolved from the
+#   environment Compose is invoked with -- an external, untracked env file,
+#   e.g.:
+#     docker compose --env-file /path/to/production.env -f compose.prod.yaml up -d
+#   That env file must never be committed to Git.
+# - No migration runs automatically: neither service's command touches
+#   Alembic. See "Migrations" in the runbook for the explicit, separate
+#   invocation.
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: cmp-api:latest
+    restart: unless-stopped
+    environment:
+      ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      DB_CONNECT_TIMEOUT_SECONDS: ${DB_CONNECT_TIMEOUT_SECONDS:-5}
+      ENABLE_DEV_AUTH: "false"
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL}
+      OIDC_ALLOWED_ALGORITHMS: ${OIDC_ALLOWED_ALGORITHMS:-["RS256"]}
+      OIDC_CLOCK_SKEW_SECONDS: ${OIDC_CLOCK_SKEW_SECONDS:-60}
+      OIDC_JWKS_CACHE_TTL_SECONDS: ${OIDC_JWKS_CACHE_TTL_SECONDS:-300}
+      OIDC_JWKS_MIN_REFRESH_INTERVAL_SECONDS: ${OIDC_JWKS_MIN_REFRESH_INTERVAL_SECONDS:-30}
+    networks:
+      - cmp_internal
+    # Deliberately no `ports:` -- FastAPI must never be reachable from the
+    # host or the public internet, only from `web` over cmp_internal.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: cmp-web:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Internal-only: the browser never sees this URL. web (the Next.js
+      # BFF) is the only thing that talks to api, over cmp_internal.
+      CMP_API_BASE_URL: http://api:8000
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
+      AUTH0_SECRET: ${AUTH0_SECRET}
+      APP_BASE_URL: ${APP_BASE_URL}
+      CMP_API_AUDIENCE: ${CMP_API_AUDIENCE}
+    depends_on:
+      - api
+    networks:
+      - cmp_internal
+    # Deliberately no `ports:` -- only `caddy` is reachable from the host;
+    # browsers reach web exclusively through Caddy's reverse proxy.
+    healthcheck:
+      # /login is a genuinely public, prerendered page (no session
+      # required, no BFF/data fetch) -- see apps/web/app/login/page.tsx.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      CMP_PUBLIC_HOST: ${CMP_PUBLIC_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - cmp_caddy_data:/data
+      - cmp_caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - cmp_internal
+
+networks:
+  cmp_internal:
+    driver: bridge
+
+volumes:
+  cmp_caddy_data:
+  cmp_caddy_config:

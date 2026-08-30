@@ -1,10 +1,11 @@
 /**
- * Startup-time fail-closed check (AUTH-001B1), mirroring the backend's own
- * pattern (`app/core/dev_auth.py::check_dev_auth_startup_invariant`,
- * `app/core/settings.py::check_oidc_startup_invariant`): a misconfigured
- * auth mode should fail loudly at server startup, in deploy logs, rather
- * than silently serving broken/ambiguous authentication until the first
- * request happens to hit it.
+ * Startup-time fail-closed check (AUTH-001B1, extended DEPLOY-001A),
+ * mirroring the backend's own pattern (`app/core/dev_auth.py::check_dev_
+ * auth_startup_invariant`, `app/core/settings.py::check_oidc_startup_
+ * invariant`): a misconfigured auth mode, or (in a production-shaped real-
+ * auth deployment) missing Auth0/CMP configuration, should fail loudly at
+ * server startup, in deploy logs, rather than silently serving broken
+ * authentication until the first request happens to hit it.
  *
  * This is defense in depth, not the sole enforcement -- `resolveAuthMode()`
  * is also called on every single request (proxy.ts, the BFF proxy route),
@@ -16,6 +17,7 @@
  * branching is needed here.
  */
 export async function register() {
-  const { resolveAuthMode } = await import("@/lib/server/auth-mode");
-  resolveAuthMode();
+  const { resolveAuthMode, checkAuthStartupInvariant } = await import("@/lib/server/auth-mode");
+  const mode = resolveAuthMode();
+  checkAuthStartupInvariant(mode);
 }

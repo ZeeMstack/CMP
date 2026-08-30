@@ -1,0 +1,15 @@
+# CMP pilot production edge (DEPLOY-001B). Caddy is the ONLY public
+# service: it terminates TLS (automatic HTTPS via Let's Encrypt, including
+# certificate renewal) and forwards everything to the Next.js container.
+#
+# All browser traffic -- app pages AND `/api/**` -- goes to `web`. Next.js
+# owns `/api/**` as the BFF proxy to FastAPI (apps/web/app/api/[...path]/
+# route.ts); FastAPI itself is never routed to directly from here and is
+# not reachable from the host at all (see compose.prod.yaml).
+#
+# {$CMP_PUBLIC_HOST} is supplied at container start via the external
+# production env file -- never hardcoded to a real hostname here.
+
+{$CMP_PUBLIC_HOST} {
+	reverse_proxy web:3000
+}
