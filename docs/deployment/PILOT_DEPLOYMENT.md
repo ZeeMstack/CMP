@@ -1,6 +1,127 @@
 # Pilot Deployment
 
-Read this for pilot/production deployment configuration and the first-platform-admin bootstrap procedure. Permanent coding rules are in the root `CLAUDE.md`; the approved deployment architecture is DigitalOcean (one application VPS, DigitalOcean Managed PostgreSQL, Docker Compose runtime, Caddy reverse proxy/TLS, one public CMP hostname, Auth0 production authentication, manual controlled deployments). This document is the **environment/configuration contract and admin-bootstrap procedure only** (DEPLOY-001A) — it is not yet the full server-provisioning guide. Container packaging (`Dockerfile`s, `compose.prod.yaml`, `Caddyfile`), CI/CD, and actual DigitalOcean/Auth0/DNS provisioning are later DEPLOY slices.
+Read this for pilot/production deployment configuration and the first-platform-admin bootstrap procedure. Permanent coding rules are in the root `CLAUDE.md`; the approved deployment architecture is DigitalOcean (one application VPS, DigitalOcean Managed PostgreSQL, Docker Compose runtime, Caddy reverse proxy/TLS, one public CMP hostname, Auth0 production authentication, manual controlled deployments). This document covers the **environment/configuration contract, admin-bootstrap procedure (DEPLOY-001A), and container runtime packaging (DEPLOY-001B)**. Actual DigitalOcean/Auth0/DNS provisioning and CI/CD are later DEPLOY slices.
+
+## Production container topology (DEPLOY-001B)
+
+```
+Internet --HTTPS--> Caddy --> web (Next.js, port 3000) --> api (FastAPI, port 8000) --TLS--> DigitalOcean Managed PostgreSQL
+```
+
+- **Caddy** (`Caddyfile`, `caddy:2-alpine`) is the only container publishing host ports (`80`, `443`). It terminates TLS (automatic HTTPS/Let's Encrypt) and reverse-proxies everything to `web`.
+- **web** (`apps/web/Dockerfile`) is the Next.js production server (standalone output). It owns `/api/**` as the BFF and is the only service that talks to `api` — over the private `cmp_internal` Compose network, never a published host port.
+- **api** (`apps/api/Dockerfile`) is FastAPI/uvicorn. It is **never** published to the host or the public internet — reachable only as `http://api:8000` from `web`.
+- **PostgreSQL** is not a container in this stack. `compose.prod.yaml` has no `postgres`/`db` service and no `5432` mapping anywhere — production Postgres is DigitalOcean Managed PostgreSQL, reached by `api` over TLS via `DATABASE_URL`.
+
+All three application/edge services are defined in `compose.prod.yaml` at the repo root. Real production secrets are never in that file or in Git — they are supplied by an external, untracked env file at deploy time.
+
+### Build
+
+```
+docker compose -f compose.prod.yaml build
+```
+
+Building requires no production database, no Auth0 tenant, and no real secrets — both images build from disposable/placeholder-free context. The frontend build in particular does not require `AUTH0_*`/`CMP_API_AUDIENCE` (see "Frontend build does not require secrets" below); `apps/api/.dockerignore` and `apps/web/.dockerignore` also keep `.env*` and `.env.local` out of both build contexts (`.env.example` is intentionally still allowed).
+
+### Config — external runtime env file
+
+Real production values live only in an env file kept **outside Git**, referenced explicitly at every `docker compose` invocation:
+
+```
+docker compose --env-file /path/to/production.env -f compose.prod.yaml up -d
+```
+
+Required variables (all consumed as Compose interpolation, not written into `compose.prod.yaml` itself):
+
+**Backend (`api`):**
+
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Managed Postgres DSN, TLS query params included (`?sslmode=verify-full&sslrootcert=...`, or `?sslmode=require` minimum — see "Database" above) |
+| `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | Required — the backend refuses to start without all three outside `ENV=development` |
+| `DB_CONNECT_TIMEOUT_SECONDS`, `OIDC_ALLOWED_ALGORITHMS`, `OIDC_CLOCK_SKEW_SECONDS`, `OIDC_JWKS_CACHE_TTL_SECONDS`, `OIDC_JWKS_MIN_REFRESH_INTERVAL_SECONDS` | Optional — `compose.prod.yaml` supplies production-safe defaults if unset |
+
+`ENV=production` and `ENABLE_DEV_AUTH=false` are hardcoded in `compose.prod.yaml` itself (not operator-configurable) — this is a security invariant, not a deployment choice.
+
+**Frontend (`web`):**
+
+| Variable | Notes |
+|---|---|
+| `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `APP_BASE_URL`, `CMP_API_AUDIENCE` | Required — the frontend refuses to start under `NODE_ENV=production` without all six |
+
+`NODE_ENV=production` and `CMP_API_BASE_URL=http://api:8000` are hardcoded in `compose.prod.yaml` — `CMP_API_BASE_URL` must stay the **internal** Compose DNS name; it is never a browser-visible FastAPI URL.
+
+**Edge (`caddy`):**
+
+| Variable | Notes |
+|---|---|
+| `CMP_PUBLIC_HOST` | The one public CMP hostname (e.g. `cmp.example.com`), read by `Caddyfile`'s `{$CMP_PUBLIC_HOST}` placeholder |
+
+### Start
+
+```
+docker compose --env-file /path/to/production.env -f compose.prod.yaml up -d
+```
+
+### Stop
+
+```
+docker compose --env-file /path/to/production.env -f compose.prod.yaml down
+```
+
+(Add `-v` only if the Caddy TLS-state volumes should also be discarded — normally they should not be, to avoid re-issuing certificates unnecessarily.)
+
+### Logs
+
+```
+docker compose -f compose.prod.yaml logs -f api
+docker compose -f compose.prod.yaml logs -f web
+docker compose -f compose.prod.yaml logs -f caddy
+```
+
+### Health
+
+- **API**: internal readiness at `http://api:8000/ready` (checked by Compose's own `api` healthcheck — not published to the host).
+- **Frontend**: public URL `https://<pilot-host>/login` (a genuinely unauthenticated, prerendered page — see `apps/web/app/login/page.tsx`); the container's own healthcheck hits it internally at `http://localhost:3000/login`.
+- A container reporting "unhealthy" is not necessarily crashed — e.g. a Next.js instrumentation-hook startup failure (misconfigured Auth0 env) leaves the Node process running but serving HTTP 500 to every request; the healthcheck, not the process exit code, is what surfaces this. Watch `docker compose ps` / container health status, not just "is the container running."
+
+### Migration
+
+Migrations are **never** run automatically — neither Dockerfile's `CMD` nor any container entrypoint touches Alembic. `migrations/env.py`'s `_alembic_url_safety.py` also fails closed on any bare/implicit invocation (see root `CLAUDE.md`), so a pilot migration must always supply its target explicitly, the same way `scripts/reset_test_database.py` and `tests/conftest.py:migrations_alembic_config()` already do (a `Config` with `sqlalchemy.url` set directly — never a bare `alembic upgrade`).
+
+The `api` image (`apps/api/Dockerfile`) includes `alembic.ini` and `migrations/` for exactly this purpose, so a one-shot invocation can run against the built production image:
+
+```
+docker compose --env-file /path/to/production.env -f compose.prod.yaml run --rm api <explicit migration command>
+```
+
+**No `<explicit migration command>` is implemented yet.** Writing one requires a small script that constructs an Alembic `Config` with `sqlalchemy.url` set explicitly from `DATABASE_URL` (mirroring `scripts/reset_test_database.py`'s `_migrations_cfg()`), since the existing safety module has no bare-CLI `-x`/env-var override wired into `migrations/env.py` — inventing one, along with a backup-before-migration workflow, is DEPLOY-001D's scope, not DEPLOY-001B's. Until then, a pilot migration must be run the same way any other environment's migration already is: from a machine with an explicit `Config`/`sqlalchemy.url` pointed at the target database (never a bare CLI invocation), following the exact pattern in `scripts/reset_test_database.py`.
+
+### Platform-admin CLI (containerized)
+
+`apps/api/Dockerfile` copies exactly one script into the image, at `/app/scripts/manage_platform_admin.py` — deliberately not the rest of `apps/api/scripts/` (`reset_test_database.py`, `create_test_db.py`, `dev_seed_frontend_pilot.py`, `seed_qa_005b.py`, `bootstrap_pilot_master_data.py` are dev/test-only and never ship in the production image). This lets the first-platform-admin bootstrap procedure (see "Initial admin" below) run from the same deployed artifact already holding the correct `DATABASE_URL`/OIDC configuration, over the private network — with no separate host Python environment and no need to expose managed PostgreSQL to an operator laptop:
+
+```
+docker compose --env-file /path/to/production.env -f compose.prod.yaml run --rm api \
+  python scripts/manage_platform_admin.py bootstrap-first-admin \
+  --oidc-issuer "<exact issuer>" \
+  --oidc-subject "<exact subject>" \
+  --email "<administrator email>" \
+  --display-name "<administrator display name>" \
+  --reason "Initial pilot platform administrator"
+```
+
+`run --rm` starts a throwaway container from the already-built `api` image, with the same environment (`DATABASE_URL`, `OIDC_*`) as the running `api` service — no dev auth, no HTTP route, no extra secrets baked into the image. `grant`/`revoke` work the same way, substituting the subcommand.
+
+### Network
+
+- Only `caddy` publishes host ports: `80` and `443`.
+- `web` publishes **no** host port (not `3000`).
+- `api` publishes **no** host port (not `8000`).
+- No service publishes `5432` — Postgres is not part of this Compose file at all.
+- All three services share one private Compose network (`cmp_internal`); `web` reaches `api` at `http://api:8000`, `caddy` reaches `web` at `web:3000`.
+
+DigitalOcean/Auth0/DNS provisioning steps are not part of this document — see DEPLOY-001E.
 
 ## Environments
 
@@ -50,10 +171,11 @@ No manual `INSERT` into `users` is required or approved under this procedure. On
 
 1. Migrate the clean production database to head (explicit target, per "Security" above).
 2. Obtain the exact Auth0 **issuer** and **subject** for the designated first administrator. The issuer is the tenant's OIDC issuer URL (e.g. `https://<tenant>.us.auth0.com/`); the subject is that person's Auth0 `user_id` (e.g. `auth0|abc123` or `google-oauth2|...`) — visible in the Auth0 dashboard under that user, or in the `sub` claim of a token they've already obtained by signing in once against this tenant.
-3. From a machine with direct `DATABASE_URL` access to the pilot database (never over HTTP), run:
+3. Run the platform-admin CLI against the pilot database (never over HTTP) — from the deployed `api` image itself, over the private network (see "Platform-admin CLI (containerized)" above), or from a machine with direct `DATABASE_URL` access if the container path is unavailable:
 
    ```
-   python scripts/manage_platform_admin.py bootstrap-first-admin \
+   docker compose --env-file /path/to/production.env -f compose.prod.yaml run --rm api \
+     python scripts/manage_platform_admin.py bootstrap-first-admin \
      --oidc-issuer "<exact issuer>" \
      --oidc-subject "<exact subject>" \
      --email "<administrator email>" \
@@ -62,7 +184,7 @@ No manual `INSERT` into `users` is required or approved under this procedure. On
    ```
 
    This previews the exact identity before making any change and requires typed confirmation (or `--yes` for a scripted/CI run). It resolves-or-creates the CMP `User` by exact issuer+subject identity and atomically grants platform-admin authority — see `docs/domain/AUTHORIZATION_MODEL.md`'s "Platform-level authority" section and `app.services.platform_admin_service.bootstrap_first_platform_admin` for the exact contract. It creates no Tenant, no TenantMembership, and no password/local credential.
-4. Verify: the command's own output confirms the grant; independently, `python scripts/manage_platform_admin.py grant --oidc-issuer ... --oidc-subject ...` run again against the same identity reports "already holds active platform-admin authority" rather than performing a new grant.
+4. Verify: the command's own output confirms the grant; independently, running `... run --rm api python scripts/manage_platform_admin.py grant --oidc-issuer ... --oidc-subject ...` again against the same identity reports "already holds active platform-admin authority" rather than performing a new grant.
 5. The administrator logs in through the normal application URL (real Auth0 login) — this is their first real authentication, independent of and not weakened by step 3.
 6. The administrator, now an authenticated Platform Admin, creates the pilot's Tenant through the normal CMP Platform Admin UI/API (`POST /platform/tenants`, gated by `require_platform_admin`) — not through this bootstrap procedure, and not through any manual `INSERT`.
 

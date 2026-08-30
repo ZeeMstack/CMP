@@ -1,0 +1,34 @@
+# Build context excludes for apps/web/Dockerfile.
+
+.git
+.gitignore
+
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Never bake real env files into the image; runtime config (CMP_API_BASE_URL,
+# AUTH0_*, ...) is injected only at container start.
+.env
+.env.*
+!.env.example
+
+# Test/CI artifacts -- not needed to build or run the production server.
+e2e/
+playwright-report/
+test-results/
+coverage/
+**/*.test.ts
+**/*.test.tsx
+vitest.config.mts
+vitest.setup.ts
+playwright.config.ts
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+Dockerfile
+.dockerignore

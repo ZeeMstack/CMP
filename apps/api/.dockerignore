@@ -1,0 +1,33 @@
+# Build context excludes for apps/api/Dockerfile.
+# The Dockerfile itself also scopes COPY to exactly what it needs, but this
+# keeps the upload context small and prevents anything below from ever
+# reaching a layer even via an incautious future COPY.
+
+.git
+.gitignore
+
+# Never bake env files or secrets into the image; runtime config is
+# injected only at container start.
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.venv/
+venv/
+
+# Tests are not needed in the runtime image.
+tests/
+
+# Local/dev tooling and generated admin-bootstrap manifests -- not part of
+# the built image (see apps/api/Dockerfile comments on scope).
+scripts/.pilot_seed_manifest.json
+
+Dockerfile
+.dockerignore
