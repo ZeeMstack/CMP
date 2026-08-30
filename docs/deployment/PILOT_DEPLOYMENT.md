@@ -85,17 +85,45 @@ docker compose -f compose.prod.yaml logs -f caddy
 - **Frontend**: public URL `https://<pilot-host>/login` (a genuinely unauthenticated, prerendered page — see `apps/web/app/login/page.tsx`); the container's own healthcheck hits it internally at `http://localhost:3000/login`.
 - A container reporting "unhealthy" is not necessarily crashed — e.g. a Next.js instrumentation-hook startup failure (misconfigured Auth0 env) leaves the Node process running but serving HTTP 500 to every request; the healthcheck, not the process exit code, is what surfaces this. Watch `docker compose ps` / container health status, not just "is the container running."
 
-### Migration
+### Migration (DEPLOY-001D)
 
-Migrations are **never** run automatically — neither Dockerfile's `CMD` nor any container entrypoint touches Alembic. `migrations/env.py`'s `_alembic_url_safety.py` also fails closed on any bare/implicit invocation (see root `CLAUDE.md`), so a pilot migration must always supply its target explicitly, the same way `scripts/reset_test_database.py` and `tests/conftest.py:migrations_alembic_config()` already do (a `Config` with `sqlalchemy.url` set directly — never a bare `alembic upgrade`).
+Migrations are **never** run automatically — neither Dockerfile's `CMD` nor any container entrypoint touches Alembic. `migrations/env.py`'s `_alembic_url_safety.py` also fails closed on any bare/implicit invocation (see root `CLAUDE.md`), so a pilot migration must always supply its target explicitly. `apps/api/scripts/migrate_database.py` is the one approved way to do this in the pilot/production environment; it constructs an Alembic `Config` with `sqlalchemy.url` set programmatically (exactly the pattern `scripts/reset_test_database.py` and `tests/conftest.py:migrations_alembic_config()` already use) and never touches `migrations/env.py` or `migrations/_alembic_url_safety.py` — a bare `alembic upgrade head` remains exactly as fail-closed as before this script existed.
 
-The `api` image (`apps/api/Dockerfile`) includes `alembic.ini` and `migrations/` for exactly this purpose, so a one-shot invocation can run against the built production image:
+The `api` image (`apps/api/Dockerfile`) includes `alembic.ini`, `migrations/`, and `scripts/migrate_database.py` for exactly this purpose:
 
 ```
-docker compose --env-file /path/to/production.env -f compose.prod.yaml run --rm api <explicit migration command>
+docker compose --env-file /secure/path/production.env -f compose.prod.yaml \
+  run --rm api python scripts/migrate_database.py \
+  --backup-confirmed \
+  --expect-host <expected-managed-postgres-host> \
+  --expect-database <expected-managed-postgres-database> \
+  --yes
 ```
 
-**No `<explicit migration command>` is implemented yet.** Writing one requires a small script that constructs an Alembic `Config` with `sqlalchemy.url` set explicitly from `DATABASE_URL` (mirroring `scripts/reset_test_database.py`'s `_migrations_cfg()`), since the existing safety module has no bare-CLI `-x`/env-var override wired into `migrations/env.py` — inventing one, along with a backup-before-migration workflow, is DEPLOY-001D's scope, not DEPLOY-001B's. Until then, a pilot migration must be run the same way any other environment's migration already is: from a machine with an explicit `Config`/`sqlalchemy.url` pointed at the target database (never a bare CLI invocation), following the exact pattern in `scripts/reset_test_database.py`.
+What this command does, in order, before ever running a migration:
+
+1. Reads `DATABASE_URL` from the environment explicitly — never falls back to any local/default database, never reads `TEST_DATABASE_URL`.
+2. Prints the sanitized target identity (host, port, database, `sslmode`) — never credentials.
+3. If `--expect-host`/`--expect-database` are supplied and don't match exactly, stops immediately.
+4. Refuses an obviously accidental target (a known repository dev/test database name, or a local/loopback host) unless `--allow-non-production-database` is explicitly passed — reserved for this script's own automated tests against `cmp_test`, never for a real deployment.
+5. Requires a real TLS `sslmode` (`require`/`verify-ca`/`verify-full`) on `DATABASE_URL` for a production-style invocation.
+6. Requires `--backup-confirmed` for a production-style invocation — an operator acknowledgement that a current, recoverable DigitalOcean Managed PostgreSQL backup/snapshot already exists. **This flag is not itself a backup mechanism** — see "Backup and recovery" below. `--yes` never substitutes for it.
+7. Requires a typed confirmation (or `--yes` for a scripted/CI run).
+8. Reads and validates the database's current Alembic revision (blank/unversioned, a known repository revision, or already at head are all safe; an unrecognized or ambiguous/multi-head state is refused).
+9. If already at head: reports success, makes no changes, exits `0`.
+10. Otherwise: runs `alembic upgrade head` against the explicit target, then verifies the resulting revision equals repository head. Any failure returns a non-zero exit code.
+
+Run `python scripts/migrate_database.py --help` (from the built image, or a local venv with `DATABASE_URL` unset) to see the full flag reference at any time — it never touches a database.
+
+### Backup and recovery (DEPLOY-001D)
+
+DigitalOcean Managed PostgreSQL's own provider-managed backups are the pilot's primary, automated backup mechanism — this repository does not build or operate a parallel backup platform. `--backup-confirmed` is a deliberate, explicit gate in front of every production-style migration: the operator running the command is personally acknowledging that a current, recoverable provider backup/snapshot exists *before* the migration runs, giving every release an immediate pre-migration recovery point on top of the provider's normal automated backup schedule.
+
+- **RPO**: ≤24h minimum from DigitalOcean's automated daily backups, plus an effectively immediate recovery point immediately before every release (the just-confirmed provider snapshot/backup that gated `--backup-confirmed`).
+- **RTO**: a few hours is acceptable for the pilot. No HA/multi-region/instant-failover is in scope.
+- **Application code rollback**: redeploy the previous `cmp-api`/`cmp-web` image tag if the schema the new migration introduced remains compatible with the old code. This is the fast, low-risk path for a bad application release with no accompanying migration.
+- **Database rollback**: do **not** casually run `alembic downgrade` against the pilot database — CMP's migrations are written to be forward-safe and reconciliation-preserving, not routinely reversible in production, and several already carry explicit downgrade guards (see `migrations/env.py`'s produce-lot ledger guard) precisely because blind downgrades can discard history. The preferred recovery from a destructive or incorrect migration is to **restore DigitalOcean Managed PostgreSQL from the verified pre-migration recovery point** that `--backup-confirmed` attested to. The exact DigitalOcean restore procedure (console clicks / API calls) belongs in DEPLOY-001E once the managed database actually exists — this document only establishes the sequencing (confirm backup → migrate → verify → restore-if-needed).
+- If a forward-fix migration is genuinely safer than a full restore for a specific incident, that is an incident-specific engineering decision made at the time, not a generic procedure documented here.
 
 ### Platform-admin CLI (containerized)
 
@@ -137,7 +165,7 @@ DigitalOcean/Auth0/DNS provisioning steps are not part of this document — see 
 - `ENABLE_DEV_AUTH=false` in every non-development environment. The backend fails to start otherwise (`app/core/dev_auth.py::check_dev_auth_startup_invariant`, enforced in `app/main.py::create_app`) — this is not optional configuration, it is a hard startup invariant.
 - `CMP_DEV_AUTH_BYPASS` must never be set under `NODE_ENV=production` (frontend fails to start otherwise — `apps/web/lib/server/auth-mode.ts::resolveAuthMode`, enforced at startup via `apps/web/instrumentation.ts`). `CMP_TEST_AUTH_BYPASS` is a deliberately distinct mechanism reserved for the Playwright suite's own `next build && next start` run and is not a production auth path even though it can activate under `NODE_ENV=production` by design.
 - The test database is never the pilot database: `TEST_DATABASE_URL` and pilot `DATABASE_URL` must always point at physically separate database instances. `scripts/reset_test_database.py` and every other `cmp_test`-targeting script refuse to run against any database that doesn't identify as `cmp_test` (`_database_name`/`require_cmp_test` guards throughout `apps/api/scripts/` and `apps/api/tests/`) — never run that tooling against the pilot database, and never point `TEST_DATABASE_URL` at it.
-- Alembic never resolves a database target implicitly (`apps/api/migrations/env.py`'s `_alembic_url_safety.py` fails closed on a bare invocation) — a pilot migration must always supply its target explicitly, through the same approved mechanism used for every other environment (an explicit `-x db_url=...`/`Config` with `sqlalchemy.url` set, never a bare `alembic upgrade`).
+- Alembic never resolves a database target implicitly (`apps/api/migrations/env.py`'s `_alembic_url_safety.py` fails closed on a bare invocation) — a pilot migration must always run through `scripts/migrate_database.py` (see "Migration (DEPLOY-001D)" above), which supplies its target explicitly via `Config.set_main_option("sqlalchemy.url", ...)`, never a bare `alembic upgrade`.
 
 ## Auth0 prerequisites
 
@@ -169,7 +197,7 @@ Do not provision or reference any specific real Auth0 tenant/application/identit
 
 No manual `INSERT` into `users` is required or approved under this procedure. On a freshly migrated, empty production database:
 
-1. Migrate the clean production database to head (explicit target, per "Security" above).
+1. Migrate the clean production database to head using `scripts/migrate_database.py` (see "Migration (DEPLOY-001D)" above).
 2. Obtain the exact Auth0 **issuer** and **subject** for the designated first administrator. The issuer is the tenant's OIDC issuer URL (e.g. `https://<tenant>.us.auth0.com/`); the subject is that person's Auth0 `user_id` (e.g. `auth0|abc123` or `google-oauth2|...`) — visible in the Auth0 dashboard under that user, or in the `sub` claim of a token they've already obtained by signing in once against this tenant.
 3. Run the platform-admin CLI against the pilot database (never over HTTP) — from the deployed `api` image itself, over the private network (see "Platform-admin CLI (containerized)" above), or from a machine with direct `DATABASE_URL` access if the container path is unavailable:
 

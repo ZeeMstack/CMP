@@ -52,17 +52,18 @@ COPY --from=builder /install /usr/local
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 
-# The one production-required admin CLI (first-platform-admin bootstrap /
-# grant / revoke -- docs/deployment/PILOT_DEPLOYMENT.md), so the approved
-# bootstrap procedure can run from this same deployed artifact
-# (`docker compose run --rm api python scripts/manage_platform_admin.py
-# ...`) without exposing managed PostgreSQL to an operator laptop or
-# requiring a separate host Python environment. Deliberately NOT the rest
-# of apps/api/scripts/ -- reset_test_database.py, create_test_db.py,
-# dev_seed_frontend_pilot.py, seed_qa_005b.py, and bootstrap_pilot_
-# master_data.py are dev/test-only and must never ship in the production
-# image.
+# The two production-required deployment scripts (DEPLOY-001A/D):
+#   - manage_platform_admin.py: first-platform-admin bootstrap / grant / revoke
+#   - migrate_database.py: explicit, one-shot Alembic migration to head
+# so both approved procedures can run from this same deployed artifact
+# (`docker compose run --rm api python scripts/<script> ...`) without
+# exposing managed PostgreSQL to an operator laptop or requiring a separate
+# host Python environment. Deliberately NOT the rest of apps/api/scripts/ --
+# reset_test_database.py, create_test_db.py, dev_seed_frontend_pilot.py,
+# seed_qa_005b.py, and bootstrap_pilot_master_data.py are dev/test-only and
+# must never ship in the production image.
 COPY scripts/manage_platform_admin.py ./scripts/manage_platform_admin.py
+COPY scripts/migrate_database.py ./scripts/migrate_database.py
 
 RUN chown -R cmp:cmp /app
 USER cmp
