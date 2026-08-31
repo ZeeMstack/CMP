@@ -35,11 +35,20 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Non-root runtime user. No shell/login needed for a service process.
+# Non-root runtime user. A real login shell (/bin/bash) is required for
+# Render SSH/operator shell access (DEPLOY-001F) -- no SSH daemon is
+# installed here; Render's own SSH mechanism connects to this user.
 RUN groupadd --system cmp \
-    && useradd --system --gid cmp --home-dir /app --no-create-home --shell /usr/sbin/nologin cmp
+    && useradd --system --gid cmp --home-dir /app --no-create-home --shell /bin/bash cmp
 
 WORKDIR /app
+
+# Render SSH writes its own transient authorized-key material into
+# $HOME/.ssh at connection time; the directory must pre-exist with the
+# correct owner/permissions. No keys are placed here at build time.
+RUN mkdir -p /app/.ssh \
+    && chown cmp:cmp /app/.ssh \
+    && chmod 0700 /app/.ssh
 
 COPY --from=builder /install /usr/local
 
