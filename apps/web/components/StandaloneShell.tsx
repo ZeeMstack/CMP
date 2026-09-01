@@ -1,6 +1,11 @@
+"use client";
+
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+
+import { TenantSelector } from "@/components/TenantSelector";
+import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 
 /** PILOT-SETUP-001B6: shared brand header for tenant-level standalone
  * routes that sit outside the /farms/[farmId] AppShell tree (Crop/Variety,
@@ -9,25 +14,44 @@ import type { ReactNode } from "react";
  * farmId can be mounted here without either inventing one or guessing at
  * "last visited farm", so this stays a standalone route with the same
  * design tokens/typography as every AppShell-wrapped screen, plus an
- * honest way back into farm context via /farms). */
+ * honest way back into farm context via /farms).
+ *
+ * PILOT-UX-001A: shows real Tenant context (via the same
+ * useAuthBootstrap/TenantSelector AppShell already uses -- no new global
+ * state) since every route this shell wraps is a tenant-level master-data
+ * surface. Switching tenant here intentionally stays on the current page;
+ * AuthBootstrapProvider.selectTenant() already clears tenant-scoped query
+ * cache, so the page's own data refetches under the newly selected tenant. */
 export function StandaloneShell({ children }: { children: ReactNode }) {
+  const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
+
   return (
     <div className="min-h-screen">
       <div className="border-b border-border-subtle bg-surface px-4 py-3 md:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div>
-            <div className="font-serif text-base font-semibold leading-tight text-brand-900">ImperialFarms CMP</div>
+            <div className="font-serif text-base font-semibold leading-tight text-brand-900">GrowCMP</div>
             <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
               Crop Management Platform
             </div>
           </div>
-          <Link
-            href="/farms"
-            className="flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-ink-muted hover:bg-surface-subtle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-          >
-            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-            Back to Farms
-          </Link>
+          <div className="flex items-center gap-3">
+            {bootstrap && (
+              <TenantSelector
+                memberships={bootstrap.memberships}
+                selectedTenantId={bootstrap.selectedTenantId}
+                onSelect={selectTenant}
+                disabled={isSwitchingTenant}
+              />
+            )}
+            <Link
+              href="/farms"
+              className="flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-ink-muted hover:bg-surface-subtle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+              Back to Farms
+            </Link>
+          </div>
         </div>
       </div>
 

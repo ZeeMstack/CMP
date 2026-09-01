@@ -1,11 +1,11 @@
 {
-  "name": "CMP — Crop Management Platform",
-  "short_name": "CMP",
-  "description": "CMP — Crop Management Platform pilot",
+  "name": "GrowCMP — Crop Management Platform",
+  "short_name": "GrowCMP",
+  "description": "GrowCMP — Crop Management Platform pilot",
   "start_url": "/farms",
   "display": "standalone",
-  "background_color": "#f7f8f7",
-  "theme_color": "#2f8f60",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0b4f54",
   "icons": [
     {
       "src": "/favicon.ico",

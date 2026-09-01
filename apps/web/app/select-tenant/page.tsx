@@ -57,7 +57,7 @@ export default function SelectTenantPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16">
-      <h1 className="mb-1 text-xl font-semibold text-ink">CMP</h1>
+      <h1 className="mb-1 text-xl font-semibold text-ink">GrowCMP</h1>
       <p className="mb-6 text-sm text-ink-muted">Choose a tenant.</p>
       <ul className="space-y-2">
         {bootstrap.memberships.map((membership) => (

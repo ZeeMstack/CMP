@@ -66,7 +66,7 @@ export default function LeafyProductionPage() {
           <Breadcrumbs
             items={[
               { label: "Home", href: `/farms/${farmId}` },
-              { label: "Batches", href: `/farms/${farmId}/crop-batches` },
+              { label: "Production Operations" },
               { label: "Leafy Production" },
             ]}
           />

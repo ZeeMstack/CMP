@@ -22,8 +22,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "ImperialFarms CMP",
-  description: "ImperialFarms CMP — Crop Management Platform",
+  title: "GrowCMP",
+  description: "GrowCMP — Crop Management Platform",
   manifest: "/manifest.json",
 };
 

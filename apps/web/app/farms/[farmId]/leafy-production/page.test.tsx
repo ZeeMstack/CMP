@@ -95,6 +95,14 @@ describe("LeafyProductionPage", () => {
     expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
   });
 
+  it("breadcrumbs the grouped-nav parent (Production Operations), not the stale flat-nav Batches label", async () => {
+    stubFetch();
+    render(withQueryClient(<LeafyProductionPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    expect(screen.getByText("Production Operations")).toBeInTheDocument();
+    expect(screen.queryByText("Batches")).not.toBeInTheDocument();
+  });
+
   it("shows a location warning for a Plate with no current Leafy location", async () => {
     stubFetch({ activePlates: [ZERO_PLATE] });
     render(withQueryClient(<LeafyProductionPage />));

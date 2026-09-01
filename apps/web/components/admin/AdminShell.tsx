@@ -18,7 +18,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="border-b border-border-subtle bg-surface px-4 py-3 md:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div>
-            <div className="font-serif text-base font-semibold leading-tight text-brand-900">ImperialFarms CMP</div>
+            <div className="font-serif text-base font-semibold leading-tight text-brand-900">GrowCMP</div>
             <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
               Platform Administration
             </div>

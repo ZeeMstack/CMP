@@ -1,7 +1,9 @@
 const TONE_CLASSES: Record<string, string> = {
   neutral: "bg-surface-subtle text-ink-muted border-border-subtle",
-  active: "bg-brand-100 text-brand-800 border-brand-200",
-  attention: "bg-amber-100 text-amber-900 border-amber-200",
+  // Bright Mint tint with dark teal text (PILOT-UX-001A approved usage:
+  // "prefer dark teal text/icons on mint backgrounds").
+  active: "bg-mint-subtle text-brand-800 border-mint-border",
+  attention: "bg-warning-100 text-warning-900 border-warning-200",
   closed: "bg-surface-subtle text-ink-muted border-border-subtle",
 };
 

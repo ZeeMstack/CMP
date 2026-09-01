@@ -24,7 +24,7 @@ export default function NewSowingPage() {
           <Breadcrumbs
             items={[
               { label: "Home", href: `/farms/${farmId}` },
-              { label: "Batches", href: `/farms/${farmId}/crop-batches` },
+              { label: "Nursery Operations" },
               { label: "New Sowing" },
             ]}
           />
