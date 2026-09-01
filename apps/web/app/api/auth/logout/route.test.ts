@@ -6,6 +6,11 @@ import { POST } from "./route";
 
 beforeEach(() => {
   vi.stubEnv("NODE_ENV", "development");
+  // DEPLOY-001G: real auth mode (the default here -- no bypass flag is
+  // stubbed) now trusts APP_BASE_URL rather than request.nextUrl.host for
+  // the same-origin check; match it to this suite's request/Origin so the
+  // legitimate-same-origin-request tests below still exercise that path.
+  vi.stubEnv("APP_BASE_URL", "http://localhost");
 });
 
 afterEach(() => {
