@@ -111,13 +111,15 @@ describe("findActiveHref (most-specific matching)", () => {
 describe("AppShell branding", () => {
   it("uses the official product name and tagline", () => {
     renderShell("/farms/farm-1");
-    expect(screen.getAllByText("ImperialFarms CMP").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("GrowCMP").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Crop Management Platform").length).toBeGreaterThan(0);
   });
 
-  it("never displays the rejected product name", () => {
+  it("never displays a superseded or rejected product name", () => {
     renderShell("/farms/farm-1");
     expect(screen.queryByText(/Cultivation Management Platform/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ImperialFarms CMP/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Imperial Farms CMP/i)).not.toBeInTheDocument();
   });
 });
 

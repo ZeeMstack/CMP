@@ -21,7 +21,7 @@ function LoginContent() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col items-center justify-center px-4 text-center">
-      <h1 className="text-2xl font-semibold text-brand-700">CMP</h1>
+      <h1 className="text-2xl font-semibold text-brand-700">GrowCMP</h1>
       <p className="mt-1 text-sm text-ink-muted">Commercial Hydroponic Operations</p>
       <a
         href={signInHref}
@@ -36,7 +36,7 @@ function LoginContent() {
 function LoginFallback() {
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col items-center justify-center px-4 text-center">
-      <h1 className="text-2xl font-semibold text-brand-700">CMP</h1>
+      <h1 className="text-2xl font-semibold text-brand-700">GrowCMP</h1>
       <p className="mt-1 text-sm text-ink-muted">Commercial Hydroponic Operations</p>
     </div>
   );

@@ -287,7 +287,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
       {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 border-r border-border-subtle bg-surface md:flex md:flex-col">
         <div className="px-4 py-4">
-          <div className="font-serif text-base font-semibold leading-tight text-brand-900">ImperialFarms CMP</div>
+          <div className="font-serif text-base font-semibold leading-tight text-brand-900">GrowCMP</div>
           <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
             Crop Management Platform
           </div>
@@ -307,7 +307,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
           {mobileNavOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
           <span className="sr-only">Toggle navigation</span>
         </button>
-        <span className="font-serif text-base font-semibold text-brand-900">ImperialFarms CMP</span>
+        <span className="font-serif text-base font-semibold text-brand-900">GrowCMP</span>
         <div className="flex min-w-0 items-center gap-2">
           {bootstrap && (
             <TenantSelector

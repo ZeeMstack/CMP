@@ -49,7 +49,7 @@ export default function IntersaladsTransplantPage() {
           <Breadcrumbs
             items={[
               { label: "Home", href: `/farms/${farmId}` },
-              { label: "Batches", href: `/farms/${farmId}/crop-batches` },
+              { label: "Nursery Operations" },
               { label: "Transfer to Inter Leafy Greens" },
             ]}
           />

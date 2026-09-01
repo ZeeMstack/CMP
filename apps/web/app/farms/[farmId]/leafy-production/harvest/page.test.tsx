@@ -114,6 +114,15 @@ describe("LeafyHarvestPage", () => {
     expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
   });
 
+  it("breadcrumbs directly under its own grouped-nav parent (Harvest & Post-Harvest), with no intermediate Leafy Production hop", async () => {
+    stubFetch();
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    expect(screen.getByText("Harvest & Post-Harvest")).toBeInTheDocument();
+    expect(screen.queryByText("Leafy Production")).not.toBeInTheDocument();
+    expect(screen.queryByText("Batches")).not.toBeInTheDocument();
+  });
+
   it("shows a quality-held Plate visibly, flagged, and not selectable", async () => {
     stubFetch({ plates: [PLATE_HELD] });
     render(withQueryClient(<LeafyHarvestPage />));

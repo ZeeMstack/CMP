@@ -52,8 +52,8 @@ export default function ProductionTransferPage() {
           <Breadcrumbs
             items={[
               { label: "Home", href: `/farms/${farmId}` },
-              { label: "Batches", href: `/farms/${farmId}/crop-batches` },
-              { label: "Production Transfer" },
+              { label: "Production Operations" },
+              { label: "Transfer to Production" },
             ]}
           />
         }

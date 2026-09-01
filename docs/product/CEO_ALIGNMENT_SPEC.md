@@ -11,12 +11,31 @@ restate domain rules — it records product-owner decisions and the scope they a
 
 ## Product name decision
 
+**Superseded by PILOT-UX-001A (approved 2026-09-01).** The brand presentation below
+(`ImperialFarms CMP`) conflated the SaaS product's own brand with the first production
+Tenant's name and is no longer current. See "Product name decision (superseded
+2026-09-01)" further down for the historical record, and the current decision
+immediately below.
+
+Official SaaS/product brand: **GrowCMP**. "Crop Management Platform" (internal/domain
+acronym **CMP**) may be used only as a secondary descriptor/subtitle, never as the
+primary product brand. GrowCMP is never replaced by a Tenant or Farm name; Tenant
+(e.g. Imperial Limited) and Farm (e.g. Imperial Farms) names are separate, real,
+data-derived identities shown alongside the GrowCMP brand where relevant -- never
+hardcoded, and never presented as though they were the product's own name.
+
+The CEO mockups' wording "Cultivation Management Platform" is not adopted. Where the
+mockups' visual treatment of the brand block is reused, only the brand text/tagline
+changes.
+
+### Product name decision (superseded 2026-09-01)
+
 Official product name: **Crop Management Platform**, acronym **CMP**.
 
 Brand presentation: `ImperialFarms CMP` / `Crop Management Platform`.
 
-The CEO mockups' wording "Cultivation Management Platform" is not adopted. Where the
-mockups' visual treatment of the brand block is reused, only the tagline text changes.
+This wording is retained here only as the historical record of the original
+CEO-ALIGN-001 decision; it no longer governs the shipped brand (see above).
 
 ## CEO design principles (adopted)
 
@@ -101,7 +120,7 @@ Notes on mapping to existing routes:
 
 | Concept | Internal/domain terminology (unchanged) | Operator-facing terminology |
 |---|---|---|
-| Product name | CMP | Crop Management Platform |
+| Product name | CMP | GrowCMP (superseded PILOT-UX-001A, 2026-09-01; was "Crop Management Platform") |
 | InterSalads stage | `intersalads`, `IntersaladsTransplantForm`, `intersalads_table`, etc. | **Inter Leafy Greens** |
 
 The InterSalads → "Inter Leafy Greens" change is a **UI display-label adaptation only**.
@@ -117,7 +136,7 @@ No other terminology renames are approved by this specification.
 |---|---|---|
 | CEO visual language (typography/color/cards) | ADOPT | Applies across the full pilot journey (see UI-OPT-001 scope) |
 | Grouped/collapsible navigation | ADOPT | Rebuilt as real routed nav per Final navigation above |
-| Product name wording | ADAPT | Keep visual brand block, correct tagline text |
+| Product name wording | ADAPT | Keep visual brand block; brand text is now GrowCMP (superseded PILOT-UX-001A, 2026-09-01) |
 | InterSalads → Inter Leafy Greens | ADAPT | Display label only, see Terminology decisions |
 | Capacity calculators, round-up/down helper | ADOPT | Read-only advisory UI only |
 | Inspection presented as one guided stage | ADAPT | Visual/flow grouping only — see Frozen domain protections |

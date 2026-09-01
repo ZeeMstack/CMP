@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes } from "react";
 const VARIANT_CLASSES = {
   primary: "border-brand-700 bg-brand-700 text-white hover:bg-brand-800",
   secondary: "border-border-subtle bg-surface text-ink hover:bg-surface-subtle",
-  danger: "border-red-700 bg-red-700 text-white hover:bg-red-800",
+  danger: "border-danger-700 bg-danger-700 text-white hover:bg-danger-800",
 } as const;
 
 export type ButtonVariant = keyof typeof VARIANT_CLASSES;

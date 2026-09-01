@@ -1,27 +1,57 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #f0f9f4;
-  --color-brand-100: #dcf1e3;
-  --color-brand-200: #b8e2c8;
-  --color-brand-300: #86cca5;
-  --color-brand-400: #52ac7e;
-  --color-brand-500: #2f8f60;
-  --color-brand-600: #22734c;
-  --color-brand-700: #1c5c3f;
-  --color-brand-800: #194a34;
-  --color-brand-900: #163d2c;
+  /* Deep Hydro Teal brand scale (PILOT-UX-001A approved palette), anchored
+     at 700 to the exact approved primary hex #0B4F54. Re-maps the existing
+     brand-* ramp in place -- every consumer of bg-brand-700/text-brand-900/
+     etc. re-skins automatically, no per-component edits required. */
+  --color-brand-50: #eaf5f5;
+  --color-brand-100: #d2e8e9;
+  --color-brand-200: #a6d1d3;
+  --color-brand-300: #74b4b7;
+  --color-brand-400: #479698;
+  --color-brand-500: #227478;
+  --color-brand-600: #145a5e;
+  --color-brand-700: #0b4f54;
+  --color-brand-800: #083d41;
+  --color-brand-900: #062d30;
 
   --color-surface: #ffffff;
-  --color-surface-subtle: #f7f8f7;
+  /* Approved Light Gray (#F4F7F6) -- application background / secondary
+     panel and divider fill. */
+  --color-surface-subtle: #f4f7f6;
   --color-border-subtle: #e3e6e3;
   --color-ink: #16201a;
   --color-ink-muted: #4b564f;
 
-  /* Warm off-white application canvas (CEO-ALIGN-001 visual direction) --
-     distinct from --color-surface-subtle, which stays a neutral fill used
-     throughout existing cards/skeletons/hover states. */
-  --color-paper: #faf9f4;
+  /* Application canvas -- now the same approved Light Gray as
+     --color-surface-subtle (PILOT-UX-001A); kept as a separate token since
+     it expresses page background vs. card/hover fill intent, not because
+     the two colors currently differ. */
+  --color-paper: #f4f7f6;
+
+  /* Bright Mint accent -- success / positive / live indicators, used as a
+     light tint with dark teal text/border (never full-saturation mint as
+     text or a large fill). */
+  --color-mint: #00e575;
+  --color-mint-subtle: #dffbec;
+  --color-mint-border: #8fefc3;
+
+  /* Neon Lime -- reserved, high-attention accent only. Not yet consumed by
+     any component in PILOT-UX-001A; defined so future scan-success/live
+     -state work references the approved token instead of a hardcoded hex.
+     Never use as text or a large fill (poor contrast on white). */
+  --color-lime: #39ff14;
+
+  /* Danger/warning semantic tokens (PILOT-UX-001A) -- extracted from the
+     hardcoded red-700/red-800/amber-100/amber-200/amber-900 classes already
+     in use on Button's danger variant and StatusBadge's attention tone.
+     Values are unchanged from those existing colors; only named/tokenized. */
+  --color-danger-700: #b91c1c;
+  --color-danger-800: #991b1b;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-900: #78350f;
 
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;

@@ -56,8 +56,16 @@ describe("CarrierSpecificationsPage", () => {
     // visual shell does not require a farm context.
     render(withQueryClient(<CarrierSpecificationsPage />));
     await waitFor(() => expect(screen.getByText("PLATE-200")).toBeInTheDocument());
-    expect(screen.getByText("ImperialFarms CMP")).toBeInTheDocument();
+    expect(screen.getByText("GrowCMP")).toBeInTheDocument();
+    expect(screen.queryByText("ImperialFarms CMP")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to farms/i })).toHaveAttribute("href", "/farms");
+  });
+
+  it("shows the real Tenant context via the shared StandaloneShell, not a fabricated name", async () => {
+    stubFetch([]);
+    render(withQueryClient(<CarrierSpecificationsPage />));
+    await waitFor(() => expect(screen.getByText("No carrier specifications yet")).toBeInTheDocument());
+    expect(screen.getByText("Test Tenant")).toBeInTheDocument();
   });
 
   it("breadcrumb roots at the farm picker, not a specific or fabricated farm", async () => {
