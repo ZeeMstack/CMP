@@ -1,19 +1,21 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ClipboardList, LayoutGrid, LogOut, Menu, Sprout, Truck, Wheat, Wrench, X } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { ChevronDown, LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { WaterlineWordmark } from "@/components/brand/WaterlineMark";
 import { FarmSelector } from "@/components/FarmSelector";
 import { NetworkStatusIndicator } from "@/components/NetworkStatusIndicator";
 import { TenantSelector } from "@/components/TenantSelector";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { performSignOut } from "@/lib/auth/logout";
 import { useFarms } from "@/lib/query/hooks";
+import type { TenantMembership } from "@/lib/auth/types";
+import type { FarmRead } from "@/lib/api/client";
 
 interface NavLink {
   label: string;
@@ -23,14 +25,15 @@ interface NavLink {
 interface NavGroupDef {
   id: string;
   label: string;
-  icon: LucideIcon;
   items: NavLink[];
 }
 
-/** The frozen UI-OPT-001 navigation tree (CEO_ALIGNMENT_SPEC.md). Routes
- * not named here (Processing landing, Seed Lots, Locations, Batches) are
- * intentionally removed from primary navigation but remain live routes --
- * reachable by direct link/URL, never deleted. "Greenhouse & Locations"
+/** The frozen UI-OPT-001 navigation tree (CEO_ALIGNMENT_SPEC.md), now
+ * rendered as PILOT-UX-001A2-R2's top-nav-plus-contextual-sidebar IA rather
+ * than one grouped accordion sidebar -- see AppShell's module doc below.
+ * Routes not named here (Processing landing, Seed Lots, Locations, Batches)
+ * are intentionally removed from primary navigation but remain live routes
+ * -- reachable by direct link/URL, never deleted. "Greenhouse & Locations"
  * stays a single leaf pointing at /farm-setup only (not merged with
  * /locations, which keeps its own distinct domain purpose -- Batch B adds
  * a secondary in-page link from Farm Setup to Locations/Occupancy).
@@ -44,7 +47,6 @@ function navGroups(farmId: string): NavGroupDef[] {
     {
       id: "nursery",
       label: "Nursery Operations",
-      icon: Sprout,
       items: [
         { label: "Seeding", href: `/farms/${farmId}/nursery/sowings/new` },
         { label: "Germination", href: `/farms/${farmId}/nursery/germination` },
@@ -55,7 +57,6 @@ function navGroups(farmId: string): NavGroupDef[] {
     {
       id: "production",
       label: "Production Operations",
-      icon: ClipboardList,
       items: [
         { label: "Leafy Production", href: `/farms/${farmId}/leafy-production` },
         { label: "Transfer to Production", href: `/farms/${farmId}/leafy-production/transfer` },
@@ -64,7 +65,6 @@ function navGroups(farmId: string): NavGroupDef[] {
     {
       id: "harvest",
       label: "Harvest & Post-Harvest",
-      icon: Wheat,
       items: [
         { label: "Harvest", href: `/farms/${farmId}/leafy-production/harvest` },
         { label: "Grading", href: `/farms/${farmId}/processing/grading` },
@@ -77,7 +77,6 @@ function navGroups(farmId: string): NavGroupDef[] {
     {
       id: "dispatch",
       label: "Dispatch & Traceability",
-      icon: Truck,
       items: [
         { label: "Dispatch", href: `/farms/${farmId}/processing/dispatch` },
         { label: "Traceability", href: `/farms/${farmId}/traceability` },
@@ -87,7 +86,6 @@ function navGroups(farmId: string): NavGroupDef[] {
     {
       id: "farm-setup",
       label: "Farm Setup & Master Data",
-      icon: Wrench,
       items: [
         { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup` },
         { label: "Carrier Specifications", href: "/carrier-specifications" },
@@ -119,57 +117,148 @@ export function findActiveHref(pathname: string, hrefs: string[]): string | null
   return best;
 }
 
-function navLinkClass(active: boolean): string {
-  return `flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-medium ${
-    active ? "bg-brand-100 text-brand-800" : "text-ink-muted hover:bg-surface-subtle hover:text-ink"
+/** URL is the single source of truth for nav state (PILOT-UX-001A2-R2
+ * section 12) -- no separate "which module is open" state is stored
+ * anywhere. `moduleId` is "home" on the farm home route, the id of the
+ * group owning the most-specific matching leaf href, or null when the
+ * route has no dedicated nav entry at all (e.g. the removed Seed Lots
+ * page) -- in which case nothing in the top nav is marked active and no
+ * contextual sidebar renders. */
+function resolveActiveNav(
+  pathname: string,
+  farmId: string,
+  groups: NavGroupDef[],
+): { moduleId: string | null; activeHref: string | null } {
+  const homeHref = `/farms/${farmId}`;
+  if (pathname === homeHref) {
+    return { moduleId: "home", activeHref: homeHref };
+  }
+  const leafHrefs = groups.flatMap((g) => g.items.map((i) => i.href));
+  const activeHref = findActiveHref(pathname, leafHrefs);
+  const moduleId = groups.find((g) => g.items.some((i) => i.href === activeHref))?.id ?? null;
+  return { moduleId, activeHref };
+}
+
+function topNavLinkClass(active: boolean): string {
+  return `relative flex h-12 shrink-0 items-center px-3 text-sm font-medium transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:content-[''] ${
+    active ? "text-wl-brand after:bg-wl-brand" : "text-wl-text-secondary after:bg-transparent hover:text-wl-text"
   }`;
 }
 
-function SidebarNav({
+/** Top navigation = main application modules (PILOT-UX-001A2-R2 section 8).
+ * A heading with no dedicated landing page links to its first currently
+ * visible child, per section 12. */
+function TopNav({
   farmId,
-  pathname,
-  variant,
-  onNavigate,
-  footer,
+  groups,
+  activeModuleId,
 }: {
   farmId: string;
-  pathname: string;
-  variant: "desktop" | "mobile";
-  onNavigate?: () => void;
-  footer?: ReactNode;
+  groups: NavGroupDef[];
+  activeModuleId: string | null;
 }) {
   const homeHref = `/farms/${farmId}`;
-  const groups = useMemo(() => navGroups(farmId), [farmId]);
-  // Home is matched by exact equality only, deliberately excluded from the
-  // most-specific-prefix pool below -- otherwise, since every farm-scoped
-  // route is nested under Home's own href, any page with no dedicated nav
-  // entry (e.g. the removed Seed Lots/Locations routes) would misleadingly
-  // show Home as "active" simply for being its descendant.
-  const leafHrefs = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.href)), [groups]);
-  const homeActive = pathname === homeHref;
-  const activeHref = homeActive ? homeHref : findActiveHref(pathname, leafHrefs);
-  const activeGroupId = groups.find((g) => g.items.some((i) => i.href === activeHref))?.id ?? null;
+  return (
+    <nav
+      aria-label="Main"
+      className="hidden items-stretch gap-1 overflow-x-auto border-b border-wl-border bg-wl-surface-raised px-4 md:flex md:px-6"
+    >
+      <Link
+        href={homeHref}
+        aria-current={activeModuleId === "home" ? "page" : undefined}
+        className={topNavLinkClass(activeModuleId === "home")}
+      >
+        Home
+      </Link>
+      {groups.map((group) => (
+        <Link
+          key={group.id}
+          href={group.items[0]?.href ?? homeHref}
+          aria-current={activeModuleId === group.id ? "true" : undefined}
+          className={topNavLinkClass(activeModuleId === group.id)}
+        >
+          {group.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
-  // Independent per-instance (desktop/mobile) expand state -- each
-  // viewport's nav auto-expands the group containing the active route on
-  // mount and whenever navigation changes which group is active, without
-  // fighting the operator's own manual collapse/expand of other groups.
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(activeGroupId ? [activeGroupId] : []));
+/** Left context sidebar = only child items of the active main module
+ * (PILOT-UX-001A2-R2 section 11) -- never every group's children at once. */
+function ContextualSidebar({ group, activeHref }: { group: NavGroupDef; activeHref: string | null }) {
+  return (
+    <aside
+      aria-label={`${group.label} navigation`}
+      className="hidden w-60 shrink-0 flex-col gap-0.5 border-r border-wl-border bg-wl-surface py-4 md:flex"
+    >
+      <div className="px-4 pb-2 text-[11px] font-medium uppercase tracking-wide text-wl-text-tertiary">
+        {group.label}
+      </div>
+      <ul className="flex flex-col gap-0.5 px-2">
+        {group.items.map((item) => {
+          const active = item.href === activeHref;
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-9 items-center rounded-lg px-3 text-sm font-medium ${
+                  active
+                    ? "bg-wl-brand-subtle text-wl-brand"
+                    : "text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text"
+                }`}
+              >
+                {item.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
 
-  // Adjust state during render rather than in an Effect (React's own
-  // recommended pattern for "state that depends on a changed prop"): track
-  // the last activeGroupId we've already auto-expanded for, and when it
-  // changes -- a fresh mount, a deep link, or a client-side navigation into
-  // a different group -- fold it into openGroups. This never fires for a
-  // navigation that stays within the same group, so it never fights a
-  // manual collapse of that group.
-  const [lastAutoExpandedGroupId, setLastAutoExpandedGroupId] = useState(activeGroupId);
-  if (activeGroupId !== lastAutoExpandedGroupId) {
-    setLastAutoExpandedGroupId(activeGroupId);
-    if (activeGroupId && !openGroups.has(activeGroupId)) {
-      setOpenGroups(new Set(openGroups).add(activeGroupId));
-    }
-  }
+function mobileLinkClass(active: boolean): string {
+  return `flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${
+    active ? "bg-wl-brand-subtle text-wl-brand" : "text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text"
+  }`;
+}
+
+/** Mobile keeps the existing drawer/accordion navigation concept (section
+ * 29) rather than compressing the top-nav/contextual-sidebar split into an
+ * unreadable width -- Home plus each module, expandable to that module's
+ * children, all in one panel. Farm/Tenant selection also lives here on
+ * mobile since the identity bar hides them below `md:`. */
+function MobileNav({
+  farmId,
+  groups,
+  activeModuleId,
+  activeHref,
+  onNavigate,
+  onSignOut,
+  farms,
+  memberships,
+  selectedTenantId,
+  onSelectTenant,
+  isSwitchingTenant,
+}: {
+  farmId: string;
+  groups: NavGroupDef[];
+  activeModuleId: string | null;
+  activeHref: string | null;
+  onNavigate: () => void;
+  onSignOut: () => void;
+  farms: FarmRead[] | undefined;
+  memberships: TenantMembership[] | undefined;
+  selectedTenantId: string | null | undefined;
+  onSelectTenant: (tenantId: string) => void;
+  isSwitchingTenant: boolean;
+}) {
+  const homeHref = `/farms/${farmId}`;
+  const [openGroups, setOpenGroups] = useState<Set<string>>(
+    () => new Set(activeModuleId && activeModuleId !== "home" ? [activeModuleId] : []),
+  );
 
   function toggleGroup(id: string) {
     setOpenGroups((prev) => {
@@ -180,62 +269,69 @@ function SidebarNav({
     });
   }
 
-  const idPrefix = variant === "mobile" ? "mobile" : "desktop";
-
   return (
-    <nav
-      id={variant === "mobile" ? "mobile-nav" : undefined}
-      aria-label="Primary"
-      className={
-        variant === "mobile"
-          ? "border-b border-border-subtle bg-surface px-2 py-2 md:hidden"
-          : "flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4"
-      }
-    >
+    <nav id="mobile-nav" aria-label="Main" className="flex flex-col border-b border-wl-border bg-wl-surface-raised px-3 py-3 md:hidden">
+      {(farms || memberships) && (
+        <div className="mb-3 flex flex-col gap-2 border-b border-wl-border pb-3">
+          {farms && (
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-wl-text-tertiary">Farm</span>
+              <FarmSelector farms={farms} currentFarmId={farmId} />
+            </div>
+          )}
+          {memberships && (
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-wl-text-tertiary">Tenant</span>
+              <TenantSelector
+                memberships={memberships}
+                selectedTenantId={selectedTenantId ?? null}
+                onSelect={onSelectTenant}
+                disabled={isSwitchingTenant}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <Link
         href={homeHref}
         onClick={onNavigate}
-        aria-current={activeHref === homeHref ? "page" : undefined}
-        className={navLinkClass(activeHref === homeHref)}
+        aria-current={activeModuleId === "home" ? "page" : undefined}
+        className={mobileLinkClass(activeModuleId === "home")}
       >
-        <LayoutGrid aria-hidden="true" className="h-4 w-4" />
         Home
       </Link>
 
       {groups.map((group) => {
         const isOpen = openGroups.has(group.id);
-        const isGroupActive = group.id === activeGroupId;
-        const Icon = group.icon;
-        const groupPanelId = `nav-group-${idPrefix}-${group.id}`;
+        const isModuleActive = activeModuleId === group.id;
+        const panelId = `mobile-nav-group-${group.id}`;
         return (
           <div key={group.id} className="mt-1">
             <button
               type="button"
               onClick={() => toggleGroup(group.id)}
               aria-expanded={isOpen}
-              aria-controls={groupPanelId}
-              className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 text-xs font-semibold uppercase tracking-wide hover:bg-surface-subtle ${
-                isGroupActive ? "text-brand-800" : "text-ink-muted"
+              aria-controls={panelId}
+              className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 text-sm font-medium hover:bg-wl-surface-hover ${
+                isModuleActive ? "text-wl-brand" : "text-wl-text-secondary"
               }`}
             >
-              <span className="flex items-center gap-2">
-                <Icon aria-hidden="true" className="h-4 w-4" />
-                {group.label}
-              </span>
+              {group.label}
               <ChevronDown
                 aria-hidden="true"
-                className={`h-3.5 w-3.5 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
               />
             </button>
             {isOpen && (
-              <ul id={groupPanelId} className="ml-3 flex flex-col gap-0.5 border-l border-border-subtle py-1 pl-3">
+              <ul id={panelId} className="ml-2 flex flex-col gap-0.5 border-l border-wl-border py-1 pl-3">
                 {group.items.map((item) => (
                   <li key={item.href}>
                     <Link
                       href={item.href}
                       onClick={onNavigate}
                       aria-current={item.href === activeHref ? "page" : undefined}
-                      className={navLinkClass(item.href === activeHref)}
+                      className={mobileLinkClass(item.href === activeHref)}
                     >
                       {item.label}
                     </Link>
@@ -247,11 +343,22 @@ function SidebarNav({
         );
       })}
 
-      {footer}
+      <button
+        type="button"
+        onClick={onSignOut}
+        className="mt-3 flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-left text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover"
+      >
+        <LogOut aria-hidden="true" className="h-4 w-4" />
+        Sign out
+      </button>
     </nav>
   );
 }
 
+/** Waterline application shell (PILOT-UX-001A2-R2): a compact identity/
+ * context bar, main-module top navigation, and a contextual left sidebar
+ * that shows only the active module's children -- replacing the prior
+ * single grouped-accordion sidebar. See section 8 for the frozen IA. */
 export function AppShell({ farmId, children }: { farmId: string; children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pathname = usePathname();
@@ -259,6 +366,13 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
   const queryClient = useQueryClient();
   const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
   const { data: farms } = useFarms();
+
+  const groups = useMemo(() => navGroups(farmId), [farmId]);
+  const { moduleId: activeModuleId, activeHref } = useMemo(
+    () => resolveActiveNav(pathname, farmId, groups),
+    [pathname, farmId, groups],
+  );
+  const activeGroup = groups.find((g) => g.id === activeModuleId) ?? null;
 
   // Switching tenant always returns to /farms -- a farm id from the
   // previous tenant must never survive into the new tenant's URL (it may
@@ -276,99 +390,86 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
   }
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
+    <div className="flex min-h-screen flex-col">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-brand-700 focus:px-3 focus:py-2 focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-wl-brand focus:px-3 focus:py-2 focus:text-wl-text-on-brand"
       >
         Skip to content
       </a>
 
-      {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 border-r border-border-subtle bg-surface md:flex md:flex-col">
-        <div className="px-4 py-4">
-          <div className="font-serif text-base font-semibold leading-tight text-brand-900">GrowCMP</div>
-          <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-            Crop Management Platform
+      {/* Identity / context bar (section 14): brand first, Farm as the
+          stronger operational context, Tenant secondary. */}
+      <header className="flex items-center justify-between gap-3 border-b border-wl-border bg-wl-surface-raised px-3 py-2.5 md:px-6">
+        <div className="flex min-w-0 items-center gap-3 md:gap-6">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen((v) => !v)}
+            aria-expanded={mobileNavOpen}
+            aria-controls="mobile-nav"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-wl-text hover:bg-wl-surface-hover md:hidden"
+          >
+            {mobileNavOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
+            <span className="sr-only">Toggle navigation</span>
+          </button>
+
+          <WaterlineWordmark />
+
+          <div className="hidden min-w-0 items-center gap-5 md:flex">
+            {farms && (
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-wl-text-tertiary">Farm</span>
+                <FarmSelector farms={farms} currentFarmId={farmId} />
+              </div>
+            )}
+            {bootstrap && (
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-wl-text-tertiary">Tenant</span>
+                <TenantSelector
+                  memberships={bootstrap.memberships}
+                  selectedTenantId={bootstrap.selectedTenantId}
+                  onSelect={handleTenantSelect}
+                  disabled={isSwitchingTenant}
+                />
+              </div>
+            )}
           </div>
         </div>
-        <SidebarNav farmId={farmId} pathname={pathname} variant="desktop" />
-      </aside>
 
-      {/* Mobile top bar */}
-      <header className="flex items-center justify-between border-b border-border-subtle bg-surface px-3 py-2 md:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileNavOpen((v) => !v)}
-          aria-expanded={mobileNavOpen}
-          aria-controls="mobile-nav"
-          className="flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-surface-subtle"
-        >
-          {mobileNavOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
-          <span className="sr-only">Toggle navigation</span>
-        </button>
-        <span className="font-serif text-base font-semibold text-brand-900">GrowCMP</span>
-        <div className="flex min-w-0 items-center gap-2">
-          {bootstrap && (
-            <TenantSelector
-              memberships={bootstrap.memberships}
-              selectedTenantId={bootstrap.selectedTenantId}
-              onSelect={handleTenantSelect}
-              disabled={isSwitchingTenant}
-            />
-          )}
-          {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
+        <div className="flex shrink-0 items-center gap-2">
+          <NetworkStatusIndicator />
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="hidden h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus md:flex"
+          >
+            <LogOut aria-hidden="true" className="h-4 w-4" />
+            Sign out
+          </button>
         </div>
       </header>
+
+      <TopNav farmId={farmId} groups={groups} activeModuleId={activeModuleId} />
+
       {mobileNavOpen && (
-        <SidebarNav
+        <MobileNav
           farmId={farmId}
-          pathname={pathname}
-          variant="mobile"
+          groups={groups}
+          activeModuleId={activeModuleId}
+          activeHref={activeHref}
           onNavigate={() => setMobileNavOpen(false)}
-          footer={
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-ink-muted hover:bg-surface-subtle"
-            >
-              <LogOut aria-hidden="true" className="h-4 w-4" />
-              Sign out
-            </button>
-          }
+          onSignOut={handleSignOut}
+          farms={farms}
+          memberships={bootstrap?.memberships}
+          selectedTenantId={bootstrap?.selectedTenantId}
+          onSelectTenant={handleTenantSelect}
+          isSwitchingTenant={isSwitchingTenant}
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Desktop top bar: farm context + network status */}
-        <header className="hidden items-center justify-between border-b border-border-subtle bg-surface px-6 py-3 md:flex">
-          <div className="flex items-center gap-3">
-            {bootstrap && (
-              <TenantSelector
-                memberships={bootstrap.memberships}
-                selectedTenantId={bootstrap.selectedTenantId}
-                onSelect={handleTenantSelect}
-                disabled={isSwitchingTenant}
-              />
-            )}
-            {farms && <FarmSelector farms={farms} currentFarmId={farmId} />}
-          </div>
-          <div className="flex items-center gap-3">
-            <NetworkStatusIndicator />
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-ink-muted hover:bg-surface-subtle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-            >
-              <LogOut aria-hidden="true" className="h-4 w-4" />
-              Sign out
-            </button>
-          </div>
-        </header>
-        <div className="flex justify-end px-3 py-2 md:hidden">
-          <NetworkStatusIndicator />
-        </div>
-        <main id="main-content" className="flex-1 px-4 py-4 md:px-6 md:py-6">
+      <div className="flex min-w-0 flex-1">
+        {activeGroup && <ContextualSidebar group={activeGroup} activeHref={activeHref} />}
+        <main id="main-content" className="min-w-0 flex-1 bg-wl-surface px-4 py-5 md:px-8 md:py-7">
           {children}
         </main>
       </div>

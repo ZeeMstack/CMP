@@ -45,6 +45,6 @@ describe("Button", () => {
     render(<Button className="w-full">Wide</Button>);
     const button = screen.getByRole("button", { name: "Wide" });
     expect(button.className).toContain("w-full");
-    expect(button.className).toContain("min-h-11");
+    expect(button.className).toContain("h-9");
   });
 });
