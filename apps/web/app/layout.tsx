@@ -1,23 +1,24 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Waterline typography direction (PILOT-UX-001A2-R2): Inter for UI/body
+// text, Inter Tight for headings/brand, JetBrains Mono for technical
+// identifiers/immutable codes. No serif face is loaded anywhere.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const interTight = Inter_Tight({
+  variable: "--font-inter-tight",
   subsets: ["latin"],
 });
 
-// Serif display face for headings only (CEO-ALIGN-001 visual direction) --
-// body/operational text stays on Geist Sans everywhere.
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const jetBrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
@@ -33,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}>
+    <html lang="en" className={`${inter.variable} ${interTight.variable} ${jetBrainsMono.variable}`}>
       <body>
         <Providers>{children}</Providers>
       </body>

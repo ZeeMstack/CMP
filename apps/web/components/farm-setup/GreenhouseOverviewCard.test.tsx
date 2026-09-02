@@ -72,4 +72,46 @@ describe("GreenhouseOverviewCard", () => {
     render(<GreenhouseOverviewCard item={item()} farmId="farm-1" />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/farms/farm-1/farm-setup/gh-1");
   });
+
+  it("renders a Nursery greenhouse as a non-overlapping label/value structure list, not a packed metrics row", () => {
+    render(
+      <GreenhouseOverviewCard
+        item={item({
+          classification: "nursery",
+          counts: {
+            zones: 0, spans: 0, tables: 0, gutters: 0, bag_positions: 0,
+            seeding_stations: 1, germination_chambers: 1,
+            seedling_tables: 50, intersalads_tables: 72, intervines_tables: 26,
+            trolleys: 0, trolley_levels: 0, trolley_slots: 0, seeding_machines: 0,
+          },
+        })}
+        farmId="farm-1"
+      />,
+    );
+    expect(screen.getByText("Seeding")).toBeInTheDocument();
+    expect(screen.getByText("Germination")).toBeInTheDocument();
+    expect(screen.getAllByText("Configured").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("50 tables")).toBeInTheDocument();
+    expect(screen.getByText("72 tables")).toBeInTheDocument();
+    expect(screen.getByText("26 tables")).toBeInTheDocument();
+  });
+
+  it("shows 'Not configured' for an unconfigured Nursery dimension, never a fabricated count", () => {
+    render(
+      <GreenhouseOverviewCard
+        item={item({
+          classification: "nursery",
+          status: "empty",
+          counts: {
+            zones: 0, spans: 0, tables: 0, gutters: 0, bag_positions: 0,
+            seeding_stations: 0, germination_chambers: 0,
+            seedling_tables: 0, intersalads_tables: 0, intervines_tables: 0,
+            trolleys: 0, trolley_levels: 0, trolley_slots: 0, seeding_machines: 0,
+          },
+        })}
+        farmId="farm-1"
+      />,
+    );
+    expect(screen.getAllByText("Not configured").length).toBe(5);
+  });
 });

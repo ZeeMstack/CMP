@@ -20,31 +20,35 @@ export default function FarmSetupOverviewPage() {
     <div>
       <PageHeader
         title="Farm Setup"
+        description="This registry defines each greenhouse's physical structure. For current occupancy and what's placed where, see Locations & Occupancy."
         breadcrumbs={
           <Breadcrumbs items={[{ label: "Home", href: `/farms/${farmId}` }, { label: "Farm Setup" }]} />
         }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1">
             {/* Farm Setup (structure/registry) and Locations (operational
                 occupancy) are deliberately distinct routes/domain purposes --
-                this is a navigation affordance between them, not a merge. */}
+                this is a navigation affordance between them, not a merge.
+                Restrained bordered secondary controls, deliberately less
+                visually dominant than the "Add greenhouse" primary CTA --
+                see PILOT-UX-001A2-R2 (final polish) section 5. */}
             <Link
               href={`/farms/${farmId}/setup-readiness`}
-              className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="flex h-9 items-center gap-1.5 rounded-[7px] border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
               Setup Readiness
             </Link>
             <Link
               href={`/farms/${farmId}/locations`}
-              className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="flex h-9 items-center gap-1.5 rounded-[7px] border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               <MapPin aria-hidden="true" className="h-4 w-4" />
               View Locations &amp; Occupancy
             </Link>
             <Link
               href={`/farms/${farmId}/farm-setup/new`}
-              className="flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-3 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="ml-1 flex h-9 items-center gap-1.5 rounded-[7px] bg-wl-brand px-4 text-sm font-medium text-wl-text-on-brand hover:bg-wl-brand-hover active:bg-wl-brand-pressed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               <PlusCircle aria-hidden="true" className="h-4 w-4" />
               Add greenhouse
@@ -52,10 +56,6 @@ export default function FarmSetupOverviewPage() {
           </div>
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
-        This registry defines each greenhouse&apos;s physical structure. For current occupancy and what&apos;s
-        placed where, see Locations &amp; Occupancy.
-      </p>
       {isLoading && <LoadingSkeleton rows={4} label="Loading greenhouses" />}
       {error && <ErrorState error={error} onRetry={() => refetch()} />}
       {data && data.length === 0 && (
@@ -65,7 +65,7 @@ export default function FarmSetupOverviewPage() {
           action={
             <Link
               href={`/farms/${farmId}/farm-setup/new`}
-              className="mt-2 flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-3 text-sm font-medium text-white hover:bg-brand-800"
+              className="mt-2 flex h-9 items-center gap-1.5 rounded-[7px] bg-wl-brand px-4 text-sm font-medium text-wl-text-on-brand hover:bg-wl-brand-hover active:bg-wl-brand-pressed"
             >
               <PlusCircle aria-hidden="true" className="h-4 w-4" />
               Add greenhouse
@@ -74,7 +74,7 @@ export default function FarmSetupOverviewPage() {
         />
       )}
       {data && data.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {data.map((item) => (
             <GreenhouseOverviewCard key={item.greenhouse_id} item={item} farmId={farmId} />
           ))}

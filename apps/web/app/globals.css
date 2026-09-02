@@ -53,8 +53,79 @@
   --color-warning-200: #fde68a;
   --color-warning-900: #78350f;
 
-  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-serif: "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  /* Repointed in place (PILOT-UX-001A2-R2 Waterline direction, section 4:
+     "Do not use serif typography anywhere in the operational application").
+     Every existing `font-sans`/`font-serif` consumer across the app
+     (dozens of files outside this batch's scope) picks up Inter / Inter
+     Tight automatically -- no per-file JSX edits required, and no serif
+     face is loaded anywhere. New Waterline components below reuse these
+     same two tokens rather than adding a competing `font-heading` token. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Inter Tight", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ======================================================================
+     Waterline semantic tokens (PILOT-UX-001A2-R2). Authoritative for the
+     AppShell, Button, StatusBadge, PageHeader, Breadcrumbs, Farm Setup, and
+     GreenhouseOverviewCard -- the reference-screen component set for this
+     batch. Prefixed `wl-` so they compose alongside the legacy brand color
+     ramp above (still consumed by every not-yet-migrated screen) without
+     colliding with it or changing those screens' look.
+     ====================================================================== */
+
+  /* Brand mark colors -- Chlorophyll is reserved for the mark itself and
+     genuine biological/live status semantics; never a button, nav, or
+     generic decorative fill (see components/brand/WaterlineMark.tsx and
+     StatusBadge's "active" tone). */
+  --color-wl-canopy: #0e1519;
+  --color-wl-deepwater: #145e7a;
+  --color-wl-current: #2c8fb4;
+  --color-wl-chlorophyll: #35b37e;
+
+  --color-wl-surface: #fcfcfc;
+  --color-wl-surface-raised: #ffffff;
+  --color-wl-surface-sunken: #f0f3f4;
+  --color-wl-surface-hover: #eaeff1;
+  --color-wl-surface-inverse: #0e1519;
+
+  --color-wl-text: #0e1519;
+  --color-wl-text-secondary: #5c6a70;
+  --color-wl-text-tertiary: #8b979c;
+  --color-wl-text-on-brand: #fcfcfc;
+  --color-wl-link: #145e7a;
+
+  --color-wl-border: #e1e5e7;
+  --color-wl-border-strong: #c9d2d6;
+  --color-wl-focus: #2c8fb4;
+
+  --color-wl-brand: #145e7a;
+  --color-wl-brand-hover: #0f4a61;
+  --color-wl-brand-pressed: #0b3a4d;
+  --color-wl-brand-disabled: #dce3e6;
+  --color-wl-brand-subtle: #e5f0f5;
+
+  --color-wl-grow-bg: #e4f4ec;
+  --color-wl-grow-fg: #1b7a52;
+  --color-wl-hold-bg: #f8f0df;
+  --color-wl-hold-fg: #8a6119;
+  --color-wl-flag-bg: #f9e9e7;
+  --color-wl-flag-fg: #96382e;
+}
+
+/* Inert future dark palette (PILOT-UX-001A2-R2 section 7). Never activated
+   in this slice -- no prefers-color-scheme query, no runtime toggle, no
+   `data-theme` attribute is ever set. Kept only so an explicitly-approved
+   future dark-mode batch has an authoritative starting point instead of
+   inventing values from scratch. */
+:root[data-theme="dark"] {
+  --color-wl-surface: #0e1519;
+  --color-wl-surface-raised: #161f24;
+  --color-wl-surface-sunken: #111a1f;
+  --color-wl-border: #26333a;
+  --color-wl-text: #e8edef;
+  --color-wl-text-secondary: #93a2a8;
+  --color-wl-brand: #4fa9cc;
+  --color-wl-chlorophyll: #4fcb97;
 }
 
 :root {
@@ -75,8 +146,8 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--color-ink);
-  background: var(--color-paper);
+  color: var(--color-wl-text);
+  background: var(--color-wl-surface);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -86,6 +157,14 @@ body {
   box-sizing: border-box;
 }
 
-a {
-  color: inherit;
+/* Layered (not a bare global rule) so Tailwind's utility layer -- e.g. a
+   Link styled with `text-wl-text-on-brand` -- still wins by cascade-layer
+   order. An unlayered `a { color: inherit }` sits outside every `@layer`
+   and would otherwise beat ANY layered utility class regardless of
+   specificity, which is what silently forced every <Link>-based CTA back
+   to inherited dark text (PILOT-UX-001A2-R2 final-polish item 1). */
+@layer base {
+  a {
+    color: inherit;
+  }
 }
