@@ -143,6 +143,24 @@
 | Location Balance | Derived `SUM(weight/count arriving) − SUM(weight/count leaving)` for one location across a lot's storage movements — always ≥ 0 |
 | Release-Before-Dispatch | The rule that a dispatch line may consume only currently unplaced quantity, in addition to CMP-017's own commercial-balance checks; there is no automatic release |
 
+## Store and inventory (frozen design, STORE-INV-001 family, `CMP_MASTER_SPEC.md` §3.4, §9, `docs/domain/STORE_INVENTORY_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Store | An existing `Location` with `location_type = store`; a Farm root; a Farm may have several |
+| Store Area / Store Rack | Optional intermediate Store location levels between Store and Store Bin; no Store Shelf |
+| Store Bin | The occupiable, stock-placement leaf of the Store location tree |
+| Unit of Measure | Global, system-seeded unit catalog entry (e.g. `kg`, `g`, `L`, `mL`, `EA`, `SEED`) |
+| Inventory Category | Tenant-configured classification/reporting metadata for an Inventory Item — never a behavior switch |
+| Inventory Item | Tenant-scoped consumable-material master, reusable across the tenant's Farms |
+| Inventory Lot | Traceable lot identity for consumable material; not the same thing as one Goods Receipt |
+| Existence Quantity | How much material currently exists, per the immutable existence ledger — unaffected by Issue |
+| Custody | Where existing material currently is / who holds it (Store vs. Work Order) — a separate fact from existence quantity |
+| Material Issue | A custody event moving material from Store custody to Work Order custody; does not reduce existence quantity |
+| Consumption | A destruction/use event that reduces existence quantity |
+| Quality Disposition Event | One immutable event in a lot's quarantine/release/hold/reject history; current disposition is always derived from event history |
+| Asset Custody Assignment | Future (`STORE-INV-005`) record of a person's custody of an Asset, independent of the Asset's physical Occupancy |
+
 ## End-to-end recall and traceability (`CMP_MASTER_SPEC.md` §2, §7, §8, §10, `docs/domain/TRACEABILITY_MODEL.md`)
 
 | Term | Meaning |

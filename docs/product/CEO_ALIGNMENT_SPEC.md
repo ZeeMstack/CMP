@@ -61,9 +61,11 @@ domain behavior; see Frozen domain protections.
 
 ## Final navigation
 
-Frozen. This is the complete navigation tree for UI-OPT-001 — nothing beyond it ships,
-and no placeholder/disabled entries are shown for modules that aren't functional yet
-(see Future modules must stay hidden, below).
+Frozen for UI-OPT-001's own scope. This is the complete navigation tree UI-OPT-001
+itself ships — nothing beyond it ships under UI-OPT-001, and no placeholder/disabled
+entries are shown for modules that aren't functional yet (see Future modules must stay
+hidden, below). A later, separately-approved product decision may still extend this
+tree under its own scope — see "Approved later extension (STORE-INV-001A)" below.
 
 ```
 Home
@@ -115,6 +117,21 @@ Notes on mapping to existing routes:
 - Every other route in the current app that isn't named above (e.g. any future/partial
   screen) either maps into one of the groups above or stays out of navigation entirely
   until its module is functional.
+
+### Approved later extension (STORE-INV-001A)
+
+This is an approved later product extension, not an accidental UI-OPT-001 scope
+expansion — the tree above stays exactly as frozen for UI-OPT-001 itself.
+
+**Farm Setup & Master Data** gains four new entries once `STORE-INV-001` ships: `Stores
+& Bins`, `Inventory Categories`, `Inventory Items`, `Units of Measure`.
+
+A new top-level **Store & Inventory** operational module is planned, but does not
+appear until `STORE-INV-002` or later actually provides real stock/operational
+inventory functionality — the same "no placeholder/disabled entries for modules that
+aren't functional yet" rule this document already applies everywhere else governs this
+module too; no placeholder or disabled entry ships before that. Full domain detail:
+`docs/domain/STORE_INVENTORY_MODEL.md`.
 
 ## Terminology decisions
 
