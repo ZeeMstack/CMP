@@ -50,6 +50,7 @@ from app.schemas.farm_setup import (
     StructureVinesSpanNode,
     StructureVinesZoneNode,
     StructureZoneNode,
+    TrolleyLevelGeneratorConfig,
     VinesSetupConfig,
 )
 from app.services.errors import (
@@ -227,18 +228,32 @@ def _create_nursery_structure(
         )
         setattr(counts, count_field, len(tables))
 
-    for trolley_cfg in config.trolleys:
+    # PILOT-UX-001B2: `trolleys` (explicit, hand-entered codes) and
+    # `trolley_generator` (bulk N-at-once) are mutually exclusive per
+    # `NurserySetupConfig`'s own validator -- normalize both shapes into one
+    # list of (code, name, levels) specs up front, then create every
+    # Trolley + its Levels through the exact same loop either way.
+    trolley_specs: list[tuple[str, str | None, TrolleyLevelGeneratorConfig]] = [
+        (t.code, t.name, t.levels) for t in config.trolleys
+    ]
+    if config.trolley_generator is not None:
+        gen = config.trolley_generator
+        trolley_specs.extend(
+            (f"{gen.trolley_prefix}-{str(n).zfill(gen.trolley_pad_width)}", None, gen.levels)
+            for n in range(1, gen.trolley_count + 1)
+        )
+
+    for trolley_code, trolley_name, levels_cfg in trolley_specs:
         trolley = asset_service._register_asset_core(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_type_code="germination_trolley",
-            code=trolley_cfg.code, name=trolley_cfg.name or f"Trolley {trolley_cfg.code}", commissioned_date=None,
+            code=trolley_code, name=trolley_name or f"Trolley {trolley_code}", commissioned_date=None,
         )
-        levels_cfg = trolley_cfg.levels
-        # PILOT-UX-001B: new-model Levels only -- server-derives the Level
-        # code prefix from the Trolley it just created (never caller-
-        # supplied), and creates zero child Slot AssetPositions.
+        # PILOT-UX-001B: new-model Levels only -- server-prepends the
+        # Trolley's own code to the (now operator-configurable) Level
+        # prefix, and creates zero child Slot AssetPositions.
         _asset_type, positions = asset_service._generate_levels_core(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_id=trolley.id,
-            level_count=levels_cfg.level_count, level_prefix=f"{trolley.code}-L",
+            level_count=levels_cfg.level_count, level_prefix=f"{trolley.code}-{levels_cfg.level_prefix}",
             level_pad_width=levels_cfg.level_pad_width, trays_per_level=levels_cfg.trays_per_level,
         )
         counts.trolleys += 1

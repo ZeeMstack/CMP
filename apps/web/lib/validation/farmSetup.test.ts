@@ -86,11 +86,11 @@ describe("buildGreenhouseSetupPayload", () => {
       classification: "nursery" as const,
       nursery: {
         includeSeedingStation: false, seedingStation: { code: "", name: "" },
-        includeGerminationChamber: false, germinationChamber: { code: "", name: "" },
+        includeGerminationChamber: false,
         includeSeedling: true, seedlingTableCount: 3, seedlingCapacity: 30,
         includeIntersalads: true, intersaladsTableCount: 2, intersaladsCapacity: 24,
         includeIntervines: true, intervinesTableCount: 2, intervinesCapacity: 50,
-        includeTrolley: false, trolley: { code: "", levelCount: 1, traysPerLevel: 1 },
+        trolleyGenerator: { trolleyCount: 10, trolleyPrefix: "GT", levelsPerTrolley: 8, levelPrefix: "L", traysPerLevel: 5 },
         includeSeedingMachine: false, seedingMachine: { code: "" },
       },
     };
@@ -101,14 +101,14 @@ describe("buildGreenhouseSetupPayload", () => {
     expect(payload.nursery!.intervines_tables).toEqual({ code_prefix: "IV", start: 1, end: 2, pad_width: 2, capacity: 50 });
     expect(payload.nursery!.seeding_station).toBeNull();
     expect(payload.nursery!.germination_chamber).toBeNull();
-    expect(payload.nursery!.trolleys).toEqual([]);
+    expect(payload.nursery!.trolley_generator).toBeNull();
     expect(payload.nursery!.seeding_machines).toEqual([]);
     // No Zone/Span anywhere in a Nursery payload.
     expect(payload.leafy).toBeUndefined();
     expect(payload.vines).toBeUndefined();
   });
 
-  it("includes seeding station and germination chamber when selected", () => {
+  it("includes seeding station, germination chamber, and its Trolley generator when the chamber is selected", () => {
     const values = {
       ...DEFAULT_FORM_VALUES,
       code: "NUR-03",
@@ -116,21 +116,30 @@ describe("buildGreenhouseSetupPayload", () => {
       classification: "nursery" as const,
       nursery: {
         includeSeedingStation: true, seedingStation: { code: "SEED-01", name: "" },
-        includeGerminationChamber: true, germinationChamber: { code: "GERM-01", name: "Chamber A" },
+        includeGerminationChamber: true,
         includeSeedling: false, seedlingTableCount: 1, seedlingCapacity: 1,
         includeIntersalads: false, intersaladsTableCount: 1, intersaladsCapacity: 1,
         includeIntervines: false, intervinesTableCount: 1, intervinesCapacity: 1,
-        includeTrolley: false, trolley: { code: "", levelCount: 1, traysPerLevel: 1 },
-        includeSeedingMachine: false, seedingMachine: { code: "" },
+        trolleyGenerator: { trolleyCount: 3, trolleyPrefix: "GT", levelsPerTrolley: 8, levelPrefix: "L", traysPerLevel: 20 },
+        includeSeedingMachine: true, seedingMachine: { code: "SM-01" },
       },
     };
     const payload = buildGreenhouseSetupPayload(values, "cmd-6");
 
     expect(payload.nursery!.seeding_station).toEqual({ code: "SEED-01", name: null });
-    expect(payload.nursery!.germination_chamber).toEqual({ code: "GERM-01", name: "Chamber A" });
+    // PILOT-UX-001B2 final correction: no operator-facing Chamber Code/Name
+    // -- GrowCMP always sends the frozen default identity.
+    expect(payload.nursery!.germination_chamber).toEqual({ code: "GERM-01", name: null });
+    // PILOT-UX-001B2 final correction: no separate Trolley toggle -- the
+    // generator is always sent alongside an included Germination Chamber.
+    expect(payload.nursery!.trolley_generator).toEqual({
+      trolley_count: 3, trolley_prefix: "GT", trolley_pad_width: 2,
+      levels: { level_count: 8, trays_per_level: 20, level_pad_width: 2, level_prefix: "L" },
+    });
+    expect(payload.nursery!.seeding_machines).toEqual([{ code: "SM-01", name: null }]);
   });
 
-  it("includes trolley and seeding machine when selected", () => {
+  it("omits the Trolley generator when the Germination Chamber is not selected", () => {
     const values = {
       ...DEFAULT_FORM_VALUES,
       code: "NUR-02",
@@ -138,22 +147,17 @@ describe("buildGreenhouseSetupPayload", () => {
       classification: "nursery" as const,
       nursery: {
         includeSeedingStation: false, seedingStation: { code: "", name: "" },
-        includeGerminationChamber: false, germinationChamber: { code: "", name: "" },
+        includeGerminationChamber: false,
         includeSeedling: false, seedlingTableCount: 1, seedlingCapacity: 1,
         includeIntersalads: false, intersaladsTableCount: 1, intersaladsCapacity: 1,
         includeIntervines: false, intervinesTableCount: 1, intervinesCapacity: 1,
-        includeTrolley: true, trolley: { code: "GT-01", levelCount: 3, traysPerLevel: 20 },
+        trolleyGenerator: { trolleyCount: 3, trolleyPrefix: "GT", levelsPerTrolley: 8, levelPrefix: "L", traysPerLevel: 20 },
         includeSeedingMachine: true, seedingMachine: { code: "SM-01" },
       },
     };
     const payload = buildGreenhouseSetupPayload(values, "cmd-5");
 
-    expect(payload.nursery!.trolleys).toEqual([
-      {
-        code: "GT-01", name: null,
-        levels: { level_count: 3, trays_per_level: 20, level_pad_width: 2 },
-      },
-    ]);
+    expect(payload.nursery!.trolley_generator).toBeNull();
     expect(payload.nursery!.seeding_machines).toEqual([{ code: "SM-01", name: null }]);
   });
 });
@@ -182,11 +186,11 @@ describe("greenhouseSetupFormSchema", () => {
       ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const,
       nursery: {
         includeSeedingStation: false, seedingStation: { code: "", name: "" },
-        includeGerminationChamber: false, germinationChamber: { code: "", name: "" },
+        includeGerminationChamber: false,
         includeSeedling: false, seedlingTableCount: 1, seedlingCapacity: 1,
         includeIntersalads: false, intersaladsTableCount: 1, intersaladsCapacity: 1,
         includeIntervines: false, intervinesTableCount: 1, intervinesCapacity: 1,
-        includeTrolley: false, trolley: { code: "", levelCount: 1, traysPerLevel: 1 },
+        trolleyGenerator: { trolleyCount: 10, trolleyPrefix: "GT", levelsPerTrolley: 8, levelPrefix: "L", traysPerLevel: 5 },
         includeSeedingMachine: false, seedingMachine: { code: "" },
       },
     };
@@ -208,16 +212,10 @@ describe("greenhouseSetupFormSchema", () => {
     expect(accepted.success).toBe(true);
   });
 
-  it("requires a germination chamber code only when the germination chamber is actually selected", () => {
-    const baseNursery = { ...DEFAULT_FORM_VALUES.nursery, includeGerminationChamber: true, germinationChamber: { code: "", name: "" } };
-    const rejected = greenhouseSetupFormSchema.safeParse({
-      ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const, nursery: baseNursery,
-    });
-    expect(rejected.success).toBe(false);
-
+  it("accepts a Germination Chamber selection with no Code/Name fields (operator only toggles inclusion)", () => {
     const accepted = greenhouseSetupFormSchema.safeParse({
       ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const,
-      nursery: { ...baseNursery, germinationChamber: { code: "GERM-01", name: "" } },
+      nursery: { ...DEFAULT_FORM_VALUES.nursery, includeGerminationChamber: true },
     });
     expect(accepted.success).toBe(true);
   });
@@ -228,25 +226,22 @@ describe("greenhouseSetupFormSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("requires a trolley code only when the trolley is actually selected", () => {
-    const baseNursery = { ...DEFAULT_FORM_VALUES.nursery, includeTrolley: true, trolley: { code: "", levelCount: 1, traysPerLevel: 1 } };
+  it("rejects a blank Trolley prefix (the generator fields are always live, no enable/disable toggle)", () => {
+    const baseNursery = {
+      ...DEFAULT_FORM_VALUES.nursery,
+      trolleyGenerator: { ...DEFAULT_FORM_VALUES.nursery.trolleyGenerator, trolleyPrefix: "" },
+    };
     const rejected = greenhouseSetupFormSchema.safeParse({
       ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const, nursery: baseNursery,
     });
     expect(rejected.success).toBe(false);
-
-    const accepted = greenhouseSetupFormSchema.safeParse({
-      ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const,
-      nursery: { ...baseNursery, trolley: { code: "GT-01", levelCount: 1, traysPerLevel: 1 } },
-    });
-    expect(accepted.success).toBe(true);
   });
 
-  it("does not require a trolley code when the trolley is left unselected (the default form state)", () => {
-    const result = greenhouseSetupFormSchema.safeParse({
+  it("accepts the default Germination Trolleys generator values", () => {
+    const accepted = greenhouseSetupFormSchema.safeParse({
       ...DEFAULT_FORM_VALUES, code: "NUR", name: "Nursery", classification: "nursery" as const,
-      nursery: { ...DEFAULT_FORM_VALUES.nursery, includeSeedling: true },
+      nursery: { ...DEFAULT_FORM_VALUES.nursery, includeGerminationChamber: true },
     });
-    expect(result.success).toBe(true);
+    expect(accepted.success).toBe(true);
   });
 });

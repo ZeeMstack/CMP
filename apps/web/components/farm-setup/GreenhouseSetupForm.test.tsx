@@ -26,10 +26,26 @@ describe("GreenhouseSetupForm", () => {
     expect(screen.getByText("Germination Chamber")).toBeInTheDocument();
   });
 
-  it("presents Trolley and Seeding Machine as farm-level equipment, not Nursery structure", () => {
+  it("presents Seeding Machine as farm-level equipment, not Nursery structure", () => {
     render(<GreenhouseSetupForm onSubmit={vi.fn()} isSubmitting={false} />);
     fireEvent.click(screen.getByRole("radio", { name: "Nursery" }));
     expect(screen.getByText(/farm-level equipment, not part of this Nursery/i)).toBeInTheDocument();
+  });
+
+  it("shows the Germination Trolleys generator directly inside Germination Chamber, with no separate enable/disable toggle", () => {
+    render(<GreenhouseSetupForm onSubmit={vi.fn()} isSubmitting={false} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Nursery" }));
+    expect(screen.queryByText("Number of Germination Trolleys")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Germination Chamber"));
+    expect(screen.getByText("Number of Germination Trolleys")).toBeInTheDocument();
+    expect(screen.getByText("Trolley Prefix")).toBeInTheDocument();
+    expect(screen.getByText("Levels per Trolley")).toBeInTheDocument();
+    expect(screen.getByText("Level Prefix")).toBeInTheDocument();
+    expect(screen.getByText("Seed Tray Capacity per Level")).toBeInTheDocument();
+    // Derived preview, using the default generator values (10 x 8 x 5).
+    expect(screen.getByText(/10 trolleys × 8 levels × 5 trays/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /germination trolleys/i })).not.toBeInTheDocument();
   });
 
   it("rejects a zero table capacity and blocks moving to review", async () => {
