@@ -55,6 +55,8 @@ store → store_area → store_rack → store_bin
 - **`store_bin`** remains the occupiable, stock-placement leaf — the only Store-tree location type that is ever a movement/occupancy target or a future storage-movement location (§8's physical layer, when built).
 - These are additive `location_type_hierarchy_rules` rows only (generic/`NULL`-classification scope — a Store never sits inside a greenhouse tree), with no structural change to `locations` itself and no effect on any existing `store`/`store_bin` row.
 
+**Store UX (frozen).** Farm Setup & Master Data gets a purpose-built **Stores & Bins** page — Store and Greenhouse are never presented as one undifferentiated setup workflow. It reuses the existing generic Location backend/tree concepts, but shows and offers only Store-rooted structures (`New Store`, `Add Area`, `Add Rack`, `Add Bin(s)`), and its client-side UI constrains type/parent choices to valid Store hierarchy combinations rather than offering an invalid Greenhouse/Store combination and relying on a backend rejection to catch it. The Location backend remains fully authoritative either way — this is a UX presentation constraint, not a new validation layer.
+
 **`StoreProfile` is deferred, not decided against.** If future metadata (hazard class, temperature class, access restriction, responsible role) becomes genuinely necessary, it is added later as a 1:1 table against the root Store `Location` — not built now, and not represented by overloading `Location.name`/`code`.
 
 ## 5. Inventory master data — frozen
@@ -64,23 +66,41 @@ store → store_area → store_rack → store_bin
 | Entity | Scope | Notes |
 |---|---|---|
 | `UnitOfMeasure` | Global, system-seeded | No tenant scoping — same pattern as `location_types`/`carrier_types` |
-| Global UOM conversions | Global, system-seeded | Only universally-true, explicitly-approved pairs (§6) |
+| Global UOM conversions | Global, system-seeded | Gated by `conversion_family`, not `quantity_kind` alone (§6) |
 | `InventoryCategory` | Tenant-configured | Classification/reporting metadata **only** |
 | `InventoryItem` | Tenant-scoped catalog | Reusable across every Farm in the tenant |
 | Store location hierarchy | `Location`/`location_type` additions | §4 |
 
 **`InventoryCategory` must never determine business behavior.** No code may branch on a category code (e.g. `if category.code == "seed"`) — a tenant is free to organize categories however it wants, and GrowCMP must not silently depend on any tenant's particular scheme. If a future feature genuinely needs a controlled semantic role (e.g. "this item is seed-traceable"), that role must be an explicit, system-controlled field or relationship — for seed specifically, that role is the `InventoryLot.seed_lot_id` linkage (§15), never an inference from category.
 
-**`InventoryItem`** is the tenant-level consumable-material master, conceptually carrying: an immutable tenant-unique human-readable `code`; `name`; `InventoryCategory`; `base_uom`; an optional default purchase UOM and default issue UOM; an item-specific purchase-to-base conversion where the purchase UOM differs from base (§6); `lot_tracking_required`; `expiry_tracking_required`; `qc_release_required`; and an `active`/`retired` lifecycle. Reorder/minimum-stock metadata is explicitly deferred beyond `STORE-INV-001`. No price, cost, or accounting field is ever added to `InventoryItem` — that ownership stays with Odoo (§16).
+**`InventoryItem`**, `STORE-INV-001B` scope, conceptually carries: an immutable tenant-unique human-readable `code`; `name`; `InventoryCategory`; `base_uom`; `lot_tracking_required`; `expiry_tracking_required`; `qc_release_required`; and a reversible lifecycle (below). Reorder/minimum-stock metadata is explicitly deferred beyond `STORE-INV-001`. No price, cost, or accounting field is ever added to `InventoryItem` — that ownership stays with Odoo (§16). **No purchase UOM, no issue UOM, no purchase-to-base conversion field exists on `InventoryItem` in `STORE-INV-001B`** — see "Packaging is not a Unit of Measure" below.
+
+**Lifecycle (frozen).** Both `InventoryCategory` and `InventoryItem` use a reversible `active` ↔ `inactive` lifecycle — never a one-way `retired` state — with `deactivate`/`reactivate` commands (mirroring `CarrierSpecification`'s own reversible lifecycle, not `PackagingUnit`'s one-way retire). Neither entity is ever hard-deleted. `code` remains permanently immutable on both, from creation, with no update path at all.
+
+**Packaging is not a Unit of Measure (frozen).** A `BAG`, `CAN`, or `PACK` is never a `UnitOfMeasure` row and never a field on `InventoryItem` in `STORE-INV-001B`. `STORE-INV-001B` ships `base_uom` only — no `default_purchase_uom`, no `default_issue_uom`, no purchase-to-base conversion — because no operational command yet exists to read any of them. The approved future direction (`STORE-INV-002A`, to be finalized when Goods Receipt is designed, not now) is a separate, item-specific concept, tentatively `InventoryItemPackaging`: one `InventoryItem` may have several packaging records, each naming a display unit/label and its quantity in the item's own base UOM — e.g. `Calcium Nitrate` (`base_uom = kg`) could have both `BAG-25KG` (25 kg) and `BAG-50KG` (50 kg) as separate `InventoryItemPackaging` rows. Exact fields/cardinality are not decided here.
+
+**Base UOM mutability (frozen).** `base_uom` is **editable in `STORE-INV-001B`** — before any operational inventory use exists (no `InventoryLot`, no receipt, no ledger entry anywhere in this ticket), correcting a mis-set base UOM (e.g. an operator who created an item as `g` and meant `kg`) is safe and permitted. `base_uom` becomes **structurally frozen only once real operational inventory use exists** — `STORE-INV-002A` must introduce the actual freeze check (mirroring `CarrierSpecification`'s own lock-row + is-referenced pattern, `ASSET_CARRIER_MODEL.md`) at the point `InventoryLot` is added, since that is the first table that could ever reference an `InventoryItem` operationally. `STORE-INV-001B` must not build a freeze/reference check against a table that does not yet exist.
+
+**Tracking policy flags (frozen for `STORE-INV-001B`).** `lot_tracking_required`, `expiry_tracking_required`, and `qc_release_required` may all be edited during `STORE-INV-001B`. Their mutability **after** real operational inventory use exists is explicitly deferred to `STORE-INV-002A`, which must decide whether a post-receipt policy change needs restriction, versioning, or another safe transition mechanism — `STORE-INV-001B` does not resolve this and must not be read as declaring these fields "always editable forever." Two same-row invariants are frozen now, enforced from `STORE-INV-001B` onward regardless of operational-use state:
+
+- `expiry_tracking_required = true` requires `lot_tracking_required = true`.
+- `qc_release_required = true` requires `lot_tracking_required = true`.
+
+Reason: expiry and QC disposition are both `InventoryLot`-level concepts (§7, §11) and are meaningless on material that isn't lot-tracked at all.
 
 ## 6. UOM rules — frozen
 
 Ledger quantities are eventually always stored in `InventoryItem.base_uom` — no ledger entry is ever recorded in a purchase or issue unit.
 
-- **Global conversions** are permitted only where the relationship is universally, physically true and explicitly seeded — e.g. `kg ↔ g`, `L ↔ mL`. `SEED` and `EA` are both count concepts but are **not** automatically interchangeable; sharing a `quantity_kind` never implies automatic convertibility.
-- **Item-specific conversions** (`1 fertilizer bag = 25 kg`, `1 seed can = 5,000 seeds`) belong to `InventoryItem`, never to a global table — `BAG`, `CAN`, `PACK`, and similar packaging units are never universal conversions.
-- **Auditability requirement:** every operational command that enters a quantity in a non-base UOM must preserve all three of: the quantity/UOM as entered by the operator, the conversion factor actually used, and the resulting normalized base-UOM quantity. Example: operator enters `2 BAG`; the applied conversion is `25 kg/BAG`; the recorded base quantity is `50 kg` — all three facts persist, not just the final number.
-- No generic enterprise UOM conversion graph is built. This mirrors the deliberate simplicity already established by `CarrierSpecification`'s single-canonical-unit dimensions (`ASSET_CARRIER_MODEL.md`), scaled up only as far as Inventory's real seeds/kg/L variety actually requires.
+**Codes are canonical physical/count symbols, not uppercase-normalized (frozen).** The minimum system-seeded set is exactly `kg`, `g`, `L`, `mL`, `EA`, `SEED`. `kg`, `g`, `L`, `mL` are case-sensitive as written — never coerced to `KG`/`G`/`ML`, unlike a tenant-entered code elsewhere in this codebase. `EA` and `SEED` remain uppercase canonical codes (they are labels, not physical unit symbols). `UnitOfMeasure` conceptually carries: an immutable system `code`; `name`; `quantity_kind` (`mass`/`volume`/`count`); and a nullable `conversion_family`.
+
+**Global convertibility is gated by `conversion_family`, not `quantity_kind` — sharing a `quantity_kind` is never sufficient on its own.** `kg`/`g` both carry `conversion_family = MASS`; `L`/`mL` both carry `conversion_family = VOLUME` — these pairs are globally convertible. `EA` and `SEED` both carry `quantity_kind = count`, but each carries `conversion_family = NULL` — they are **not** globally convertible, and no future ticket may add a global `EA ↔ SEED` conversion on the strength of sharing `quantity_kind` alone. Seeded conversion rows: `g → kg = 0.001`, `mL → L = 0.001` — one direction only per pair; the inverse is computed by application logic, never a second stored row. No self-conversion rows (`kg → kg`) are seeded.
+
+- **Item-specific conversions** (`1 fertilizer bag = 25 kg`, `1 seed can = 5,000 seeds`) are never modeled as `UnitOfMeasure` rows or global conversions — `BAG`, `CAN`, `PACK`, and similar packaging units never enter the global UOM catalog at all. See §5 ("Packaging is not a Unit of Measure") for where this lives instead.
+- **Auditability requirement (future, once an operational command exists to honor it — `STORE-INV-002A`):** every operational command that enters a quantity in a non-base unit must preserve all three of: the quantity/unit as entered by the operator, the conversion factor actually used, and the resulting normalized base-UOM quantity. Example: operator enters `2 BAG`; the applied conversion is `25 kg/BAG`; the recorded base quantity is `50 kg` — all three facts persist, not just the final number.
+- No generic enterprise UOM conversion graph is built. This mirrors the deliberate simplicity already established by `CarrierSpecification`'s single-canonical-unit dimensions (`ASSET_CARRIER_MODEL.md`), scaled up only as far as Inventory's real mass/volume/count variety actually requires.
+
+**UOM UX (frozen).** Units of Measure is a small, permanently **read-only** reference page under Farm Setup & Master Data — no create, no edit, no delete, no `.manage` permission of any kind. It exists so operators/admins can see the system UOM catalog and so an `InventoryItem` form has human-readable units to select from; it is never tenant-configurable.
 
 ## 7. InventoryLot semantics — frozen (design for `STORE-INV-002A`)
 
@@ -285,12 +305,13 @@ Inventory itself stays generic; the **consuming** operational domain owns the sp
 - Immutable lot traceability attributes cannot silently change once set (mirrors `CarrierSpecification`'s structural freeze).
 - Corrections use reversal/adjustment plus a stated reason — never an in-place rewrite of a prior transaction.
 - Effective time and recorded time remain distinct wherever operationally relevant (receipt, issue, consumption, disposition events).
+- A migration introducing new Store & Inventory schema is never blindly destructive on downgrade — it refuses whenever tenant-created data depends on it (any row in `inventory_categories`/`inventory_items`, or any `Location` using `store_area`/`store_rack`); only once those checks pass may the purely system-seeded rows (`UnitOfMeasure`, `UomConversion`, the new Store hierarchy rules, and the `store_area`/`store_rack` location types themselves) be removed.
 
 ## 18. Roadmap / ticket boundaries
 
 | Ticket | Scope |
 |---|---|
-| `STORE-INV-001` | Master data & Store foundation: `UnitOfMeasure`, global approved conversions, `InventoryCategory`, `InventoryItem`, `store_area`, `store_rack`, Store hierarchy rules, relevant Farm Setup UI (`Stores & Bins`, `Inventory Categories`, `Inventory Items`, `Units of Measure` — see `CEO_ALIGNMENT_SPEC.md`, "Approved later extension"). **Explicitly excludes:** `InventoryLot`, Goods Receipt, the quantity/existence ledger, the storage/custody ledger, reservation, material issue, Work Order, consumption, return, and any operational Store & Inventory pages. |
+| `STORE-INV-001` | Master data & Store foundation: `UnitOfMeasure`, global approved conversions, `InventoryCategory`, `InventoryItem`, `store_area`, `store_rack`, Store hierarchy rules, relevant Farm Setup UI (`Stores & Bins`, `Inventory Categories`, `Inventory Items`, read-only `Units of Measure` — see `CEO_ALIGNMENT_SPEC.md`, "Approved later extension"). **Explicitly excludes:** `InventoryLot`, Goods Receipt, `InventoryItemPackaging`/purchase packaging, purchase UOM, issue UOM, the quantity/existence ledger, the storage/custody ledger, reservation, material issue, Work Order, consumption, return, FEFO, QC disposition events, and any operational Store & Inventory pages. |
 | `STORE-INV-002A` | Goods Receipt + Lot + Quantity Existence: `InventoryLot`, `GoodsReceipt`/`GoodsReceiptLine`, existence ledger (receipt/adjustment/reversal), quality/disposition events, stock-quantity read model. |
 | `STORE-INV-002B` | Physical Storage: inventory storage movement, receipt placement, Store/bin quantity, bin-to-bin transfer, lot × location balance. |
 | `WORK-ORDER-001` | Operational Work Orders: Seeding Work Order first, material requirements. |
@@ -319,3 +340,5 @@ Inventory itself stays generic; the **consuming** operational domain owns the sp
 | Reservation | A soft allocation against an `InventoryItem` (lot optional) for a future Issue |
 | Quality Disposition Event | One immutable event in a lot's quarantine/release/hold/reject history |
 | AssetCustodyAssignment | Future (`STORE-INV-005`) record of a person's custody of an Asset, independent of the Asset's physical `Occupancy` |
+| Conversion Family | The gate for global UOM convertibility (`MASS`, `VOLUME`, or `NULL`) — distinct from and stricter than `quantity_kind`; two units sharing a `quantity_kind` are not convertible unless they also share a non-`NULL` `conversion_family` |
+| InventoryItemPackaging | Future (`STORE-INV-002A`) item-specific packaging/display-unit record (e.g. `BAG-25KG`) naming its quantity in the item's own base UOM; never a `UnitOfMeasure` row |
