@@ -31,6 +31,10 @@ A grow bag is a **replaceable crop carrier only** — not an asset. It occupies 
 
 These have **linked asset and operational-location records**: the physical/maintainable structure is an asset; the occupiable positions it provides (table position, grow-bag position) are locations.
 
+## Store custody (frozen design, STORE-INV-001 family — not yet implemented)
+
+Physical presence of an Asset or a Carrier in a Store uses the existing Occupancy/Movement engine unchanged — a `store_bin` is just one more legal target, added via new `occupancy_compatibility_rules` rows. No quantity balance is ever created for an Asset or a Carrier; they keep their own individual identity, never generic stock. Human custody (an Asset "checked out" to a person) is deliberately **not** a third Occupancy target — a person is not a physical Location. It is a separate future concept, `AssetCustodyAssignment` (`STORE-INV-005`), independent of the Asset's real physical Occupancy. Full detail: `docs/domain/STORE_INVENTORY_MODEL.md` §12–13.
+
 ## Asset and carrier registry (implemented, CMP-005)
 
 **Types.** Global, system-defined, seeded by migration — not tenant-configurable, no type-management API. `asset_types` (`germination_trolley`, `transfer_trolley`, `seeding_machine`, `weighing_scale`, `label_printer`) carry one behavior flag, `supports_positions` — true only for `germination_trolley`. `carrier_types` (`seed_tray`, `cultivation_plate`, `grow_cube`, `grow_bag`, `harvest_crate`) carry no extra flags. `grow_table`/`grow_gutter` asset records and finished-goods/pallet carrier types are deferred to a later ticket.

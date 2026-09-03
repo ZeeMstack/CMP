@@ -91,11 +91,11 @@ A grow-bag position is fixed; the grow bag is replaceable. **Grow Gutter Side (L
 Use the same location engine:
 
 ```text
-Input Store → Zone → Rack → Shelf/Bin
+Store → [Store Area] → [Store Rack] → Store Bin   (Store Area/Rack optional; no Store Shelf — see docs/domain/STORE_INVENTORY_MODEL.md)
 Cold Store → Room/Zone → Aisle/Rack → Position
 ```
 
-Locations define allowed occupant types, status, capacity, and sanitation/release requirements.
+Locations define allowed occupant types, status, capacity, and sanitation/release requirements. A Farm may have multiple Store root locations (e.g. Main Store, Chemical Store, Packaging Store) — distinguished by name/code, never by a store-kind column.
 
 ## 4. Identity and Labels
 
@@ -170,11 +170,11 @@ Existing batches remain linked to their assigned versions. Named crops may be us
 
 ## 9. Input Store
 
-Operational inventory uses an immutable stock ledger. Typical items: seeds, media, nutrients, crop protection, grow cubes/sponges/net pots, trays/plates/grow bags, labels, packaging, and sanitation materials.
+Store & Inventory is a first-class domain, not an appendix of the location engine. Full model: `docs/domain/STORE_INVENTORY_MODEL.md`. Consumable material (seeds, media, nutrients, crop protection, grow cubes/sponges/net pots, trays/plates/grow bags, labels, packaging, sanitation materials, spare parts) is tracked as quantity/UOM inventory; serialized equipment and reusable carriers keep their existing Asset/Carrier identity and are never duplicated as generic quantity stock.
 
-Typical states: received, quarantine, approved, held, rejected, reserved, issued, partly consumed, consumed, expired, returned.
+How much material exists (an immutable existence ledger: receipt, consumption, scrap, adjustment, reversal) and where it currently is/who holds it (a separate custody/storage model: Store custody, Work Order custody, transfer, return) are two independent facts, never one. A Material Issue is a custody event, not consumption — it does not reduce existence quantity; only actual use, scrap, or a correction does.
 
-Quarantined, held, rejected, or expired stock cannot be issued. Seed/input lot issuance must link to the relevant work order and crop batch.
+Quality disposition (quarantined, released, held, rejected) is immutable event history, not a single mutable status field; expired is always derived from `expiry_date`, never a written state. Quarantined, held, rejected, or expired stock cannot normally be issued. Seed/input lot issuance links to the relevant work order; for seed specifically, actual consumption gains lineage to the crop batch only once it is created at the sowing event — never earlier.
 
 ## 10. Harvest, Packing, Cold Store, Dispatch
 

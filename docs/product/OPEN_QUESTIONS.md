@@ -19,6 +19,10 @@ None of the items below are treated as invented values; they are recorded as ope
 - Crop/variety-specific stage definitions, expected durations, and harvest modes are explicitly deferred to versioned crop/workflow configuration (spec §8) and are not to be invented ahead of that configuration work.
 - Quality/QC thresholds and release criteria are not yet defined.
 
+## Store and inventory decisions
+
+- **InventoryLot↔SeedLot cardinality.** `docs/domain/STORE_INVENTORY_MODEL.md` §15 freezes that `SeedLot` remains the crop-specific traceability identity and `InventoryLot` the generic quantity/lot identity, linked together — but the exact cardinality (one-to-one vs. one-to-many) must be confirmed against actual existing `SeedLot` semantics during `STORE-INV-002A` design, not assumed now.
+
 ## Deferred commercial decisions
 
 - Customer specification structure and versioning details (spec §8) beyond "customer specifications are versioned" are not yet defined.
