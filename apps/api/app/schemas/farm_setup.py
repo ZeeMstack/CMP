@@ -163,23 +163,35 @@ class TrolleyLevelGeneratorConfig(BaseModel):
     creates ONLY `level_count` root `shelf`-kind AssetPositions ("Levels"),
     each with `capacity=trays_per_level`; deliberately no child `slot` rows
     are ever created here (a Level holds Seed Trays directly, via
-    DOMAIN-FARM-002's generic N-occupant capacity mechanism). There is no
-    `level_prefix` field -- `farm_setup_service` always derives it
-    server-side from the Trolley's own code (`{trolley.code}-L{NN}`), never
-    from caller-supplied free text, so the code cannot drift from the
-    Trolley's real identity. This schema no longer mirrors
+    DOMAIN-FARM-002's generic N-occupant capacity mechanism).
+
+    PILOT-UX-001B2: `level_prefix` is operator-configurable (defaults to
+    "L", matching the original hardcoded behavior exactly), but
+    `farm_setup_service` always PREPENDS the owning Trolley's own code to
+    it server-side (`{trolley.code}-{level_prefix}{NN}`) -- the caller can
+    never supply a level code that omits or contradicts its Trolley's real
+    identity, only the short suffix segment. This schema no longer mirrors
     `AssetPositionsGenerate`, which keeps its own full shelf+slot shape
     unchanged for legacy/generic use."""
 
     level_count: int
     trays_per_level: int
     level_pad_width: int
+    level_prefix: str = "L"
 
     @field_validator("trays_per_level")
     @classmethod
     def validate_trays_per_level(cls, v: int) -> int:
         if v < 1:
             raise ValueError("trays_per_level must be a positive integer")
+        return v
+
+    @field_validator("level_prefix")
+    @classmethod
+    def validate_level_prefix(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v:
+            raise ValueError("level_prefix must not be blank")
         return v
 
     @model_validator(mode="after")
@@ -194,6 +206,11 @@ class TrolleyLevelGeneratorConfig(BaseModel):
 
 
 class TrolleySetupConfig(BaseModel):
+    """Explicit, hand-entered single-Trolley registration -- the caller
+    supplies the Trolley's own code directly. See `TrolleyGeneratorConfig`
+    below for the bulk N-trolleys-at-once alternative; `NurserySetupConfig`
+    accepts one or the other, never both, in the same command."""
+
     code: str
     name: str | None = None
     levels: TrolleyLevelGeneratorConfig
@@ -202,6 +219,41 @@ class TrolleySetupConfig(BaseModel):
     @classmethod
     def validate_code(cls, v: str) -> str:
         return _normalize_code(v)
+
+
+class TrolleyGeneratorConfig(BaseModel):
+    """PILOT-UX-001B2: bulk Germination Trolley generator -- creates
+    `trolley_count` Trolley Assets, code = `{trolley_prefix}-{NN}`
+    (`NN` zero-padded to `trolley_pad_width`, sequence 1..trolley_count),
+    each with its own independent `levels` generator (Level numbering
+    restarts inside every Trolley, since each Trolley's Levels are
+    generated separately -- exactly like `TableGeneratorConfig`'s own
+    per-parent restart). Trolley identity is always server-generated from
+    the prefix; the operator configures the prefix only, never types an
+    individual Trolley or Level code by hand."""
+
+    trolley_count: int
+    trolley_prefix: str
+    trolley_pad_width: int = 2
+    levels: TrolleyLevelGeneratorConfig
+
+    @field_validator("trolley_prefix")
+    @classmethod
+    def validate_trolley_prefix(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not v:
+            raise ValueError("trolley_prefix must not be blank")
+        return v
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> "TrolleyGeneratorConfig":
+        if self.trolley_count < 1:
+            raise ValueError("trolley_count must be a positive integer")
+        if self.trolley_pad_width < 1:
+            raise ValueError("trolley_pad_width must be a positive integer")
+        if self.trolley_count > MAX_NURSERY_ASSETS_PER_SETUP:
+            raise ValueError(f"cannot generate more than {MAX_NURSERY_ASSETS_PER_SETUP} trolleys per generator")
+        return self
 
 
 class SeedingMachineSetupConfig(BaseModel):
@@ -260,6 +312,10 @@ class NurserySetupConfig(BaseModel):
     intersalads_tables: TableGeneratorConfig | None = None
     intervines_tables: TableGeneratorConfig | None = None
     trolleys: list[TrolleySetupConfig] = Field(default_factory=list)
+    # PILOT-UX-001B2: the bulk N-trolleys-at-once alternative to `trolleys`
+    # above -- mutually exclusive with it (see the validator below), so a
+    # setup command always picks exactly one shape for its Trolleys.
+    trolley_generator: TrolleyGeneratorConfig | None = None
     seeding_machines: list[SeedingMachineSetupConfig] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -268,13 +324,15 @@ class NurserySetupConfig(BaseModel):
             [
                 self.seeding_station, self.germination_chamber,
                 self.seedling_tables, self.intersalads_tables, self.intervines_tables,
-                self.trolleys, self.seeding_machines,
+                self.trolleys, self.trolley_generator, self.seeding_machines,
             ]
         ):
             raise ValueError(
                 "Nursery setup requires at least one configured section (seeding station, germination "
                 "chamber, tables, trolleys, or seeding machines)"
             )
+        if self.trolleys and self.trolley_generator is not None:
+            raise ValueError("provide either explicit trolleys or a trolley_generator, not both")
         if len(self.trolleys) > MAX_NURSERY_ASSETS_PER_SETUP:
             raise ValueError(f"cannot register more than {MAX_NURSERY_ASSETS_PER_SETUP} trolleys per setup command")
         if len(self.seeding_machines) > MAX_NURSERY_ASSETS_PER_SETUP:

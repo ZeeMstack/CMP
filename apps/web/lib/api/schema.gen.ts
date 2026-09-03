@@ -6456,6 +6456,7 @@ export interface components {
             intervines_tables?: components["schemas"]["TableGeneratorConfig"] | null;
             /** Trolleys */
             trolleys?: components["schemas"]["TrolleySetupConfig"][];
+            trolley_generator?: components["schemas"]["TrolleyGeneratorConfig"] | null;
             /** Seeding Machines */
             seeding_machines?: components["schemas"]["SeedingMachineSetupConfig"][];
         };
@@ -9196,6 +9197,30 @@ export interface components {
             effective_time: string;
         };
         /**
+         * TrolleyGeneratorConfig
+         * @description PILOT-UX-001B2: bulk Germination Trolley generator -- creates
+         *     `trolley_count` Trolley Assets, code = `{trolley_prefix}-{NN}`
+         *     (`NN` zero-padded to `trolley_pad_width`, sequence 1..trolley_count),
+         *     each with its own independent `levels` generator (Level numbering
+         *     restarts inside every Trolley, since each Trolley's Levels are
+         *     generated separately -- exactly like `TableGeneratorConfig`'s own
+         *     per-parent restart). Trolley identity is always server-generated from
+         *     the prefix; the operator configures the prefix only, never types an
+         *     individual Trolley or Level code by hand.
+         */
+        TrolleyGeneratorConfig: {
+            /** Trolley Count */
+            trolley_count: number;
+            /** Trolley Prefix */
+            trolley_prefix: string;
+            /**
+             * Trolley Pad Width
+             * @default 2
+             */
+            trolley_pad_width: number;
+            levels: components["schemas"]["TrolleyLevelGeneratorConfig"];
+        };
+        /**
          * TrolleyLevelAvailabilityRead
          * @description PILOT-UX-001B: one Level of a Trolley, backend-classified -- the
          *     frontend must consume `mode`, never re-derive it from raw position
@@ -9237,11 +9262,14 @@ export interface components {
          *     creates ONLY `level_count` root `shelf`-kind AssetPositions ("Levels"),
          *     each with `capacity=trays_per_level`; deliberately no child `slot` rows
          *     are ever created here (a Level holds Seed Trays directly, via
-         *     DOMAIN-FARM-002's generic N-occupant capacity mechanism). There is no
-         *     `level_prefix` field -- `farm_setup_service` always derives it
-         *     server-side from the Trolley's own code (`{trolley.code}-L{NN}`), never
-         *     from caller-supplied free text, so the code cannot drift from the
-         *     Trolley's real identity. This schema no longer mirrors
+         *     DOMAIN-FARM-002's generic N-occupant capacity mechanism).
+         *
+         *     PILOT-UX-001B2: `level_prefix` is operator-configurable (defaults to
+         *     "L", matching the original hardcoded behavior exactly), but
+         *     `farm_setup_service` always PREPENDS the owning Trolley's own code to
+         *     it server-side (`{trolley.code}-{level_prefix}{NN}`) -- the caller can
+         *     never supply a level code that omits or contradicts its Trolley's real
+         *     identity, only the short suffix segment. This schema no longer mirrors
          *     `AssetPositionsGenerate`, which keeps its own full shelf+slot shape
          *     unchanged for legacy/generic use.
          */
@@ -9252,6 +9280,11 @@ export interface components {
             trays_per_level: number;
             /** Level Pad Width */
             level_pad_width: number;
+            /**
+             * Level Prefix
+             * @default L
+             */
+            level_prefix: string;
         };
         /** TrolleyPlacementRead */
         TrolleyPlacementRead: {
@@ -9273,7 +9306,13 @@ export interface components {
              */
             effective_time: string;
         };
-        /** TrolleySetupConfig */
+        /**
+         * TrolleySetupConfig
+         * @description Explicit, hand-entered single-Trolley registration -- the caller
+         *     supplies the Trolley's own code directly. See `TrolleyGeneratorConfig`
+         *     below for the bulk N-trolleys-at-once alternative; `NurserySetupConfig`
+         *     accepts one or the other, never both, in the same command.
+         */
         TrolleySetupConfig: {
             /** Code */
             code: string;

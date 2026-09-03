@@ -77,17 +77,18 @@ export const vinesFormSchema = z.object({
 });
 export type VinesFormValues = z.infer<typeof vinesFormSchema>;
 
-// `code` is plain (unvalidated) here -- an unselected trolley/seeding
-// machine still has to satisfy this sub-schema's own type shape even
-// though its fields are meaningless while hidden, so requiring a non-blank
-// code unconditionally would make the DEFAULT, nothing-selected form state
-// itself invalid. The real "is a code required" check lives in
-// `greenhouseSetupFormSchema`'s `.refine()` below, applied ONLY when
-// `includeTrolley`/`includeSeedingMachine` is true.
-const trolleyFormSchema = z.object({
-  code: z.string(),
-  levelCount: positiveCount(20, "Number of levels"),
-  traysPerLevel: positiveCount(200, "Trays per level"),
+// PILOT-UX-001B2: bulk Germination Trolley generator -- unlike the old
+// single hand-typed Trolley code, every field here has a real, always-valid
+// default (matching `zoneCodePrefix`/`tableCodePrefix` etc. elsewhere in
+// this file), so no separate "required only when selected" `.refine()` is
+// needed -- the operator configures counts/prefixes only, GrowCMP generates
+// the actual Trolley/Level codes server-side.
+const trolleyGeneratorFormSchema = z.object({
+  trolleyCount: positiveCount(MAX_COUNT, "Number of Germination Trolleys"),
+  trolleyPrefix: prefixSchema,
+  levelsPerTrolley: positiveCount(20, "Levels per Trolley"),
+  levelPrefix: prefixSchema,
+  traysPerLevel: positiveCount(200, "Seed Tray capacity per Level"),
 });
 
 const seedingMachineFormSchema = z.object({
@@ -105,8 +106,11 @@ const nurserySectionFormSchema = z.object({
 export const nurseryFormSchema = z.object({
   includeSeedingStation: z.boolean(),
   seedingStation: nurserySectionFormSchema,
+  // PILOT-UX-001B2 final correction: no operator-facing Code/Name for the
+  // Germination Chamber -- the operator only toggles whether it's included;
+  // GrowCMP always sends the frozen default identity (see
+  // `GERMINATION_CHAMBER_DEFAULT` / `buildGreenhouseSetupPayload` below).
   includeGerminationChamber: z.boolean(),
-  germinationChamber: nurserySectionFormSchema,
   includeSeedling: z.boolean(),
   seedlingTableCount: positiveCount(500, "Number of seedling tables"),
   seedlingCapacity: positiveCapacity,
@@ -116,8 +120,11 @@ export const nurseryFormSchema = z.object({
   includeIntervines: z.boolean(),
   intervinesTableCount: positiveCount(500, "Number of InterVines tables"),
   intervinesCapacity: positiveCapacity,
-  includeTrolley: z.boolean(),
-  trolley: trolleyFormSchema,
+  // PILOT-UX-001B2 final correction: no separate enable/disable toggle --
+  // the Trolley generator is part of Germination Chamber configuration
+  // itself, active whenever `includeGerminationChamber` is true (see
+  // `buildGreenhouseSetupPayload` below).
+  trolleyGenerator: trolleyGeneratorFormSchema,
   includeSeedingMachine: z.boolean(),
   seedingMachine: seedingMachineFormSchema,
 });
@@ -139,11 +146,11 @@ export const greenhouseSetupFormSchema = z
       return (
         n.includeSeedingStation || n.includeGerminationChamber ||
         n.includeSeedling || n.includeIntersalads || n.includeIntervines ||
-        n.includeTrolley || n.includeSeedingMachine
+        n.includeSeedingMachine
       );
     },
     {
-      message: "Configure at least one Nursery section (seeding station, germination chamber, tables, trolley, or seeding machine)",
+      message: "Configure at least one Nursery section (seeding station, germination chamber, tables, or seeding machine)",
       path: ["nursery"],
     },
   )
@@ -152,15 +159,6 @@ export const greenhouseSetupFormSchema = z
       values.classification !== "nursery" || !values.nursery.includeSeedingStation || values.nursery.seedingStation.code.trim().length > 0,
     { message: "Seeding station code is required", path: ["nursery", "seedingStation", "code"] },
   )
-  .refine(
-    (values) =>
-      values.classification !== "nursery" || !values.nursery.includeGerminationChamber || values.nursery.germinationChamber.code.trim().length > 0,
-    { message: "Germination chamber code is required", path: ["nursery", "germinationChamber", "code"] },
-  )
-  .refine((values) => values.classification !== "nursery" || !values.nursery.includeTrolley || values.nursery.trolley.code.trim().length > 0, {
-    message: "Trolley code is required",
-    path: ["nursery", "trolley", "code"],
-  })
   .refine(
     (values) =>
       values.classification !== "nursery" || !values.nursery.includeSeedingMachine || values.nursery.seedingMachine.code.trim().length > 0,
@@ -196,7 +194,6 @@ export const DEFAULT_FORM_VALUES: GreenhouseSetupFormValues = {
     includeSeedingStation: false,
     seedingStation: { code: "", name: "" },
     includeGerminationChamber: false,
-    germinationChamber: { code: "", name: "" },
     includeSeedling: true,
     seedlingTableCount: 1,
     seedlingCapacity: 1,
@@ -206,14 +203,21 @@ export const DEFAULT_FORM_VALUES: GreenhouseSetupFormValues = {
     includeIntervines: false,
     intervinesTableCount: 1,
     intervinesCapacity: 1,
-    includeTrolley: false,
-    trolley: { code: "", levelCount: 1, traysPerLevel: 1 },
+    trolleyGenerator: { trolleyCount: 10, trolleyPrefix: "GT", levelsPerTrolley: 8, levelPrefix: "L", traysPerLevel: 5 },
     includeSeedingMachine: false,
     seedingMachine: { code: "" },
   },
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
+
+// PILOT-UX-001B2 final correction: the operator only toggles whether a
+// Germination Chamber is included -- never its Code/Name. This is the one
+// existing, canonical identity GrowCMP has always used for it (matches the
+// backend's own `GerminationChamberSetupConfig` default example/tests and
+// its `name or "Germination Chamber"` fallback) -- not a new naming
+// scheme, just no longer operator-entered.
+const GERMINATION_CHAMBER_DEFAULT = { code: "GERM-01", name: null as string | null };
 
 /** Expands the flat, uniform form input into the backend's real nested
  * setup request -- every Zone gets the same N Spans, every Span gets the
@@ -275,9 +279,7 @@ export function buildGreenhouseSetupPayload(values: GreenhouseSetupFormValues, c
       seeding_station: n.includeSeedingStation
         ? { code: n.seedingStation.code, name: n.seedingStation.name.trim() ? n.seedingStation.name : null }
         : null,
-      germination_chamber: n.includeGerminationChamber
-        ? { code: n.germinationChamber.code, name: n.germinationChamber.name.trim() ? n.germinationChamber.name : null }
-        : null,
+      germination_chamber: n.includeGerminationChamber ? GERMINATION_CHAMBER_DEFAULT : null,
       seedling_tables: n.includeSeedling
         ? { code_prefix: "ST", start: 1, end: n.seedlingTableCount, pad_width: 2, capacity: n.seedlingCapacity }
         : null,
@@ -287,17 +289,22 @@ export function buildGreenhouseSetupPayload(values: GreenhouseSetupFormValues, c
       intervines_tables: n.includeIntervines
         ? { code_prefix: "IV", start: 1, end: n.intervinesTableCount, pad_width: 2, capacity: n.intervinesCapacity }
         : null,
-      trolleys: n.includeTrolley
-        ? [
-            {
-              code: n.trolley.code,
-              name: null,
-              levels: {
-                level_count: n.trolley.levelCount, trays_per_level: n.trolley.traysPerLevel, level_pad_width: 2,
-              },
+      // PILOT-UX-001B2 final correction: the Trolley generator is part of
+      // Germination Chamber configuration, not a separate opt-in -- it is
+      // sent whenever the chamber itself is included.
+      trolley_generator: n.includeGerminationChamber
+        ? {
+            trolley_count: n.trolleyGenerator.trolleyCount,
+            trolley_prefix: n.trolleyGenerator.trolleyPrefix,
+            trolley_pad_width: 2,
+            levels: {
+              level_count: n.trolleyGenerator.levelsPerTrolley,
+              trays_per_level: n.trolleyGenerator.traysPerLevel,
+              level_pad_width: 2,
+              level_prefix: n.trolleyGenerator.levelPrefix,
             },
-          ]
-        : [],
+          }
+        : null,
       seeding_machines: n.includeSeedingMachine ? [{ code: n.seedingMachine.code, name: null }] : [],
     },
   };

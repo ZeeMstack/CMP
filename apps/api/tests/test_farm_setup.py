@@ -21,6 +21,7 @@ from app.schemas.farm_setup import (
     SeedingMachineSetupConfig,
     SpanSetupConfig,
     TableGeneratorConfig,
+    TrolleyGeneratorConfig,
     TrolleyLevelGeneratorConfig,
     TrolleySetupConfig,
     VinesSetupConfig,
@@ -241,7 +242,7 @@ def test_invalid_grow_table_under_vines_rejected(db_session, active_context_with
 
 
 def _nursery_payload(
-    *, code="NUR-01", ccid=None, trolleys=None, seeding_machines=None,
+    *, code="NUR-01", ccid=None, trolleys=None, trolley_generator=None, seeding_machines=None,
     seeding_station=NurserySectionConfig(code="SEED-01"),
     germination_chamber=GerminationChamberSetupConfig(code="GERM-01"),
 ):
@@ -254,6 +255,7 @@ def _nursery_payload(
             intersalads_tables=TableGeneratorConfig(code_prefix="IS", start=1, end=2, pad_width=2, capacity=24),
             intervines_tables=TableGeneratorConfig(code_prefix="IV", start=1, end=2, pad_width=2, capacity=50),
             trolleys=trolleys or [],
+            trolley_generator=trolley_generator,
             seeding_machines=seeding_machines or [],
         )
     )
@@ -419,6 +421,146 @@ def test_nursery_trolley_level_codes_stable_and_unique_per_trolley(db_session, a
         ("GT-001", "GT-001-L01"), ("GT-001", "GT-001-L02"),
         ("GT-002", "GT-002-L01"), ("GT-002", "GT-002-L02"),
     ]
+
+
+@pytest.mark.integration
+def test_nursery_bulk_trolley_generator(db_session, active_context_with_farm) -> None:
+    """PILOT-UX-001B2: `trolley_generator` creates N Trolleys, each with its
+    own independently-restarting Level sequence, using server-generated
+    `{trolley_prefix}-{NN}` Trolley codes and `{trolley.code}-{level_prefix}
+    {NN}` Level codes -- matching the ticket's own worked example exactly
+    (10 trolleys x 8 levels x 5 trays -> GT-01..GT-10, GT-01-L01..L08 etc)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    payload = _nursery_payload(
+        trolley_generator=TrolleyGeneratorConfig(
+            trolley_count=3, trolley_prefix="GT", trolley_pad_width=2,
+            levels=TrolleyLevelGeneratorConfig(level_count=8, trays_per_level=5, level_pad_width=2, level_prefix="L"),
+        ),
+    )
+    result = farm_setup_service.create_greenhouse_setup(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, payload=payload,
+    )
+    assert result.counts.trolleys == 3
+    assert result.counts.trolley_levels == 24
+    assert result.counts.trolley_slots == 0
+
+    trolley_codes = db_session.execute(
+        text(
+            "SELECT a.code FROM assets a JOIN asset_types at ON at.id = a.asset_type_id "
+            "WHERE a.tenant_id = :tid AND at.code = 'germination_trolley' ORDER BY a.code"
+        ),
+        {"tid": tenant.id},
+    ).scalars().all()
+    assert trolley_codes == ["GT-01", "GT-02", "GT-03"]
+
+    level_codes = db_session.execute(
+        text(
+            "SELECT p.code FROM asset_positions p JOIN assets a ON a.id = p.asset_id "
+            "WHERE a.tenant_id = :tid AND a.code = 'GT-01' ORDER BY p.code"
+        ),
+        {"tid": tenant.id},
+    ).scalars().all()
+    assert level_codes == [f"GT-01-L{n:02d}" for n in range(1, 9)]
+
+    capacities = db_session.execute(
+        text(
+            "SELECT DISTINCT p.capacity, p.position_kind FROM asset_positions p JOIN assets a ON a.id = p.asset_id "
+            "WHERE a.tenant_id = :tid AND a.code LIKE 'GT-%'"
+        ),
+        {"tid": tenant.id},
+    ).all()
+    assert capacities == [(5, "shelf")], "every Level must have capacity=trays_per_level and be a root shelf, zero slots"
+
+
+@pytest.mark.integration
+def test_nursery_trolley_generator_custom_level_prefix(db_session, active_context_with_farm) -> None:
+    """`level_prefix` is operator-configurable but always prepended by the
+    Trolley's own code server-side -- never freestanding."""
+    tenant, user, _headers, farm = active_context_with_farm
+    payload = _nursery_payload(
+        trolley_generator=TrolleyGeneratorConfig(
+            trolley_count=1, trolley_prefix="GT", trolley_pad_width=2,
+            levels=TrolleyLevelGeneratorConfig(level_count=2, trays_per_level=5, level_pad_width=2, level_prefix="SHELF"),
+        ),
+    )
+    farm_setup_service.create_greenhouse_setup(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, payload=payload,
+    )
+    level_codes = db_session.execute(
+        text(
+            "SELECT p.code FROM asset_positions p JOIN assets a ON a.id = p.asset_id "
+            "WHERE a.tenant_id = :tid AND a.code = 'GT-01' ORDER BY p.code"
+        ),
+        {"tid": tenant.id},
+    ).scalars().all()
+    assert level_codes == ["GT-01-SHELF01", "GT-01-SHELF02"]
+
+
+@pytest.mark.integration
+def test_nursery_trolleys_and_trolley_generator_mutually_exclusive() -> None:
+    with pytest.raises(ValidationError, match="either explicit trolleys or a trolley_generator"):
+        NurserySetupConfig(
+            trolleys=[TrolleySetupConfig(code="GT-01", levels=TrolleyLevelGeneratorConfig(
+                level_count=1, trays_per_level=1, level_pad_width=2,
+            ))],
+            trolley_generator=TrolleyGeneratorConfig(
+                trolley_count=1, trolley_prefix="GT",
+                levels=TrolleyLevelGeneratorConfig(level_count=1, trays_per_level=1, level_pad_width=2),
+            ),
+        )
+
+
+@pytest.mark.integration
+def test_trolley_generator_rejects_non_positive_count() -> None:
+    with pytest.raises(ValidationError, match="positive integer"):
+        TrolleyGeneratorConfig(
+            trolley_count=0, trolley_prefix="GT",
+            levels=TrolleyLevelGeneratorConfig(level_count=1, trays_per_level=1, level_pad_width=2),
+        )
+
+
+@pytest.mark.integration
+def test_trolley_generator_rejects_blank_prefix() -> None:
+    with pytest.raises(ValidationError, match="must not be blank"):
+        TrolleyGeneratorConfig(
+            trolley_count=1, trolley_prefix="  ",
+            levels=TrolleyLevelGeneratorConfig(level_count=1, trays_per_level=1, level_pad_width=2),
+        )
+
+
+@pytest.mark.integration
+def test_atomic_rollback_on_bulk_trolley_generator_conflict(db_session, active_context_with_farm) -> None:
+    """A mid-generator Trolley code conflict (e.g. GT-02 already registered
+    outside this command) must roll back the ENTIRE setup -- no partial
+    Trolley (GT-01), no partial Greenhouse."""
+    from app.services import asset_service
+    from app.services.errors import DuplicateAssetCodeError
+
+    tenant, user, _headers, farm = active_context_with_farm
+    asset_service.register_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code="GT-02", name="Pre-existing", commissioned_date=None,
+    )
+    payload = _nursery_payload(
+        code="NUR-BULK-ROLLBACK",
+        trolley_generator=TrolleyGeneratorConfig(
+            trolley_count=3, trolley_prefix="GT", trolley_pad_width=2,
+            levels=TrolleyLevelGeneratorConfig(level_count=2, trays_per_level=5, level_pad_width=2),
+        ),
+    )
+    with pytest.raises(DuplicateAssetCodeError):
+        farm_setup_service.create_greenhouse_setup(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, payload=payload,
+        )
+
+    remaining_gh = db_session.execute(
+        text("SELECT COUNT(*) FROM locations WHERE tenant_id = :tid AND code = 'NUR-BULK-ROLLBACK'"), {"tid": tenant.id}
+    ).scalar_one()
+    assert remaining_gh == 0
+    gt01 = db_session.execute(
+        text("SELECT COUNT(*) FROM assets WHERE tenant_id = :tid AND code = 'GT-01'"), {"tid": tenant.id}
+    ).scalar_one()
+    assert gt01 == 0, "GT-01, created earlier in the same failed generator loop, must not survive"
 
 
 # =====================================================================

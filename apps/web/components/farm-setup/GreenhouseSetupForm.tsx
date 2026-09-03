@@ -242,8 +242,15 @@ function NurseryFields({ register, watch, errors }: { register: any; watch: any;
   const includeSeedling = watch("nursery.includeSeedling");
   const includeIntersalads = watch("nursery.includeIntersalads");
   const includeIntervines = watch("nursery.includeIntervines");
-  const includeTrolley = watch("nursery.includeTrolley");
   const includeSeedingMachine = watch("nursery.includeSeedingMachine");
+  const trolleyGenerator = watch("nursery.trolleyGenerator");
+  const trolleyCapacityPreview =
+    includeGerminationChamber &&
+    Number.isFinite(trolleyGenerator?.trolleyCount) &&
+    Number.isFinite(trolleyGenerator?.levelsPerTrolley) &&
+    Number.isFinite(trolleyGenerator?.traysPerLevel)
+      ? trolleyGenerator.trolleyCount * trolleyGenerator.levelsPerTrolley * trolleyGenerator.traysPerLevel
+      : null;
 
   return (
     <fieldset className="flex flex-col gap-5 rounded-xl border border-border-subtle bg-surface p-4">
@@ -273,13 +280,48 @@ function NurseryFields({ register, watch, errors }: { register: any; watch: any;
           Germination Chamber
         </label>
         {includeGerminationChamber && (
-          <div className="ml-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <Field label="Code" error={errors.nursery?.germinationChamber?.code?.message}>
-              <input {...register("nursery.germinationChamber.code")} className={inputClass} placeholder="GERM-01" />
-            </Field>
-            <Field label="Name (optional)">
-              <input {...register("nursery.germinationChamber.name")} className={inputClass} placeholder="Germination Chamber" />
-            </Field>
+          <div className="ml-6 flex flex-col gap-2">
+            <p className={labelClass}>Germination Trolleys</p>
+            <p className="text-xs text-ink-muted">
+              Trolleys are farm-level equipment, not part of this Nursery&apos;s physical structure -- configuring
+              them here does not place or assign them to this greenhouse. GrowCMP generates every Trolley and
+              Level code; only the prefixes are configured below.
+            </p>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Field label="Number of Germination Trolleys" error={errors.nursery?.trolleyGenerator?.trolleyCount?.message}>
+                <input
+                  type="number"
+                  {...register("nursery.trolleyGenerator.trolleyCount", { valueAsNumber: true })}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Trolley Prefix" error={errors.nursery?.trolleyGenerator?.trolleyPrefix?.message}>
+                <input {...register("nursery.trolleyGenerator.trolleyPrefix")} className={inputClass} placeholder="GT" />
+              </Field>
+              <Field label="Levels per Trolley" error={errors.nursery?.trolleyGenerator?.levelsPerTrolley?.message}>
+                <input
+                  type="number"
+                  {...register("nursery.trolleyGenerator.levelsPerTrolley", { valueAsNumber: true })}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Level Prefix" error={errors.nursery?.trolleyGenerator?.levelPrefix?.message}>
+                <input {...register("nursery.trolleyGenerator.levelPrefix")} className={inputClass} placeholder="L" />
+              </Field>
+              <Field label="Seed Tray Capacity per Level" error={errors.nursery?.trolleyGenerator?.traysPerLevel?.message}>
+                <input
+                  type="number"
+                  {...register("nursery.trolleyGenerator.traysPerLevel", { valueAsNumber: true })}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            {trolleyCapacityPreview !== null && (
+              <p className="text-xs text-ink-muted">
+                {trolleyGenerator.trolleyCount} trolleys × {trolleyGenerator.levelsPerTrolley} levels × {trolleyGenerator.traysPerLevel} trays
+                = {trolleyCapacityPreview.toLocaleString()} Seed Tray capacity
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -320,29 +362,9 @@ function NurseryFields({ register, watch, errors }: { register: any; watch: any;
 
       <div className="flex flex-col gap-2 border-t border-border-subtle pt-4">
         <p className="text-xs text-ink-muted">
-          Trolleys and Seeding Machines are farm-level equipment, not part of this Nursery&apos;s physical structure --
+          Seeding Machines are farm-level equipment, not part of this Nursery&apos;s physical structure --
           registering one here does not place or assign it to this greenhouse.
         </p>
-        <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
-          <input type="checkbox" {...register("nursery.includeTrolley")} className="h-4 w-4" />
-          Register a Germination Trolley (farm-level equipment)
-        </label>
-        {includeTrolley && (
-          <div className="ml-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <Field label="Trolley code" error={errors.nursery?.trolley?.code?.message}>
-              <input {...register("nursery.trolley.code")} className={inputClass} placeholder="GT-01" />
-            </Field>
-            <Field label="Levels" error={errors.nursery?.trolley?.levelCount?.message}>
-              <input type="number" {...register("nursery.trolley.levelCount", { valueAsNumber: true })} className={inputClass} />
-            </Field>
-            <Field label="Trays per level" error={errors.nursery?.trolley?.traysPerLevel?.message}>
-              <input type="number" {...register("nursery.trolley.traysPerLevel", { valueAsNumber: true })} className={inputClass} />
-            </Field>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2">
         <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
           <input type="checkbox" {...register("nursery.includeSeedingMachine")} className="h-4 w-4" />
           Register a Seeding Machine (farm-level equipment)
@@ -432,7 +454,7 @@ function ReviewSummary({ payload }: { payload: GreenhouseSetupCreate }) {
     if (n.seedling_tables) counts.push(["Seedling tables", n.seedling_tables.end - n.seedling_tables.start + 1]);
     if (n.intersalads_tables) counts.push(["InterSalads tables", n.intersalads_tables.end - n.intersalads_tables.start + 1]);
     if (n.intervines_tables) counts.push(["InterVines tables", n.intervines_tables.end - n.intervines_tables.start + 1]);
-    const trolleyCount = n.trolleys?.length ?? 0;
+    const trolleyCount = (n.trolleys?.length ?? 0) + (n.trolley_generator?.trolley_count ?? 0);
     const seedingMachineCount = n.seeding_machines?.length ?? 0;
     if (trolleyCount > 0) counts.push(["Trolleys (farm-level equipment)", trolleyCount]);
     if (seedingMachineCount > 0) counts.push(["Seeding machines (farm-level equipment)", seedingMachineCount]);
