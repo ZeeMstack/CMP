@@ -19,7 +19,7 @@ const TRAYS = [
     batch_id: "batch-1", batch_code: "CB-0001", seed_lot: SEED_LOT,
     tray: { id: "tray-1", code: "ST-0001", carrier_type: CARRIER_TYPE },
     batch_carrier_assignment_id: "assignment-1", seeds_sown: 200, state: "in_germination",
-    placement: { trolley: { id: "t9", code: "GT-01", name: "Trolley" }, chamber: { id: "c9", code: "GC-01", name: "Chamber" }, slot: { id: "s9", code: "S01", name: "Slot", shelf_code: "L1" } },
+    placement: { trolley: { id: "t9", code: "GT-01", name: "Trolley" }, chamber: { id: "c9", code: "GC-01", name: "Chamber" }, position: { id: "s9", code: "S01", name: "Slot", level_code: "GT-01-L01", mode: "legacy" } },
   },
   {
     batch_id: "batch-2", batch_code: "CB-0002", seed_lot: SEED_LOT,

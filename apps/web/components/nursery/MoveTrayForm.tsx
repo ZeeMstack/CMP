@@ -1,12 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
 import type { PlaceTrayCreate } from "@/lib/api/client";
-import { useAvailableTrolleys, useGerminationTrays, useTrolleySlots } from "@/lib/query/hooks";
+import { useAvailableTrolleys, useGerminationTrays, useTrolleyLevels } from "@/lib/query/hooks";
 import {
   DEFAULT_PLACE_TRAY_FORM_VALUES,
   buildPlaceTrayPayload,
@@ -38,10 +38,21 @@ function nowDateAndTime() {
   };
 }
 
-/** A Sown Seed Tray into a slot on a Trolley that is currently placed in a
+/** A Sown Seed Tray into a Level on a Trolley that is currently placed in a
  * Germination Chamber (enforced server-side -- the backend rejects a
- * Trolley that isn't currently in Germination, section 16). Physical
- * placement only; no biological Germination outcome field appears here. */
+ * Trolley that isn't currently in Germination, section 16).
+ *
+ * PILOT-UX-001B: the backend is authoritative for per-Level classification
+ * (`legacy` / `direct` / `invalid`, via `useTrolleyLevels`) -- this form
+ * consumes `mode` and never re-derives it from raw position structure.
+ * A `direct` Level is itself the terminal selection (its own id is
+ * submitted, no further step). A `legacy` Level still requires picking one
+ * of its open child Slots, exactly as before. An `invalid` Level (or a
+ * Level with zero remaining capacity) is shown, disabled, so an operator
+ * can see it exists and why it cannot be used, but can never select it.
+ *
+ * Physical placement only; no biological Germination outcome field appears
+ * here. */
 export function MoveTrayForm({
   farmId, onSubmit, onCancel, isSubmitting, serverError,
 }: {
@@ -54,7 +65,7 @@ export function MoveTrayForm({
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId] = useState(() => crypto.randomUUID());
   const [selectedTrolleyId, setSelectedTrolleyId] = useState("");
-  const [selectedLevel, setSelectedLevel] = useState("");
+  const [selectedLevelId, setSelectedLevelId] = useState("");
 
   const initial = nowDateAndTime();
   const {
@@ -69,10 +80,10 @@ export function MoveTrayForm({
   const eligibleTrays = (traysQuery.data ?? []).filter((t) => t.state !== "in_germination");
   const trolleysQuery = useAvailableTrolleys(farmId);
   const trolleys = trolleysQuery.data ?? [];
-  const slotsQuery = useTrolleySlots(farmId, selectedTrolleyId);
-  const openSlots = (slotsQuery.data ?? []).filter((s) => !s.occupied);
-  const levels = useMemo(() => Array.from(new Set(openSlots.map((s) => s.shelf_code))).sort(), [openSlots]);
-  const slotsOnLevel = openSlots.filter((s) => s.shelf_code === selectedLevel);
+  const levelsQuery = useTrolleyLevels(farmId, selectedTrolleyId);
+  const levels = levelsQuery.data ?? [];
+  const selectedLevel = levels.find((lvl) => lvl.id === selectedLevelId) ?? null;
+  const openSlots = selectedLevel?.mode === "legacy" ? selectedLevel.slots.filter((s) => !s.occupied) : [];
 
   async function goToReview() {
     const valid = await trigger();
@@ -83,11 +94,21 @@ export function MoveTrayForm({
     onSubmit(buildPlaceTrayPayload(getValues(), clientCommandId));
   }
 
+  function handleLevelChange(levelId: string) {
+    setSelectedLevelId(levelId);
+    const level = levels.find((lvl) => lvl.id === levelId);
+    // A `direct` Level is itself the terminal target -- submit its own id
+    // immediately. A `legacy` Level still needs a Slot choice below, so its
+    // target starts blank; an `invalid`/full Level is never selectable (its
+    // `<option>` is disabled), so this branch is unreachable for it.
+    setValue("asset_position_id", level?.mode === "direct" ? level.id : "");
+  }
+
   if (step === "review") {
     const values = getValues();
     const tray = eligibleTrays.find((t) => t.tray.id === values.tray_id);
     const trolley = trolleys.find((t) => t.id === values.trolley_id);
-    const slot = openSlots.find((s) => s.id === values.slot_id);
+    const slot = selectedLevel?.mode === "legacy" ? openSlots.find((s) => s.id === values.asset_position_id) : null;
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
@@ -115,12 +136,14 @@ export function MoveTrayForm({
             </div>
             <div>
               <dt className="text-ink-muted">Level</dt>
-              <dd className="font-medium text-ink">{selectedLevel}</dd>
+              <dd className="font-medium text-ink">{selectedLevel?.code}</dd>
             </div>
-            <div>
-              <dt className="text-ink-muted">Slot</dt>
-              <dd className="font-medium text-ink">{slot?.code}</dd>
-            </div>
+            {selectedLevel?.mode === "legacy" && (
+              <div>
+                <dt className="text-ink-muted">Slot</dt>
+                <dd className="font-medium text-ink">{slot?.code}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-ink-muted">Occurred at</dt>
               <dd className="font-medium text-ink">
@@ -169,7 +192,7 @@ export function MoveTrayForm({
       </fieldset>
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Trolley / Level / Slot</legend>
+        <legend className="px-1 text-sm font-semibold text-ink">Trolley / Level</legend>
         {trolleysQuery.isSuccess && trolleys.length === 0 ? (
           <p className="text-sm text-ink-muted">
             No Trolleys are currently placed in a Germination Chamber. Place a Trolley first.
@@ -183,43 +206,53 @@ export function MoveTrayForm({
                 onChange={(e) => {
                   setValue("trolley_id", e.target.value);
                   setSelectedTrolleyId(e.target.value);
-                  setSelectedLevel("");
-                  setValue("slot_id", "");
+                  setSelectedLevelId("");
+                  setValue("asset_position_id", "");
                 }}
               >
                 <option value="">Select a Trolley…</option>
                 {trolleys.map((trolley) => (
                   <option key={trolley.id} value={trolley.id}>
-                    {trolley.code} — {trolley.chamber.code} ({trolley.available_slot_count} of{" "}
-                    {trolley.total_slot_count} slots free)
+                    {trolley.code} — {trolley.chamber.code} ({trolley.available_capacity} of{" "}
+                    {trolley.total_capacity} free)
                   </option>
                 ))}
               </select>
             </Field>
             {selectedTrolleyId && (
-              <Field label="Level">
+              <Field label="Level" error={errors.asset_position_id?.message}>
                 <select
-                  value={selectedLevel}
-                  onChange={(e) => {
-                    setSelectedLevel(e.target.value);
-                    setValue("slot_id", "");
-                  }}
+                  value={selectedLevelId}
+                  onChange={(e) => handleLevelChange(e.target.value)}
                   className={inputClass}
                 >
                   <option value="">Select a Level…</option>
-                  {levels.map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
-                  ))}
+                  {levels.map((level) => {
+                    const isFull = level.mode !== "invalid" && (level.available_capacity ?? 0) <= 0;
+                    const disabled = level.mode === "invalid" || isFull;
+                    const suffix =
+                      level.mode === "invalid"
+                        ? " (not configured)"
+                        : isFull
+                          ? " (full)"
+                          : level.mode === "direct"
+                            ? ` (${level.available_capacity} of ${level.capacity} free)`
+                            : ` (${level.available_capacity} slot${level.available_capacity === 1 ? "" : "s"} free)`;
+                    return (
+                      <option key={level.id} value={level.id} disabled={disabled}>
+                        {level.code}
+                        {suffix}
+                      </option>
+                    );
+                  })}
                 </select>
               </Field>
             )}
-            {selectedLevel && (
-              <Field label="Slot" error={errors.slot_id?.message}>
-                <select {...register("slot_id")} className={inputClass}>
+            {selectedLevel?.mode === "legacy" && (
+              <Field label="Slot" error={errors.asset_position_id?.message}>
+                <select {...register("asset_position_id")} className={inputClass}>
                   <option value="">Select a Slot…</option>
-                  {slotsOnLevel.map((slot) => (
+                  {openSlots.map((slot) => (
                     <option key={slot.id} value={slot.id}>
                       {slot.code}
                     </option>

@@ -29,7 +29,7 @@ const TRAYS = [
     placement: {
       trolley: { id: "trolley-9", code: "GT-09", name: "Trolley 9" },
       chamber: { id: "chamber-9", code: "GC-09", name: "Chamber 9" },
-      slot: { id: "slot-9", code: "S01", name: "Slot 1", shelf_code: "L1" },
+      position: { id: "slot-9", code: "S01", name: "Slot 1", level_code: "GT-09-L01", mode: "legacy" },
     },
   },
 ];

@@ -187,9 +187,9 @@ def _build_entered_scenario(
     entry_time = sow_time + timedelta(days=4)
     entry_ids = []
     for i, carrier in enumerate(carriers):
-        germination_service.place_tray_in_slot(
+        germination_service.place_tray(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-            tray_id=carrier.id, trolley_id=trolley.id, slot_id=slots[i], effective_time=germination_time,
+            tray_id=carrier.id, trolley_id=trolley.id, asset_position_id=slots[i], effective_time=germination_time,
             reason=None,
         )
         germination_outcome_service.record_germination_outcomes(

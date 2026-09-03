@@ -1,13 +1,29 @@
-"""NURSERY-OPS-002A: Germination Placement.
+"""NURSERY-OPS-002A / PILOT-UX-001B: Germination Placement.
 
-FROZEN authoritative physical model (product decision, no chamber_position):
+FROZEN authoritative physical model (product decision):
 
     Nursery Greenhouse
     -> Germination Chamber (occupiable, capacity = number of Trolleys)
         -> Germination Trolley Asset (occupies the Chamber directly)
-            -> Shelf/Level AssetPosition
-                -> Slot AssetPosition
-                    -> Seed Tray Carrier (occupies the Slot)
+            -> Level (shelf-kind AssetPosition)
+                -> Seed Tray Carrier (new model: occupies the Level directly)
+                -> Slot AssetPosition (legacy model)
+                    -> Seed Tray Carrier (legacy: occupies the Slot)
+
+A Level is classified PER LEVEL, independently, from its own current
+structure -- never per Trolley (a single Trolley may carry both legacy and
+new-model Levels, e.g. after additive extension):
+
+    legacy_level  = shelf AND has >=1 child slot
+                    -> Seed Tray occupies a child Slot; direct occupancy on
+                       the Level itself is forbidden.
+    direct_level  = shelf AND zero child slots AND capacity IS NOT NULL
+                    -> Seed Tray occupies the Level directly, up to capacity
+                       (DOMAIN-FARM-002's generic N-occupant mechanism).
+    invalid_level = shelf AND zero child slots AND capacity IS NULL
+                    -> not a valid placement target at all (a Farm Setup
+                       configuration gap) -- NULL capacity is never silently
+                       treated as capacity=1 for a Level.
 
 This module is a thin, Germination-aware orchestration layer over the
 existing, unmodified `movement_service.execute_movement` -- it adds no new
@@ -16,15 +32,25 @@ is `movement_service`'s own, reused verbatim. What this module adds is the
 domain-specific validation `movement_service` cannot know about on its own:
 a Trolley must be an active `germination_trolley` in this tenant/farm, a
 Chamber must be an active, occupiable `germination_chamber` under a
-Nursery-classified Greenhouse, and -- critically -- a Tray may only be
-placed into a Trolley's Slot while that Trolley itself currently occupies a
-valid Germination Chamber (section 16).
+Nursery-classified Greenhouse, a Tray may only be placed into a Trolley's
+Level/Slot while that Trolley itself currently occupies a valid Germination
+Chamber (section 16), and -- PILOT-UX-001B -- per-Level legacy/direct/
+invalid classification for the placement target.
+
+PILOT-UX-001B section 5 (generic movement bypass): the module-level
+`reject_generic_bypass_for_seed_tray_placement` guard is called ONLY from
+the generic `POST /farms/{farm_id}/movements` HTTP route
+(`api/movements.py`) -- never from `place_tray` below, which continues to
+call `movement_service.execute_movement` directly after its own validation
+succeeds, exactly as before. `movement_service` itself stays fully generic
+and untouched.
 
 Physical placement only. No biological Germination outcome (that is
 NURSERY-OPS-002B's `GerminationCheck`, untouched here), no workflow-stage
 transition (physical location and workflow stage are separate facts)."""
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -35,16 +61,18 @@ from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.carrier import Carrier
 from app.models.location import Location
 from app.models.movement import Movement
+from app.models.occupancy import Occupancy
 from app.schemas.germination import (
     AvailableTrolleyRead,
     GerminationChamberAvailabilityRead,
     GerminationChamberSummary,
+    GerminationPositionSummary,
     GerminationResolvedPlacement,
     GerminationTrayRead,
-    SlotSummary,
+    LegacySlotAvailabilityRead,
     TrayPlacementRead,
+    TrolleyLevelAvailabilityRead,
     TrolleyPlacementRead,
-    TrolleySlotAvailabilityRead,
     TrolleySummary,
 )
 from app.schemas.crop_batch import CropSummary, VarietySummary
@@ -54,6 +82,8 @@ from app.services.errors import (
     AssetPositionNotFoundError,
     FarmNotFoundError,
     GerminationChamberInvalidError,
+    GerminationLevelNotConfiguredError,
+    GerminationPlacementMustUseGerminationOperationError,
     GerminationTraySlotInvalidError,
     GerminationTrolleyInvalidError,
     TrayNotSownError,
@@ -63,7 +93,10 @@ from app.services.errors import (
 GERMINATION_TROLLEY_ASSET_TYPE_CODE = "germination_trolley"
 GERMINATION_CHAMBER_LOCATION_TYPE_CODE = "germination_chamber"
 SEED_TRAY_CARRIER_TYPE_CODE = "seed_tray"
+LEVEL_POSITION_KIND = "shelf"
 SLOT_POSITION_KIND = "slot"
+
+LevelMode = Literal["legacy", "direct", "invalid"]
 
 
 def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID):
@@ -109,21 +142,55 @@ def _validate_trolley(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, 
     return asset
 
 
-def _validate_slot(
-    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID, slot_id: uuid.UUID
+def _classify_level(*, has_children: bool, capacity: int | None) -> LevelMode:
+    """PILOT-UX-001B section 2 -- classification is a pure function of one
+    Level's own current structure, independent of every other Level on the
+    same Trolley."""
+    if has_children:
+        return "legacy"
+    if capacity is not None:
+        return "direct"
+    return "invalid"
+
+
+def _has_child_slots(db: Session, *, level_id: uuid.UUID) -> bool:
+    return db.execute(
+        select(AssetPosition.id).where(AssetPosition.parent_position_id == level_id).limit(1)
+    ).scalar_one_or_none() is not None
+
+
+def _resolve_tray_target(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID, asset_position_id: uuid.UUID
 ) -> AssetPosition:
-    # A truly nonexistent (or cross-tenant, via a mismatched trolley_id)
-    # slot reads as `AssetPositionNotFoundError` (404) -- the same generic
-    # error `movement_service._resolve_target` itself already raises for
-    # this exact case, kept consistent rather than inventing a second
-    # "not found" shape. `trolley_id` here has already been tenant/farm-
-    # validated by `_validate_trolley` above, so "wrong trolley" already
-    # implies "not a slot this caller may legitimately reference."
-    position = db.execute(select(AssetPosition).where(AssetPosition.id == slot_id)).scalar_one_or_none()
+    """PILOT-UX-001B: accepts EITHER a `direct_level` (the Level itself) or
+    a legacy child Slot -- never a `legacy_level` targeted directly, and
+    never an `invalid_level`. A truly nonexistent (or cross-tenant, via a
+    mismatched trolley_id) target reads as `AssetPositionNotFoundError`
+    (404) -- the same generic error `movement_service._resolve_target`
+    itself already raises for this exact case, kept consistent rather than
+    inventing a second "not found" shape. `trolley_id` here has already
+    been tenant/farm-validated by `_validate_trolley` above, so "wrong
+    trolley" already implies "not a target this caller may legitimately
+    reference." """
+    position = db.execute(select(AssetPosition).where(AssetPosition.id == asset_position_id)).scalar_one_or_none()
     if position is None or position.asset_id != trolley_id:
-        raise AssetPositionNotFoundError(str(slot_id))
-    if position.position_kind != SLOT_POSITION_KIND:
-        raise GerminationTraySlotInvalidError(str(slot_id))
+        raise AssetPositionNotFoundError(str(asset_position_id))
+
+    if position.position_kind == SLOT_POSITION_KIND:
+        return position
+
+    if position.position_kind != LEVEL_POSITION_KIND:
+        raise GerminationTraySlotInvalidError(str(asset_position_id))
+
+    mode = _classify_level(
+        has_children=_has_child_slots(db, level_id=position.id), capacity=position.capacity
+    )
+    if mode == "legacy":
+        # A legacy_level's own row is not a valid target -- the caller must
+        # target one of its child Slots instead.
+        raise GerminationTraySlotInvalidError(str(asset_position_id))
+    if mode == "invalid":
+        raise GerminationLevelNotConfiguredError(str(asset_position_id))
     return position
 
 
@@ -162,6 +229,49 @@ def _trolleys_current_chamber(
         return _validate_chamber(db, tenant_id=tenant_id, farm_id=farm_id, chamber_id=occupancy.target_location_id)
     except GerminationChamberInvalidError:
         return None
+
+
+# --- Generic movement bypass guard (PILOT-UX-001B section 5) -----------------------
+
+
+def reject_generic_bypass_for_seed_tray_placement(
+    db: Session,
+    *,
+    occupant_kind: str,
+    occupant_id: uuid.UUID,
+    destination_kind: str | None,
+    destination_id: uuid.UUID | None,
+) -> None:
+    """Called ONLY from `api/movements.py`'s generic
+    `POST /farms/{farm_id}/movements` route, before it calls
+    `movement_service.execute_movement` -- NOT from `place_tray` below,
+    which reaches `execute_movement` directly and is therefore unaffected.
+    `movement_service` itself is not touched: it stays fully generic, with
+    no Germination-specific knowledge baked in, per this ticket's own
+    instruction not to duplicate Germination business logic there. A Seed
+    Tray Carrier moving onto ANY AssetPosition owned by a
+    `germination_trolley` Asset (Level or legacy Slot) must go through this
+    module's own `place_tray` instead -- the generic endpoint has no
+    sown-state or Trolley-currently-in-Chamber validation at all."""
+    if occupant_kind != "carrier" or destination_kind != "asset_position" or destination_id is None:
+        return
+    carrier_type_code = db.execute(
+        text("SELECT ct.code FROM carriers c JOIN carrier_types ct ON ct.id = c.carrier_type_id WHERE c.id = :id"),
+        {"id": occupant_id},
+    ).scalar_one_or_none()
+    if carrier_type_code != SEED_TRAY_CARRIER_TYPE_CODE:
+        return
+    owning_asset_type_code = db.execute(
+        text(
+            "SELECT at.code FROM asset_positions p "
+            "JOIN assets a ON a.id = p.asset_id "
+            "JOIN asset_types at ON at.id = a.asset_type_id "
+            "WHERE p.id = :id"
+        ),
+        {"id": destination_id},
+    ).scalar_one_or_none()
+    if owning_asset_type_code == GERMINATION_TROLLEY_ASSET_TYPE_CODE:
+        raise GerminationPlacementMustUseGerminationOperationError(str(destination_id))
 
 
 # --- Commands ----------------------------------------------------------------------
@@ -203,7 +313,7 @@ def place_trolley_in_chamber(
     )
 
 
-def place_tray_in_slot(
+def place_tray(
     db: Session,
     *,
     tenant_id: uuid.UUID,
@@ -212,21 +322,25 @@ def place_tray_in_slot(
     client_command_id: uuid.UUID,
     tray_id: uuid.UUID,
     trolley_id: uuid.UUID,
-    slot_id: uuid.UUID,
+    asset_position_id: uuid.UUID,
     effective_time: datetime,
     reason: str | None,
 ) -> Movement:
-    """Section 15-16: the Germination-specific business rule
-    `movement_service` cannot express generically -- the Trolley must
+    """Section 15-16: the Germination-specific business rules
+    `movement_service` cannot express generically -- the target must be a
+    valid `direct_level` or legacy Slot on THIS Trolley (never a
+    `legacy_level` directly, never an `invalid_level`), and the Trolley must
     CURRENTLY occupy a valid Nursery Germination Chamber, checked fresh
-    (not cached) on every call, before the generic Movement command is
-    even attempted. `BatchCarrierAssignment`/Seed Lot/Seeds Sown are
-    validated for eligibility but never written to -- this command touches
-    only `Occupancy`/`Movement` (section 18)."""
+    (not cached) on every call, before the generic Movement command is even
+    attempted. `BatchCarrierAssignment`/Seed Lot/Seeds Sown are validated
+    for eligibility but never written to -- this command touches only
+    `Occupancy`/`Movement` (section 18)."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     _validate_sown_tray(db, tenant_id=tenant_id, farm_id=farm_id, tray_id=tray_id)
     _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
-    _validate_slot(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id, slot_id=slot_id)
+    _resolve_tray_target(
+        db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id, asset_position_id=asset_position_id
+    )
 
     if _trolleys_current_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id) is None:
         raise TrolleyNotInGerminationError(str(trolley_id))
@@ -241,7 +355,7 @@ def place_tray_in_slot(
         occupant_kind="carrier",
         occupant_id=tray_id,
         destination_kind="asset_position",
-        destination_id=slot_id,
+        destination_id=asset_position_id,
         reason=reason,
     )
 
@@ -253,6 +367,22 @@ def _carrier_summary(carrier: Carrier, carrier_type_code: str, carrier_type_name
     return CarrierSummary(
         id=carrier.id, code=carrier.code,
         carrier_type=CarrierTypeSummary(id=carrier.carrier_type_id, code=carrier_type_code, name=carrier_type_name),
+    )
+
+
+def _position_summary(db: Session, *, target_position: AssetPosition) -> GerminationPositionSummary:
+    """PILOT-UX-001B: derives `mode`/`level_code` from the target position's
+    own shape -- a legacy Slot always has a parent (its Level); a
+    direct-model placement's target IS the Level (no parent)."""
+    if target_position.parent_position_id is not None:
+        level_position = db.get(AssetPosition, target_position.parent_position_id)
+        mode: LevelMode = "legacy"
+    else:
+        level_position = target_position
+        mode = "direct"
+    return GerminationPositionSummary(
+        id=target_position.id, code=target_position.code, name=target_position.name,
+        level_code=level_position.code, mode=mode,
     )
 
 
@@ -269,9 +399,8 @@ def describe_trolley_placement(db: Session, *, movement: Movement) -> TrolleyPla
 
 def describe_tray_placement(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, movement: Movement) -> TrayPlacementRead:
     tray = db.get(Carrier, movement.occupant_carrier_id)
-    slot = db.get(AssetPosition, movement.destination_asset_position_id)
-    shelf = db.get(AssetPosition, slot.parent_position_id)
-    trolley = db.get(Asset, slot.asset_id)
+    target_position = db.get(AssetPosition, movement.destination_asset_position_id)
+    trolley = db.get(Asset, target_position.asset_id)
     chamber = _trolleys_current_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley.id)
     row = db.execute(
         text(
@@ -291,7 +420,7 @@ def describe_tray_placement(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
         tray=_carrier_summary(tray, row["carrier_type_code"], row["carrier_type_name"]),
         batch_code=row["code"], seeds_sown=row["seed_count"],
         trolley=TrolleySummary(id=trolley.id, code=trolley.code, name=trolley.name),
-        slot=SlotSummary(id=slot.id, code=slot.code, name=slot.name, shelf_code=shelf.code),
+        position=_position_summary(db, target_position=target_position),
         chamber=GerminationChamberSummary(id=chamber.id, code=chamber.code, name=chamber.name),
         effective_time=movement.effective_time,
     )
@@ -334,20 +463,93 @@ def list_available_chambers(
     return result
 
 
+def _list_trolley_levels_unchecked(db: Session, *, trolley_id: uuid.UUID) -> list[TrolleyLevelAvailabilityRead]:
+    """The validate-free core of `list_trolley_levels` -- reused by
+    `list_available_trolleys` for trolleys its own query has already proven
+    valid/active, so it need not re-run `_validate_trolley` per trolley."""
+    positions = list(
+        db.execute(select(AssetPosition).where(AssetPosition.asset_id == trolley_id)).scalars()
+    )
+    if not positions:
+        return []
+
+    children_by_parent: dict[uuid.UUID, list[AssetPosition]] = {}
+    levels: list[AssetPosition] = []
+    for p in positions:
+        if p.position_kind == LEVEL_POSITION_KIND:
+            levels.append(p)
+        else:
+            children_by_parent.setdefault(p.parent_position_id, []).append(p)
+
+    position_ids = [p.id for p in positions]
+    occupied_ids = set(
+        db.execute(
+            select(Occupancy.target_asset_position_id).where(
+                Occupancy.target_asset_position_id.in_(position_ids), Occupancy.end_time.is_(None)
+            )
+        ).scalars()
+    )
+
+    results: list[TrolleyLevelAvailabilityRead] = []
+    for level in sorted(levels, key=lambda p: p.code.lower()):
+        children = children_by_parent.get(level.id, [])
+        mode = _classify_level(has_children=bool(children), capacity=level.capacity)
+        if mode == "legacy":
+            occupied_count = sum(1 for c in children if c.id in occupied_ids)
+            slots = [
+                LegacySlotAvailabilityRead(id=c.id, code=c.code, name=c.name, occupied=c.id in occupied_ids)
+                for c in sorted(children, key=lambda c: c.code.lower())
+            ]
+            results.append(
+                TrolleyLevelAvailabilityRead(
+                    id=level.id, code=level.code, name=level.name, mode="legacy",
+                    capacity=None, occupied_count=occupied_count,
+                    available_capacity=len(children) - occupied_count, slots=slots,
+                )
+            )
+        elif mode == "direct":
+            occupied_count = 1 if level.id in occupied_ids else 0
+            results.append(
+                TrolleyLevelAvailabilityRead(
+                    id=level.id, code=level.code, name=level.name, mode="direct",
+                    capacity=level.capacity, occupied_count=occupied_count,
+                    available_capacity=level.capacity - occupied_count, slots=[],
+                )
+            )
+        else:
+            results.append(
+                TrolleyLevelAvailabilityRead(
+                    id=level.id, code=level.code, name=level.name, mode="invalid",
+                    capacity=None, occupied_count=0, available_capacity=None, slots=[],
+                )
+            )
+    return results
+
+
+def list_trolley_levels(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID
+) -> list[TrolleyLevelAvailabilityRead]:
+    """Section 23 (PILOT-UX-001B): every Level on the Trolley, each
+    backend-classified as `legacy`/`direct`/`invalid` -- the frontend
+    decides how to render each mode, but never re-derives the
+    classification itself."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
+    return _list_trolley_levels_unchecked(db, trolley_id=trolley_id)
+
+
 def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> list[AvailableTrolleyRead]:
     """Section 22: Trolleys currently occupying a valid Nursery Germination
-    Chamber -- eligible destinations for Tray placement. Slot availability
-    is derived from actual active Occupancy, never the configured slot
-    count alone (section 23's own explicit requirement)."""
+    Chamber -- eligible destinations for Tray placement. Capacity is
+    aggregated across every Level on the Trolley (both `direct_level`
+    capacity and `legacy_level` slot counts; `invalid_level`s contribute
+    nothing, never advertised as available), derived from actual active
+    Occupancy, never configured capacity alone (section 23's own explicit
+    requirement)."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
-            "SELECT a.id, a.code, a.name, c.id AS chamber_id, c.code AS chamber_code, c.name AS chamber_name, "
-            "(SELECT count(*) FROM asset_positions sl WHERE sl.asset_id = a.id AND sl.position_kind = 'slot') "
-            "AS total_slot_count, "
-            "(SELECT count(*) FROM asset_positions sl "
-            " JOIN occupancies o ON o.target_asset_position_id = sl.id AND o.end_time IS NULL "
-            " WHERE sl.asset_id = a.id AND sl.position_kind = 'slot') AS occupied_slot_count "
+            "SELECT a.id, a.code, a.name, c.id AS chamber_id, c.code AS chamber_code, c.name AS chamber_name "
             "FROM assets a "
             "JOIN asset_types at ON at.id = a.asset_type_id AND at.code = :trolley_code "
             "JOIN occupancies o ON o.occupant_asset_id = a.id AND o.end_time IS NULL "
@@ -362,50 +564,34 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
             "trolley_code": GERMINATION_TROLLEY_ASSET_TYPE_CODE, "chamber_code": GERMINATION_CHAMBER_LOCATION_TYPE_CODE,
         },
     ).mappings().all()
-    return [
-        AvailableTrolleyRead(
-            id=r["id"], code=r["code"], name=r["name"],
-            chamber=GerminationChamberSummary(id=r["chamber_id"], code=r["chamber_code"], name=r["chamber_name"]),
-            total_slot_count=r["total_slot_count"], occupied_slot_count=r["occupied_slot_count"],
-            available_slot_count=r["total_slot_count"] - r["occupied_slot_count"],
+    result = []
+    for r in rows:
+        levels = _list_trolley_levels_unchecked(db, trolley_id=r["id"])
+        total_capacity = sum(
+            (lvl.capacity if lvl.mode == "direct" else len(lvl.slots)) for lvl in levels if lvl.mode != "invalid"
         )
-        for r in rows
-    ]
-
-
-def list_trolley_slots(
-    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID
-) -> list[TrolleySlotAvailabilityRead]:
-    """Section 23: every Slot on the Trolley, occupied or not, with human
-    Shelf/Slot codes -- the frontend decides how to group/hide occupied
-    ones; the backend never hides truthful state."""
-    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
-    _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
-    rows = db.execute(
-        text(
-            "SELECT slot.id, slot.code, slot.name, shelf.code AS shelf_code, "
-            "(o.id IS NOT NULL) AS occupied "
-            "FROM asset_positions slot "
-            "JOIN asset_positions shelf ON shelf.id = slot.parent_position_id "
-            "LEFT JOIN occupancies o ON o.target_asset_position_id = slot.id AND o.end_time IS NULL "
-            "WHERE slot.asset_id = :aid AND slot.position_kind = 'slot' "
-            "ORDER BY shelf.code, slot.code"
-        ),
-        {"aid": trolley_id},
-    ).mappings().all()
-    return [
-        TrolleySlotAvailabilityRead(
-            id=r["id"], code=r["code"], name=r["name"], shelf_code=r["shelf_code"], occupied=r["occupied"]
+        occupied_count = sum(lvl.occupied_count for lvl in levels if lvl.mode != "invalid")
+        result.append(
+            AvailableTrolleyRead(
+                id=r["id"], code=r["code"], name=r["name"],
+                chamber=GerminationChamberSummary(id=r["chamber_id"], code=r["chamber_code"], name=r["chamber_name"]),
+                total_capacity=total_capacity, occupied_count=occupied_count,
+                available_capacity=total_capacity - occupied_count,
+            )
         )
-        for r in rows
-    ]
+    return result
 
 
 def list_germination_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> list[GerminationTrayRead]:
     """Section 19-20: every Sown Seed Tray (active, sowing-origin
     BatchCarrierAssignment), classified into awaiting_placement / elsewhere
     / in_germination -- derived fresh from live Occupancy state, never a
-    persisted status field. One query, no N+1 (section 44)."""
+    persisted status field. One query, no N+1 (section 44). PILOT-UX-001B:
+    `target_position` is whatever AssetPosition the Occupancy directly
+    targets (a Level for a direct-model placement, a Slot for legacy);
+    `level_position` resolves to the parent Level for a Slot, or to
+    `target_position` itself when it IS already the Level (a NULL
+    `parent_position_id`) -- one COALESCE join covers both shapes."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -417,8 +603,12 @@ def list_germination_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.U
             "carrier.id AS tray_id, carrier.code AS tray_code, ct.id AS carrier_type_id, "
             "ct.code AS carrier_type_code, ct.name AS carrier_type_name, "
             "bca.id AS assignment_id, sel.seed_count, "
-            "occ.id AS occupancy_id, slot.id AS slot_id, slot.code AS slot_code, slot.name AS slot_name, "
-            "shelf.code AS shelf_code, trolley.id AS trolley_id, trolley.code AS trolley_code, "
+            "occ.id AS occupancy_id, "
+            "target_position.id AS position_id, target_position.code AS position_code, "
+            "target_position.name AS position_name, "
+            "(target_position.parent_position_id IS NOT NULL) AS is_legacy, "
+            "level_position.code AS level_code, "
+            "trolley.id AS trolley_id, trolley.code AS trolley_code, "
             "trolley.name AS trolley_name, trolley_occ.target_location_id AS chamber_id, "
             "chamber.code AS chamber_code, chamber.name AS chamber_name, chamber_gh.greenhouse_classification "
             "FROM batch_carrier_assignments bca "
@@ -430,9 +620,10 @@ def list_germination_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.U
             "JOIN crops crop ON crop.id = sl.crop_id "
             "JOIN varieties variety ON variety.id = sl.variety_id "
             "LEFT JOIN occupancies occ ON occ.occupant_carrier_id = carrier.id AND occ.end_time IS NULL "
-            "LEFT JOIN asset_positions slot ON slot.id = occ.target_asset_position_id "
-            "LEFT JOIN asset_positions shelf ON shelf.id = slot.parent_position_id "
-            "LEFT JOIN assets trolley ON trolley.id = slot.asset_id "
+            "LEFT JOIN asset_positions target_position ON target_position.id = occ.target_asset_position_id "
+            "LEFT JOIN asset_positions level_position "
+            "  ON level_position.id = COALESCE(target_position.parent_position_id, target_position.id) "
+            "LEFT JOIN assets trolley ON trolley.id = target_position.asset_id "
             "LEFT JOIN occupancies trolley_occ ON trolley_occ.occupant_asset_id = trolley.id AND trolley_occ.end_time IS NULL "
             "LEFT JOIN locations chamber ON chamber.id = trolley_occ.target_location_id "
             "LEFT JOIN location_types chamber_lt ON chamber_lt.id = chamber.location_type_id AND chamber_lt.code = :chamber_code "
@@ -458,7 +649,10 @@ def list_germination_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.U
             placement = GerminationResolvedPlacement(
                 trolley=TrolleySummary(id=r["trolley_id"], code=r["trolley_code"], name=r["trolley_name"]),
                 chamber=GerminationChamberSummary(id=r["chamber_id"], code=r["chamber_code"], name=r["chamber_name"]),
-                slot=SlotSummary(id=r["slot_id"], code=r["slot_code"], name=r["slot_name"], shelf_code=r["shelf_code"]),
+                position=GerminationPositionSummary(
+                    id=r["position_id"], code=r["position_code"], name=r["position_name"],
+                    level_code=r["level_code"], mode="legacy" if r["is_legacy"] else "direct",
+                ),
             )
         elif r["occupancy_id"] is None:
             state = "awaiting_placement"

@@ -261,6 +261,68 @@ def generate_positions(
     return created
 
 
+def _generate_levels_core(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    level_count: int,
+    level_prefix: str,
+    level_pad_width: int,
+    trays_per_level: int,
+) -> tuple[AssetType, list[AssetPosition]]:
+    """PILOT-UX-001B: the new-model counterpart to `_generate_positions_core`
+    -- creates ONLY root `shelf`-kind AssetPositions ("Levels"), each with
+    `capacity=trays_per_level`, and deliberately no child `slot` rows. A
+    Seed Tray then occupies the Level directly (DOMAIN-FARM-002's generic
+    N-occupant capacity mechanism, reused verbatim). `level_prefix` is
+    always caller-derived server-side from the owning Trolley's own code
+    (`farm_setup_service`), never accepted as free text from a Farm Setup
+    request, so `{trolley.code}-L{NN}` linkage cannot drift from the
+    Trolley's real identity. The generic `generate_positions`/
+    `AssetPositionsGenerate` path above is left completely unchanged --
+    still the only way to create a legacy-shaped shelf+slot structure, and
+    still available for any future generic use."""
+    asset = get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id)
+    asset_type = db.get(AssetType, asset.asset_type_id)
+    if asset_type is None or not asset_type.supports_positions:
+        raise PositionsNotSupportedError(str(asset_id))
+
+    level_codes = [f"{level_prefix}{str(n).zfill(level_pad_width)}" for n in range(1, level_count + 1)]
+    existing = db.execute(
+        select(AssetPosition.code).where(
+            AssetPosition.asset_id == asset_id,
+            AssetPosition.parent_position_id.is_(None),
+            func.lower(AssetPosition.code).in_([c.lower() for c in level_codes]),
+        )
+    ).scalars().all()
+    if existing:
+        raise DuplicatePositionCodeError(f"{asset_id}:{','.join(existing)}")
+
+    created: list[AssetPosition] = []
+    for level_code in level_codes:
+        level = AssetPosition(
+            asset_id=asset_id,
+            parent_position_id=None,
+            position_kind="shelf",
+            code=level_code,
+            name=f"Level {level_code}",
+            capacity=trays_per_level,
+        )
+        db.add(level)
+        created.append(level)
+
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if _constraint_name(exc) not in ("ux_asset_positions_sibling_code_lower", "ux_asset_positions_root_code_lower"):
+            raise
+        raise DuplicatePositionCodeError(f"{asset_id}:{level_prefix}") from exc
+    return asset_type, created
+
+
 def get_positions_tree(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, asset_id: uuid.UUID
 ) -> list[AssetPosition]:

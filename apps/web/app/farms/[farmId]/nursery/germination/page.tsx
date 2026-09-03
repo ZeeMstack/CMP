@@ -171,7 +171,7 @@ export default function GerminationPage() {
                       </td>
                       <td className="px-4 py-2 text-ink-muted">
                         {row.placement
-                          ? `${row.placement.trolley.code} / ${row.placement.chamber.code} / ${row.placement.slot.code}`
+                          ? `${row.placement.trolley.code} / ${row.placement.chamber.code} / ${row.placement.position.code}`
                           : "—"}
                       </td>
                     </tr>

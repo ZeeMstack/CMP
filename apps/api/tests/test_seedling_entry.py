@@ -199,9 +199,9 @@ def _place_in_germination(db_session, tenant, user, farm, s, *, tray_index=0, ef
     # Slots are assigned by raw index -- callers place Trays in increasing
     # tray_index order, so each Tray always claims a distinct, still-free slot.
     slot_id = _slot_ids(db_session, s["trolley"].id)[tray_index]
-    return germination_service.place_tray_in_slot(
+    return germination_service.place_tray(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        tray_id=s["carriers"][tray_index].id, trolley_id=s["trolley"].id, slot_id=slot_id,
+        tray_id=s["carriers"][tray_index].id, trolley_id=s["trolley"].id, asset_position_id=slot_id,
         effective_time=effective_time or _now(), reason=None,
     )
 

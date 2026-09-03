@@ -77,8 +77,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "germination", "chambers", "available"] as const,
   availableTrolleys: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "germination", "trolleys", "available"] as const,
-  trolleySlots: (tenantId: string, farmId: string, trolleyId: string) =>
-    ["tenant", tenantId, "farms", farmId, "germination", "trolleys", trolleyId, "slots"] as const,
+  trolleyLevels: (tenantId: string, farmId: string, trolleyId: string) =>
+    ["tenant", tenantId, "farms", farmId, "germination", "trolleys", trolleyId, "levels"] as const,
   germinationTrays: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "germination", "trays"] as const,
 

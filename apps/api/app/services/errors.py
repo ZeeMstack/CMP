@@ -410,8 +410,31 @@ class GerminationTrolleyInvalidError(DomainError):
 
 
 class GerminationTraySlotInvalidError(DomainError):
-    """NURSERY-OPS-002A: the referenced AssetPosition is not an active
-    `slot` belonging to the selected Germination Trolley."""
+    """NURSERY-OPS-002A / PILOT-UX-001B: the referenced AssetPosition is not
+    a valid Seed Tray placement target for the selected Germination
+    Trolley -- covers a `slot` that does not belong to the Trolley, a
+    `shelf` that is not itself a valid Level target (e.g. it is a
+    `legacy_level`, meaning it has child Slots and must be targeted through
+    one of those Slots instead, never directly), or any other position kind."""
+
+    pass
+
+
+class GerminationLevelNotConfiguredError(DomainError):
+    """PILOT-UX-001B: the referenced Level (`shelf`-kind AssetPosition) has
+    zero child Slots AND `capacity IS NULL` -- an `invalid_level`. This is a
+    Farm Setup configuration gap, never a valid one-tray placement target;
+    NULL capacity must not be silently treated as capacity=1 for a Level."""
+
+    pass
+
+
+class GerminationPlacementMustUseGerminationOperationError(DomainError):
+    """PILOT-UX-001B section 5: a Seed Tray Carrier may only be placed onto
+    a Germination Trolley AssetPosition (Level or legacy Slot) through this
+    module's own Germination placement operation -- never through the
+    generic movement endpoint, which has no Germination-specific validation
+    (sown-state, Trolley-currently-in-Chamber)."""
 
     pass
 

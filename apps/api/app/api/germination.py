@@ -13,8 +13,8 @@ from app.schemas.germination import (
     PlaceTrayCreate,
     PlaceTrolleyCreate,
     TrayPlacementRead,
+    TrolleyLevelAvailabilityRead,
     TrolleyPlacementRead,
-    TrolleySlotAvailabilityRead,
 )
 from app.services import germination_service
 from app.services.errors import (
@@ -23,6 +23,7 @@ from app.services.errors import (
     CarrierNotFoundError,
     FarmNotFoundError,
     GerminationChamberInvalidError,
+    GerminationLevelNotConfiguredError,
     GerminationTraySlotInvalidError,
     GerminationTrolleyInvalidError,
     InactiveOccupantError,
@@ -52,6 +53,7 @@ _INVALID = (
     GerminationChamberInvalidError,
     GerminationTrolleyInvalidError,
     GerminationTraySlotInvalidError,
+    GerminationLevelNotConfiguredError,
     TrayNotSownError,
     TrolleyNotInGerminationError,
     TargetNotOccupiableError,
@@ -112,7 +114,7 @@ def place_tray(
     ctx: TenantContext = Depends(require_permission(Permission.MOVEMENT_MANAGE)),
 ) -> TrayPlacementRead:
     try:
-        movement = germination_service.place_tray_in_slot(
+        movement = germination_service.place_tray(
             db,
             tenant_id=ctx.tenant_id,
             farm_id=farm_id,
@@ -120,7 +122,7 @@ def place_tray(
             client_command_id=payload.client_command_id,
             tray_id=payload.tray_id,
             trolley_id=payload.trolley_id,
-            slot_id=payload.slot_id,
+            asset_position_id=payload.asset_position_id,
             effective_time=payload.effective_time,
             reason=payload.reason,
         )
@@ -160,17 +162,17 @@ def list_available_trolleys(
 
 
 @router.get(
-    "/farms/{farm_id}/germination/trolleys/{trolley_id}/slots",
-    response_model=list[TrolleySlotAvailabilityRead],
+    "/farms/{farm_id}/germination/trolleys/{trolley_id}/levels",
+    response_model=list[TrolleyLevelAvailabilityRead],
 )
-def list_trolley_slots(
+def list_trolley_levels(
     farm_id: uuid.UUID,
     trolley_id: uuid.UUID,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission(Permission.ASSET_READ)),
-) -> list[TrolleySlotAvailabilityRead]:
+) -> list[TrolleyLevelAvailabilityRead]:
     try:
-        return germination_service.list_trolley_slots(db, tenant_id=ctx.tenant_id, farm_id=farm_id, trolley_id=trolley_id)
+        return germination_service.list_trolley_levels(db, tenant_id=ctx.tenant_id, farm_id=farm_id, trolley_id=trolley_id)
     except (FarmNotFoundError, AssetNotFoundError, GerminationTrolleyInvalidError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
 

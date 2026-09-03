@@ -15,6 +15,11 @@ EXPECTED_RULES = {
     # authoritative Nursery Germination topology.
     ("asset", "germination_trolley", "location", "germination_chamber"),
     ("carrier", "seed_tray", "position", "slot"),
+    # PILOT-UX-001B: a Seed Tray also occupies a Germination Trolley Level
+    # (shelf-kind AssetPosition) directly for a `direct_level` -- additive,
+    # the `position:slot` rule above is untouched and still covers legacy
+    # Levels' child Slots.
+    ("carrier", "seed_tray", "position", "shelf"),
     ("carrier", "cultivation_plate", "location", "table_position"),
     ("carrier", "grow_cube", "location", "table_position"),
     ("carrier", "grow_bag", "location", "grow_bag_position"),

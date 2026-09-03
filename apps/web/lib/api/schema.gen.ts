@@ -1715,15 +1715,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/farms/{farm_id}/germination/trolleys/{trolley_id}/slots": {
+    "/farms/{farm_id}/germination/trolleys/{trolley_id}/levels": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Trolley Slots */
-        get: operations["list_trolley_slots_farms__farm_id__germination_trolleys__trolley_id__slots_get"];
+        /** List Trolley Levels */
+        get: operations["list_trolley_levels_farms__farm_id__germination_trolleys__trolley_id__levels_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3214,12 +3214,12 @@ export interface components {
             /** Name */
             name: string;
             chamber: components["schemas"]["GerminationChamberSummary"];
-            /** Total Slot Count */
-            total_slot_count: number;
-            /** Occupied Slot Count */
-            occupied_slot_count: number;
-            /** Available Slot Count */
-            available_slot_count: number;
+            /** Total Capacity */
+            total_capacity: number;
+            /** Occupied Count */
+            occupied_count: number;
+            /** Available Capacity */
+            available_capacity: number;
         };
         /** BatchAssignmentTransferRead */
         BatchAssignmentTransferRead: {
@@ -4817,11 +4817,36 @@ export interface components {
              */
             actor_user_id: string;
         };
+        /**
+         * GerminationPositionSummary
+         * @description The exact AssetPosition a Seed Tray occupies -- either the Level
+         *     itself (`mode="direct"`, `code == level_code`) or a legacy child Slot
+         *     (`mode="legacy"`, `code` is the Slot's own code, `level_code` is its
+         *     parent Level's code).
+         */
+        GerminationPositionSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Level Code */
+            level_code: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "legacy" | "direct" | "invalid";
+        };
         /** GerminationResolvedPlacement */
         GerminationResolvedPlacement: {
             trolley: components["schemas"]["TrolleySummary"];
             chamber: components["schemas"]["GerminationChamberSummary"];
-            slot: components["schemas"]["SlotSummary"];
+            position: components["schemas"]["GerminationPositionSummary"];
         };
         /** GerminationTrayRead */
         GerminationTrayRead: {
@@ -6065,6 +6090,25 @@ export interface components {
             /** Zones */
             zones: components["schemas"]["ZoneSetupConfig"][];
         };
+        /**
+         * LegacySlotAvailabilityRead
+         * @description One child Slot of a `legacy_level` -- unchanged shape/meaning from
+         *     before PILOT-UX-001B, just nested under its Level now instead of
+         *     returned as a flat list.
+         */
+        LegacySlotAvailabilityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Occupied */
+            occupied: boolean;
+        };
         /** Limitation */
         Limitation: {
             /** Code */
@@ -7072,10 +7116,10 @@ export interface components {
              */
             trolley_id: string;
             /**
-             * Slot Id
+             * Asset Position Id
              * Format: uuid
              */
-            slot_id: string;
+            asset_position_id: string;
             /**
              * Effective Time
              * Format: date-time
@@ -8389,20 +8433,6 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** SlotSummary */
-        SlotSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Code */
-            code: string;
-            /** Name */
-            name: string;
-            /** Shelf Code */
-            shelf_code: string;
-        };
         /**
          * SowNewBatchCreate
          * @description NURSERY-OPS-001: the operator-facing Sowing command -- one call
@@ -9157,7 +9187,7 @@ export interface components {
             /** Seeds Sown */
             seeds_sown: number;
             trolley: components["schemas"]["TrolleySummary"];
-            slot: components["schemas"]["SlotSummary"];
+            position: components["schemas"]["GerminationPositionSummary"];
             chamber: components["schemas"]["GerminationChamberSummary"];
             /**
              * Effective Time
@@ -9166,29 +9196,62 @@ export interface components {
             effective_time: string;
         };
         /**
+         * TrolleyLevelAvailabilityRead
+         * @description PILOT-UX-001B: one Level of a Trolley, backend-classified -- the
+         *     frontend must consume `mode`, never re-derive it from raw position
+         *     structure. `capacity`/`available_capacity` are populated for
+         *     `mode="direct"` only; `slots` is populated for `mode="legacy"` only;
+         *     `mode="invalid"` carries neither (a Farm Setup configuration gap, never
+         *     advertised as an available destination).
+         */
+        TrolleyLevelAvailabilityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "legacy" | "direct" | "invalid";
+            /** Capacity */
+            capacity: number | null;
+            /** Occupied Count */
+            occupied_count: number;
+            /** Available Capacity */
+            available_capacity: number | null;
+            /**
+             * Slots
+             * @default []
+             */
+            slots: components["schemas"]["LegacySlotAvailabilityRead"][];
+        };
+        /**
          * TrolleyLevelGeneratorConfig
-         * @description Mirrors `AssetPositionsGenerate` exactly. `slots_per_shelf` is the
-         *     number of Seed Trays each Level physically holds -- represented as one
-         *     exclusive numbered slot per tray (the existing, only, occupancy-
-         *     compatibility-proven target for a seed_tray carrier), not as a single
-         *     high-capacity shelf row; `slot_capacity` stays NULL/1 accordingly
-         *     unless the caller has a genuine reason to widen it.
+         * @description PILOT-UX-001B: the new-model Nursery Germination Level generator --
+         *     creates ONLY `level_count` root `shelf`-kind AssetPositions ("Levels"),
+         *     each with `capacity=trays_per_level`; deliberately no child `slot` rows
+         *     are ever created here (a Level holds Seed Trays directly, via
+         *     DOMAIN-FARM-002's generic N-occupant capacity mechanism). There is no
+         *     `level_prefix` field -- `farm_setup_service` always derives it
+         *     server-side from the Trolley's own code (`{trolley.code}-L{NN}`), never
+         *     from caller-supplied free text, so the code cannot drift from the
+         *     Trolley's real identity. This schema no longer mirrors
+         *     `AssetPositionsGenerate`, which keeps its own full shelf+slot shape
+         *     unchanged for legacy/generic use.
          */
         TrolleyLevelGeneratorConfig: {
-            /** Shelf Count */
-            shelf_count: number;
-            /** Slots Per Shelf */
-            slots_per_shelf: number;
-            /** Shelf Prefix */
-            shelf_prefix: string;
-            /** Slot Prefix */
-            slot_prefix: string;
-            /** Shelf Pad Width */
-            shelf_pad_width: number;
-            /** Slot Pad Width */
-            slot_pad_width: number;
-            /** Slot Capacity */
-            slot_capacity?: number | null;
+            /** Level Count */
+            level_count: number;
+            /** Trays Per Level */
+            trays_per_level: number;
+            /** Level Pad Width */
+            level_pad_width: number;
         };
         /** TrolleyPlacementRead */
         TrolleyPlacementRead: {
@@ -9217,22 +9280,6 @@ export interface components {
             /** Name */
             name?: string | null;
             levels: components["schemas"]["TrolleyLevelGeneratorConfig"];
-        };
-        /** TrolleySlotAvailabilityRead */
-        TrolleySlotAvailabilityRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Code */
-            code: string;
-            /** Name */
-            name: string;
-            /** Shelf Code */
-            shelf_code: string;
-            /** Occupied */
-            occupied: boolean;
         };
         /** TrolleySummary */
         TrolleySummary: {
@@ -14618,7 +14665,7 @@ export interface operations {
             };
         };
     };
-    list_trolley_slots_farms__farm_id__germination_trolleys__trolley_id__slots_get: {
+    list_trolley_levels_farms__farm_id__germination_trolleys__trolley_id__levels_get: {
         parameters: {
             query?: never;
             header?: {
@@ -14641,7 +14688,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TrolleySlotAvailabilityRead"][];
+                    "application/json": components["schemas"]["TrolleyLevelAvailabilityRead"][];
                 };
             };
             /** @description Validation Error */

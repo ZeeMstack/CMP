@@ -293,8 +293,7 @@ export function buildGreenhouseSetupPayload(values: GreenhouseSetupFormValues, c
               code: n.trolley.code,
               name: null,
               levels: {
-                shelf_count: n.trolley.levelCount, slots_per_shelf: n.trolley.traysPerLevel,
-                shelf_prefix: "SH-", slot_prefix: "SL-", shelf_pad_width: 2, slot_pad_width: 2, slot_capacity: null,
+                level_count: n.trolley.levelCount, trays_per_level: n.trolley.traysPerLevel, level_pad_width: 2,
               },
             },
           ]

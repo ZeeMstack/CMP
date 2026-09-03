@@ -553,11 +553,11 @@ export function useAvailableTrolleys(farmId: string) {
   });
 }
 
-export function useTrolleySlots(farmId: string, trolleyId: string) {
+export function useTrolleyLevels(farmId: string, trolleyId: string) {
   const tenantId = useSelectedTenantId();
   return useQuery({
-    queryKey: queryKeys.trolleySlots(tenantId ?? "", farmId, trolleyId),
-    queryFn: ({ signal }) => api.listTrolleySlots(farmId, trolleyId, signal),
+    queryKey: queryKeys.trolleyLevels(tenantId ?? "", farmId, trolleyId),
+    queryFn: ({ signal }) => api.listTrolleyLevels(farmId, trolleyId, signal),
     staleTime: STALE_DETAIL_MS,
     enabled: Boolean(tenantId) && Boolean(trolleyId),
   });
@@ -576,7 +576,7 @@ export function useGerminationTrays(farmId: string) {
 /** Idempotency key (`client_command_id`) lives in the payload itself, set
  * once by the caller -- same replay-safe pattern as `useSowNewBatch`. A
  * Trolley placement changes chamber occupancy (and, transitively, every
- * Tray resting on that Trolley's resolved location) and asset-level slot
+ * Tray resting on that Trolley's resolved location) and asset-level Level
  * occupancy, so both available-chambers/trolleys reads and the tray list
  * are invalidated. */
 export function usePlaceTrolley(farmId: string) {
@@ -602,7 +602,7 @@ export function usePlaceTray(farmId: string) {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.availableTrolleys(tenantId, farmId) });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.trolleySlots(tenantId, farmId, variables.trolley_id),
+        queryKey: queryKeys.trolleyLevels(tenantId, farmId, variables.trolley_id),
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
     },

@@ -63,7 +63,12 @@ from app.schemas.seedling_entry import (
     SeedlingGreenhouseSummary,
     SeedlingTableSummary,
 )
-from app.schemas.germination import GerminationChamberSummary, GerminationResolvedPlacement, SlotSummary, TrolleySummary
+from app.schemas.germination import (
+    GerminationChamberSummary,
+    GerminationPositionSummary,
+    GerminationResolvedPlacement,
+    TrolleySummary,
+)
 from app.schemas.crop_batch import CropSummary, VarietySummary
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary, SeedLotSummary
 from app.services import carrier_service, farm_service, location_service, movement_service
@@ -478,7 +483,10 @@ def list_seedling_candidate_trays(
             "ct.code AS carrier_type_code, ct.name AS carrier_type_name, "
             "bca.id AS assignment_id, sel.seed_count, "
             "occ.id AS occupancy_id, "
-            "slot.id AS slot_id, slot.code AS slot_code, slot.name AS slot_name, shelf.code AS shelf_code, "
+            "target_position.id AS position_id, target_position.code AS position_code, "
+            "target_position.name AS position_name, "
+            "(target_position.parent_position_id IS NOT NULL) AS is_legacy, "
+            "level_position.code AS level_code, "
             "trolley.id AS trolley_id, trolley.code AS trolley_code, trolley.name AS trolley_name, "
             "chamber.id AS chamber_id, chamber.code AS chamber_code, chamber.name AS chamber_name, "
             "chamber_lt.code AS chamber_type_code, chamber_gh.greenhouse_classification AS chamber_gh_classification, "
@@ -498,9 +506,10 @@ def list_seedling_candidate_trays(
             "JOIN crops crop ON crop.id = sl.crop_id "
             "JOIN varieties variety ON variety.id = sl.variety_id "
             "LEFT JOIN occupancies occ ON occ.occupant_carrier_id = carrier.id AND occ.end_time IS NULL "
-            "LEFT JOIN asset_positions slot ON slot.id = occ.target_asset_position_id "
-            "LEFT JOIN asset_positions shelf ON shelf.id = slot.parent_position_id "
-            "LEFT JOIN assets trolley ON trolley.id = slot.asset_id "
+            "LEFT JOIN asset_positions target_position ON target_position.id = occ.target_asset_position_id "
+            "LEFT JOIN asset_positions level_position "
+            "  ON level_position.id = COALESCE(target_position.parent_position_id, target_position.id) "
+            "LEFT JOIN assets trolley ON trolley.id = target_position.asset_id "
             "LEFT JOIN occupancies trolley_occ ON trolley_occ.occupant_asset_id = trolley.id AND trolley_occ.end_time IS NULL "
             "LEFT JOIN locations chamber ON chamber.id = trolley_occ.target_location_id "
             "LEFT JOIN location_types chamber_lt ON chamber_lt.id = chamber.location_type_id AND chamber_lt.code = :chamber_code "
@@ -541,7 +550,10 @@ def list_seedling_candidate_trays(
                 germination=GerminationResolvedPlacement(
                     trolley=TrolleySummary(id=r["trolley_id"], code=r["trolley_code"], name=r["trolley_name"]),
                     chamber=GerminationChamberSummary(id=r["chamber_id"], code=r["chamber_code"], name=r["chamber_name"]),
-                    slot=SlotSummary(id=r["slot_id"], code=r["slot_code"], name=r["slot_name"], shelf_code=r["shelf_code"]),
+                    position=GerminationPositionSummary(
+                        id=r["position_id"], code=r["position_code"], name=r["position_name"],
+                        level_code=r["level_code"], mode="legacy" if r["is_legacy"] else "direct",
+                    ),
                 ),
                 seedling_table=None,
             )

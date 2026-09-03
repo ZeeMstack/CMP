@@ -1,7 +1,12 @@
-"""NURSERY-OPS-002A: Germination Placement -- physical placement only, no
-biological outcome. Frozen authoritative model: a Germination Trolley Asset
-occupies a Germination Chamber Location directly (no chamber_position); a
-Seed Tray Carrier occupies a Trolley Slot AssetPosition."""
+"""NURSERY-OPS-002A / PILOT-UX-001B: Germination Placement -- physical
+placement only, no biological outcome. Frozen authoritative model: a
+Germination Trolley Asset occupies a Germination Chamber Location directly
+(no chamber_position); a Seed Tray Carrier occupies a Trolley Level
+AssetPosition directly (new-model `direct_level`) or one of that Level's
+child Slot AssetPositions (legacy-compatible `legacy_level`) -- see
+`germination_service._classify_level`. A `shelf`-kind Level with zero child
+Slots AND `capacity IS NULL` is an `invalid_level`: a Farm Setup
+configuration gap, never a valid one-tray target."""
 from __future__ import annotations
 
 import uuid
@@ -11,6 +16,8 @@ from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.sowing_event import CarrierSummary, SeedLotSummary
+
+GerminationLevelMode = Literal["legacy", "direct", "invalid"]
 
 
 def _require_tz_aware(v: datetime) -> datetime:
@@ -38,11 +45,17 @@ class TrolleySummary(BaseModel):
     name: str
 
 
-class SlotSummary(BaseModel):
+class GerminationPositionSummary(BaseModel):
+    """The exact AssetPosition a Seed Tray occupies -- either the Level
+    itself (`mode="direct"`, `code == level_code`) or a legacy child Slot
+    (`mode="legacy"`, `code` is the Slot's own code, `level_code` is its
+    parent Level's code)."""
+
     id: uuid.UUID
     code: str
     name: str
-    shelf_code: str
+    level_code: str
+    mode: GerminationLevelMode
 
 
 # --- Commands ----------------------------------------------------------------------
@@ -70,7 +83,7 @@ class PlaceTrayCreate(BaseModel):
     client_command_id: uuid.UUID
     tray_id: uuid.UUID
     trolley_id: uuid.UUID
-    slot_id: uuid.UUID
+    asset_position_id: uuid.UUID
     effective_time: datetime
     reason: str | None = None
 
@@ -100,7 +113,7 @@ class TrayPlacementRead(BaseModel):
     batch_code: str
     seeds_sown: int
     trolley: TrolleySummary
-    slot: SlotSummary
+    position: GerminationPositionSummary
     chamber: GerminationChamberSummary
     effective_time: datetime
 
@@ -117,12 +130,33 @@ class GerminationChamberAvailabilityRead(BaseModel):
     remaining_capacity: int
 
 
-class TrolleySlotAvailabilityRead(BaseModel):
+class LegacySlotAvailabilityRead(BaseModel):
+    """One child Slot of a `legacy_level` -- unchanged shape/meaning from
+    before PILOT-UX-001B, just nested under its Level now instead of
+    returned as a flat list."""
+
     id: uuid.UUID
     code: str
     name: str
-    shelf_code: str
     occupied: bool
+
+
+class TrolleyLevelAvailabilityRead(BaseModel):
+    """PILOT-UX-001B: one Level of a Trolley, backend-classified -- the
+    frontend must consume `mode`, never re-derive it from raw position
+    structure. `capacity`/`available_capacity` are populated for
+    `mode="direct"` only; `slots` is populated for `mode="legacy"` only;
+    `mode="invalid"` carries neither (a Farm Setup configuration gap, never
+    advertised as an available destination)."""
+
+    id: uuid.UUID
+    code: str
+    name: str
+    mode: GerminationLevelMode
+    capacity: int | None
+    occupied_count: int
+    available_capacity: int | None
+    slots: list[LegacySlotAvailabilityRead] = []
 
 
 class AvailableTrolleyRead(BaseModel):
@@ -130,9 +164,9 @@ class AvailableTrolleyRead(BaseModel):
     code: str
     name: str
     chamber: GerminationChamberSummary
-    total_slot_count: int
-    occupied_slot_count: int
-    available_slot_count: int
+    total_capacity: int
+    occupied_count: int
+    available_capacity: int
 
 
 GerminationPlacementState = Literal["awaiting_placement", "elsewhere", "in_germination"]
@@ -141,7 +175,7 @@ GerminationPlacementState = Literal["awaiting_placement", "elsewhere", "in_germi
 class GerminationResolvedPlacement(BaseModel):
     trolley: TrolleySummary
     chamber: GerminationChamberSummary
-    slot: SlotSummary
+    position: GerminationPositionSummary
 
 
 class GerminationTrayRead(BaseModel):
