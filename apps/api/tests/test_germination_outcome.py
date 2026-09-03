@@ -358,9 +358,9 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         trolley_id=trolley.id, chamber_id=chamber_id, effective_time=germination_time, reason=None,
     )
-    germination_service.place_tray_in_slot(
+    germination_service.place_tray(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        tray_id=carrier.id, trolley_id=trolley.id, slot_id=slot_id, effective_time=germination_time, reason=None,
+        tray_id=carrier.id, trolley_id=trolley.id, asset_position_id=slot_id, effective_time=germination_time, reason=None,
     )
 
     # Strictly AFTER mid_time (sow_time+2d) -- see the docstring above.

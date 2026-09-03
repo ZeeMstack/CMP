@@ -355,7 +355,7 @@ def test_full_pilot_workflow_farm_to_dispatch_to_recall_to_reversal(test_engine)
                     f"{farm_url}/germination/tray-placements", headers=headers,
                     json={
                         "client_command_id": str(uuid.uuid4()), "tray_id": str(m["seed_tray"].id),
-                        "trolley_id": str(m["trolley"].id), "slot_id": str(m["slot_ids"][0]),
+                        "trolley_id": str(m["trolley"].id), "asset_position_id": str(m["slot_ids"][0]),
                         "effective_time": _iso(germination_time), "reason": None,
                     },
                 )

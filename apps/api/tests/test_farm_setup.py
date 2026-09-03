@@ -336,11 +336,13 @@ def test_nursery_structure_returns_every_seeding_station_not_just_the_first(db_s
 
 @pytest.mark.integration
 def test_nursery_with_trolley_and_seeding_machine(db_session, active_context_with_farm) -> None:
+    """PILOT-UX-001B section 13.A: new Farm Setup creates `level_count`
+    Levels per Trolley, zero child Slots, `Level.capacity == trays_per_
+    level`, and server-generated `{trolley.code}-L{NN}` codes."""
     tenant, user, _headers, farm = active_context_with_farm
     payload = _nursery_payload(
         trolleys=[TrolleySetupConfig(code="GT-01", levels=TrolleyLevelGeneratorConfig(
-            shelf_count=3, slots_per_shelf=20, shelf_prefix="SH-", slot_prefix="SL-",
-            shelf_pad_width=2, slot_pad_width=2, slot_capacity=None,
+            level_count=3, trays_per_level=20, level_pad_width=2,
         ))],
         seeding_machines=[SeedingMachineSetupConfig(code="SM-01")],
     )
@@ -349,7 +351,7 @@ def test_nursery_with_trolley_and_seeding_machine(db_session, active_context_wit
     )
     assert result.counts.trolleys == 1
     assert result.counts.trolley_levels == 3
-    assert result.counts.trolley_slots == 60
+    assert result.counts.trolley_slots == 0
     assert result.counts.seeding_machines == 1
 
     asset_types = db_session.execute(
@@ -361,6 +363,62 @@ def test_nursery_with_trolley_and_seeding_machine(db_session, active_context_wit
     ).all()
     assert ("germination_trolley", "GT-01") in asset_types
     assert ("seeding_machine", "SM-01") in asset_types
+
+    trolley_id = db_session.execute(
+        text("SELECT id FROM assets WHERE tenant_id = :tid AND code = 'GT-01'"), {"tid": tenant.id}
+    ).scalar_one()
+    positions = db_session.execute(
+        text(
+            "SELECT code, position_kind, capacity, parent_position_id FROM asset_positions "
+            "WHERE asset_id = :aid ORDER BY code"
+        ),
+        {"aid": trolley_id},
+    ).mappings().all()
+    assert [p["code"] for p in positions] == ["GT-01-L01", "GT-01-L02", "GT-01-L03"]
+    assert all(p["position_kind"] == "shelf" for p in positions)
+    assert all(p["capacity"] == 20 for p in positions)
+    assert all(p["parent_position_id"] is None for p in positions)
+
+    child_slot_count = db_session.execute(
+        text(
+            "SELECT COUNT(*) FROM asset_positions WHERE asset_id = :aid AND position_kind = 'slot'"
+        ),
+        {"aid": trolley_id},
+    ).scalar_one()
+    assert child_slot_count == 0, "new Farm Setup must create zero child Slot AssetPositions"
+
+
+@pytest.mark.integration
+def test_nursery_trolley_level_codes_stable_and_unique_per_trolley(db_session, active_context_with_farm) -> None:
+    """Two Trolleys in the same setup command each get their own
+    `{trolley.code}-L{NN}` sequence -- no cross-trolley collision, no
+    caller-supplied prefix accepted."""
+    tenant, user, _headers, farm = active_context_with_farm
+    payload = _nursery_payload(
+        trolleys=[
+            TrolleySetupConfig(code="GT-001", levels=TrolleyLevelGeneratorConfig(
+                level_count=2, trays_per_level=4, level_pad_width=2,
+            )),
+            TrolleySetupConfig(code="GT-002", levels=TrolleyLevelGeneratorConfig(
+                level_count=2, trays_per_level=4, level_pad_width=2,
+            )),
+        ],
+    )
+    farm_setup_service.create_greenhouse_setup(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, payload=payload,
+    )
+    codes = db_session.execute(
+        text(
+            "SELECT a.code AS trolley_code, p.code AS level_code FROM asset_positions p "
+            "JOIN assets a ON a.id = p.asset_id "
+            "WHERE a.tenant_id = :tid AND a.code IN ('GT-001', 'GT-002') ORDER BY a.code, p.code"
+        ),
+        {"tid": tenant.id},
+    ).all()
+    assert codes == [
+        ("GT-001", "GT-001-L01"), ("GT-001", "GT-001-L02"),
+        ("GT-002", "GT-002-L01"), ("GT-002", "GT-002-L02"),
+    ]
 
 
 # =====================================================================
@@ -534,8 +592,7 @@ def test_atomic_rollback_on_complete_nursery_with_late_asset_conflict(db_session
     payload = _nursery_payload(
         code="NUR-ROLLBACK",
         trolleys=[TrolleySetupConfig(code="GT-PRECONFLICT", levels=TrolleyLevelGeneratorConfig(
-            shelf_count=1, slots_per_shelf=1, shelf_prefix="SH-", slot_prefix="SL-",
-            shelf_pad_width=2, slot_pad_width=2, slot_capacity=None,
+            level_count=1, trays_per_level=1, level_pad_width=2,
         ))],
     )
     with pytest.raises(DuplicateAssetCodeError):
@@ -616,8 +673,7 @@ def test_nursery_status_requires_all_five_sections_for_configured(db_session, ac
         payload=GreenhouseSetupCreate(
             code="NUR-A", name="Empty Nursery", classification="nursery", client_command_id=uuid.uuid4(),
             nursery=NurserySetupConfig(trolleys=[TrolleySetupConfig(code="GT-A", levels=TrolleyLevelGeneratorConfig(
-                shelf_count=1, slots_per_shelf=1, shelf_prefix="SH-", slot_prefix="SL-",
-                shelf_pad_width=2, slot_pad_width=2, slot_capacity=None,
+                level_count=1, trays_per_level=1, level_pad_width=2,
             ))]),
         ),
     )
@@ -682,8 +738,7 @@ def test_nursery_status_requires_all_five_sections_for_configured(db_session, ac
         payload=_nursery_payload(
             code="NUR-H",
             trolleys=[TrolleySetupConfig(code="GT-H", levels=TrolleyLevelGeneratorConfig(
-                shelf_count=1, slots_per_shelf=1, shelf_prefix="SH-", slot_prefix="SL-",
-                shelf_pad_width=2, slot_pad_width=2, slot_capacity=None,
+                level_count=1, trays_per_level=1, level_pad_width=2,
             ))],
             seeding_machines=[SeedingMachineSetupConfig(code="SM-H")],
         ),

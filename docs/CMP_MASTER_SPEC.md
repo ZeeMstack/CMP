@@ -19,7 +19,7 @@ Core promise: complete forward and backward traceability from supplier lot to cu
 | Carrier | Identified object holding crop/product | seed tray, cultivation plate, grow cube, grow bag, crate, carton |
 | Equipment | Performs work | seeder, printer, irrigation robot, packing line |
 | Batch/Lot | Traceable production or inventory identity | crop batch, seed lot, harvest lot, pack lot |
-| Occupancy | Who/what occupies a location during a period | tray in trolley slot |
+| Occupancy | Who/what occupies a location during a period | tray on trolley Level |
 | Movement | Same entity changes location | trolley moved to another chamber position |
 | Transformation | Inputs become outputs | seedlings transferred from tray to plates |
 
@@ -50,20 +50,21 @@ DOMAIN-FARM-001 (authoritative, implemented): does not use Zone/Span. Every sect
 ```text
 Nursery
 ├─ Seeding Area / Station
-├─ Germination Chamber → Chamber Position
+├─ Germination Chamber
 ├─ Seedling Area → Seedling Table
 ├─ InterSalads → InterSalads Table
 └─ InterVines → InterVines Table
 ```
 
 - Seeder: equipment/work centre (`seeding_machine` asset type). CMP records which machine performed a sowing event.
-- Germination trolley: mobile asset with shelves and slots. Imperial’s pilot does not use trolley-movement as an operational workflow, but the architecture does not pretend a physically movable trolley is a fixed location — it remains an asset, occupying a chamber position like any other occupant.
-- Seed tray: carrier occupying a trolley slot. Aggregate capacity/seed-count only — individual tray cells/holes are not tracked.
-- Trolley: occupies a chamber position.
+- Germination Chamber (NURSERY-OPS-002A, implemented): occupiable directly, `capacity` = number of Trolleys it may simultaneously hold. There is no `Chamber Position` child location — a Germination Trolley Asset occupies the Chamber directly via `Occupancy`.
+- Germination trolley: mobile asset, occupies a Germination Chamber directly (no intermediate chamber position). Carries one or more Levels (`shelf`-kind `AssetPosition`, one per physical shelf/level of the trolley).
+- Germination Level (PILOT-UX-001B, implemented): a Level's `capacity` is the number of Seed Tray carriers it may simultaneously hold directly — never a seed/cell/plant/biological quantity. New Trolleys created through Farm Setup get Levels only, human-readable-coded `{trolley.code}-L{NN}` (e.g. `GT-001-L01`), with no child Slot layer. Trolleys created before PILOT-UX-001B may still carry legacy Levels with child Slot positions (one Seed Tray per Slot) — both shapes are classified per Level (`legacy_level` / `direct_level` / `invalid_level`, an unconfigured Level with neither a child Slot nor a configured capacity) and continue to coexist; legacy Slot data is never rewritten or deleted.
+- Seed tray: carrier occupying a Trolley Level directly (new model) or one of that Level's Slots (legacy model). Aggregate capacity/seed-count only — individual tray cells/holes are not tracked.
 - Nursery Cultivation Plate: carrier used in InterSalads — physically distinct from the Production Cultivation Plate used in Leafy-Greens greenhouses (§3.2); a leafy seedling transplants again, plate to plate, moving from Nursery to production. A Nursery Cultivation Plate occupies an InterSalads Table directly — no further child location level, matching the Production Cultivation Plate/Grow Table precedent. NURSERY-OPS-004B.1 (implemented): the biological Transplant onto a Nursery Cultivation Plate and its physical placement onto the selected InterSalads Table commit as one atomic operator command.
 - Grow cube: carrier used in InterVines — one cube, one plant, travels with the plant into Vines production.
 
-The system must derive a tray’s effective location through `tray → trolley slot → trolley → chamber position`.
+The system must derive a tray's effective location through `tray → Level (direct) → trolley → chamber` for the new model, or `tray → slot → Level → trolley → chamber` for a legacy Level — both resolve through the same generic, depth-agnostic recursive position-path walk.
 
 ### 3.2 Leafy-Greens Greenhouse
 
@@ -108,7 +109,7 @@ A crop batch can span many carriers and locations. Maintain active occupancy and
 
 Occupancy supports:
 
-- exclusive positions (one trolley per chamber position, one tray per trolley slot);
+- exclusive positions (one grow-bag position per grow bag; a Germination Trolley Level configured with `capacity=1`);
 - quantity capacity (kg, crates, plates, plants, etc.);
 - partial occupancy;
 - effective and recorded timestamps;
@@ -220,15 +221,14 @@ Each queued command has an idempotency key and status: queued, synchronized, rej
 Build only the foundation needed to prove the model:
 
 1. Create Tenant A and Farm PB-01.
-2. Create a nursery greenhouse and Germination Chamber GC-01.
-3. Generate 20 chamber positions.
-4. Register Trolley GT-0001 with 8 shelves × 5 slots.
-5. Register Seed Tray ST-200-00001.
-6. Place the tray at Shelf 03 / Slot 04.
-7. Place the trolley at Chamber Position 12.
-8. Scan the tray and derive its complete location.
-9. Move the trolley; preserve tray location history.
-10. Prove Tenant B cannot access Tenant A data.
+2. Create a nursery greenhouse and Germination Chamber GC-01 (occupiable, capacity = number of Trolleys).
+3. Register Trolley GT-0001 with 8 Levels (`GT-0001-L01`...`GT-0001-L08`), each `capacity=5`.
+4. Register Seed Tray ST-200-00001.
+5. Place the trolley directly into Chamber GC-01 (no intermediate chamber position).
+6. Place the tray directly onto Level GT-0001-L03.
+7. Scan the tray and derive its complete location.
+8. Move the trolley; preserve tray location history.
+9. Prove Tenant B cannot access Tenant A data.
 
 This milestone must demonstrate multi-tenancy, generic locations, relative/mobile containment, occupancy, movement, QR lookup, atomic audit history, and tenant isolation. Do not build crop-planning dashboards before it passes.
 

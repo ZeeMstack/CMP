@@ -233,16 +233,16 @@ def _create_nursery_structure(
             code=trolley_cfg.code, name=trolley_cfg.name or f"Trolley {trolley_cfg.code}", commissioned_date=None,
         )
         levels_cfg = trolley_cfg.levels
-        _asset_type, positions = asset_service._generate_positions_core(
+        # PILOT-UX-001B: new-model Levels only -- server-derives the Level
+        # code prefix from the Trolley it just created (never caller-
+        # supplied), and creates zero child Slot AssetPositions.
+        _asset_type, positions = asset_service._generate_levels_core(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_id=trolley.id,
-            shelf_count=levels_cfg.shelf_count, slots_per_shelf=levels_cfg.slots_per_shelf,
-            shelf_prefix=levels_cfg.shelf_prefix, slot_prefix=levels_cfg.slot_prefix,
-            shelf_pad_width=levels_cfg.shelf_pad_width, slot_pad_width=levels_cfg.slot_pad_width,
-            shelf_capacity=None, slot_capacity=levels_cfg.slot_capacity,
+            level_count=levels_cfg.level_count, level_prefix=f"{trolley.code}-L",
+            level_pad_width=levels_cfg.level_pad_width, trays_per_level=levels_cfg.trays_per_level,
         )
         counts.trolleys += 1
-        counts.trolley_levels += levels_cfg.shelf_count
-        counts.trolley_slots += levels_cfg.shelf_count * levels_cfg.slots_per_shelf
+        counts.trolley_levels += levels_cfg.level_count
 
     for machine_cfg in config.seeding_machines:
         asset_service._register_asset_core(

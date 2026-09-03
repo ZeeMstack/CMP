@@ -151,7 +151,7 @@ describe("buildGreenhouseSetupPayload", () => {
     expect(payload.nursery!.trolleys).toEqual([
       {
         code: "GT-01", name: null,
-        levels: { shelf_count: 3, slots_per_shelf: 20, shelf_prefix: "SH-", slot_prefix: "SL-", shelf_pad_width: 2, slot_pad_width: 2, slot_capacity: null },
+        levels: { level_count: 3, trays_per_level: 20, level_pad_width: 2 },
       },
     ]);
     expect(payload.nursery!.seeding_machines).toEqual([{ code: "SM-01", name: null }]);

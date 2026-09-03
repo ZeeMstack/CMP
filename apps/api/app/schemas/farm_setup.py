@@ -159,45 +159,37 @@ class VinesSetupConfig(BaseModel):
 
 
 class TrolleyLevelGeneratorConfig(BaseModel):
-    """Mirrors `AssetPositionsGenerate` exactly. `slots_per_shelf` is the
-    number of Seed Trays each Level physically holds -- represented as one
-    exclusive numbered slot per tray (the existing, only, occupancy-
-    compatibility-proven target for a seed_tray carrier), not as a single
-    high-capacity shelf row; `slot_capacity` stays NULL/1 accordingly
-    unless the caller has a genuine reason to widen it."""
+    """PILOT-UX-001B: the new-model Nursery Germination Level generator --
+    creates ONLY `level_count` root `shelf`-kind AssetPositions ("Levels"),
+    each with `capacity=trays_per_level`; deliberately no child `slot` rows
+    are ever created here (a Level holds Seed Trays directly, via
+    DOMAIN-FARM-002's generic N-occupant capacity mechanism). There is no
+    `level_prefix` field -- `farm_setup_service` always derives it
+    server-side from the Trolley's own code (`{trolley.code}-L{NN}`), never
+    from caller-supplied free text, so the code cannot drift from the
+    Trolley's real identity. This schema no longer mirrors
+    `AssetPositionsGenerate`, which keeps its own full shelf+slot shape
+    unchanged for legacy/generic use."""
 
-    shelf_count: int
-    slots_per_shelf: int
-    shelf_prefix: str
-    slot_prefix: str
-    shelf_pad_width: int
-    slot_pad_width: int
-    slot_capacity: int | None = None
+    level_count: int
+    trays_per_level: int
+    level_pad_width: int
 
-    @field_validator("shelf_prefix", "slot_prefix")
+    @field_validator("trays_per_level")
     @classmethod
-    def validate_prefixes(cls, v: str) -> str:
-        v = v.strip().upper()
-        if not v:
-            raise ValueError("prefix must not be blank")
+    def validate_trays_per_level(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("trays_per_level must be a positive integer")
         return v
-
-    @field_validator("slot_capacity")
-    @classmethod
-    def validate_capacity(cls, v: int | None) -> int | None:
-        return _validate_capacity(v)
 
     @model_validator(mode="after")
     def validate_counts(self) -> "TrolleyLevelGeneratorConfig":
-        if self.shelf_count < 1:
-            raise ValueError("shelf_count must be a positive integer")
-        if self.slots_per_shelf < 1:
-            raise ValueError("slots_per_shelf must be a positive integer")
-        if self.shelf_pad_width < 1 or self.slot_pad_width < 1:
-            raise ValueError("pad widths must be positive integers")
-        total = self.shelf_count + (self.shelf_count * self.slots_per_shelf)
-        if total > MAX_BULK_POSITIONS:
-            raise ValueError(f"cannot generate more than {MAX_BULK_POSITIONS} positions per trolley")
+        if self.level_count < 1:
+            raise ValueError("level_count must be a positive integer")
+        if self.level_pad_width < 1:
+            raise ValueError("level_pad_width must be a positive integer")
+        if self.level_count > MAX_BULK_POSITIONS:
+            raise ValueError(f"cannot generate more than {MAX_BULK_POSITIONS} levels per trolley")
         return self
 
 

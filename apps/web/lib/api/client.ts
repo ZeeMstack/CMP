@@ -63,7 +63,9 @@ export type TrolleyPlacementRead = components["schemas"]["TrolleyPlacementRead"]
 export type TrayPlacementRead = components["schemas"]["TrayPlacementRead"];
 export type GerminationChamberAvailabilityRead = components["schemas"]["GerminationChamberAvailabilityRead"];
 export type AvailableTrolleyRead = components["schemas"]["AvailableTrolleyRead"];
-export type TrolleySlotAvailabilityRead = components["schemas"]["TrolleySlotAvailabilityRead"];
+export type TrolleyLevelAvailabilityRead = components["schemas"]["TrolleyLevelAvailabilityRead"];
+export type LegacySlotAvailabilityRead = components["schemas"]["LegacySlotAvailabilityRead"];
+export type GerminationPositionSummary = components["schemas"]["GerminationPositionSummary"];
 export type GerminationTrayRead = components["schemas"]["GerminationTrayRead"];
 export type GerminationOutcomeCommandCreate = components["schemas"]["GerminationOutcomeCommandCreate"];
 export type GerminationOutcomeCommandRead = components["schemas"]["GerminationOutcomeCommandRead"];
@@ -511,12 +513,12 @@ export function listAvailableTrolleys(farmId: string, signal?: AbortSignal): Pro
   return getJson<AvailableTrolleyRead[]>(`/farms/${farmId}/germination/trolleys/available`, signal);
 }
 
-export function listTrolleySlots(
+export function listTrolleyLevels(
   farmId: string,
   trolleyId: string,
   signal?: AbortSignal,
-): Promise<TrolleySlotAvailabilityRead[]> {
-  return getJson<TrolleySlotAvailabilityRead[]>(`/farms/${farmId}/germination/trolleys/${trolleyId}/slots`, signal);
+): Promise<TrolleyLevelAvailabilityRead[]> {
+  return getJson<TrolleyLevelAvailabilityRead[]>(`/farms/${farmId}/germination/trolleys/${trolleyId}/levels`, signal);
 }
 
 export function listGerminationTrays(farmId: string, signal?: AbortSignal): Promise<GerminationTrayRead[]> {
