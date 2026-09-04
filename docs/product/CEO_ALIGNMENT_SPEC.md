@@ -59,6 +59,23 @@ UI-OPT-001:
 These are visual and interaction-pattern principles only. None of them authorize new
 domain behavior; see Frozen domain protections.
 
+## GrowCMP navigation & UX principle (frozen, UX-IA-001, approved 2026-09-04)
+
+Extends beyond UI-OPT-001's own scope — this principle governs all future GrowCMP
+navigation and screen design, not just the tree frozen below:
+
+GrowCMP navigation and screens are organized around user jobs, workflows, decisions,
+and next actions — not backend entities or database tables. A backend entity does not
+automatically deserve its own navigation item. Setup experiences should guide
+configuration and maintenance; operational experiences should represent the
+operator's work, not expose the underlying command/entity structure.
+
+Every configurable object must have a defined maintenance lifecycle. Creation-only
+configuration is incomplete UX. See `docs/domain/LOCATION_MODEL.md`, "Location
+maintenance lifecycle," for the first applied instance of this principle, and "Store &
+Inventory Setup navigation" below for the first applied instance of the navigation
+principle.
+
 ## Final navigation
 
 Frozen for UI-OPT-001's own scope. This is the complete navigation tree UI-OPT-001
@@ -118,13 +135,19 @@ Notes on mapping to existing routes:
   screen) either maps into one of the groups above or stays out of navigation entirely
   until its module is functional.
 
-### Approved later extension (STORE-INV-001A)
+### Store & Inventory Setup navigation (supersedes STORE-INV-001A, UX-IA-001, 2026-09-04)
 
-This is an approved later product extension, not an accidental UI-OPT-001 scope
-expansion — the tree above stays exactly as frozen for UI-OPT-001 itself.
+**Farm Setup & Master Data** gains exactly ONE entry for this domain: **Store &
+Inventory Setup** — a single setup workspace (Overview / Storage / Inventory Catalog /
+Settings views; these are workspace sections, not separate primary sidebar modules).
+Full workspace structure, scope-communication wording, and Setup Summary UX are frozen
+in `docs/domain/STORE_INVENTORY_MODEL.md` ("Store & Inventory Setup workspace UX").
 
-**Farm Setup & Master Data** gains four new entries once `STORE-INV-001` ships: `Stores
-& Bins`, `Inventory Categories`, `Inventory Items`, `Units of Measure`.
+The four routes named in the now-superseded extension below remain technically live
+(deep-link/bookmark access only) but are no longer primary navigation destinations —
+the same "removed from primary navigation, route stays live" precedent already used
+elsewhere in this app (see `apps/web/components/AppShell.tsx`'s own module
+documentation for the existing examples this now joins).
 
 A new top-level **Store & Inventory** operational module is planned, but does not
 appear until `STORE-INV-002` or later actually provides real stock/operational
@@ -132,6 +155,17 @@ inventory functionality — the same "no placeholder/disabled entries for module
 aren't functional yet" rule this document already applies everywhere else governs this
 module too; no placeholder or disabled entry ships before that. Full domain detail:
 `docs/domain/STORE_INVENTORY_MODEL.md`.
+
+#### Approved later extension (STORE-INV-001A) — superseded 2026-09-04
+
+Retained only as the historical record of the original decision; it no longer governs
+navigation (see above).
+
+This is an approved later product extension, not an accidental UI-OPT-001 scope
+expansion — the tree above stays exactly as frozen for UI-OPT-001 itself.
+
+**Farm Setup & Master Data** gains four new entries once `STORE-INV-001` ships: `Stores
+& Bins`, `Inventory Categories`, `Inventory Items`, `Units of Measure`.
 
 ## Terminology decisions
 

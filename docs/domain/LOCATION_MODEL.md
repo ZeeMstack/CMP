@@ -40,7 +40,7 @@ Uniqueness is enforced by three partial indexes: two for the generic set (mirror
 
 **Capacity (DOMAIN-FARM-002).** Both `create_location` and `bulk_generate_children` accept an optional `capacity` (positive integer, `NULL` when omitted). `NULL`/`1` means the pre-existing exclusive behavior (at most one active occupant); `>1` permits that many simultaneous identified occupants, enforced at the DB layer — see `OCCUPANCY_MOVEMENT_MODEL.md`. `capacity` is orthogonal to `occupiable`: a non-occupiable location with `capacity > 1` configured is still never a valid movement target. `grow_table.default_occupiable` was **not** changed by this ticket — Farm Setup creates the actual table instances with their real `occupiable`/`capacity` values; CMP never invents a plate/tray/hole count.
 
-**Deferred:** updates, reparenting/move, and deletion of locations; Grow Cube individual-plant identity; Carrier-as-occupancy-target (`target_carrier_id`); carriers/occupancy/movement changes beyond what already exists.
+**Deferred:** reparenting/move, `code`/`location_type`/`farm_id` edits, and hard deletion of locations; Grow Cube individual-plant identity; Carrier-as-occupancy-target (`target_carrier_id`); carriers/occupancy/movement changes beyond what already exists. `name` edit and active/inactive lifecycle (deactivate/reactivate) are no longer deferred — see "Location maintenance lifecycle" below (frozen design, UX-IA-001, not yet implemented).
 
 ## Farm Setup (implemented, FARM-SETUP-001, extended FARM-SETUP-001.1)
 
@@ -95,3 +95,33 @@ A greenhouse can never itself have a greenhouse ancestor (no rule, generic or sc
 A Store is a plain `Location` (`location_type = store`) — no separate Store model. `store → store_bin` is the existing CMP-004 base case (above). Two new optional intermediate types, `store_area` and `store_rack`, are frozen for future addition (additive `location_types`/`location_type_hierarchy_rules` rows only, generic scope): `store → store_bin`, `store → store_area → store_bin`, `store → store_rack → store_bin`, and `store → store_area → store_rack → store_bin` are all valid; no `store_shelf` type is introduced. Full detail, including the deferred `StoreProfile` metadata concept: `docs/domain/STORE_INVENTORY_MODEL.md`.
 
 **Finished-goods physical placement (CMP-018).** `cold_store_position` also serves as the sole storage-eligible location type for finished-goods physical occupancy — a separate concern from the location engine itself, with its own table (`finished_goods_storage_movements`). No location *type* or *hierarchy* change (`location_types`/`location_type_hierarchy_rules` are both untouched), but CMP-018 does add one narrow composite `UNIQUE(tenant_id, farm_id, id)` constraint (`uq_locations_tenant_farm_id`) to `locations` itself, backing real composite foreign keys from the new table — a genuine schema addition to `locations`, not "zero schema change". No column changes and no location row is touched. See `FINISHED_GOODS_STORAGE_MODEL.md`.
+
+## Location maintenance lifecycle (frozen design, UX-IA-001 — not yet implemented)
+
+Supersedes the "Deferred: ... locations" note above for exactly the fields named here; every other item that note deferred remains deferred.
+
+**Scope: Store, Store Area, Store Rack, Store Bin locations are the first consumers, driven by the Store & Inventory Setup workspace (`docs/domain/STORE_INVENTORY_MODEL.md`) — but the commands themselves are generic `Location` operations, not Store-specific, and apply to any location type.**
+
+| Action | Allowed | Notes |
+|---|---|---|
+| Create | yes | unchanged — existing `create_location` / `bulk_generate_children` |
+| View | yes | unchanged |
+| Edit `name` | yes | the only mutable field |
+| Deactivate | yes | see invariants below |
+| Reactivate | yes | see invariants below |
+| Hard delete | no | never — `CLAUDE.md` rule 7, and this document's existing correction-not-rewrite convention |
+
+**Immutable through ordinary maintenance:** `code` (a mistaken code is corrected by creating the correct replacement Location and deactivating the mistaken one — the established identity is never rewritten), `parent_location_id` (no reparenting/move), `location_type_id`, `farm_id`. `status` changes only through the explicit deactivate/reactivate commands below, never as a side effect of a `name` edit.
+
+**Deactivation invariants (frozen).** A Location may be deactivated only when:
+- it is currently `active`;
+- it has no active occupancy at that Location (the existing `Occupancy.end_time IS NULL` condition, already queryable via `movement_service.list_target_occupants`/its internal active-occupancy-count helper);
+- it has no active child Location (a direct, non-recursive `parent_location_id = this.id AND status = 'active'` check).
+
+Deactivation is explicit and **non-cascading** — deactivating a parent never automatically deactivates descendants; the operator retires a hierarchy bottom-up, one explicit command per node. Closed/historical Occupancy and Movement rows never block deactivation — only currently-active occupancy does. Deactivation never rewrites or deletes Occupancy, Movement, or audit history; it only flips `Location.status`.
+
+**Reactivation invariants (frozen).** A Location may be reactivated only when it is currently `inactive` and, if it has a parent, that parent is currently `active` — mirroring the `InactiveParentLocationError` check `create_location` already enforces at creation time today.
+
+**Future dependency (STORE-INV-002B).** Once physical inventory storage balances exist (`docs/domain/STORE_INVENTORY_MODEL.md` §18), Store Bin deactivation must additionally be blocked while the Bin holds a non-zero physical inventory balance. This check does not exist yet — the physical stock model it depends on is not built — and `STORE-INV-002B` must add it as an extension of the invariants above, not a replacement for them. Not implemented, and not implementable, in UX-IA-001.
+
+**Idempotency (frozen, scoped).** `update_location`, `deactivate_location`, and `reactivate_location` each require their own `client_command_id` + request-fingerprint idempotency pair, mirroring `InventoryItem`/`InventoryCategory`'s existing convention (`docs/domain/STORE_INVENTORY_MODEL.md` §5) — the first idempotency support this table has had for any command. `create_location` and `bulk_generate_children` remaining non-idempotent is acknowledged, pre-existing technical debt, explicitly out of scope for UX-IA-001.
