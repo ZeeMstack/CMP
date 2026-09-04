@@ -140,6 +140,11 @@ class LocationTreeNode(BaseModel):
     code: str
     name: str
     location_type_id: uuid.UUID
+    # STORE-INV-001B: additive -- lets a client (e.g. the Stores & Bins page)
+    # identify a node's type (store/store_area/store_rack/store_bin/...)
+    # directly from the tree response, without a GET /location-types
+    # endpoint (none exists, deliberately -- see LocationCreateForm.tsx).
+    location_type_code: str
     status: str
     occupiable: bool
     # FARM-SETUP-001: additive -- lets the existing generic Locations tree

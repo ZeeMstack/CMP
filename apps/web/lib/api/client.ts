@@ -911,6 +911,19 @@ export type PackagingUnitRead = components["schemas"]["PackagingUnitRead"];
 export type PackagingUnitCreate = components["schemas"]["PackagingUnitCreate"];
 export type PackagingUnitRetire = components["schemas"]["PackagingUnitRetire"];
 
+// --- STORE-INV-001B ----------------------------------------------------------
+export type UnitOfMeasureRead = components["schemas"]["UnitOfMeasureRead"];
+export type InventoryCategoryRead = components["schemas"]["InventoryCategoryRead"];
+export type InventoryCategoryCreate = components["schemas"]["InventoryCategoryCreate"];
+export type InventoryCategoryUpdate = components["schemas"]["InventoryCategoryUpdate"];
+export type InventoryCategoryDeactivate = components["schemas"]["InventoryCategoryDeactivate"];
+export type InventoryCategoryReactivate = components["schemas"]["InventoryCategoryReactivate"];
+export type InventoryItemRead = components["schemas"]["InventoryItemRead"];
+export type InventoryItemCreate = components["schemas"]["InventoryItemCreate"];
+export type InventoryItemUpdate = components["schemas"]["InventoryItemUpdate"];
+export type InventoryItemDeactivate = components["schemas"]["InventoryItemDeactivate"];
+export type InventoryItemReactivate = components["schemas"]["InventoryItemReactivate"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
@@ -1033,6 +1046,94 @@ export function retirePackagingUnit(
   signal?: AbortSignal,
 ): Promise<PackagingUnitRead> {
   return postJson<PackagingUnitRead>(`/packaging-units/${packagingUnitId}/retire`, payload, signal);
+}
+
+// STORE-INV-001B -- Units of Measure (global, read-only system catalog).
+
+export function listUoms(signal?: AbortSignal): Promise<UnitOfMeasureRead[]> {
+  return getJson<UnitOfMeasureRead[]>("/uoms", signal);
+}
+
+// STORE-INV-001B -- Inventory Categories (tenant-scoped master data).
+
+export function listInventoryCategories(status?: string, signal?: AbortSignal): Promise<InventoryCategoryRead[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson<InventoryCategoryRead[]>(`/inventory-categories${query}`, signal);
+}
+
+export function createInventoryCategory(
+  payload: InventoryCategoryCreate,
+  signal?: AbortSignal,
+): Promise<InventoryCategoryRead> {
+  return postJson<InventoryCategoryRead>("/inventory-categories", payload, signal);
+}
+
+export function updateInventoryCategory(
+  categoryId: string,
+  payload: InventoryCategoryUpdate,
+  signal?: AbortSignal,
+): Promise<InventoryCategoryRead> {
+  return postJson<InventoryCategoryRead>(`/inventory-categories/${categoryId}/update`, payload, signal);
+}
+
+export function deactivateInventoryCategory(
+  categoryId: string,
+  payload: InventoryCategoryDeactivate,
+  signal?: AbortSignal,
+): Promise<InventoryCategoryRead> {
+  return postJson<InventoryCategoryRead>(`/inventory-categories/${categoryId}/deactivate`, payload, signal);
+}
+
+export function reactivateInventoryCategory(
+  categoryId: string,
+  payload: InventoryCategoryReactivate,
+  signal?: AbortSignal,
+): Promise<InventoryCategoryRead> {
+  return postJson<InventoryCategoryRead>(`/inventory-categories/${categoryId}/reactivate`, payload, signal);
+}
+
+// STORE-INV-001B -- Inventory Items (tenant-scoped master data).
+
+export function listInventoryItems(
+  params: { status?: string; categoryId?: string } = {},
+  signal?: AbortSignal,
+): Promise<InventoryItemRead[]> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.categoryId) query.set("category_id", params.categoryId);
+  const qs = query.toString();
+  return getJson<InventoryItemRead[]>(`/inventory-items${qs ? `?${qs}` : ""}`, signal);
+}
+
+export function createInventoryItem(
+  payload: InventoryItemCreate,
+  signal?: AbortSignal,
+): Promise<InventoryItemRead> {
+  return postJson<InventoryItemRead>("/inventory-items", payload, signal);
+}
+
+export function updateInventoryItem(
+  itemId: string,
+  payload: InventoryItemUpdate,
+  signal?: AbortSignal,
+): Promise<InventoryItemRead> {
+  return postJson<InventoryItemRead>(`/inventory-items/${itemId}/update`, payload, signal);
+}
+
+export function deactivateInventoryItem(
+  itemId: string,
+  payload: InventoryItemDeactivate,
+  signal?: AbortSignal,
+): Promise<InventoryItemRead> {
+  return postJson<InventoryItemRead>(`/inventory-items/${itemId}/deactivate`, payload, signal);
+}
+
+export function reactivateInventoryItem(
+  itemId: string,
+  payload: InventoryItemReactivate,
+  signal?: AbortSignal,
+): Promise<InventoryItemRead> {
+  return postJson<InventoryItemRead>(`/inventory-items/${itemId}/reactivate`, payload, signal);
 }
 
 // Grading -- the operator command that consumes a Harvested Produce Lot and

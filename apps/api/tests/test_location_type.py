@@ -35,6 +35,11 @@ EXPECTED_CODES = {
     "intersalads_table",
     "intervines",
     "intervines_table",
+    # STORE-INV-001B: additive Store-hierarchy types
+    # (docs/domain/STORE_INVENTORY_MODEL.md §4) -- both structural/
+    # non-occupiable, extending the pre-existing store -> store_bin pair.
+    "store_area",
+    "store_rack",
 }
 
 # The generic (classification-agnostic, greenhouse_classification IS NULL)
@@ -69,6 +74,14 @@ APPROVED_PAIRS = {
     ("gutter_side", "grow_bag_position"),
     ("store", "store_bin"),
     ("cold_store", "cold_store_position"),
+    # STORE-INV-001B: additive -- the pre-existing (store, store_bin) row
+    # above is unchanged; these five extend it into the four frozen Store
+    # hierarchy patterns (docs/domain/STORE_INVENTORY_MODEL.md §4).
+    ("store", "store_area"),
+    ("store", "store_rack"),
+    ("store_area", "store_rack"),
+    ("store_area", "store_bin"),
+    ("store_rack", "store_bin"),
 }
 
 # DOMAIN-FARM-001: the authoritative, classification-scoped topology — the

@@ -88,6 +88,9 @@ function navGroups(farmId: string): NavGroupDef[] {
       label: "Farm Setup & Master Data",
       items: [
         { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup` },
+        // STORE-INV-001B (CEO_ALIGNMENT_SPEC.md "Approved later extension"):
+        // farm-scoped, like Greenhouse & Locations -- a Store is a Location.
+        { label: "Stores & Bins", href: `/farms/${farmId}/stores` },
         { label: "Carrier Specifications", href: "/carrier-specifications" },
         { label: "Crops & Varieties", href: "/crops" },
         { label: "Production Systems", href: "/production-systems" },
@@ -95,6 +98,11 @@ function navGroups(farmId: string): NavGroupDef[] {
         { label: "Grade Definitions", href: "/grade-definitions" },
         { label: "Packaging Units", href: "/packaging-units" },
         { label: "Pack Specifications", href: "/pack-specifications" },
+        // STORE-INV-001B: tenant-scoped master data, mirroring Packaging
+        // Units' own no-farmId route shape.
+        { label: "Inventory Categories", href: "/inventory-categories" },
+        { label: "Inventory Items", href: "/inventory-items" },
+        { label: "Units of Measure", href: "/units-of-measure" },
       ],
     },
   ];

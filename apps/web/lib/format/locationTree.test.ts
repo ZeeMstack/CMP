@@ -6,6 +6,7 @@ import type { LocationTreeNode } from "@/lib/api/client";
 function node(overrides: Partial<LocationTreeNode> & { id: string; code: string; name: string }): LocationTreeNode {
   return {
     location_type_id: "type-1",
+    location_type_code: "generic",
     status: "active",
     occupiable: false,
     capacity: null,

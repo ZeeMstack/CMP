@@ -18,6 +18,8 @@ from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.germination_check import GerminationCheck
 from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
+from app.models.inventory_category import InventoryCategory
+from app.models.inventory_item import InventoryItem
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
@@ -56,6 +58,8 @@ from app.models.transplant_allocation import TransplantAllocation
 from app.models.transplant_destination_line import TransplantDestinationLine
 from app.models.transplant_event import TransplantEvent
 from app.models.transplant_source_line import TransplantSourceLine
+from app.models.unit_of_measure import UnitOfMeasure
+from app.models.uom_conversion import UomConversion
 from app.models.user import User
 from app.models.variety import Variety
 from app.models.workflow import Workflow
@@ -84,6 +88,8 @@ __all__ = [
     "FinishedGoodsStorageMovement",
     "GerminationCheck",
     "GerminationOutcomeSnapshot",
+    "InventoryCategory",
+    "InventoryItem",
     "Location",
     "LocationType",
     "LocationTypeHierarchyRule",
@@ -120,6 +126,8 @@ __all__ = [
     "TransplantDestinationLine",
     "TransplantEvent",
     "TransplantSourceLine",
+    "UnitOfMeasure",
+    "UomConversion",
     "User",
     "Variety",
     "Workflow",
