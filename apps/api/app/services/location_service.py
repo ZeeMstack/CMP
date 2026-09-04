@@ -43,6 +43,13 @@ def _get_location_type_by_code(db: Session, code: str) -> LocationType:
     return location_type
 
 
+def get_location_type_code_map(db: Session) -> dict[uuid.UUID, str]:
+    """STORE-INV-001B: `location_types` is small (~26 rows), global, and
+    unchanged mid-request -- one full-table read, not a new public
+    endpoint (none exists for this catalog, deliberately)."""
+    return {row.id: row.code for row in db.execute(select(LocationType)).scalars()}
+
+
 def _get_active_location_in_scope(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, location_id: uuid.UUID
 ) -> Location:

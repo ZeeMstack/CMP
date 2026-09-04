@@ -167,6 +167,24 @@ class Permission(StrEnum):
     # (POST /memberships) is a real, mounted capability today.
     TENANT_MEMBERS_MANAGE = "tenant.members.manage"
 
+    # STORE-INV-001B: the first Store & Inventory master-data permissions --
+    # closes the "no general Input/Store module/permissions" gap
+    # `ROLE_PERMISSION_POLICY_PROPOSAL.md` §7/§13 already documented as a
+    # known P1 limitation of the `storekeeper` role. Minted fresh (not
+    # reusing an existing domain's permission) since Inventory is a new
+    # domain, not a sub-concern of one that already has its own pair.
+    INVENTORY_CATEGORY_READ = "inventory_category.read"
+    INVENTORY_CATEGORY_MANAGE = "inventory_category.manage"
+
+    INVENTORY_ITEM_READ = "inventory_item.read"
+    INVENTORY_ITEM_MANAGE = "inventory_item.manage"
+
+    # Read-only system catalog -- deliberately no `.manage` counterpart,
+    # mirroring TRACEABILITY_READ's own read-only-by-design precedent.
+    # Store hierarchy itself reuses LOCATION_READ/LOCATION_MANAGE --
+    # a Store is a Location, not a separate permission domain.
+    UNIT_OF_MEASURE_READ = "unit_of_measure.read"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -220,6 +238,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ, Permission.ASSET_MANAGE,
         Permission.CARRIER_READ, Permission.CARRIER_MANAGE,
         Permission.CARRIER_SPECIFICATION_READ, Permission.CARRIER_SPECIFICATION_MANAGE,
+        Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
+        Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -249,6 +270,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ, Permission.CROP_MANAGE,
         Permission.PRODUCTION_SYSTEM_READ, Permission.PRODUCTION_SYSTEM_MANAGE,
         Permission.WORKFLOW_READ, Permission.WORKFLOW_MANAGE,
@@ -276,6 +300,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
@@ -305,6 +332,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -329,6 +359,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
         Permission.SEED_LOT_READ, Permission.SEED_LOT_MANAGE,
+        # STORE-INV-001B: closes the "no general Input/Store module" gap
+        # ROLE_PERMISSION_POLICY_PROPOSAL.md §7/§13 documented as a known
+        # P1 limitation of this role's narrow scope.
+        Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
+        Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
+        Permission.UNIT_OF_MEASURE_READ,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy
@@ -343,6 +379,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -368,6 +407,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_BATCH_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
@@ -385,6 +427,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
@@ -402,6 +447,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
@@ -421,6 +469,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -446,6 +497,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,

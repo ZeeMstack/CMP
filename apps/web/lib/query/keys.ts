@@ -180,6 +180,15 @@ export const queryKeys = {
   // Packaging Units -- tenant-scoped, unversioned master data.
   packagingUnits: (tenantId: string) => ["tenant", tenantId, "packaging-units"] as const,
 
+  // --- STORE-INV-001B ----------------------------------------------------------
+  // Units of Measure -- global, read-only system catalog (not tenant-scoped
+  // in the backend, but keyed under the tenant here for cache-invalidation
+  // symmetry with every other resource; the data itself never differs
+  // per tenant).
+  uoms: (tenantId: string) => ["tenant", tenantId, "uoms"] as const,
+  inventoryCategories: (tenantId: string) => ["tenant", tenantId, "inventory-categories"] as const,
+  inventoryItems: (tenantId: string) => ["tenant", tenantId, "inventory-items"] as const,
+
   packingEvents: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "packing-events"] as const,
   packingEvent: (tenantId: string, farmId: string, packingEventId: string) =>

@@ -22,6 +22,8 @@ from app.api.traceability import router as traceability_router
 from app.api.harvests import router as harvests_router
 from app.api.health import router as health_router
 from app.api.intersalads_transplants import router as intersalads_transplants_router
+from app.api.inventory_categories import router as inventory_categories_router
+from app.api.inventory_items import router as inventory_items_router
 from app.api.leafy_harvest import router as leafy_harvest_router
 from app.api.leafy_production_disposition import router as leafy_production_disposition_router
 from app.api.leafy_production_transfers import router as leafy_production_transfers_router
@@ -31,6 +33,7 @@ from app.api.movements import router as movements_router
 from app.api.observation_definitions import router as observation_definitions_router
 from app.api.observations import router as observations_router
 from app.api.packing import router as packing_router
+from app.api.uoms import router as uoms_router
 from app.api.platform_tenants import router as platform_tenants_router
 from app.api.production_systems import router as production_systems_router
 from app.api.quality_holds import router as quality_holds_router
@@ -63,6 +66,9 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(assets_router)
     api.include_router(carriers_router)
     api.include_router(carrier_specifications_router)
+    api.include_router(uoms_router)
+    api.include_router(inventory_categories_router)
+    api.include_router(inventory_items_router)
     api.include_router(movements_router)
     api.include_router(crops_router)
     api.include_router(production_systems_router)

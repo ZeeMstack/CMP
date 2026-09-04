@@ -1596,3 +1596,97 @@ class PackingReversalBlockedByDownstreamActivityError(DomainError):
     mechanism in this ticket's scope, so neutralizing the lot's opening
     quantity out from under any confirmed downstream fact is refused
     outright -- never inferred safe from a live/net balance alone."""
+
+
+# --- STORE-INV-001B: master data & Store foundation -------------------------
+
+
+class InventoryCategoryNotFoundError(DomainError):
+    pass
+
+
+class DuplicateInventoryCategoryCodeError(DomainError):
+    pass
+
+
+class InventoryCategoryCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryCategoryDeactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryCategoryReactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryCategoryNotActiveError(DomainError):
+    """Raised when DEACTIVATE targets an `InventoryCategory` that is not
+    currently active."""
+
+
+class InventoryCategoryNotInactiveError(DomainError):
+    """Raised when REACTIVATE targets an `InventoryCategory` that is not
+    currently inactive."""
+
+
+class InventoryItemNotFoundError(DomainError):
+    pass
+
+
+class DuplicateInventoryItemCodeError(DomainError):
+    pass
+
+
+class InventoryItemCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemUpdateReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemDeactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemReactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemNotActiveError(DomainError):
+    """Raised when DEACTIVATE targets an `InventoryItem` that is not
+    currently active."""
+
+
+class InventoryItemNotInactiveError(DomainError):
+    """Raised when REACTIVATE targets an `InventoryItem` that is not
+    currently inactive."""
+
+
+class InventoryCategoryNotInTenantError(DomainError):
+    """Raised when a supplied `inventory_category_id` does not resolve to
+    an `InventoryCategory` owned by the caller's own tenant."""
+
+
+class InventoryCategoryInactiveForAssignmentError(DomainError):
+    """Raised when creating an InventoryItem, or reassigning an existing
+    one, to an `InventoryCategory` that is not currently active -- mirrors
+    `CarrierSpecificationInactiveError`'s own precedent. Never raised for
+    an InventoryItem's own already-assigned category simply becoming
+    inactive later; that combination remains permanently valid
+    (docs/domain/STORE_INVENTORY_MODEL.md §5 -- category deactivation is
+    never blocked by existing references)."""
+
+
+class UnitOfMeasureNotFoundError(DomainError):
+    """Raised when a supplied `base_uom_id` does not resolve to a known,
+    system-seeded `UnitOfMeasure`."""
+
+
+class InventoryItemTrackingPolicyInvalidError(DomainError):
+    """Raised when `expiry_tracking_required`/`qc_release_required` is
+    `true` while `lot_tracking_required` is `false` -- both are
+    `InventoryLot`-level concepts and meaningless on non-lot-tracked
+    material (`docs/domain/STORE_INVENTORY_MODEL.md` §5)."""

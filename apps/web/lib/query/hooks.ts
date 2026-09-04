@@ -24,6 +24,14 @@ import type {
   GradingReversalEventCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
+  InventoryCategoryCreate,
+  InventoryCategoryDeactivate,
+  InventoryCategoryReactivate,
+  InventoryCategoryUpdate,
+  InventoryItemCreate,
+  InventoryItemDeactivate,
+  InventoryItemReactivate,
+  InventoryItemUpdate,
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
   LocationCreate,
@@ -1592,6 +1600,138 @@ export function useCreatePackagingUnit() {
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.packagingUnits(tenantId) });
+    },
+  });
+}
+
+export function useUoms() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.uoms(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listUoms(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useInventoryCategories(status?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: [...queryKeys.inventoryCategories(tenantId ?? ""), status ?? "all"],
+    queryFn: ({ signal }) => api.listInventoryCategories(status, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateInventoryCategory() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InventoryCategoryCreate) => api.createInventoryCategory(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryCategories(tenantId) });
+    },
+  });
+}
+
+export function useUpdateInventoryCategory() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ categoryId, payload }: { categoryId: string; payload: InventoryCategoryUpdate }) =>
+      api.updateInventoryCategory(categoryId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryCategories(tenantId) });
+    },
+  });
+}
+
+export function useDeactivateInventoryCategory() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ categoryId, payload }: { categoryId: string; payload: InventoryCategoryDeactivate }) =>
+      api.deactivateInventoryCategory(categoryId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryCategories(tenantId) });
+    },
+  });
+}
+
+export function useReactivateInventoryCategory() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ categoryId, payload }: { categoryId: string; payload: InventoryCategoryReactivate }) =>
+      api.reactivateInventoryCategory(categoryId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryCategories(tenantId) });
+    },
+  });
+}
+
+export function useInventoryItems(params: { status?: string; categoryId?: string } = {}) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: [...queryKeys.inventoryItems(tenantId ?? ""), params.status ?? "all", params.categoryId ?? "all"],
+    queryFn: ({ signal }) => api.listInventoryItems(params, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateInventoryItem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InventoryItemCreate) => api.createInventoryItem(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItems(tenantId) });
+    },
+  });
+}
+
+export function useUpdateInventoryItem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: InventoryItemUpdate }) =>
+      api.updateInventoryItem(itemId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItems(tenantId) });
+    },
+  });
+}
+
+export function useDeactivateInventoryItem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: InventoryItemDeactivate }) =>
+      api.deactivateInventoryItem(itemId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItems(tenantId) });
+    },
+  });
+}
+
+export function useReactivateInventoryItem() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, payload }: { itemId: string; payload: InventoryItemReactivate }) =>
+      api.reactivateInventoryItem(itemId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItems(tenantId) });
     },
   });
 }

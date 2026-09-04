@@ -133,12 +133,18 @@ def get_farm_tree(
     except FarmNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Farm not found") from exc
 
+    # STORE-INV-001B: one small, global-table lookup (location_types has
+    # ~26 rows total) -- not a new endpoint, just resolves the ids already
+    # on each Location to their code for this one response shape.
+    type_codes = location_service.get_location_type_code_map(db)
+
     nodes: dict[uuid.UUID, LocationTreeNode] = {
         loc.id: LocationTreeNode(
             id=loc.id,
             code=loc.code,
             name=loc.name,
             location_type_id=loc.location_type_id,
+            location_type_code=type_codes[loc.location_type_id],
             status=loc.status,
             occupiable=loc.occupiable,
             capacity=loc.capacity,
