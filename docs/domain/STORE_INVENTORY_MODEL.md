@@ -102,35 +102,56 @@ Ledger quantities are eventually always stored in `InventoryItem.base_uom` — n
 
 **UOM UX (frozen).** Units of Measure is a small, permanently **read-only** reference page under Farm Setup & Master Data — no create, no edit, no delete, no `.manage` permission of any kind. It exists so operators/admins can see the system UOM catalog and so an `InventoryItem` form has human-readable units to select from; it is never tenant-configurable.
 
-## 7. InventoryLot semantics — frozen (design for `STORE-INV-002A`)
+## 7. InventoryLot, GoodsReceiptLine, and InventoryQuantityCohort — frozen (`STORE-INV-002A`)
 
-Not implemented in `STORE-INV-001`.
+Not implemented in `STORE-INV-001`. Frozen following the `STORE-INV-002A` discovery (three CTO/Chief Grower review rounds); this section supersedes the original single-paragraph sketch.
 
-`InventoryLot` represents the material's **traceable lot identity** — it does **not** mean "one Goods Receipt." The same supplier/manufacturer lot may arrive across more than one Goods Receipt and still reference the same `InventoryLot`, provided its immutable lot attributes match:
+**`InventoryLot` is tenant-wide, never Farm-scoped.** It represents the material's **traceable manufacturer-lot identity** — it does **not** mean "one Goods Receipt," and it does **not** mean "received at one Farm." The same manufacturer lot may arrive at more than one Farm, across more than one Goods Receipt, and still reference the same `InventoryLot`, provided its immutable identity attributes match:
 
 ```text
-InventoryLot RZ-MAM-LOT-17
-├── Goods Receipt 001 — 50,000 seeds
-└── Goods Receipt 017 — 25,000 seeds
+InventoryLot MG-500 (tenant-wide)
+├── GoodsReceipt @ Farm A — GoodsReceiptLine — 250 kg
+└── GoodsReceipt @ Farm B — GoodsReceiptLine — 100 kg
 ```
 
-`InventoryLot` = traceable lot identity. `GoodsReceiptLine` = one receipt transaction's quantity against that identity. The model must not structurally force one `InventoryLot` per receipt.
+Fields: `tenant_id`; `inventory_item_id`; a tenant-generated immutable `code`; `manufacturer_name`; `manufacturer_lot_reference`; `manufacturing_date`; `expiry_date` (required when `InventoryItem.expiry_tracking_required`). No `farm_id`, no mutable status/QC field — quality lives at the cohort (below), never the lot. Every identity field is immutable from creation; a wrong value is corrected by creating a fresh, correctly-identified lot and reversing the mistaken receipt (§21/§22), never by editing the row.
+
+**Manufacturer identity, distinguished from supplier/distributor/Odoo facts.** `manufacturer_name` and `manufacturer_lot_reference` are GrowCMP's own free-text facts — what is physically printed on the package — never a Supplier Master row (§16). A same-row CHECK requires `manufacturer_lot_reference IS NULL OR manufacturer_name IS NOT NULL`: a lot code without an attributed manufacturer is not a usable identity fact. `GoodsReceipt.supplier_name` (optional, header-level, informational only) is who GrowCMP actually received the delivery from — may differ from the manufacturer — and is never part of lot-identity matching.
+
+**Canonical identity key — manufacturer name + manufacturer lot reference only.** `(tenant_id, inventory_item_id, lower(trim(manufacturer_name)), lower(trim(manufacturer_lot_reference)))` — normalized case/whitespace for comparison only, never rewriting the stored, printed value (the same `lower(...)` convention `InventoryItem`/`InventoryCategory` already use for their own `code`, extended to two more text columns). **`manufacturing_date` and `expiry_date` are immutable *attributes* of that identity, never uniqueness dimensions** — they are compared for compatibility once a canonical match is found, not folded into the matching/uniqueness key itself. Rules:
+
+- Either `manufacturer_name` or `manufacturer_lot_reference` missing → **never auto-matched**, always a new `InventoryLot`. CMP has no provable identity to merge on; a false non-match (an investigable duplicate) is always preferred over a false match (corrupted traceability).
+- Both present, and the canonical key matches an existing lot → compare `manufacturing_date`/`expiry_date`: exact equality (including both NULL) is compatible → reuse the existing `InventoryLot`. A NULL-vs-known mismatch, or two different known values, is a **conflict**, never a silent reuse.
+- Both present, canonical key matches, but `manufacturing_date`/`expiry_date` conflict → `ConflictingInventoryLotIdentityError`; GrowCMP never silently creates a second lot under the same canonical identity, and never silently merges disagreeing attribute facts onto an existing one.
+- Two different manufacturers reusing the same numeric lot reference never collide — `manufacturer_name` is part of the canonical key.
+
+**`GoodsReceiptLine` is receiving provenance only — it is not the quantity/quality aggregate root.** It records what was physically received (Farm, `InventoryItem`, resolved `InventoryLot` or none, entered quantity/UOM-or-packaging, normalized base quantity, external references) and is immutable from posting. It carries no ledger entries and no quality disposition directly.
+
+**`InventoryQuantityCohort` is the existence-ledger and quality-disposition aggregate root.** Every posted `GoodsReceiptLine` automatically creates exactly one deterministic root cohort (`id = goods_receipt_line_id`, mirroring the `harvest_receipt.id = produce_lot_id` deterministic-projection idiom already established for `PRODUCE_LOT_LEDGER_MODEL.md`) representing its full received quantity. Fields: `tenant_id`; `source_goods_receipt_line_id` (denormalized onto every cohort, root or split-descended); `inventory_item_id`; `inventory_lot_id` (nullable, immutable, identical across a cohort and every cohort it produces — a split never fabricates a new lot identity); `receiving_farm_id` (provenance, never current custody — §15/§18); `parent_cohort_id` (`NULL` for a root cohort). No stored quantity/status column — a cohort's current balance is always `SUM()` over its own existence-ledger entries, exactly like every other balance in this domain family.
+
+**Cohort split — existence-neutral, lineage-preserving quantity partition.** A cohort's quantity may later need to split into differently-usable partitions (450 kg Released / 50 kg Rejected out of one 500 kg delivery; or 100 kg of an already-Released 500 kg later placed on Hold). `split_cohort(source_cohort_id, allocations: [(quantity, initial_disposition), ...])`, under a `FOR UPDATE` lock on the source: for each allocation, one `split_out` ledger entry (negative) on the source and one new child cohort (`parent_cohort_id` = source) with a matching `split_in` entry (positive) plus that child's own opening `QualityDispositionEvent`. A split may be **partial** (the source keeps a nonzero remainder under its existing, unchanged disposition) or **full** (the source's entire balance is allocated away, surviving only as a zero-balance lineage node). Reconciliation is mechanical, not merely asserted: `source_balance_before = SUM(allocation quantities) + source_balance_after` (`CLAUDE.md` rule 8), because every `split_out`/`split_in` pair nets to exactly zero. No split ever creates a new `InventoryLot` identity, and every cohort remains traceable to its one originating `GoodsReceiptLine`.
+
+**Why a separate cohort entity, not `GoodsReceiptLine` itself.** A single immutable receiving row cannot represent two different current-usability facts at once the moment inspection needs to say "part of this is fine, part is not." Retrofitting a partition concept after `STORE-INV-003`/`004` already assumed line-level disposition and line-level FEFO selection would be a materially larger change than introducing it now, while nothing downstream yet depends on the simpler shape.
 
 ## 8. Quantity/existence ledger vs. storage/custody — critical frozen rule
 
 This is the single most important correction from the STORE-INV-001 discovery: **a Material Issue does not reduce existence quantity.** Two questions are answered by two independent, separately-designed models — this deliberately parallels GrowCMP's own existing split between the finished-goods commercial ledger and finished-goods physical storage movements (`PRODUCE_LOT_LEDGER_MODEL.md`, `FINISHED_GOODS_STORAGE_MODEL.md`), which was built as two separate tickets for exactly this reason.
 
-**A. How much material still exists** — the authoritative, immutable existence/quantity ledger. Conceptual entry families:
+**A. How much material still exists** — the authoritative, immutable existence/quantity ledger. Every entry targets an `InventoryQuantityCohort` (§7), never a `GoodsReceiptLine` or `InventoryLot` directly — both are always derived by summing across the cohorts that reference them. Conceptual entry families:
 
 | Entry kind | Sign |
 |---|---|
-| Receipt | `+` |
-| Consumption | `−` |
-| Scrap | `−` |
-| Adjustment | `+` or `−` |
+| Receipt | `+` (exactly one deterministic opening entry per root cohort) |
+| Split out | `−` (moves quantity out of a cohort into a new child — §7) |
+| Split in | `+` (the paired opening entry of a split-created child cohort) |
+| Consumption | `−` (`STORE-INV-004`) |
+| Scrap | `−` (`STORE-INV-004`) |
+| Adjustment | `+` or `−` — always targets one existing cohort explicitly; physical stock discovered with no corresponding cohort is recorded via a corrective Goods Receipt, never an invented target |
 | Reversal | opposite/corrective effect of the entry it reverses |
 
-A normal Material Issue is **not** one of these — it never appears in the existence ledger as a debit. Only actual use (Consumption), loss (Scrap), a correction (Adjustment), or a correction-of-a-correction (Reversal) changes how much material exists.
+A normal Material Issue is **not** one of these — it never appears in the existence ledger as a debit. A Split is existence-neutral by construction (its `split_out`/`split_in` pair always nets to zero) — it is a usability partition, not an existence change. Only actual use (Consumption), loss (Scrap), a correction (Adjustment), or a correction-of-a-correction (Reversal) changes how much material exists. The lock target for every existence-writing command is the `InventoryQuantityCohort` row (`SELECT ... FOR UPDATE`), not the `InventoryLot` — giving independent concurrency across sibling cohorts of the same lot.
+
+**No shadow/system-generated `InventoryLot`.** For an `InventoryItem` with `lot_tracking_required = false`, `GoodsReceiptLine.inventory_lot_id` (and its root cohort's `inventory_lot_id`) is simply `NULL` — `InventoryQuantityCohort` is the aggregate root regardless of whether a lot exists, so there is no nullable-aggregate problem and no invented "internal" lot fabricated purely to have something to lock. Existence for such an item is `SUM` of every cohort's balance grouped by `inventory_item_id` alone; the operator is shown *"Hairnets — 100 EA exist"* with no lot ever surfaced, because none was ever created.
 
 **B. Where the existing material is / who has custody** — a separate storage/custody movement model, conceptually:
 
@@ -168,23 +189,37 @@ A reservation **may** optionally target a specific `InventoryLot` when an operat
 
 Material Issue is a **custody event**. Actual Consumption is a **destruction/use event**. These are never collapsed (§8). Unused issued quantity may be returned, consumed, or scrapped/lost-with-reason. A Work Order's material reconciliation must eventually be able to compare, per material: **Required, Reserved, Issued, Consumed, Returned, Scrapped, Variance** — each a distinct fact, never derived by assuming Issued = Consumed.
 
-## 11. Quality / disposition — corrected frozen direction
+## 11. Quality / disposition — frozen (`STORE-INV-002A`)
 
-A mutable `InventoryLot.qc_status` field is **not** the authoritative quality history. For controlled inventory, disposition history must be auditable, so disposition is modeled as immutable events — conceptually:
+`QualityDispositionEvent` targets an `InventoryQuantityCohort` (§7), never a mutable `InventoryLot.qc_status` field and never `GoodsReceiptLine` directly — a single receipt line's quantity may need to carry more than one usability outcome at once (a partial split, §7), so disposition must be scoped no coarser than the cohort. Disposition history is immutable events — never a stored authoritative status:
 
 ```text
-RECEIVED_QUARANTINED
-RELEASED
-HELD
-HOLD_RELEASED
-REJECTED
+RECEIVED_QUARANTINED   HELD   HOLD_RELEASED   RELEASED   REJECTED   REVERSAL
 ```
 
-(Exact event names may be refined during `STORE-INV-002A` design.) Current usable disposition is always **derivable from event history**. A cached "current status" column may exist later purely for query performance, but it can never replace the authoritative event log — the same discipline `QualityHold`'s own derived open/released state already establishes (`OBSERVATION_QUALITY_MODEL.md`).
+**Opening state.** `qc_release_required = true` → the receipt transaction automatically opens `RECEIVED_QUARANTINED` on the root cohort, in the same atomic transaction — never a second command, never omittable. `qc_release_required = false` → no event is created at all; the derived starting state is implicit `RELEASED`. This is not a claim that non-QC material can never later be found bad — see the state machine below.
 
-**Expired is derived**, never a manually written lifecycle state: `expiry_date < current date`. Quarantined, held, rejected, or expired stock is not normally issuable. **Physical location and quality disposition are separate facts** — a material may be physically relocated (e.g. into a quarantine bin) while held, exactly as the existing finished-goods model already permits movement of held stock without releasing the hold (`FINISHED_GOODS_STORAGE_MODEL.md`, "Quality holds").
+**State machine (frozen, corrected):**
 
-**QC segregation of duties (frozen):** wherever `InventoryItem.qc_release_required = true`, the user who records/owns the receipt must not be the sole user authorizing release — at minimum, `Received By ≠ Released By`. Standard role/permission checks (`AUTHORIZATION_MODEL.md`) apply on top of, not instead of, this identity check. This rule applies only where QC release is actually required for that item.
+```text
+(no events, qc_release_required=false)  -->  implicit RELEASED
+RECEIVED_QUARANTINED   --> { RELEASED, HELD, REJECTED }
+implicit RELEASED      --> { HELD, REJECTED }
+RELEASED (explicit)    --> { HELD, REJECTED }
+HELD                   --> { HOLD_RELEASED, REJECTED }
+HOLD_RELEASED          --> { HELD, REJECTED }
+REJECTED               --> terminal (no ordinary forward transition — correctable only, below)
+```
+
+`HELD` and `REJECTED` are reachable **directly** from any non-terminal state, including the implicit-`RELEASED` default — `qc_release_required = false` means no mandatory pre-use release gate, not that the material can never later be found bad. No intermediate `HOLD` step is required before a known-bad `REJECTED` decision. `REJECTED` affects usability only; it never reduces existence (§8) — rejected stock still physically exists until a future Scrap/disposal transaction (`STORE-INV-004`) removes it.
+
+**The automatic opening `RECEIVED_QUARANTINED` event is never manually reversible.** It is a system/receipt fact — an automatic, immutable consequence of `qc_release_required = true`, not a human decision — and it is never an eligible `REVERSAL` target, at either the service layer or the database layer. If a receipt/item policy mistake means a cohort should never have opened `RECEIVED_QUARANTINED` at all, the remedy is a receipt/configuration correction (§21/§22), never rewriting the historical opening quarantine fact.
+
+**Human correction — current-effective HUMAN decision only, never an arbitrary historical event, and never the opening quarantine.** A `REVERSAL` may target only the **current** (latest, not-yet-reversed) **human** disposition event for a cohort — `RELEASED`, `HELD`, `REJECTED`, or `HOLD_RELEASED` — by `(effective_time, recorded_time, id)`, never a superseded one (which would leave the history incoherent — e.g. reversing an old `RELEASED` while a later `HELD` still stands) and never the automatic opening event. Mandatory `reason`; at most one reversal per target (no reversal-of-reversal — the same flat-chain shape `SeedlingDispositionEvent` already established, `OBSERVATION_QUALITY_MODEL.md`); no mutation or deletion of the original event, ever. Current disposition after a reversal is derived by excluding the reversed event and re-resolving — reversing a mistaken `REJECTED` reverts to whatever preceded it (a fresh decision is needed, never assumed `RELEASED` by default), not automatically to usable. A correction may optionally bundle one immediate replacement human decision in the same atomic command.
+
+**Expired is derived**, never a manually written lifecycle state: `expiry_date < current date`. Quarantined, held, rejected, or expired stock is not normally issuable. **Physical location and quality disposition are separate facts** — a material may be physically relocated while held, exactly as the existing finished-goods model already permits movement of held stock without releasing the hold (`FINISHED_GOODS_STORAGE_MODEL.md`, "Quality holds").
+
+**QC segregation of duties (frozen, exact action scope):** wherever `InventoryItem.qc_release_required = true`, the receiving actor must not self-approve usability. Precisely: any action or correction whose net resulting state is usable (`RELEASED` or `HOLD_RELEASED`) requires `actor ≠ the cohort's original receiver` (`GoodsReceiptLine.goods_receipt.received_by_user_id`) — never anchored to whoever performed a prior, now-superseded quality decision. A restrictive action (`HELD`, `REJECTED`, or a correction whose net effect is restrictive) carries no such restriction — the receiving actor may freely place their own delivery on Hold or Reject it if they hold quality permission; no restriction is invented beyond the usability-granting case. Standard role/permission checks (`AUTHORIZATION_MODEL.md`) apply on top of, not instead of, this identity check.
 
 ## 12. Asset/Carrier integration — frozen
 
@@ -251,18 +286,20 @@ Pre-sowing material preparation (reservation, issue) must never create the biolo
 
 ## 15. Traceability patterns — frozen
 
-Inventory itself stays generic; the **consuming** operational domain owns the specific Batch/Asset/Location traceability reference. `InventoryCategory` never drives which lineage applies (§2/§5) — only an explicit, system-controlled link (e.g. `InventoryLot.seed_lot_id`) does.
+Inventory itself stays generic; the **consuming** operational domain owns the specific Batch/Asset/Location traceability reference. `InventoryCategory` never drives which lineage applies (§2/§5) — only an explicit, system-controlled signal does. For seed specifically, that signal is `InventoryItemSeedProfile` (below), never an inference from category and never a generic `item_kind` enum.
 
 | Material | Lineage |
 |---|---|
-| Seed | `InventoryItem → InventoryLot → SeedLot linkage → SowingEvent/SowingEventLine → CropBatch` |
+| Seed | `InventoryItem (+ InventoryItemSeedProfile) → InventoryLot → SeedLot linkage → SowingEvent/SowingEventLine → CropBatch` |
 | Crop protection / biological | `InventoryLot → Treatment Event → affected Batch Placement(s)` |
 | Fertigation | `Nutrient InventoryLot → Nutrient Preparation → Tank/Fertigation System → Application period → actual Locations/crop placements served` |
 | Packaging | `InventoryLot → Packing operation/Work Order → Packed Lot` |
 | Sanitation | `InventoryLot → Sanitation Work Order → Location/Asset cleaned` |
 | Spare part | `InventoryLot → Maintenance Work Order → Asset repaired` |
 
-**Seed:** `SeedLot` remains the existing crop-specific traceability identity (`crop_id`/`variety_id` scoped, unchanged — `SEED_SOWING_MODEL.md`). `InventoryLot` is the generic, crop-agnostic quantity/lot identity. The Batch still begins only at actual sowing — reservation or issue of seed never creates a `CropBatch`. **The exact `InventoryLot`↔`SeedLot` cardinality (one-to-one vs. one-to-many) is confirmed from actual existing `SeedLot` semantics during `STORE-INV-002A` design, not guessed here** — see `docs/product/OPEN_QUESTIONS.md`.
+**`InventoryItemSeedProfile` — the explicit, system-controlled seed marker (frozen, `STORE-INV-002A`).** An optional, tenant-wide, at-most-one-per-item extension: `inventory_item_id` (unique), `crop_id`, `variety_id`. No status field — its existence *is* the signal. Before the item's first posted `GoodsReceiptLine`, the profile may be created, corrected, or removed (a narrow, explicitly-scoped exception to this codebase's "never hard-delete" norm, justified because nothing can yet reference an unused profile). After the item's first posted `GoodsReceiptLine`, the row is **fully immutable** — no update, no removal, and no profile may be newly added to a historically non-seed item. An item's seed behavior can never be silently switched off underneath its own receipt history; the only remedy is deactivating the `InventoryItem` and creating a correctly-configured replacement. Only an `InventoryItem` that **has Seed Details** (i.e. an `InventoryItemSeedProfile` row exists for it) offers seed-linking behavior at receipt time — this is never offered generically for every item.
+
+**`InventoryLot`↔`SeedLot` cardinality — resolved (`STORE-INV-002A`, closes the `docs/product/OPEN_QUESTIONS.md` item).** `SeedLot.inventory_lot_id` (nullable FK) — **not** the reverse direction. One tenant-wide `InventoryLot` may link to many Farm-scoped `SeedLot`s (one per Farm it was received at), enforced by `UNIQUE(inventory_lot_id, farm_id) WHERE inventory_lot_id IS NOT NULL`. `InventoryLot` is the single write-authority for `manufacturer_lot_reference`/`expiry_date` going forward; a linked `SeedLot`'s own `supplier_lot_reference`/`expiry_date` columns are **not** cleared (existing sowing-validation code reads them directly, per `SEED_SOWING_MODEL.md`'s farm-local date validation, and must not break) but are instead trigger-verified exactly equal to the linked `InventoryLot`'s values — both sides are frozen at creation, so equality can never drift. `SeedLot.received_date` stays owned by `SeedLot` alone (a genuinely per-Farm fact, populated from the linking `GoodsReceiptLine`'s effective time), never duplicated onto `InventoryLot`. Every existing `SeedLot` row keeps `inventory_lot_id = NULL`, untouched — no backfill is attempted, since GrowCMP has no factual basis to reconstruct a historical `InventoryLot` for a pre-existing `SeedLot` without inventing receipt data that never existed. The Batch still begins only at actual sowing — reservation, receipt, or issue of seed never creates a `CropBatch`.
 
 **Fertigation:** exact per-Batch nutrient consumption is never fabricated when one system feeds multiple batches — the consumption ledger entry references the system/location scope actually served. Future analytics may compute *estimated* per-batch allocations (by plant count, area, irrigation duration, flow, or other agronomic policy) but any such figure must be explicitly labeled **DERIVED/ESTIMATED** and must never replace the authoritative consumption fact. No estimated per-batch attribution is required for MVP.
 
@@ -282,7 +319,7 @@ Inventory itself stays generic; the **consuming** operational domain owns the sp
 | Operational transfer | |
 | Crop-input traceability | |
 
-**Supplier Lot, an Odoo Purchase Order, an Odoo Receipt, and a GrowCMP `InventoryLot` are four distinct facts and are never conflated.** Rather than one generic `InventoryLot.external_reference` field standing in for all external context, `GoodsReceipt`/`GoodsReceiptLine` (`STORE-INV-002A`) preserve distinct, stable integration references — conceptually `external_system`, `external_document_id`, `external_line_id` — so a future sync can address the exact external document/line, not a blurred single string. Supplier/manufacturer lot identity (already partly captured on `SeedLot.supplier_lot_reference` today) is a separate fact from any of these external references. No Odoo integration is implemented by any ticket in this family.
+**Manufacturer, supplier/distributor, and Odoo facts are distinguished, never conflated (`STORE-INV-002A`).** The *manufacturer* is who physically produced/packaged the material — a GrowCMP-owned, free-text fact printed on the package (`InventoryLot.manufacturer_name`/`manufacturer_lot_reference`, §7). The *supplier/distributor* is who GrowCMP actually received the delivery from — may differ from the manufacturer, is never part of lot-identity matching, and is captured only as optional header-level free text (`GoodsReceipt.supplier_name`) pending Odoo's future Supplier Master. Neither is an Odoo Purchase Order, an Odoo Receipt, nor a GrowCMP `InventoryLot`, and all four remain distinct facts, never conflated. Rather than one generic `InventoryLot.external_reference` field standing in for all external context, `GoodsReceipt`/`GoodsReceiptLine` (`STORE-INV-002A`) preserve distinct, stable integration references — conceptually `external_system`, `external_document_id`, `external_line_id` — so a future sync can address the exact external document/line, not a blurred single string. Supplier/manufacturer lot identity (already partly captured on `SeedLot.supplier_lot_reference` today) is a separate fact from any of these external references. No Odoo integration is implemented by any ticket in this family.
 
 ## 17. Invariants
 
@@ -313,7 +350,8 @@ Inventory itself stays generic; the **consuming** operational domain owns the sp
 |---|---|
 | `STORE-INV-001` | Master data & Store foundation: `UnitOfMeasure`, global approved conversions, `InventoryCategory`, `InventoryItem`, `store_area`, `store_rack`, Store hierarchy rules, relevant Farm Setup UI — superseded by `UX-IA-001` into the single `Store & Inventory Setup` workspace (Overview / Storage / Inventory Catalog / Settings — see §19, and `CEO_ALIGNMENT_SPEC.md`, "Store & Inventory Setup navigation"). **Explicitly excludes:** `InventoryLot`, Goods Receipt, `InventoryItemPackaging`/purchase packaging, purchase UOM, issue UOM, the quantity/existence ledger, the storage/custody ledger, reservation, material issue, Work Order, consumption, return, FEFO, QC disposition events, and any operational Store & Inventory pages. |
 | `UX-IA-001` | Store & Inventory Setup workspace (§19); Location name-edit/deactivate/reactivate maintenance lifecycle (`docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle") — no new domain entities, no operational Store & Inventory pages. |
-| `STORE-INV-002A` | Goods Receipt + Lot + Quantity Existence: `InventoryLot`, `GoodsReceipt`/`GoodsReceiptLine`, existence ledger (receipt/adjustment/reversal), quality/disposition events, stock-quantity read model. |
+| `STORE-INV-002A.1` | Receipt + Lot + Quantity Foundation: tenant-wide `InventoryLot`, `InventoryItemPackaging`, `InventoryItemSeedProfile`, `SeedLot.inventory_lot_id`, `GoodsReceipt`/`GoodsReceiptLine`, `InventoryQuantityCohort` (incl. split schema), existence ledger (`receipt`/`adjustment`/`reversal`/`split_out`/`split_in`), the `QualityDispositionEvent` table and automatic `RECEIVED_QUARANTINED` opening event, item/seed-profile policy freeze, the company-wide existence read model. No physical custody/bin-balance table. No release/hold/reject/correction command or Quality UI. |
+| `STORE-INV-002A.2` | Quality + Operational Store UX: the release/hold/reject/correction commands, the partial-quantity-disposition (cohort split) command, segregation-of-duty enforcement, the usable-existence read model, and the first operational **Store & Inventory** navigation module (Overview / Receive Goods / Inventory / Quality) — which does not ship until this phase completes. |
 | `STORE-INV-002B` | Physical Storage: inventory storage movement, receipt placement, Store/bin quantity, bin-to-bin transfer, lot × location balance. Must also extend Store Bin deactivation (`docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle") to additionally block while the Bin holds a non-zero physical inventory balance. |
 | `WORK-ORDER-001` | Operational Work Orders: Seeding Work Order first, material requirements. |
 | `STORE-INV-003` | Reservation & Material Issue: item-level default reservation, optional lot-specific reservation, FEFO, issue/custody transfer. |
@@ -356,9 +394,12 @@ The existing standalone routes (Store/Area/Rack/Bin UI, Inventory Items, Invento
 | UnitOfMeasure | Global, system-seeded unit catalog entry (e.g. `kg`, `g`, `L`, `mL`, `EA`, `SEED`) |
 | InventoryCategory | Tenant-configured classification/reporting metadata for `InventoryItem` — never a behavior switch |
 | InventoryItem | Tenant-scoped consumable-material master, reusable across the tenant's Farms |
-| InventoryLot | Traceable lot identity for consumable material — not the same thing as one Goods Receipt |
-| GoodsReceipt / GoodsReceiptLine | A receipt transaction (header/line) recording quantity received against one or more `InventoryLot`s |
-| Existence Quantity | How much material currently exists, per the immutable existence ledger — unaffected by Issue |
+| InventoryLot | Tenant-wide traceable manufacturer-lot identity for consumable material — never Farm-scoped, never the same thing as one Goods Receipt |
+| GoodsReceipt / GoodsReceiptLine | A Farm-scoped receiving transaction (header/line) — pure provenance; not the existence/quality aggregate root |
+| InventoryQuantityCohort | The existence-ledger and quality-disposition aggregate root; one deterministic root cohort per `GoodsReceiptLine`, splittable into lineage-preserving, independently-dispositioned child cohorts without creating or destroying existence |
+| InventoryItemSeedProfile | Optional, explicit, tenant-wide seed marker for an `InventoryItem` (crop/variety) — never inferred from category; frozen once the item has any posted receipt |
+| Manufacturer / Manufacturer Lot Reference | The physical producer of the material and the lot code it stamped on the package — GrowCMP's own free-text identity fact, distinct from Supplier/Distributor and from any Odoo reference |
+| Existence Quantity | How much material currently exists, company-wide, per the immutable existence ledger — unaffected by Issue, and never implying current Farm/Store/Bin custody |
 | Custody | Where existing material currently is / who holds it (Store vs. Work Order) — a separate fact from existence quantity |
 | Material Issue | A custody event moving material from Store custody to Work Order custody; does not reduce existence quantity |
 | Consumption | A destruction/use event that reduces existence quantity |

@@ -22,7 +22,7 @@ None of the items below are treated as invented values; they are recorded as ope
 
 ## Store and inventory decisions
 
-- **InventoryLot↔SeedLot cardinality.** `docs/domain/STORE_INVENTORY_MODEL.md` §15 freezes that `SeedLot` remains the crop-specific traceability identity and `InventoryLot` the generic quantity/lot identity, linked together — but the exact cardinality (one-to-one vs. one-to-many) must be confirmed against actual existing `SeedLot` semantics during `STORE-INV-002A` design, not assumed now.
+- ~~**InventoryLot↔SeedLot cardinality.**~~ Resolved by the `STORE-INV-002A` discovery: `SeedLot.inventory_lot_id` (nullable FK, not the reverse direction) — one tenant-wide `InventoryLot` may link to many Farm-scoped `SeedLot`s, at most one per Farm. See `docs/domain/STORE_INVENTORY_MODEL.md` §15.
 
 ## Deferred commercial decisions
 
