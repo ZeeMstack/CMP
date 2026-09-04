@@ -1690,3 +1690,43 @@ class InventoryItemTrackingPolicyInvalidError(DomainError):
     `true` while `lot_tracking_required` is `false` -- both are
     `InventoryLot`-level concepts and meaningless on non-lot-tracked
     material (`docs/domain/STORE_INVENTORY_MODEL.md` §5)."""
+
+
+class LocationUpdateReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class LocationDeactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class LocationReactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class LocationNotActiveError(DomainError):
+    """Raised when DEACTIVATE targets a `Location` that is not currently
+    active."""
+
+
+class LocationNotInactiveError(DomainError):
+    """Raised when REACTIVATE targets a `Location` that is not currently
+    inactive."""
+
+
+class LocationHasActiveOccupancyError(DomainError):
+    """Raised when DEACTIVATE targets a `Location` that currently has one
+    or more active `Occupancy` rows (docs/domain/LOCATION_MODEL.md,
+    "Location maintenance lifecycle"). Closed/historical occupancy never
+    raises this."""
+
+
+class LocationHasActiveChildrenError(DomainError):
+    """Raised when DEACTIVATE targets a `Location` that has one or more
+    directly active child `Location` rows -- deactivation is explicit and
+    non-cascading; the operator must retire the hierarchy bottom-up."""
+
+
+class LocationParentNotActiveError(DomainError):
+    """Raised when REACTIVATE targets a `Location` whose parent is not
+    currently active."""

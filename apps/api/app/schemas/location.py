@@ -107,6 +107,29 @@ class LocationBulkChildrenCreate(BaseModel):
         return self
 
 
+class LocationUpdate(BaseModel):
+    """UX-IA-001: `name` is the only mutable field -- `code` is never
+    accepted here; there is no update path for it at all
+    (docs/domain/LOCATION_MODEL.md, "Location maintenance lifecycle")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_command_id: uuid.UUID
+    name: str
+
+
+class LocationDeactivate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_command_id: uuid.UUID
+
+
+class LocationReactivate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_command_id: uuid.UUID
+
+
 class LocationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

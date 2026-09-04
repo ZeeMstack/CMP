@@ -8,6 +8,9 @@ export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
 export type LocationCreate = components["schemas"]["LocationCreate"];
 export type LocationBulkChildrenCreate = components["schemas"]["LocationBulkChildrenCreate"];
+export type LocationUpdate = components["schemas"]["LocationUpdate"];
+export type LocationDeactivate = components["schemas"]["LocationDeactivate"];
+export type LocationReactivate = components["schemas"]["LocationReactivate"];
 export type CropBatchRead = components["schemas"]["CropBatchRead"];
 export type BatchStageRunRead = components["schemas"]["BatchStageRunRead"];
 export type BatchLineageRead = components["schemas"]["BatchLineageRead"];
@@ -256,6 +259,37 @@ export function bulkCreateLocationChildren(
   signal?: AbortSignal,
 ): Promise<LocationRead[]> {
   return postJson<LocationRead[]>(`/farms/${farmId}/locations/${parentId}/bulk-children`, payload, signal);
+}
+
+// UX-IA-001 -- Location maintenance lifecycle: name update, deactivate,
+// reactivate. `code`/`parent_location_id`/`location_type_id`/`farm_id`
+// have no update path; no hard delete.
+
+export function updateLocation(
+  farmId: string,
+  locationId: string,
+  payload: LocationUpdate,
+  signal?: AbortSignal,
+): Promise<LocationRead> {
+  return postJson<LocationRead>(`/farms/${farmId}/locations/${locationId}/update`, payload, signal);
+}
+
+export function deactivateLocation(
+  farmId: string,
+  locationId: string,
+  payload: LocationDeactivate,
+  signal?: AbortSignal,
+): Promise<LocationRead> {
+  return postJson<LocationRead>(`/farms/${farmId}/locations/${locationId}/deactivate`, payload, signal);
+}
+
+export function reactivateLocation(
+  farmId: string,
+  locationId: string,
+  payload: LocationReactivate,
+  signal?: AbortSignal,
+): Promise<LocationRead> {
+  return postJson<LocationRead>(`/farms/${farmId}/locations/${locationId}/reactivate`, payload, signal);
 }
 
 export function getOperationalSummary(

@@ -10,10 +10,13 @@ from app.core.permissions import Permission, require_permission
 from app.schemas.location import (
     LocationBulkChildrenCreate,
     LocationCreate,
+    LocationDeactivate,
     LocationPathEntry,
     LocationPathRead,
+    LocationReactivate,
     LocationRead,
     LocationTreeNode,
+    LocationUpdate,
 )
 from app.schemas.movement import TargetRef
 from app.schemas.occupancy import OccupancyRead, TargetOccupantRead, TargetOccupantsRead
@@ -24,12 +27,41 @@ from app.services.errors import (
     FarmNotFoundError,
     InactiveParentLocationError,
     InvalidLocationHierarchyError,
+    LocationDeactivationReusedWithDifferentPayloadError,
+    LocationHasActiveChildrenError,
+    LocationHasActiveOccupancyError,
+    LocationNotActiveError,
     LocationNotFoundError,
+    LocationNotInactiveError,
+    LocationParentNotActiveError,
+    LocationReactivationReusedWithDifferentPayloadError,
     LocationTypeNotFoundError,
+    LocationUpdateReusedWithDifferentPayloadError,
 )
 from app.services.lineage_traversal import _snapshot_connection
 
 router = APIRouter(tags=["locations"])
+
+# UX-IA-001: a stable, machine-readable identifier for the 3 blocked-action
+# 409 subtypes the frontend must branch on to show a friendly, specific
+# message rather than raw exception text -- mirrors leafy_harvest.py's own
+# `_conflict_detail`/`_CONFLICT_CODES` precedent exactly (SLICE 2
+# CORRECTION 1). Every other conflict on these routes (idempotency
+# replay-mismatch, plain not-active/not-inactive) keeps its existing plain
+# string `detail` -- the shared frontend envelope
+# (`lib/errors/adapter.ts`/`lib/api/client.ts`) already parses both shapes.
+_CONFLICT_CODES: dict[type[Exception], str] = {
+    LocationHasActiveOccupancyError: "LOCATION_HAS_ACTIVE_OCCUPANCY",
+    LocationHasActiveChildrenError: "LOCATION_HAS_ACTIVE_CHILDREN",
+    LocationParentNotActiveError: "LOCATION_PARENT_NOT_ACTIVE",
+}
+
+
+def _conflict_detail(exc: Exception, message: str) -> dict[str, str] | str:
+    code = _CONFLICT_CODES.get(type(exc))
+    if code is None:
+        return message
+    return {"message": message, "code": code}
 
 
 @router.post(
@@ -279,3 +311,91 @@ def get_location_subtree_occupancy(
             )
     except (FarmNotFoundError, LocationNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.post("/farms/{farm_id}/locations/{location_id}/update", response_model=LocationRead)
+def update_location(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    payload: LocationUpdate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_MANAGE)),
+) -> LocationRead:
+    try:
+        location = location_service.update_location(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            client_command_id=payload.client_command_id, location_id=location_id, name=payload.name,
+        )
+    except LocationNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except LocationUpdateReusedWithDifferentPayloadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="client_command_id already used with a different payload",
+        ) from exc
+    return LocationRead.model_validate(location)
+
+
+@router.post("/farms/{farm_id}/locations/{location_id}/deactivate", response_model=LocationRead)
+def deactivate_location(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    payload: LocationDeactivate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_MANAGE)),
+) -> LocationRead:
+    try:
+        location = location_service.deactivate_location(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            client_command_id=payload.client_command_id, location_id=location_id,
+        )
+    except LocationNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except LocationDeactivationReusedWithDifferentPayloadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="client_command_id already used with a different payload",
+        ) from exc
+    except LocationNotActiveError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Location is not active") from exc
+    except LocationHasActiveOccupancyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_conflict_detail(exc, "Location has active occupancy"),
+        ) from exc
+    except LocationHasActiveChildrenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_conflict_detail(exc, "Location has active child locations"),
+        ) from exc
+    return LocationRead.model_validate(location)
+
+
+@router.post("/farms/{farm_id}/locations/{location_id}/reactivate", response_model=LocationRead)
+def reactivate_location(
+    farm_id: uuid.UUID,
+    location_id: uuid.UUID,
+    payload: LocationReactivate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.LOCATION_MANAGE)),
+) -> LocationRead:
+    try:
+        location = location_service.reactivate_location(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            client_command_id=payload.client_command_id, location_id=location_id,
+        )
+    except LocationNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except LocationReactivationReusedWithDifferentPayloadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="client_command_id already used with a different payload",
+        ) from exc
+    except LocationNotInactiveError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Location is not inactive") from exc
+    except LocationParentNotActiveError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_conflict_detail(exc, "Parent location is not active"),
+        ) from exc
+    return LocationRead.model_validate(location)
