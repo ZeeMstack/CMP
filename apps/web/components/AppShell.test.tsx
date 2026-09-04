@@ -183,6 +183,33 @@ describe("AppShell contextual sidebar", () => {
     expect(within(aside).queryByRole("link", { name: "Leafy Production" })).not.toBeInTheDocument();
   });
 
+  it("UX-IA-001: exposes exactly one Store & Inventory Setup entry, and none of the four superseded entries", () => {
+    renderShell("/farms/farm-1/farm-setup");
+    const aside = sidebar();
+    expect(within(aside).getByRole("link", { name: "Store & Inventory Setup" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/store-inventory-setup",
+    );
+    expect(within(aside).queryByRole("link", { name: "Stores & Bins" })).not.toBeInTheDocument();
+    expect(within(aside).queryByRole("link", { name: "Inventory Categories" })).not.toBeInTheDocument();
+    expect(within(aside).queryByRole("link", { name: "Inventory Items" })).not.toBeInTheDocument();
+    expect(within(aside).queryByRole("link", { name: "Units of Measure" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    "/farms/farm-1/store-inventory-setup",
+    "/farms/farm-1/store-inventory-setup/storage",
+    "/farms/farm-1/store-inventory-setup/catalog",
+    "/farms/farm-1/store-inventory-setup/settings",
+  ])("UX-IA-001: %s keeps Store & Inventory Setup active in the sidebar", (pathname) => {
+    renderShell(pathname);
+    const aside = sidebar();
+    expect(within(aside).getByRole("link", { name: "Store & Inventory Setup" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   it("shows ONLY Nursery's children when Nursery Operations is active", () => {
     renderShell("/farms/farm-1/nursery/germination");
     const aside = sidebar();

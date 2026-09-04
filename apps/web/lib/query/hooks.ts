@@ -35,6 +35,9 @@ import type {
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
   LocationCreate,
+  LocationDeactivate,
+  LocationReactivate,
+  LocationUpdate,
   PackagingUnitCreate,
   PackagingUnitRetire,
   PackingEventCreate,
@@ -82,6 +85,16 @@ const STALE_DETAIL_MS = 30_000;
 function useSelectedTenantId(): string | undefined {
   const { bootstrap } = useAuthBootstrap();
   return bootstrap?.selectedTenantId ?? undefined;
+}
+
+/** UX-IA-001: the selected Tenant's display name, for scope-communication
+ * copy ("Shared across <Tenant name>") -- reuses the same
+ * `useAuthBootstrap` data AppShell/StandaloneShell already load, no new
+ * API call. `undefined` before bootstrap resolves. */
+export function useSelectedTenantName(): string | undefined {
+  const { bootstrap } = useAuthBootstrap();
+  if (!bootstrap?.selectedTenantId) return undefined;
+  return bootstrap.memberships.find((m) => m.tenantId === bootstrap.selectedTenantId)?.tenantName;
 }
 
 export function useFarms() {
@@ -152,6 +165,49 @@ export function useBulkCreateLocationChildren(farmId: string) {
   return useMutation({
     mutationFn: ({ parentId, payload }: { parentId: string; payload: LocationBulkChildrenCreate }) =>
       api.bulkCreateLocationChildren(farmId, parentId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+// UX-IA-001 -- Location maintenance lifecycle: name update, deactivate,
+// reactivate. All three invalidate the same `locationsTree` key the read
+// side and the two create mutations above already use.
+
+export function useUpdateLocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ locationId, payload }: { locationId: string; payload: LocationUpdate }) =>
+      api.updateLocation(farmId, locationId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+export function useDeactivateLocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ locationId, payload }: { locationId: string; payload: LocationDeactivate }) =>
+      api.deactivateLocation(farmId, locationId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });
+    },
+  });
+}
+
+export function useReactivateLocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ locationId, payload }: { locationId: string; payload: LocationReactivate }) =>
+      api.reactivateLocation(farmId, locationId, payload),
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.locationsTree(tenantId, farmId) });

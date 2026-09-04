@@ -8,6 +8,7 @@ None of the items below are treated as invented values; they are recorded as ope
 
 - ~~**OIDC provider selection.**~~ Resolved: Auth0 is the implemented production identity provider, behind the OIDC-compatible application adapter approved here (`docs/domain/AUTHORIZATION_MODEL.md`, "Layered trust model").
 - **PostgreSQL RLS policy detail.** RLS is approved as defence in depth alongside mandatory application-level tenant scoping, but concrete policy definitions (per-table policies, role setup) are not yet specified. Does not block application scaffolding.
+- **Frontend effective-permission signal.** No endpoint currently exposes a caller's effective permission set to the frontend — every screen renders its actions unconditionally and relies on the backend's `403` to reject an unauthorized attempt. A proper permission-aware action UX (hiding/disabling actions a role cannot perform, rather than rendering and failing) is a cross-product future concern affecting every module, not a Store & Inventory-specific gap. `UX-IA-001` deliberately continues relying on existing backend authorization and does not add a Store-only workaround; do not invent a client-side role→permission mapping in the meantime.
 
 ## Operational greenhouse decisions
 

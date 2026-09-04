@@ -31,6 +31,19 @@ class Location(TimestampMixin, Base):
     # (migration) for the authoritative, concurrency-safe enforcement.
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # UX-IA-001: command idempotency for update/deactivate/reactivate only
+    # -- create_location/bulk_generate_children remain non-idempotent
+    # (acknowledged, pre-existing debt, explicitly out of scope). Mirrors
+    # InventoryItem/InventoryCategory's own per-command column-pair
+    # convention (docs/domain/STORE_INVENTORY_MODEL.md §5) -- the first
+    # idempotency support this table has had for any command.
+    update_client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    update_request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
+    deactivation_client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    deactivation_request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
+    reactivation_client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    reactivation_request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
+
     __table_args__ = (
         CheckConstraint("status IN ('active', 'inactive')", name="ck_locations_status"),
         CheckConstraint(
@@ -66,4 +79,19 @@ class Location(TimestampMixin, Base):
         # composite FK convention in this codebase. Removed on clean
         # CMP-018 downgrade.
         UniqueConstraint("tenant_id", "farm_id", "id", name="uq_locations_tenant_farm_id"),
+        # UX-IA-001: tenant-scoped idempotency indexes for update/
+        # deactivate/reactivate, mirroring InventoryItem/InventoryCategory's
+        # own per-command partial-unique-index shape exactly.
+        Index(
+            "ux_locations_tenant_update_command", "tenant_id", "update_client_command_id",
+            unique=True, postgresql_where=text("update_client_command_id IS NOT NULL"),
+        ),
+        Index(
+            "ux_locations_tenant_deactivation_command", "tenant_id", "deactivation_client_command_id",
+            unique=True, postgresql_where=text("deactivation_client_command_id IS NOT NULL"),
+        ),
+        Index(
+            "ux_locations_tenant_reactivation_command", "tenant_id", "reactivation_client_command_id",
+            unique=True, postgresql_where=text("reactivation_client_command_id IS NOT NULL"),
+        ),
     )

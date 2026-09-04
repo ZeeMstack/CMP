@@ -311,16 +311,41 @@ Inventory itself stays generic; the **consuming** operational domain owns the sp
 
 | Ticket | Scope |
 |---|---|
-| `STORE-INV-001` | Master data & Store foundation: `UnitOfMeasure`, global approved conversions, `InventoryCategory`, `InventoryItem`, `store_area`, `store_rack`, Store hierarchy rules, relevant Farm Setup UI (`Stores & Bins`, `Inventory Categories`, `Inventory Items`, read-only `Units of Measure` — see `CEO_ALIGNMENT_SPEC.md`, "Approved later extension"). **Explicitly excludes:** `InventoryLot`, Goods Receipt, `InventoryItemPackaging`/purchase packaging, purchase UOM, issue UOM, the quantity/existence ledger, the storage/custody ledger, reservation, material issue, Work Order, consumption, return, FEFO, QC disposition events, and any operational Store & Inventory pages. |
+| `STORE-INV-001` | Master data & Store foundation: `UnitOfMeasure`, global approved conversions, `InventoryCategory`, `InventoryItem`, `store_area`, `store_rack`, Store hierarchy rules, relevant Farm Setup UI — superseded by `UX-IA-001` into the single `Store & Inventory Setup` workspace (Overview / Storage / Inventory Catalog / Settings — see §19, and `CEO_ALIGNMENT_SPEC.md`, "Store & Inventory Setup navigation"). **Explicitly excludes:** `InventoryLot`, Goods Receipt, `InventoryItemPackaging`/purchase packaging, purchase UOM, issue UOM, the quantity/existence ledger, the storage/custody ledger, reservation, material issue, Work Order, consumption, return, FEFO, QC disposition events, and any operational Store & Inventory pages. |
+| `UX-IA-001` | Store & Inventory Setup workspace (§19); Location name-edit/deactivate/reactivate maintenance lifecycle (`docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle") — no new domain entities, no operational Store & Inventory pages. |
 | `STORE-INV-002A` | Goods Receipt + Lot + Quantity Existence: `InventoryLot`, `GoodsReceipt`/`GoodsReceiptLine`, existence ledger (receipt/adjustment/reversal), quality/disposition events, stock-quantity read model. |
-| `STORE-INV-002B` | Physical Storage: inventory storage movement, receipt placement, Store/bin quantity, bin-to-bin transfer, lot × location balance. |
+| `STORE-INV-002B` | Physical Storage: inventory storage movement, receipt placement, Store/bin quantity, bin-to-bin transfer, lot × location balance. Must also extend Store Bin deactivation (`docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle") to additionally block while the Bin holds a non-zero physical inventory balance. |
 | `WORK-ORDER-001` | Operational Work Orders: Seeding Work Order first, material requirements. |
 | `STORE-INV-003` | Reservation & Material Issue: item-level default reservation, optional lot-specific reservation, FEFO, issue/custody transfer. |
 | `STORE-INV-004` | Consumption / Return / Reconciliation: consumption, return, scrap/loss, variance, Work Order reconciliation. |
 | `STORE-INV-005` | Asset & Carrier Custody: `AssetCustodyAssignment`, equipment checkout/return, Carrier Store lifecycle, cleaning/return. |
 | `STORE-INV-006` | Extended Traceability: treatment, fertigation, packaging, maintenance integrations. |
 
-## 19. Glossary of core terms
+## 19. Store & Inventory Setup workspace UX (frozen, UX-IA-001 — not yet implemented)
+
+Supersedes the four separate Farm Setup navigation entries §18's `STORE-INV-001` row originally named (`Stores & Bins`, `Inventory Categories`, `Inventory Items`, `Units of Measure`) — see `CEO_ALIGNMENT_SPEC.md`, "Store & Inventory Setup navigation," which is authoritative for the navigation tree itself. **Farm Setup & Master Data** now exposes exactly one primary entry, **Store & Inventory Setup**, structured as one workspace with four views (workspace sections, not separate sidebar modules):
+
+- **Overview** — a factual Setup Summary (below), never a global readiness claim.
+- **Storage** — the existing Store/Area/Rack/Bin hierarchy UI (farm-scoped).
+- **Inventory Catalog** — the existing Inventory Item catalog UI (tenant-wide).
+- **Settings** — Inventory Category management (tenant-wide) and the read-only Units of Measure reference (global).
+
+The existing standalone routes (Store/Area/Rack/Bin UI, Inventory Items, Inventory Categories, Units of Measure) remain live for deep links/bookmarks but are no longer primary navigation destinations.
+
+**Scope communication (frozen).** The workspace must never imply the tenant-wide Inventory Catalog or Categories belong only to the currently selected Farm. Each section states its actual scope in plain language, never technical terms:
+
+| Section | Scope wording |
+|---|---|
+| Storage | `For <Farm name>` |
+| Inventory Catalog | `Shared across <Tenant name>` |
+| Categories | `Shared across <Tenant name>` |
+| Units of Measure | `System reference` |
+
+**Setup Summary, not a readiness claim (frozen).** The Overview must not define or imply a global "Store & Inventory Ready" state. `STORE-INV-002A`'s Goods Receipt and `STORE-INV-002B`'s physical-storage balances do not exist yet, so no domain evidence yet exists to support a total-readiness claim — unlike the narrower, already-implemented Farm Setup Readiness checklist, which only ever claims readiness for the structural configuration it actually observes. The Overview instead shows factual configured state, missing prerequisites, counts, and a next action per section, e.g.: "No active Store → Create first Store"; "No active Inventory Category → Create first Category"; "Categories exist but no Items → Add first Inventory Item"; "Configured → show active counts + Manage action." It must never route a user into an action already known to fail for a missing prerequisite (e.g. offering "New item" with zero active Categories) — this already matches the existing, correct guard on the Inventory Items page and must be preserved, not weakened.
+
+**Inactive parents excluded from Storage child-create choices (frozen).** Once Location deactivate/reactivate exists (`docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle"), the Storage UI's Add Area / Add Rack / Add Bin parent pickers must offer only currently-active Stores/Areas/Racks as parent choices, never an inactive one. The backend remains independently authoritative (an inactive parent is already rejected server-side today, `InactiveParentLocationError`) — this is a UI-level courtesy against a known-invalid submission, not a substitute for that enforcement.
+
+## 20. Glossary of core terms
 
 | Term | Meaning |
 |---|---|

@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 
 from sqlalchemy import func, select, text
@@ -7,15 +8,23 @@ from sqlalchemy.orm import Session
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
-from app.services import farm_service
+from app.services import farm_service, movement_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     DuplicateLocationCodeError,
     FarmNotFoundError,
     InactiveParentLocationError,
     InvalidLocationHierarchyError,
+    LocationDeactivationReusedWithDifferentPayloadError,
+    LocationHasActiveChildrenError,
+    LocationHasActiveOccupancyError,
+    LocationNotActiveError,
     LocationNotFoundError,
+    LocationNotInactiveError,
+    LocationParentNotActiveError,
+    LocationReactivationReusedWithDifferentPayloadError,
     LocationTypeNotFoundError,
+    LocationUpdateReusedWithDifferentPayloadError,
 )
 
 
@@ -53,12 +62,25 @@ def get_location_type_code_map(db: Session) -> dict[uuid.UUID, str]:
 def _get_active_location_in_scope(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, location_id: uuid.UUID
 ) -> Location:
+    """UX-IA-001: row-locks the parent FOR UPDATE -- a plain unlocked read
+    here would let a concurrent `deactivate_location(parent)` commit between
+    this check and the child insert that follows, producing an inactive
+    parent with an active child (the one invariant this whole feature
+    exists to protect). Locking the same row `deactivate_location` already
+    locks via `_lock_location` means the two commands correctly serialize:
+    whichever transaction commits first is the one the other observes.
+    Every existing caller of this helper (`_create_location_core`,
+    `_bulk_generate_children_core`) is already a write path inside an open
+    transaction, so holding this lock through to that transaction's own
+    commit is always correct here, never a read-endpoint concern."""
     location = db.execute(
-        select(Location).where(
+        select(Location)
+        .where(
             Location.id == location_id,
             Location.tenant_id == tenant_id,
             Location.farm_id == farm_id,
         )
+        .with_for_update()
     ).scalar_one_or_none()
     if location is None:
         raise LocationNotFoundError(str(location_id))
@@ -441,3 +463,286 @@ def get_path(
         {"location_id": location_id, "tenant_id": tenant_id, "farm_id": farm_id},
     )
     return [dict(row) for row in result.mappings().all()]
+
+
+def _lock_location(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, location_id: uuid.UUID
+) -> Location:
+    location = db.execute(
+        select(Location)
+        .where(Location.id == location_id, Location.tenant_id == tenant_id, Location.farm_id == farm_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if location is None:
+        raise LocationNotFoundError(str(location_id))
+    return location
+
+
+def _compute_location_update_fingerprint(
+    *, tenant_id: uuid.UUID, actor_user_id: uuid.UUID | None, location_id: uuid.UUID, name: str
+) -> str:
+    parts = [str(tenant_id), str(actor_user_id) if actor_user_id else "", str(location_id), name]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _compute_location_status_fingerprint(
+    *, tenant_id: uuid.UUID, actor_user_id: uuid.UUID | None, location_id: uuid.UUID
+) -> str:
+    parts = [str(tenant_id), str(actor_user_id) if actor_user_id else "", str(location_id)]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def update_location(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    client_command_id: uuid.UUID,
+    location_id: uuid.UUID,
+    name: str,
+) -> Location:
+    """UX-IA-001: renames a Location -- the only mutable field. Mirrors
+    `inventory_item_service.update_inventory_item`'s idempotency shape
+    exactly (pre-lock replay check, row lock, post-lock replay check,
+    IntegrityError-fallback replay). `code`/`parent_location_id`/
+    `location_type_id`/`farm_id` have no update path at all -- see
+    `docs/domain/LOCATION_MODEL.md`, "Location maintenance lifecycle".
+    Works whether the Location is currently active or inactive -- name
+    correction is not a lifecycle action."""
+    fingerprint = _compute_location_update_fingerprint(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, location_id=location_id, name=name
+    )
+
+    def _find_by_update_command() -> Location | None:
+        return db.execute(
+            select(Location).where(
+                Location.tenant_id == tenant_id, Location.update_client_command_id == client_command_id
+            )
+        ).scalar_one_or_none()
+
+    existing = _find_by_update_command()
+    if existing is not None:
+        if existing.update_request_fingerprint == fingerprint:
+            return existing
+        raise LocationUpdateReusedWithDifferentPayloadError(str(client_command_id))
+
+    location = _lock_location(db, tenant_id=tenant_id, farm_id=farm_id, location_id=location_id)
+
+    existing = _find_by_update_command()
+    if existing is not None:
+        if existing.update_request_fingerprint == fingerprint:
+            return existing
+        raise LocationUpdateReusedWithDifferentPayloadError(str(client_command_id))
+
+    name_before = location.name
+    location.name = name
+    location.update_client_command_id = client_command_id
+    location.update_request_fingerprint = fingerprint
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if _constraint_name(exc) == "ux_locations_tenant_update_command":
+            replay = _find_by_update_command()
+            if replay is not None and replay.update_request_fingerprint == fingerprint:
+                return replay
+            raise LocationUpdateReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        raise
+
+    append_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="location.updated",
+        entity_type="location", entity_id=location.id,
+        event_data={"code": location.code, "name_before": name_before, "name_after": location.name},
+    )
+    db.commit()
+    db.refresh(location)
+    return location
+
+
+def deactivate_location(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    client_command_id: uuid.UUID,
+    location_id: uuid.UUID,
+) -> Location:
+    """UX-IA-001: explicit, non-cascading deactivation
+    (docs/domain/LOCATION_MODEL.md, "Location maintenance lifecycle").
+    Blocked by active occupancy at this exact Location or by any directly
+    active child Location; closed/historical occupancy and movement never
+    block. Deactivating a parent never cascades to its descendants -- the
+    operator retires a hierarchy bottom-up, one explicit command per node.
+    Both invariant checks run AFTER the row lock is acquired, so a
+    concurrent `execute_movement` into this same Location (which also locks
+    the destination Location row, see `movement_service._resolve_target`)
+    is correctly serialized rather than racing a stale pre-lock read."""
+    fingerprint = _compute_location_status_fingerprint(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, location_id=location_id
+    )
+
+    def _find_by_command() -> Location | None:
+        return db.execute(
+            select(Location).where(
+                Location.tenant_id == tenant_id, Location.deactivation_client_command_id == client_command_id
+            )
+        ).scalar_one_or_none()
+
+    existing = _find_by_command()
+    if existing is not None:
+        if existing.deactivation_request_fingerprint == fingerprint:
+            return existing
+        raise LocationDeactivationReusedWithDifferentPayloadError(str(client_command_id))
+
+    location = _lock_location(db, tenant_id=tenant_id, farm_id=farm_id, location_id=location_id)
+
+    existing = _find_by_command()
+    if existing is not None:
+        if existing.deactivation_request_fingerprint == fingerprint:
+            return existing
+        raise LocationDeactivationReusedWithDifferentPayloadError(str(client_command_id))
+
+    if location.status != "active":
+        raise LocationNotActiveError(str(location_id))
+
+    # A non-occupiable Location can never have any Occupancy at all --
+    # occupancy creation itself requires occupiable=True at movement time
+    # (movement_service._resolve_target), and occupiable is immutable after
+    # creation (no update path touches it). list_target_occupants() itself
+    # raises TargetNotOccupiableError for a non-occupiable target (it is
+    # built for the "read this occupiable target's occupants" case, e.g.
+    # the /occupants endpoint) -- calling it here for every Location type,
+    # including plain structural ones like store_area/store_rack, would be
+    # a misuse of that guard, not a real invariant violation.
+    if location.occupiable:
+        active_occupancies = movement_service.list_target_occupants(
+            db, tenant_id=tenant_id, farm_id=farm_id, target_kind="location", target_id=location_id
+        )
+        if active_occupancies:
+            raise LocationHasActiveOccupancyError(str(location_id))
+
+    active_child_count = db.execute(
+        select(func.count()).select_from(Location).where(
+            Location.parent_location_id == location_id,
+            Location.tenant_id == tenant_id,
+            Location.farm_id == farm_id,
+            Location.status == "active",
+        )
+    ).scalar_one()
+    if active_child_count > 0:
+        raise LocationHasActiveChildrenError(str(location_id))
+
+    location.status = "inactive"
+    location.deactivation_client_command_id = client_command_id
+    location.deactivation_request_fingerprint = fingerprint
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if _constraint_name(exc) == "ux_locations_tenant_deactivation_command":
+            replay = _find_by_command()
+            if replay is not None and replay.deactivation_request_fingerprint == fingerprint:
+                return replay
+            raise LocationDeactivationReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        raise
+
+    append_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="location.deactivated",
+        entity_type="location", entity_id=location.id,
+        event_data={"code": location.code, "status_before": "active", "status_after": "inactive"},
+    )
+    db.commit()
+    db.refresh(location)
+    return location
+
+
+def reactivate_location(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    client_command_id: uuid.UUID,
+    location_id: uuid.UUID,
+) -> Location:
+    """UX-IA-001: reactivation requires the Location itself to be inactive
+    and, if it has a parent, that parent to be currently active -- mirrors
+    the same invariant `create_location` already enforces at creation time
+    via `_get_active_location_in_scope`. No occupancy/child check applies
+    to reactivation -- it only ever adds future eligibility."""
+    fingerprint = _compute_location_status_fingerprint(
+        tenant_id=tenant_id, actor_user_id=actor_user_id, location_id=location_id
+    )
+
+    def _find_by_command() -> Location | None:
+        return db.execute(
+            select(Location).where(
+                Location.tenant_id == tenant_id, Location.reactivation_client_command_id == client_command_id
+            )
+        ).scalar_one_or_none()
+
+    existing = _find_by_command()
+    if existing is not None:
+        if existing.reactivation_request_fingerprint == fingerprint:
+            return existing
+        raise LocationReactivationReusedWithDifferentPayloadError(str(client_command_id))
+
+    location = _lock_location(db, tenant_id=tenant_id, farm_id=farm_id, location_id=location_id)
+
+    existing = _find_by_command()
+    if existing is not None:
+        if existing.reactivation_request_fingerprint == fingerprint:
+            return existing
+        raise LocationReactivationReusedWithDifferentPayloadError(str(client_command_id))
+
+    if location.status != "inactive":
+        raise LocationNotInactiveError(str(location_id))
+
+    if location.parent_location_id is not None:
+        # UX-IA-001: row-locks the parent FOR UPDATE, same reasoning as
+        # `_get_active_location_in_scope` -- without this lock, a
+        # concurrent `deactivate_location(parent)` could commit between
+        # this check and this command's own status flip below, again
+        # producing an inactive parent with an active (reactivated) child.
+        # Deadlock-safe: this transaction already holds a lock on `location`
+        # itself (`_lock_location` above) before requesting the parent's
+        # lock, but `deactivate_location` never locks a child row -- its own
+        # active-child check is a plain, unlocked read -- so the two
+        # commands can only ever contend on the parent row, never form a
+        # lock cycle.
+        parent = db.execute(
+            select(Location)
+            .where(
+                Location.id == location.parent_location_id,
+                Location.tenant_id == tenant_id,
+                Location.farm_id == farm_id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if parent is None or parent.status != "active":
+            raise LocationParentNotActiveError(str(location_id))
+
+    location.status = "active"
+    location.reactivation_client_command_id = client_command_id
+    location.reactivation_request_fingerprint = fingerprint
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if _constraint_name(exc) == "ux_locations_tenant_reactivation_command":
+            replay = _find_by_command()
+            if replay is not None and replay.reactivation_request_fingerprint == fingerprint:
+                return replay
+            raise LocationReactivationReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        raise
+
+    append_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="location.reactivated",
+        entity_type="location", entity_id=location.id,
+        event_data={"code": location.code, "status_before": "inactive", "status_after": "active"},
+    )
+    db.commit()
+    db.refresh(location)
+    return location
