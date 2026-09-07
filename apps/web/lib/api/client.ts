@@ -971,6 +971,28 @@ export type InventoryItemSeedProfileCreate = components["schemas"]["InventoryIte
 export type InventoryItemSeedProfileUpdate = components["schemas"]["InventoryItemSeedProfileUpdate"];
 export type InventoryItemSeedProfileRemove = components["schemas"]["InventoryItemSeedProfileRemove"];
 
+// --- STORE-INV-002A.1 -- Goods Receipt, existence read model ----------------
+export type GoodsReceiptCreate = components["schemas"]["GoodsReceiptCreate"];
+export type GoodsReceiptLineIn = components["schemas"]["GoodsReceiptLineIn"];
+export type GoodsReceiptRead = components["schemas"]["GoodsReceiptRead"];
+export type InventoryItemExistenceRead = components["schemas"]["InventoryItemExistenceRead"];
+export type InventoryLotExistenceRead = components["schemas"]["InventoryLotExistenceRead"];
+export type InventoryItemCohortProvenanceRead = components["schemas"]["InventoryItemCohortProvenanceRead"];
+export type InventoryExistenceLedgerEntryRead = components["schemas"]["InventoryExistenceLedgerEntryRead"];
+
+// --- STORE-INV-002A.2 -- Quality disposition, usable-existence read model ---
+export type QualityDispositionCreate = components["schemas"]["QualityDispositionCreate"];
+export type QualityDispositionCorrectionCreate = components["schemas"]["QualityDispositionCorrectionCreate"];
+export type QualityDispositionCorrectionRead = components["schemas"]["QualityDispositionCorrectionRead"];
+export type QualityDispositionEventRead = components["schemas"]["QualityDispositionEventRead"];
+export type QualityPartialDispositionCreate = components["schemas"]["QualityPartialDispositionCreate"];
+export type QualityPartialDispositionRead = components["schemas"]["QualityPartialDispositionRead"];
+export type QualityPartialCorrectionCreate = components["schemas"]["QualityPartialCorrectionCreate"];
+export type QualityPartialCorrectionRead = components["schemas"]["QualityPartialCorrectionRead"];
+export type QualityWorkQueueRowRead = components["schemas"]["QualityWorkQueueRowRead"];
+export type InventoryItemUsableExistenceRead = components["schemas"]["InventoryItemUsableExistenceRead"];
+export type InventoryLotUsableExistenceRead = components["schemas"]["InventoryLotUsableExistenceRead"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
@@ -1260,6 +1282,106 @@ export function removeSeedProfile(
   signal?: AbortSignal,
 ): Promise<{ removed: boolean }> {
   return postJson<{ removed: boolean }>(`/inventory-item-seed-profiles/${profileId}/remove`, payload, signal);
+}
+
+// STORE-INV-002A.1 -- Goods Receipt: one atomic, multi-line "Record Receipt"
+// command, Farm-scoped. No server-side Draft state.
+
+export function recordGoodsReceipt(
+  farmId: string,
+  payload: GoodsReceiptCreate,
+  signal?: AbortSignal,
+): Promise<GoodsReceiptRead> {
+  return postJson<GoodsReceiptRead>(`/farms/${farmId}/goods-receipts`, payload, signal);
+}
+
+export function listGoodsReceipts(farmId: string, signal?: AbortSignal): Promise<GoodsReceiptRead[]> {
+  return getJson<GoodsReceiptRead[]>(`/farms/${farmId}/goods-receipts`, signal);
+}
+
+export function getGoodsReceipt(
+  farmId: string,
+  receiptId: string,
+  signal?: AbortSignal,
+): Promise<GoodsReceiptRead> {
+  return getJson<GoodsReceiptRead>(`/farms/${farmId}/goods-receipts/${receiptId}`, signal);
+}
+
+// STORE-INV-002A.1 -- company-wide existence read model. Never claims
+// current Farm/Store/Bin -- "Received at <Farm>" is provenance only.
+
+export function getItemExistence(itemId: string, signal?: AbortSignal): Promise<InventoryItemExistenceRead> {
+  return getJson<InventoryItemExistenceRead>(`/inventory-items/${itemId}/existence`, signal);
+}
+
+export function getItemExistenceProvenance(
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<InventoryItemCohortProvenanceRead[]> {
+  return getJson<InventoryItemCohortProvenanceRead[]>(`/inventory-items/${itemId}/existence/provenance`, signal);
+}
+
+export function getLotExistence(lotId: string, signal?: AbortSignal): Promise<InventoryLotExistenceRead> {
+  return getJson<InventoryLotExistenceRead>(`/inventory-lots/${lotId}/existence`, signal);
+}
+
+export function getCohortLedger(
+  cohortId: string,
+  signal?: AbortSignal,
+): Promise<InventoryExistenceLedgerEntryRead[]> {
+  return getJson<InventoryExistenceLedgerEntryRead[]>(`/inventory-quantity-cohorts/${cohortId}/ledger`, signal);
+}
+
+// STORE-INV-002A.2 -- Quality disposition commands ("Release" / "Hold" /
+// "Reject" / "Hold Release"), correction ("Correct decision"), and "Apply
+// disposition to part of quantity" -- never "Split Cohort" anywhere in this
+// surface. Tenant-scoped, not Farm-scoped -- a cohort's Farm is receiving
+// provenance, not a movement/command boundary.
+
+export function recordQualityDisposition(
+  payload: QualityDispositionCreate,
+  signal?: AbortSignal,
+): Promise<QualityDispositionEventRead> {
+  return postJson<QualityDispositionEventRead>("/quality-dispositions", payload, signal);
+}
+
+export function correctQualityDisposition(
+  payload: QualityDispositionCorrectionCreate,
+  signal?: AbortSignal,
+): Promise<QualityDispositionCorrectionRead> {
+  return postJson<QualityDispositionCorrectionRead>("/quality-disposition-corrections", payload, signal);
+}
+
+export function applyQualityDispositionToPartialQuantity(
+  payload: QualityPartialDispositionCreate,
+  signal?: AbortSignal,
+): Promise<QualityPartialDispositionRead> {
+  return postJson<QualityPartialDispositionRead>("/quality-partial-dispositions", payload, signal);
+}
+
+export function correctQualityDispositionForPartialQuantity(
+  payload: QualityPartialCorrectionCreate,
+  signal?: AbortSignal,
+): Promise<QualityPartialCorrectionRead> {
+  return postJson<QualityPartialCorrectionRead>("/quality-partial-corrections", payload, signal);
+}
+
+export function getQualityWorkQueue(signal?: AbortSignal): Promise<QualityWorkQueueRowRead[]> {
+  return getJson<QualityWorkQueueRowRead[]>("/quality-work-queue", signal);
+}
+
+export function getItemUsableExistence(
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<InventoryItemUsableExistenceRead> {
+  return getJson<InventoryItemUsableExistenceRead>(`/inventory-items/${itemId}/usable-existence`, signal);
+}
+
+export function getLotUsableExistence(
+  lotId: string,
+  signal?: AbortSignal,
+): Promise<InventoryLotUsableExistenceRead> {
+  return getJson<InventoryLotUsableExistenceRead>(`/inventory-lots/${lotId}/usable-existence`, signal);
 }
 
 // Grading -- the operator command that consumes a Harvested Produce Lot and

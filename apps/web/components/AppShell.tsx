@@ -87,6 +87,24 @@ function navGroups(farmId: string): NavGroupDef[] {
       ],
     },
     {
+      // STORE-INV-002A.2: the first turn this operational module is allowed
+      // to appear in primary navigation at all (docs/build-plans/
+      // STORE_INV_002A2_QUALITY_OPERATIONAL_UX_BUILD_PLAN.md) -- distinct
+      // from "Store & Inventory Setup" above (configuration: Stores/Bins,
+      // Inventory Catalog, Categories, UOM reference). This module is
+      // OPERATIONS: receiving, existence/usable-quantity visibility, and
+      // Quality disposition. Deliberately no Reservations/Issues/Returns/
+      // Transfers/Work Orders entries -- none of them exist yet.
+      id: "store-inventory",
+      label: "Store & Inventory",
+      items: [
+        { label: "Overview", href: `/farms/${farmId}/store-inventory` },
+        { label: "Receive Goods", href: `/farms/${farmId}/store-inventory/receive-goods` },
+        { label: "Inventory", href: `/farms/${farmId}/store-inventory/inventory` },
+        { label: "Quality", href: `/farms/${farmId}/store-inventory/quality` },
+      ],
+    },
+    {
       id: "farm-setup",
       label: "Farm Setup & Master Data",
       items: [

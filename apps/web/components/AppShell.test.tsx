@@ -41,6 +41,7 @@ const GROUP_LABELS = [
   "Production Operations",
   "Harvest & Post-Harvest",
   "Dispatch & Traceability",
+  "Store & Inventory",
   "Farm Setup & Master Data",
 ];
 
@@ -49,6 +50,7 @@ const GROUP_FIRST_CHILD: Record<string, string> = {
   "Production Operations": "/farms/farm-1/leafy-production",
   "Harvest & Post-Harvest": "/farms/farm-1/leafy-production/harvest",
   "Dispatch & Traceability": "/farms/farm-1/processing/dispatch",
+  "Store & Inventory": "/farms/farm-1/store-inventory",
   "Farm Setup & Master Data": "/farms/farm-1/farm-setup",
 };
 
@@ -208,6 +210,41 @@ describe("AppShell contextual sidebar", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("STORE-INV-002A.2: exposes exactly Overview / Receive Goods / Inventory / Quality, no placeholders", () => {
+    renderShell("/farms/farm-1/store-inventory");
+    const aside = sidebar();
+    const expected: Record<string, string> = {
+      Overview: "/farms/farm-1/store-inventory",
+      "Receive Goods": "/farms/farm-1/store-inventory/receive-goods",
+      Inventory: "/farms/farm-1/store-inventory/inventory",
+      Quality: "/farms/farm-1/store-inventory/quality",
+    };
+    for (const [label, href] of Object.entries(expected)) {
+      expect(within(aside).getByRole("link", { name: label })).toHaveAttribute("href", href);
+    }
+    // No future/unbuilt concepts (Reservations, Issues, Returns, Transfers,
+    // Work Orders) and no duplication of the separate, config-only
+    // "Store & Inventory Setup" workspace entries.
+    for (const forbidden of [
+      "Reservations", "Issues", "Returns", "Transfers", "Work Orders",
+      "Store & Inventory Setup", "Storage", "Inventory Catalog", "Settings",
+    ]) {
+      expect(within(aside).queryByRole("link", { name: forbidden })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    "/farms/farm-1/store-inventory",
+    "/farms/farm-1/store-inventory/receive-goods",
+    "/farms/farm-1/store-inventory/inventory",
+    "/farms/farm-1/store-inventory/quality",
+  ])("STORE-INV-002A.2: %s keeps Store & Inventory active in the top nav, not Store & Inventory Setup", (pathname) => {
+    renderShell(pathname);
+    const nav = topNav();
+    expect(within(nav).getByRole("link", { name: "Store & Inventory" })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).getByRole("link", { name: "Farm Setup & Master Data" })).not.toHaveAttribute("aria-current");
   });
 
   it("shows ONLY Nursery's children when Nursery Operations is active", () => {

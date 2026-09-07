@@ -1305,6 +1305,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/quality-dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Quality Disposition */
+        post: operations["record_quality_disposition_quality_dispositions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quality-disposition-corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Quality Disposition */
+        post: operations["correct_quality_disposition_quality_disposition_corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quality-partial-dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Quality Disposition To Partial Quantity */
+        post: operations["apply_quality_disposition_to_partial_quantity_quality_partial_dispositions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quality-partial-corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Quality Disposition For Partial Quantity */
+        post: operations["correct_quality_disposition_for_partial_quantity_quality_partial_corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quality-work-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quality Work Queue */
+        get: operations["get_quality_work_queue_quality_work_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-items/{item_id}/usable-existence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item Usable Existence */
+        get: operations["get_item_usable_existence_inventory_items__item_id__usable_existence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-lots/{lot_id}/usable-existence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lot Usable Existence */
+        get: operations["get_lot_usable_existence_inventory_lots__lot_id__usable_existence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/movements": {
         parameters: {
             query?: never;
@@ -6830,6 +6949,16 @@ export interface components {
             /** Qc Release Required */
             qc_release_required: boolean;
         };
+        /** InventoryItemUsableExistenceRead */
+        InventoryItemUsableExistenceRead: {
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Usable Quantity */
+            usable_quantity: string;
+        };
         /** InventoryLotExistenceRead */
         InventoryLotExistenceRead: {
             /**
@@ -6839,6 +6968,16 @@ export interface components {
             inventory_lot_id: string;
             /** Existing Quantity */
             existing_quantity: string;
+        };
+        /** InventoryLotUsableExistenceRead */
+        InventoryLotUsableExistenceRead: {
+            /**
+             * Inventory Lot Id
+             * Format: uuid
+             */
+            inventory_lot_id: string;
+            /** Usable Quantity */
+            usable_quantity: string;
         };
         /**
          * LeafyHarvestEventRead
@@ -8630,6 +8769,106 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * QualityDispositionCorrectionCreate
+         * @description Corrects the cohort's current human decision only -- never the
+         *     automatic opening RECEIVED_QUARANTINED fact. `target_event_id` is the
+         *     event the OPERATOR OBSERVED (read from the Quality work-queue), never
+         *     resolved to "whatever is current" server-side -- if the cohort's
+         *     current decision has since changed, the command is rejected as a
+         *     stale-target conflict.
+         */
+        QualityDispositionCorrectionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Target Event Id
+             * Format: uuid
+             */
+            target_event_id: string;
+            /** Reason */
+            reason: string;
+            /** Replacement Disposition */
+            replacement_disposition?: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
+        /** QualityDispositionCorrectionRead */
+        QualityDispositionCorrectionRead: {
+            reversal: components["schemas"]["QualityDispositionEventRead"];
+            replacement: components["schemas"]["QualityDispositionEventRead"] | null;
+        };
+        /**
+         * QualityDispositionCreate
+         * @description Release / Hold / Reject / Hold-Release -- one ordinary whole-cohort
+         *     human quality decision.
+         */
+        QualityDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Disposition */
+            disposition: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** QualityDispositionEventRead */
+        QualityDispositionEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Event Kind */
+            event_kind: string;
+            /** Reverses Event Id */
+            reverses_event_id: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /** Reason */
+            reason: string | null;
+        };
         /** QualityHoldCreate */
         QualityHoldCreate: {
             /**
@@ -8698,6 +8937,163 @@ export interface components {
             client_command_id: string;
             /** Release Reason */
             release_reason: string;
+        };
+        /**
+         * QualityPartialCorrectionCreate
+         * @description "Correct decision for part of quantity" -- compensating quantity
+         *     partitioning for a mistaken classification (e.g. 20 kg of a 100 kg
+         *     REJECTED cohort wrongly rejected). NEVER an ordinary forward
+         *     transition and never named "Split Cohort" anywhere in this surface.
+         *     `target_event_id` must be the source cohort's CURRENT human decision,
+         *     as observed by the operator via the Quality work-queue.
+         */
+        QualityPartialCorrectionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Target Event Id
+             * Format: uuid
+             */
+            target_event_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /** Corrected Disposition */
+            corrected_disposition: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
+        /** QualityPartialCorrectionRead */
+        QualityPartialCorrectionRead: {
+            /**
+             * Child Cohort Id
+             * Format: uuid
+             */
+            child_cohort_id: string;
+            /**
+             * Source Cohort Id
+             * Format: uuid
+             */
+            source_cohort_id: string;
+            /**
+             * Target Event Id
+             * Format: uuid
+             */
+            target_event_id: string;
+            /** Quantity */
+            quantity: string;
+            /** Corrected Disposition */
+            corrected_disposition: string;
+        };
+        /**
+         * QualityPartialDispositionCreate
+         * @description "Apply disposition to part of quantity" -- never named "Split
+         *     Cohort" anywhere in this surface.
+         */
+        QualityPartialDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /** Disposition */
+            disposition: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** QualityPartialDispositionRead */
+        QualityPartialDispositionRead: {
+            /**
+             * Child Cohort Id
+             * Format: uuid
+             */
+            child_cohort_id: string;
+            /**
+             * Source Cohort Id
+             * Format: uuid
+             */
+            source_cohort_id: string;
+            /** Quantity */
+            quantity: string;
+            /** Disposition */
+            disposition: string;
+        };
+        /** QualityWorkQueueRowRead */
+        QualityWorkQueueRowRead: {
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Item Name */
+            item_name: string;
+            /**
+             * Base Uom Id
+             * Format: uuid
+             */
+            base_uom_id: string;
+            /** Inventory Lot Id */
+            inventory_lot_id: string | null;
+            /** Manufacturer Lot Reference */
+            manufacturer_lot_reference: string | null;
+            /** Expiry Date */
+            expiry_date: string | null;
+            /**
+             * Received At Farm Id
+             * Format: uuid
+             */
+            received_at_farm_id: string;
+            /**
+             * Source Goods Receipt Line Id
+             * Format: uuid
+             */
+            source_goods_receipt_line_id: string;
+            /** Receipt Code */
+            receipt_code: string;
+            /**
+             * Receipt Received At
+             * Format: date-time
+             */
+            receipt_received_at: string;
+            /** Balance */
+            balance: string;
+            /** Current State */
+            current_state: string;
+            /** Current Event Id */
+            current_event_id: string | null;
+            /** Last Actor User Id */
+            last_actor_user_id: string | null;
+            /** Last Effective Time */
+            last_effective_time: string | null;
         };
         /** RecallCaseClose */
         RecallCaseClose: {
@@ -14709,6 +15105,264 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryLotExistenceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_quality_disposition_quality_dispositions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityDispositionEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_quality_disposition_quality_disposition_corrections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityDispositionCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityDispositionCorrectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_quality_disposition_to_partial_quantity_quality_partial_dispositions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityPartialDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityPartialDispositionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_quality_disposition_for_partial_quantity_quality_partial_corrections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityPartialCorrectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityPartialCorrectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_quality_work_queue_quality_work_queue_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityWorkQueueRowRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_usable_existence_inventory_items__item_id__usable_existence_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryItemUsableExistenceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lot_usable_existence_inventory_lots__lot_id__usable_existence_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                lot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLotUsableExistenceRead"];
                 };
             };
             /** @description Validation Error */

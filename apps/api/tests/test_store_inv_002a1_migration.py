@@ -7,6 +7,16 @@ test_migration_downgrade_then_upgrade_on_test_database` (downgrades all the
 way to "base" and back) -- this file adds the one case that isn't: the
 guard actually refusing to downgrade once real operational data exists.
 
+STORE-INV-002A.2 CTO closure pass note: `abcdb6f371f9` (inventory quality
+command idempotency) now sits on top of `f1a4c8e7b2d5` as the current head.
+`f1a4c8e7b2d5` itself is never edited, so its own downgrade guard is
+unchanged -- but reaching it now takes TWO steps back from head, not one
+("-1" only strips `abcdb6f371f9`, whose own guard is independent and
+covered by `test_store_inv_002a2_command_idempotency_migration.py`). Every
+`command.downgrade(..., "-1")` call below is updated to `"-2"` for exactly
+this reason -- the guard being tested, and the tables it protects, are
+unchanged.
+
 Isolation note (CTO integrity review, pre-commit cleanup pass):
 `test_downgrade_clean_when_empty` asserts a whole-table row count of
 exactly zero across every STORE-INV-002A.1 table -- that is what the
@@ -62,7 +72,7 @@ def test_downgrade_clean_when_empty(test_engine, alembic_head_restore) -> None:
     before any other test -- in this file or any other -- that commits real
     rows into these tables via a separate connection."""
     scripts.reset_test_database.main()
-    command.downgrade(_cfg(), "-1")
+    command.downgrade(_cfg(), "-2")
     with test_engine.connect() as conn:
         tables = conn.execute(
             text(
@@ -95,7 +105,7 @@ def test_downgrade_blocked_once_goods_receipt_exists(test_engine, alembic_head_r
         conn.close()
 
     with pytest.raises(RuntimeError, match="STORE-INV-002A.1"):
-        command.downgrade(_cfg(), "-1")
+        command.downgrade(_cfg(), "-2")
 
 
 @pytest.mark.integration
@@ -124,4 +134,4 @@ def test_downgrade_blocked_once_inventory_lot_exists(test_engine, alembic_head_r
         conn.close()
 
     with pytest.raises(RuntimeError, match="STORE-INV-002A.1"):
-        command.downgrade(_cfg(), "-1")
+        command.downgrade(_cfg(), "-2")
