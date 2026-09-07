@@ -89,7 +89,7 @@ def _get_batch_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, bat
 # --- Seed lots ------------------------------------------------------------------
 
 
-def register_seed_lot(
+def _register_seed_lot_core(
     db: Session,
     *,
     tenant_id: uuid.UUID,
@@ -102,7 +102,22 @@ def register_seed_lot(
     supplier_lot_reference: str | None,
     received_date,
     expiry_date,
+    inventory_lot_id: uuid.UUID | None = None,
 ) -> SeedLot:
+    """Validate + insert + flush only -- no audit, no commit, and
+    (unlike the original, pre-extraction function) NO internal
+    `IntegrityError` catch/rollback. Extracted (STORE-INV-002A.1) so a
+    bigger atomic command (`goods_receipt_service`, linking a new SeedLot to
+    a tenant-wide InventoryLot) can compose this exact validation/insert
+    logic inside its own outer transaction -- the same
+    `_create_batch_core`/`_sow_batch_core` extraction pattern FARM-SETUP-001/
+    NURSERY-OPS-001 already established, including that pattern's own rule
+    that a core function never catches `IntegrityError` itself: each caller
+    (`register_seed_lot` below, and `goods_receipt_service`) wraps its own
+    call site and handles the same possible constraint name for its own
+    context (mirrors `crop_batch_service.create_batch` and
+    `nursery_service.sow_new_batch` each independently wrapping their own
+    call to `_create_batch_core`)."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     crop = db.execute(select(Crop).where(Crop.id == crop_id, Crop.tenant_id == tenant_id)).scalar_one_or_none()
@@ -124,10 +139,33 @@ def register_seed_lot(
         id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, crop_id=crop_id, variety_id=variety_id,
         code=code, supplier_name=supplier_name, supplier_lot_reference=supplier_lot_reference,
         received_date=received_date, expiry_date=expiry_date, created_by_user_id=actor_user_id,
+        inventory_lot_id=inventory_lot_id,
     )
     db.add(seed_lot)
+    db.flush()
+    return seed_lot
+
+
+def register_seed_lot(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    crop_id: uuid.UUID,
+    variety_id: uuid.UUID,
+    code: str,
+    supplier_name: str | None,
+    supplier_lot_reference: str | None,
+    received_date,
+    expiry_date,
+) -> SeedLot:
     try:
-        db.flush()
+        seed_lot = _register_seed_lot_core(
+            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, crop_id=crop_id,
+            variety_id=variety_id, code=code, supplier_name=supplier_name,
+            supplier_lot_reference=supplier_lot_reference, received_date=received_date, expiry_date=expiry_date,
+        )
     except IntegrityError as exc:
         db.rollback()
         raise DuplicateSeedLotCodeError(f"{tenant_id}:{code}") from exc

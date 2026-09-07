@@ -185,6 +185,23 @@ class Permission(StrEnum):
     # a Store is a Location, not a separate permission domain.
     UNIT_OF_MEASURE_READ = "unit_of_measure.read"
 
+    # STORE-INV-002A.1: the first operational (not master-data) Store &
+    # Inventory permissions -- receiving stock and correcting existence
+    # after the fact are deliberately different control powers, never
+    # bundled (docs/domain/STORE_INVENTORY_MODEL.md §N). `INVENTORY_READ`
+    # is visibility into operational existence/receipts/lots -- distinct
+    # from the existing master-data `INVENTORY_ITEM_READ`/
+    # `INVENTORY_CATEGORY_READ` pair, matching this catalog's own
+    # established master-data-vs-operational split (e.g. `crop.read` vs.
+    # `crop_batch.read`). `INVENTORY_QUALITY_MANAGE` is deliberately NOT
+    # defined yet -- no route exists for it until `STORE-INV-002A.2`; this
+    # codebase's own architecture test
+    # (`tests/test_authz_mutation_enforcement_architecture.py`) fails any
+    # `.manage` permission defined with zero bound routes, so it must wait.
+    INVENTORY_READ = "inventory.read"
+    INVENTORY_RECEIPT_MANAGE = "inventory_receipt.manage"
+    INVENTORY_ADJUSTMENT_MANAGE = "inventory_adjustment.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -241,6 +258,13 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
         Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
         Permission.UNIT_OF_MEASURE_READ,
+        # STORE-INV-002A.1: farm_manager's own senior/accountable-correction
+        # tier extends to existence adjustments, mirroring this role's
+        # existing recall.manage precedent (docs/domain/
+        # STORE_INVENTORY_MODEL.md §N) -- never inventory_receipt.manage or
+        # inventory_quality.manage, which stay with the specialists who
+        # execute routine receiving/quality work.
+        Permission.INVENTORY_READ, Permission.INVENTORY_ADJUSTMENT_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -365,6 +389,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
         Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
         Permission.UNIT_OF_MEASURE_READ,
+        # STORE-INV-002A.1: the first genuinely operational Store &
+        # Inventory authority this role receives -- receiving stock only,
+        # never adjustment or quality (docs/domain/STORE_INVENTORY_MODEL.md
+        # §N), matching this role's existing narrow "one genuine function"
+        # characterization.
+        Permission.INVENTORY_READ, Permission.INVENTORY_RECEIPT_MANAGE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy

@@ -7,6 +7,8 @@ import { useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { InventoryItemEditForm, InventoryItemForm } from "@/components/inventory-items/InventoryItemForm";
+import { PackagingOptionsPanel } from "@/components/inventory-items/PackagingOptionsPanel";
+import { SeedDetailsPanel } from "@/components/inventory-items/SeedDetailsPanel";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
@@ -36,6 +38,7 @@ function errorMessage(error: unknown): string {
 export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: string }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [listActionError, setListActionError] = useState<string | null>(null);
 
@@ -209,6 +212,13 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
                             <Button variant="secondary" disabled={isBusy} onClick={() => setEditingId(item.id)}>
                               Edit
                             </Button>
+                            <Button
+                              variant="secondary"
+                              disabled={isBusy}
+                              onClick={() => setDetailsId(detailsId === item.id ? null : item.id)}
+                            >
+                              {detailsId === item.id ? "Hide details" : "Details"}
+                            </Button>
                             {item.status === "active" ? (
                               <Button
                                 variant="secondary"
@@ -243,6 +253,22 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
                       </tr>
                     );
                   })}
+                  {detailsId &&
+                    (() => {
+                      const detailItem = items.find((i) => i.id === detailsId);
+                      if (!detailItem) return null;
+                      return (
+                        <tr key={`${detailsId}-details`}>
+                          <td colSpan={7} className="bg-surface-subtle px-4 py-3">
+                            <PackagingOptionsPanel
+                              itemId={detailItem.id}
+                              baseUomCode={uomById.get(detailItem.base_uom_id)?.code ?? ""}
+                            />
+                            <SeedDetailsPanel itemId={detailItem.id} />
+                          </td>
+                        </tr>
+                      );
+                    })()}
                 </tbody>
               </table>
             </div>

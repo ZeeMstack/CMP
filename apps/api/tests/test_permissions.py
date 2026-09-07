@@ -62,6 +62,15 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ, Permission.ASSET_MANAGE,
         Permission.CARRIER_READ, Permission.CARRIER_MANAGE,
         Permission.CARRIER_SPECIFICATION_READ, Permission.CARRIER_SPECIFICATION_MANAGE,
+        # STORE-INV-001B (pre-existing, previously untranscribed here):
+        # every role's own Store & Inventory master-data visibility.
+        # STORE-INV-002A.1: farm_manager's own senior/accountable-correction
+        # tier extends to existence adjustments -- never receipt or quality,
+        # which stay with the specialists who execute that routine work.
+        Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
+        Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
+        Permission.UNIT_OF_MEASURE_READ,
+        Permission.INVENTORY_READ, Permission.INVENTORY_ADJUSTMENT_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -86,6 +95,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ, Permission.CROP_MANAGE,
         Permission.PRODUCTION_SYSTEM_READ, Permission.PRODUCTION_SYSTEM_MANAGE,
         Permission.WORKFLOW_READ, Permission.WORKFLOW_MANAGE,
@@ -108,6 +120,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
@@ -130,6 +145,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.MOVEMENT_MANAGE,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -147,6 +165,15 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
         Permission.SEED_LOT_READ, Permission.SEED_LOT_MANAGE,
+        # STORE-INV-001B (pre-existing, previously untranscribed here):
+        # closes the "no general Input/Store module" gap
+        # ROLE_PERMISSION_POLICY_PROPOSAL.md §7/§13 documented.
+        Permission.INVENTORY_CATEGORY_READ, Permission.INVENTORY_CATEGORY_MANAGE,
+        Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
+        Permission.UNIT_OF_MEASURE_READ,
+        # STORE-INV-002A.1: the first genuinely operational Store &
+        # Inventory authority -- receiving only, never adjustment/quality.
+        Permission.INVENTORY_READ, Permission.INVENTORY_RECEIPT_MANAGE,
     }),
     "qc_officer": frozenset({
         Permission.FARM_READ,
@@ -154,6 +181,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -174,6 +204,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_BATCH_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
@@ -188,6 +221,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
@@ -201,6 +237,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
@@ -214,6 +253,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -237,6 +279,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.ASSET_READ,
         Permission.CARRIER_READ,
         Permission.CARRIER_SPECIFICATION_READ,
+        Permission.INVENTORY_CATEGORY_READ,
+        Permission.INVENTORY_ITEM_READ,
+        Permission.UNIT_OF_MEASURE_READ,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -257,16 +302,16 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
 }
 
 _EXPECTED_COUNTS = {
-    "farm_manager": 29, "head_grower": 28, "production_supervisor": 28, "operator": 18,
-    "storekeeper": 7, "qc_officer": 20, "packing_supervisor": 13, "cold_store_supervisor": 12,
-    "dispatch_officer": 12, "auditor": 21, "read_only": 21,
+    "farm_manager": 36, "head_grower": 31, "production_supervisor": 31, "operator": 21,
+    "storekeeper": 14, "qc_officer": 23, "packing_supervisor": 16, "cold_store_supervisor": 15,
+    "dispatch_officer": 15, "auditor": 24, "read_only": 24,
 }
 
 
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
-    assert len(_ALL_PERMISSIONS) == 47
+    assert len(_ALL_PERMISSIONS) == 55
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -437,7 +482,7 @@ def test_tenant_admin_has_all_43() -> None:
     catalog size (47 as of BIOLOGICAL-DISPOSITION-AUTHZ-001), not the
     literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 47
+    assert len(granted) == 55
     assert granted == _ALL_PERMISSIONS
 
 

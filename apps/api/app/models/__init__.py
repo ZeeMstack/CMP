@@ -18,8 +18,15 @@ from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.germination_check import GerminationCheck
 from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
+from app.models.goods_receipt import GoodsReceipt
+from app.models.goods_receipt_line import GoodsReceiptLine
 from app.models.inventory_category import InventoryCategory
+from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_item import InventoryItem
+from app.models.inventory_item_packaging import InventoryItemPackaging
+from app.models.inventory_item_seed_profile import InventoryItemSeedProfile
+from app.models.inventory_lot import InventoryLot
+from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
@@ -32,6 +39,7 @@ from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.platform_admin import PlatformAdmin
 from app.models.production_system import ProductionSystem
+from app.models.quality_disposition_event import QualityDispositionEvent
 from app.models.quality_hold import QualityHold
 from app.models.quality_hold_release import QualityHoldRelease
 from app.models.recall import (
@@ -88,8 +96,15 @@ __all__ = [
     "FinishedGoodsStorageMovement",
     "GerminationCheck",
     "GerminationOutcomeSnapshot",
+    "GoodsReceipt",
+    "GoodsReceiptLine",
     "InventoryCategory",
+    "InventoryExistenceLedgerEntry",
     "InventoryItem",
+    "InventoryItemPackaging",
+    "InventoryItemSeedProfile",
+    "InventoryLot",
+    "InventoryQuantityCohort",
     "Location",
     "LocationType",
     "LocationTypeHierarchyRule",
@@ -101,6 +116,7 @@ __all__ = [
     "OccupancyCompatibilityRule",
     "PlatformAdmin",
     "ProductionSystem",
+    "QualityDispositionEvent",
     "QualityHold",
     "QualityHoldRelease",
     "RecallCase",

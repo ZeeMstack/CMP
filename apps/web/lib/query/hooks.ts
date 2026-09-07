@@ -30,7 +30,14 @@ import type {
   InventoryCategoryUpdate,
   InventoryItemCreate,
   InventoryItemDeactivate,
+  InventoryItemPackagingCreate,
+  InventoryItemPackagingDeactivate,
+  InventoryItemPackagingReactivate,
+  InventoryItemPackagingUpdate,
   InventoryItemReactivate,
+  InventoryItemSeedProfileCreate,
+  InventoryItemSeedProfileRemove,
+  InventoryItemSeedProfileUpdate,
   InventoryItemUpdate,
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
@@ -1788,6 +1795,125 @@ export function useReactivateInventoryItem() {
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItems(tenantId) });
+    },
+  });
+}
+
+// --- STORE-INV-002A.1: Packaging Options -------------------------------------
+
+export function useInventoryItemPackaging(params: { inventoryItemId?: string; status?: string } = {}) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: [...queryKeys.inventoryItemPackaging(tenantId ?? ""), params.inventoryItemId ?? "all", params.status ?? "all"],
+    queryFn: ({ signal }) => api.listInventoryItemPackaging(params, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateInventoryItemPackaging() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InventoryItemPackagingCreate) => api.createInventoryItemPackaging(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItemPackaging(tenantId) });
+    },
+  });
+}
+
+export function useUpdateInventoryItemPackaging() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packagingId, payload }: { packagingId: string; payload: InventoryItemPackagingUpdate }) =>
+      api.updateInventoryItemPackaging(packagingId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItemPackaging(tenantId) });
+    },
+  });
+}
+
+export function useDeactivateInventoryItemPackaging() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packagingId, payload }: { packagingId: string; payload: InventoryItemPackagingDeactivate }) =>
+      api.deactivateInventoryItemPackaging(packagingId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItemPackaging(tenantId) });
+    },
+  });
+}
+
+export function useReactivateInventoryItemPackaging() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packagingId, payload }: { packagingId: string; payload: InventoryItemPackagingReactivate }) =>
+      api.reactivateInventoryItemPackaging(packagingId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItemPackaging(tenantId) });
+    },
+  });
+}
+
+// --- STORE-INV-002A.1: Seed Details -------------------------------------------
+// No status field on this entity -- deliberately no deactivate/reactivate
+// pair, only create/update/remove (docs/domain/STORE_INVENTORY_MODEL.md §F).
+
+export function useSeedProfileForItem(itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedProfileForItem(tenantId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getSeedProfileForItem(itemId as string, signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId) && Boolean(itemId),
+  });
+}
+
+export function useCreateSeedProfile() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InventoryItemSeedProfileCreate) => api.createSeedProfile(payload),
+    onSuccess: (_data, variables) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.seedProfileForItem(tenantId, variables.inventory_item_id),
+      });
+    },
+  });
+}
+
+export function useUpdateSeedProfile() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { profileId, payload }: { profileId: string; itemId: string; payload: InventoryItemSeedProfileUpdate },
+    ) => api.updateSeedProfile(profileId, payload),
+    onSuccess: (_data, variables) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedProfileForItem(tenantId, variables.itemId) });
+    },
+  });
+}
+
+export function useRemoveSeedProfile() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { profileId, payload }: { profileId: string; itemId: string; payload: InventoryItemSeedProfileRemove },
+    ) => api.removeSeedProfile(profileId, payload),
+    onSuccess: (_data, variables) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedProfileForItem(tenantId, variables.itemId) });
     },
   });
 }

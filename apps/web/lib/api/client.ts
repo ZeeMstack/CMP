@@ -957,6 +957,19 @@ export type InventoryItemCreate = components["schemas"]["InventoryItemCreate"];
 export type InventoryItemUpdate = components["schemas"]["InventoryItemUpdate"];
 export type InventoryItemDeactivate = components["schemas"]["InventoryItemDeactivate"];
 export type InventoryItemReactivate = components["schemas"]["InventoryItemReactivate"];
+// STORE-INV-002A.1 -- "Packaging Options" and "Seed Details", both
+// item-specific extensions surfaced inside the existing Inventory Catalog
+// setup screen (never a new top-level page -- the operational Store &
+// Inventory module does not exist until STORE-INV-002A.2).
+export type InventoryItemPackagingRead = components["schemas"]["InventoryItemPackagingRead"];
+export type InventoryItemPackagingCreate = components["schemas"]["InventoryItemPackagingCreate"];
+export type InventoryItemPackagingUpdate = components["schemas"]["InventoryItemPackagingUpdate"];
+export type InventoryItemPackagingDeactivate = components["schemas"]["InventoryItemPackagingDeactivate"];
+export type InventoryItemPackagingReactivate = components["schemas"]["InventoryItemPackagingReactivate"];
+export type InventoryItemSeedProfileRead = components["schemas"]["InventoryItemSeedProfileRead"];
+export type InventoryItemSeedProfileCreate = components["schemas"]["InventoryItemSeedProfileCreate"];
+export type InventoryItemSeedProfileUpdate = components["schemas"]["InventoryItemSeedProfileUpdate"];
+export type InventoryItemSeedProfileRemove = components["schemas"]["InventoryItemSeedProfileRemove"];
 
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
@@ -1168,6 +1181,85 @@ export function reactivateInventoryItem(
   signal?: AbortSignal,
 ): Promise<InventoryItemRead> {
   return postJson<InventoryItemRead>(`/inventory-items/${itemId}/reactivate`, payload, signal);
+}
+
+// STORE-INV-002A.1 -- Inventory Item Packaging ("Packaging Options").
+
+export function listInventoryItemPackaging(
+  params: { inventoryItemId?: string; status?: string } = {},
+  signal?: AbortSignal,
+): Promise<InventoryItemPackagingRead[]> {
+  const query = new URLSearchParams();
+  if (params.inventoryItemId) query.set("inventory_item_id", params.inventoryItemId);
+  if (params.status) query.set("status", params.status);
+  const qs = query.toString();
+  return getJson<InventoryItemPackagingRead[]>(`/inventory-item-packaging${qs ? `?${qs}` : ""}`, signal);
+}
+
+export function createInventoryItemPackaging(
+  payload: InventoryItemPackagingCreate,
+  signal?: AbortSignal,
+): Promise<InventoryItemPackagingRead> {
+  return postJson<InventoryItemPackagingRead>("/inventory-item-packaging", payload, signal);
+}
+
+export function updateInventoryItemPackaging(
+  packagingId: string,
+  payload: InventoryItemPackagingUpdate,
+  signal?: AbortSignal,
+): Promise<InventoryItemPackagingRead> {
+  return postJson<InventoryItemPackagingRead>(`/inventory-item-packaging/${packagingId}/update`, payload, signal);
+}
+
+export function deactivateInventoryItemPackaging(
+  packagingId: string,
+  payload: InventoryItemPackagingDeactivate,
+  signal?: AbortSignal,
+): Promise<InventoryItemPackagingRead> {
+  return postJson<InventoryItemPackagingRead>(`/inventory-item-packaging/${packagingId}/deactivate`, payload, signal);
+}
+
+export function reactivateInventoryItemPackaging(
+  packagingId: string,
+  payload: InventoryItemPackagingReactivate,
+  signal?: AbortSignal,
+): Promise<InventoryItemPackagingRead> {
+  return postJson<InventoryItemPackagingRead>(`/inventory-item-packaging/${packagingId}/reactivate`, payload, signal);
+}
+
+// STORE-INV-002A.1 -- Inventory Item Seed Profile ("Seed Details"). No
+// status field on this entity (docs/domain/STORE_INVENTORY_MODEL.md §F) --
+// there is deliberately no deactivate/reactivate pair here, only
+// create/update/remove.
+
+export function getSeedProfileForItem(
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<InventoryItemSeedProfileRead | null> {
+  return getJson<InventoryItemSeedProfileRead | null>(`/inventory-items/${itemId}/seed-profile`, signal);
+}
+
+export function createSeedProfile(
+  payload: InventoryItemSeedProfileCreate,
+  signal?: AbortSignal,
+): Promise<InventoryItemSeedProfileRead> {
+  return postJson<InventoryItemSeedProfileRead>("/inventory-item-seed-profiles", payload, signal);
+}
+
+export function updateSeedProfile(
+  profileId: string,
+  payload: InventoryItemSeedProfileUpdate,
+  signal?: AbortSignal,
+): Promise<InventoryItemSeedProfileRead> {
+  return postJson<InventoryItemSeedProfileRead>(`/inventory-item-seed-profiles/${profileId}/update`, payload, signal);
+}
+
+export function removeSeedProfile(
+  profileId: string,
+  payload: InventoryItemSeedProfileRemove,
+  signal?: AbortSignal,
+): Promise<{ removed: boolean }> {
+  return postJson<{ removed: boolean }>(`/inventory-item-seed-profiles/${profileId}/remove`, payload, signal);
 }
 
 // Grading -- the operator command that consumes a Harvested Produce Lot and

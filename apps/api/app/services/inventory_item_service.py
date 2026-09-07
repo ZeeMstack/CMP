@@ -3,17 +3,21 @@ master. Same idempotency idiom as `inventory_category_service.py`
 (itself following `packaging_unit_service.py`), widened with an extra
 `update_*` idempotency pair since, unlike `PackagingUnit`, several fields
 besides `name` are mutable here (`docs/domain/STORE_INVENTORY_MODEL.md`
-§5). `base_uom_id` freeze is deliberately NOT implemented -- no
-`InventoryLot` exists yet in this ticket to check a reference against; see
-the model's own docstring and STORE-INV-002A's future scope."""
+§5). STORE-INV-002A.1 adds the structural freeze this module's own
+docstring originally deferred: `base_uom_id`/`lot_tracking_required`/
+`expiry_tracking_required`/`qc_release_required` freeze the instant the
+item has any posted `GoodsReceiptLine` -- checked directly against that
+table, never against `InventoryLot` (which may not exist for a
+non-lot-tracked item)."""
 
 import hashlib
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.goods_receipt_line import GoodsReceiptLine
 from app.models.inventory_category import InventoryCategory
 from app.models.inventory_item import InventoryItem
 from app.services import unit_of_measure_service
@@ -27,10 +31,28 @@ from app.services.errors import (
     InventoryItemNotActiveError,
     InventoryItemNotFoundError,
     InventoryItemNotInactiveError,
+    InventoryItemPolicyFrozenError,
     InventoryItemReactivationReusedWithDifferentPayloadError,
     InventoryItemTrackingPolicyInvalidError,
     InventoryItemUpdateReusedWithDifferentPayloadError,
 )
+
+
+def has_posted_receipts(db: Session, *, inventory_item_id: uuid.UUID) -> bool:
+    """STORE-INV-002A.1: the uniform first-posted-receipt structural-freeze
+    trigger this domain family uses everywhere (docs/domain/
+    STORE_INVENTORY_MODEL.md §O/§T) -- checked against `GoodsReceiptLine`
+    existence directly, never `InventoryLot` (which may not exist at all for
+    a non-lot-tracked item). Exported for reuse by
+    `inventory_item_seed_profile_service` and `goods_receipt_service`."""
+    return (
+        db.execute(
+            select(func.count()).select_from(GoodsReceiptLine).where(
+                GoodsReceiptLine.inventory_item_id == inventory_item_id
+            )
+        ).scalar_one()
+        > 0
+    )
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -275,6 +297,22 @@ def update_inventory_item(
     if category_id != item.inventory_category_id:
         _require_active_category_in_tenant(db, tenant_id=tenant_id, category_id=category_id)
     unit_of_measure_service.get_uom(db, uom_id=base_uom_id)
+
+    # STORE-INV-002A.1 structural freeze: once this item has any posted
+    # GoodsReceiptLine, base_uom_id/lot_tracking_required/
+    # expiry_tracking_required/qc_release_required become immutable --
+    # resubmitting the item's own current values unchanged (e.g. while only
+    # renaming it) must keep working, exactly mirroring the same
+    # unchanged-reassignment-stays-valid principle already applied to
+    # category_id above.
+    structural_changed = (
+        base_uom_id != item.base_uom_id
+        or lot_tracking_required != item.lot_tracking_required
+        or expiry_tracking_required != item.expiry_tracking_required
+        or qc_release_required != item.qc_release_required
+    )
+    if structural_changed and has_posted_receipts(db, inventory_item_id=item.id):
+        raise InventoryItemPolicyFrozenError(str(item_id))
 
     item.name = name
     item.inventory_category_id = category_id
