@@ -228,4 +228,23 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "traceability", "crop-batches", batchId, "impact"] as const,
   harvestedProduceLotImpact: (tenantId: string, farmId: string, produceLotId: string) =>
     ["tenant", tenantId, "farms", farmId, "traceability", "harvested-produce-lots", produceLotId, "impact"] as const,
+
+  // --- STORE-INV-002A.1/.2 -- operational Store & Inventory module --------
+  // Goods Receipts are Farm-scoped (receiving is physical, happens at one
+  // Farm); existence/usable-existence/work-queue are tenant-wide, never
+  // Farm-scoped -- selecting a different Farm in the app shell must not
+  // change these numbers (docs/domain/STORE_INVENTORY_MODEL.md §13).
+  goodsReceipts: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "goods-receipts"] as const,
+  goodsReceipt: (tenantId: string, farmId: string, receiptId: string) =>
+    ["tenant", tenantId, "farms", farmId, "goods-receipts", "detail", receiptId] as const,
+  itemExistence: (tenantId: string, itemId: string) =>
+    ["tenant", tenantId, "inventory-items", itemId, "existence"] as const,
+  itemExistenceProvenance: (tenantId: string, itemId: string) =>
+    ["tenant", tenantId, "inventory-items", itemId, "existence", "provenance"] as const,
+  itemUsableExistence: (tenantId: string, itemId: string) =>
+    ["tenant", tenantId, "inventory-items", itemId, "usable-existence"] as const,
+  cohortLedger: (tenantId: string, cohortId: string) =>
+    ["tenant", tenantId, "inventory-quantity-cohorts", cohortId, "ledger"] as const,
+  qualityWorkQueue: (tenantId: string) => ["tenant", tenantId, "quality-work-queue"] as const,
 };

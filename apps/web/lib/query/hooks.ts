@@ -16,6 +16,7 @@ import type {
   FarmCreate,
   FinishedGoodsStorageMovementCreate,
   GerminationOutcomeCommandCreate,
+  GoodsReceiptCreate,
   GradeDefinitionCreate,
   GradeDefinitionVersionActivate,
   GradeDefinitionVersionCreate,
@@ -57,6 +58,10 @@ import type {
   PlaceTrolleyCreate,
   PlatformTenantOnboardingCreate,
   ProductionSystemCreate,
+  QualityDispositionCorrectionCreate,
+  QualityDispositionCreate,
+  QualityPartialCorrectionCreate,
+  QualityPartialDispositionCreate,
   RecallCaseClose,
   RecallCaseCreate,
   RecordLeafyHarvestCreate,
@@ -1914,6 +1919,204 @@ export function useRemoveSeedProfile() {
     onSuccess: (_data, variables) => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.seedProfileForItem(tenantId, variables.itemId) });
+    },
+  });
+}
+
+// --- STORE-INV-002A.1: Goods Receipt -----------------------------------------
+// Farm-scoped -- receiving is physical, happens at one Farm.
+
+export function useGoodsReceipts(farmId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.goodsReceipts(tenantId ?? "", farmId ?? ""),
+    queryFn: ({ signal }) => api.listGoodsReceipts(farmId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useGoodsReceipt(farmId: string | undefined, receiptId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.goodsReceipt(tenantId ?? "", farmId ?? "", receiptId ?? ""),
+    queryFn: ({ signal }) => api.getGoodsReceipt(farmId as string, receiptId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(receiptId),
+  });
+}
+
+export function useRecordGoodsReceipt(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GoodsReceiptCreate) => api.recordGoodsReceipt(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts(tenantId, farmId) });
+      // Receiving may affect any item's company-wide existence/usable
+      // totals -- invalidate the whole inventory-items read branch rather
+      // than guessing which specific item ids were touched.
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.qualityWorkQueue(tenantId) });
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts(tenantId, farmId) });
+    },
+  });
+}
+
+// --- STORE-INV-002A.1/.2: existence, usable-existence, provenance -----------
+// Tenant-wide, never Farm-scoped -- selecting a different Farm must not
+// change these numbers (docs/domain/STORE_INVENTORY_MODEL.md §13).
+
+export function useItemExistence(itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.itemExistence(tenantId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getItemExistence(itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(itemId),
+  });
+}
+
+export function useItemUsableExistence(itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.itemUsableExistence(tenantId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getItemUsableExistence(itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(itemId),
+  });
+}
+
+export function useItemExistenceProvenance(itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.itemExistenceProvenance(tenantId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getItemExistenceProvenance(itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(itemId),
+  });
+}
+
+export function useCohortLedger(cohortId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cohortLedger(tenantId ?? "", cohortId ?? ""),
+    queryFn: ({ signal }) => api.getCohortLedger(cohortId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(cohortId),
+  });
+}
+
+/** Batches per-item existence + usable-existence reads for the Inventory
+ * page's item-by-item table -- mirrors `useGradeVersionLabelMap`'s own
+ * `useQueries` batching pattern exactly, never one hook call per item in a
+ * loop (which would violate the Rules of Hooks). */
+export function useItemsExistenceSummary(itemIds: string[]): {
+  byItemId: Record<string, { existing: string | null; usable: string | null }>;
+  isLoading: boolean;
+} {
+  const tenantId = useSelectedTenantId();
+  const existenceQueries = useQueries({
+    queries: itemIds.map((id) => ({
+      queryKey: queryKeys.itemExistence(tenantId ?? "", id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getItemExistence(id, signal),
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const usableQueries = useQueries({
+    queries: itemIds.map((id) => ({
+      queryKey: queryKeys.itemUsableExistence(tenantId ?? "", id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getItemUsableExistence(id, signal),
+      enabled: Boolean(tenantId),
+    })),
+  });
+  const byItemId: Record<string, { existing: string | null; usable: string | null }> = {};
+  itemIds.forEach((id, i) => {
+    byItemId[id] = {
+      existing: existenceQueries[i]?.data?.existing_quantity ?? null,
+      usable: usableQueries[i]?.data?.usable_quantity ?? null,
+    };
+  });
+  return {
+    byItemId,
+    isLoading: existenceQueries.some((q) => q.isLoading) || usableQueries.some((q) => q.isLoading),
+  };
+}
+
+// --- STORE-INV-002A.2: Quality work queue and disposition commands ----------
+
+export function useQualityWorkQueue() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.qualityWorkQueue(tenantId ?? ""),
+    queryFn: ({ signal }) => api.getQualityWorkQueue(signal),
+    enabled: Boolean(tenantId),
+  });
+}
+
+function _invalidateQuality(queryClient: ReturnType<typeof useQueryClient>, tenantId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.qualityWorkQueue(tenantId) });
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-items"] });
+}
+
+export function useRecordQualityDisposition() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: QualityDispositionCreate) => api.recordQualityDisposition(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+  });
+}
+
+export function useCorrectQualityDisposition() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: QualityDispositionCorrectionCreate) => api.correctQualityDisposition(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+  });
+}
+
+export function useApplyQualityDispositionToPartialQuantity() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: QualityPartialDispositionCreate) => api.applyQualityDispositionToPartialQuantity(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+  });
+}
+
+export function useCorrectQualityDispositionForPartialQuantity() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: QualityPartialCorrectionCreate) => api.correctQualityDispositionForPartialQuantity(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateQuality(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateQuality(queryClient, tenantId);
     },
   });
 }

@@ -193,14 +193,21 @@ class Permission(StrEnum):
     # from the existing master-data `INVENTORY_ITEM_READ`/
     # `INVENTORY_CATEGORY_READ` pair, matching this catalog's own
     # established master-data-vs-operational split (e.g. `crop.read` vs.
-    # `crop_batch.read`). `INVENTORY_QUALITY_MANAGE` is deliberately NOT
-    # defined yet -- no route exists for it until `STORE-INV-002A.2`; this
-    # codebase's own architecture test
-    # (`tests/test_authz_mutation_enforcement_architecture.py`) fails any
-    # `.manage` permission defined with zero bound routes, so it must wait.
+    # `crop_batch.read`).
     INVENTORY_READ = "inventory.read"
     INVENTORY_RECEIPT_MANAGE = "inventory_receipt.manage"
     INVENTORY_ADJUSTMENT_MANAGE = "inventory_adjustment.manage"
+
+    # STORE-INV-002A.2: release/hold/reject/hold-release, human correction,
+    # and the partial-quantity disposition command all gate on this one
+    # permission -- the "quality workflow" authority, deliberately never
+    # bundled with `INVENTORY_RECEIPT_MANAGE` (segregation of duties is
+    # enforced independently at the service layer, on top of this grant,
+    # never instead of it -- docs/domain/STORE_INVENTORY_MODEL.md §11).
+    # This does NOT authorize generic cohort-quantity partitioning as a
+    # standalone capability -- `_split_cohort_core` remains an internal,
+    # unrouted primitive with no `Permission` of its own.
+    INVENTORY_QUALITY_MANAGE = "inventory_quality.manage"
 
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
@@ -412,6 +419,13 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.INVENTORY_CATEGORY_READ,
         Permission.INVENTORY_ITEM_READ,
         Permission.UNIT_OF_MEASURE_READ,
+        # STORE-INV-002A.2: qc_officer's own genuinely operational Store &
+        # Inventory authority -- visibility into existence/receipts/lots
+        # plus the quality-disposition workflow itself. Deliberately never
+        # inventory_receipt.manage/inventory_adjustment.manage, which stay
+        # with the specialists who execute routine receiving/correction
+        # work (docs/domain/STORE_INVENTORY_MODEL.md §N).
+        Permission.INVENTORY_READ, Permission.INVENTORY_QUALITY_MANAGE,
         Permission.CROP_READ,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,

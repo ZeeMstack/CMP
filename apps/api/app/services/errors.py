@@ -1892,3 +1892,66 @@ class InventoryExistenceReversalOfReversalError(DomainError):
 class InventoryQuantityCohortSplitAllocationExceedsBalanceError(DomainError):
     """Raised when a split's total requested allocation exceeds the source
     cohort's current balance."""
+
+
+# --- STORE-INV-002A.2: Quality disposition ---------------------------------
+
+class InvalidQualityDispositionTransitionError(DomainError):
+    """Raised when a requested disposition (or correction replacement) is
+    not a legal transition from the cohort's current derived quality state
+    (docs/domain/STORE_INVENTORY_MODEL.md §11's frozen state machine), or
+    when the requested disposition value itself is not one of the ordinary
+    human-decision kinds (`RELEASED`/`HELD`/`REJECTED`/`HOLD_RELEASED`)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class QualitySegregationOfDutiesError(DomainError):
+    """Raised when an action whose net resulting state is usable
+    (`RELEASED`/`HOLD_RELEASED`) is attempted by the same user who received
+    the underlying Goods Receipt -- a distinct domain conflict, never
+    surfaced as a generic permission-denied response (docs/domain/
+    STORE_INVENTORY_MODEL.md §11's segregation-of-duties rule)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class QualityDispositionNoCurrentHumanDecisionError(DomainError):
+    """Raised by a correction command when the cohort has no current HUMAN
+    disposition event to correct -- either no event exists at all (implicit
+    RELEASED) or the current event is the automatic, permanently
+    non-reversible opening `RECEIVED_QUARANTINED` fact."""
+
+
+class QualityDispositionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class QualityCorrectionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class QualityPartialDispositionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class QualityPartialCorrectionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class QualityDispositionEventNotFoundError(DomainError):
+    """Raised when a correction command's `target_event_id` does not
+    resolve to a real `QualityDispositionEvent` on this tenant's own
+    target cohort."""
+
+
+class QualityCorrectionTargetNotCurrentError(DomainError):
+    """Raised when a correction command's `target_event_id` is a real,
+    valid human decision but is no longer the CURRENT one -- another
+    decision was recorded after the operator observed it. Never silently
+    reinterpreted onto the newer decision (docs/domain/
+    STORE_INVENTORY_MODEL.md §11)."""

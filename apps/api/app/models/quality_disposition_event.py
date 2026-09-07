@@ -54,6 +54,15 @@ class QualityDispositionEvent(Base):
     reason: Mapped[str | None] = mapped_column(String, nullable=True)
     client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
+    # STORE-INV-002A.2 CTO closure pass (abcdb6f371f9): the owning
+    # InventoryQualityCommand -- NULL only for the automatic, receipt-time
+    # RECEIVED_QUARANTINED opening fact (a system fact, never an
+    # independent human command); NOT NULL for every event any `.2`
+    # command has ever written. Tenant-wide command idempotency lives on
+    # `InventoryQualityCommand.client_command_id`, never on this table.
+    command_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("inventory_quality_commands.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -69,6 +78,14 @@ class QualityDispositionEvent(Base):
         CheckConstraint(
             "event_kind <> 'REVERSAL' OR reason IS NOT NULL",
             name="ck_quality_disposition_events_reversal_reason_required",
+        ),
+        # STORE-INV-002A.2 CTO closure pass (abcdb6f371f9): every row except
+        # the automatic RECEIVED_QUARANTINED opening fact must carry its
+        # owning command.
+        CheckConstraint(
+            "(event_kind = 'RECEIVED_QUARANTINED' AND command_id IS NULL) OR "
+            "(event_kind <> 'RECEIVED_QUARANTINED' AND command_id IS NOT NULL)",
+            name="ck_quality_disposition_events_command_id_matches_kind",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_quality_disposition_events_tenant_id_id"),
         # At most one automatic opening event per cohort.
