@@ -188,6 +188,10 @@ export const queryKeys = {
   uoms: (tenantId: string) => ["tenant", tenantId, "uoms"] as const,
   inventoryCategories: (tenantId: string) => ["tenant", tenantId, "inventory-categories"] as const,
   inventoryItems: (tenantId: string) => ["tenant", tenantId, "inventory-items"] as const,
+  // STORE-INV-002A.1
+  inventoryItemPackaging: (tenantId: string) => ["tenant", tenantId, "inventory-item-packaging"] as const,
+  seedProfileForItem: (tenantId: string, itemId: string) =>
+    ["tenant", tenantId, "inventory-items", itemId, "seed-profile"] as const,
 
   packingEvents: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "packing-events"] as const,

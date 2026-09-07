@@ -1730,3 +1730,165 @@ class LocationHasActiveChildrenError(DomainError):
 class LocationParentNotActiveError(DomainError):
     """Raised when REACTIVATE targets a `Location` whose parent is not
     currently active."""
+
+
+# --- STORE-INV-002A.1: InventoryItemPackaging ------------------------------
+
+class InventoryItemPackagingNotFoundError(DomainError):
+    pass
+
+
+class DuplicateInventoryItemPackagingCodeError(DomainError):
+    pass
+
+
+class InventoryItemPackagingCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemPackagingUpdateReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemPackagingDeactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemPackagingReactivationReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemPackagingNotActiveError(DomainError):
+    """Raised when DEACTIVATE targets an `InventoryItemPackaging` that is
+    not currently active, or when a receipt line references an inactive
+    packaging row."""
+
+
+class InventoryItemPackagingNotInactiveError(DomainError):
+    """Raised when REACTIVATE targets an `InventoryItemPackaging` that is
+    not currently inactive."""
+
+
+class InventoryItemPackagingStructurallyLockedError(DomainError):
+    """Raised when an update attempts to change `package_quantity` once any
+    `GoodsReceiptLine` already references this packaging row (mirrors
+    `CarrierSpecificationStructurallyLockedError`)."""
+
+
+class InventoryItemPackagingItemMismatchError(DomainError):
+    """Raised when a `GoodsReceiptLine` references a packaging row that
+    does not belong to the same `InventoryItem` as the line itself."""
+
+
+# --- STORE-INV-002A.1: InventoryItemSeedProfile ("Seed Details") ----------
+
+class InventoryItemSeedProfileNotFoundError(DomainError):
+    pass
+
+
+class InventoryItemSeedProfileAlreadyExistsError(DomainError):
+    """Raised on CREATE when the `InventoryItem` already has a Seed
+    Details row (at most one, ever, at a time)."""
+
+
+class InventoryItemSeedProfileCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemSeedProfileUpdateReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryItemSeedProfileStructurallyLockedError(DomainError):
+    """Raised on UPDATE or removal once the `InventoryItem` has any posted
+    `GoodsReceiptLine` -- Seed Details become fully immutable at that point
+    (docs/domain/STORE_INVENTORY_MODEL.md §15/§F)."""
+
+
+class InventoryItemSeedProfileCreationBlockedError(DomainError):
+    """Raised on CREATE when the `InventoryItem` already has posted receipt
+    history but never had Seed Details -- a historically non-seed item can
+    never retroactively become one."""
+
+
+# --- STORE-INV-002A.1: InventoryLot ----------------------------------------
+
+class InventoryLotNotFoundError(DomainError):
+    pass
+
+
+class ConflictingInventoryLotIdentityError(DomainError):
+    """Raised when a receipt line's `(manufacturer_name,
+    manufacturer_lot_reference)` matches an existing `InventoryLot`'s
+    canonical identity, but `manufacturing_date`/`expiry_date` disagree
+    (a NULL-vs-known mismatch, or two different known values) --
+    GrowCMP never silently creates a second lot under the same canonical
+    identity and never silently merges disagreeing attribute facts."""
+
+
+# --- STORE-INV-002A.1: Goods Receipt ---------------------------------------
+
+class GoodsReceiptNotFoundError(DomainError):
+    pass
+
+
+class GoodsReceiptCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GoodsReceiptLineValidationError(DomainError):
+    """Raised for any structural problem with a single receipt line
+    (invalid UOM/packaging entry shape, unknown UOM, tracking-policy
+    violation, etc.) -- the whole receipt is rejected atomically."""
+
+
+class GoodsReceiptItemNotActiveError(DomainError):
+    """Raised when a receipt line references an `InventoryItem` that is not
+    currently `active` -- an inactive item cannot receive new stock."""
+
+
+class InventoryItemPolicyFrozenError(DomainError):
+    """Raised when an update attempts to change `base_uom_id`/
+    `lot_tracking_required`/`expiry_tracking_required`/`qc_release_required`
+    once the `InventoryItem` has any posted `GoodsReceiptLine` -- the
+    first-posted-receipt structural freeze (docs/domain/
+    STORE_INVENTORY_MODEL.md §T)."""
+
+
+# --- STORE-INV-002A.1: Quantity Cohort / Existence Ledger ------------------
+
+class InventoryQuantityCohortNotFoundError(DomainError):
+    pass
+
+
+class InventoryExistenceLedgerEntryNotFoundError(DomainError):
+    pass
+
+
+class InsufficientCohortBalanceError(DomainError):
+    """Raised when an adjustment, reversal, or split allocation would drive
+    a cohort's current balance negative."""
+
+
+class InventoryAdjustmentCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryExistenceReversalCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryExistenceReversalTargetAlreadyReversedError(DomainError):
+    """Raised when a reversal targets a ledger entry that already has a
+    reversal of its own -- at most one reversal per target, no
+    reversal-of-reversal."""
+
+
+class InventoryExistenceReversalOfReversalError(DomainError):
+    """Raised when a reversal's own target is itself a `reversal` entry --
+    the flat-chain invariant."""
+
+
+class InventoryQuantityCohortSplitAllocationExceedsBalanceError(DomainError):
+    """Raised when a split's total requested allocation exceeds the source
+    cohort's current balance."""
