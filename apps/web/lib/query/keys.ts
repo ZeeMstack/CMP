@@ -247,4 +247,11 @@ export const queryKeys = {
   cohortLedger: (tenantId: string, cohortId: string) =>
     ["tenant", tenantId, "inventory-quantity-cohorts", cohortId, "ledger"] as const,
   qualityWorkQueue: (tenantId: string) => ["tenant", tenantId, "quality-work-queue"] as const,
+  // STORE-INV-002B: physical custody / putaway -- company-wide, not
+  // Farm-scoped (mirrors qualityWorkQueue's own split).
+  notPutAwayQueue: (tenantId: string) => ["tenant", tenantId, "not-put-away-queue"] as const,
+  cohortStorageBreakdown: (tenantId: string, cohortId: string) =>
+    ["tenant", tenantId, "inventory-quantity-cohorts", cohortId, "storage-breakdown"] as const,
+  itemStorageBreakdown: (tenantId: string, itemId: string) =>
+    ["tenant", tenantId, "inventory-items", itemId, "storage-breakdown"] as const,
 };

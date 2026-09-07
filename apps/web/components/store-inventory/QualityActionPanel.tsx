@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
-import type { QualityWorkQueueRowRead } from "@/lib/api/client";
+import type { QualityWorkQueueRowRead, StorageBucketRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 
 const inputClass =
@@ -37,20 +37,37 @@ function nowLocalDateTime(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+/** STORE-INV-002B: sentinel value for the "Not put away" bucket option --
+ * the actual command payload maps this back to `null` (`custody_location_id`
+ * is the not-put-away bucket when absent), never an empty string, since an
+ * empty string is indistinguishable from "no selection yet" in a <select>. */
+const NOT_PUT_AWAY_BUCKET_VALUE = "__not_put_away__";
+
 export function QualityActionPanel({
-  row, kind, disposition, legalReplacements, onCancel, onSubmitOrdinary, onSubmitPartial, onSubmitCorrect,
+  row, kind, disposition, legalReplacements, buckets, onCancel, onSubmitOrdinary, onSubmitPartial, onSubmitCorrect,
   onSubmitPartialCorrect, isSubmitting, serverError,
 }: {
   row: QualityWorkQueueRowRead;
   kind: ActionKind;
   disposition?: string;
   legalReplacements?: string[];
+  /** STORE-INV-002B: every eligible physical bucket for a PARTIAL/
+   * PARTIAL_CORRECT action -- "Not put away" (`location_id: null`) plus
+   * one row per Bin with a positive balance. Auto-selected when there is
+   * exactly one; shown as a dropdown otherwise. Omitted/empty is treated
+   * as "Not put away only" (defensive default, never blocks submission). */
+  buckets?: StorageBucketRead[];
   onCancel: () => void;
   onSubmitOrdinary?: (args: { reason: string; effectiveTime: string }) => void;
-  onSubmitPartial?: (args: { quantity: string; disposition: string; reason: string; effectiveTime: string }) => void;
+  onSubmitPartial?: (
+    args: { quantity: string; disposition: string; reason: string; effectiveTime: string; custodyLocationId: string | null },
+  ) => void;
   onSubmitCorrect?: (args: { reason: string; replacementDisposition: string | null; effectiveTime: string }) => void;
   onSubmitPartialCorrect?: (
-    args: { quantity: string; correctedDisposition: string; reason: string; effectiveTime: string },
+    args: {
+      quantity: string; correctedDisposition: string; reason: string; effectiveTime: string;
+      custodyLocationId: string | null;
+    },
   ) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
@@ -61,6 +78,11 @@ export function QualityActionPanel({
   const [partialDisposition, setPartialDisposition] = useState(legalReplacements?.[0] ?? "");
   const [replacementDisposition, setReplacementDisposition] = useState("");
   const [correctedDisposition, setCorrectedDisposition] = useState(ALL_DISPOSITIONS[0]);
+  const bucketOptions = buckets ?? [];
+  const [bucketValue, setBucketValue] = useState(
+    () => bucketOptions[0]?.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE,
+  );
+  const resolvedCustodyLocationId = bucketValue === NOT_PUT_AWAY_BUCKET_VALUE ? null : bucketValue;
 
   const title =
     kind === "ORDINARY" ? DISPOSITION_LABELS[disposition ?? ""] ?? disposition
@@ -85,6 +107,18 @@ export function QualityActionPanel({
               onChange={(e) => setQuantity(e.target.value)}
             />
           </label>
+          {bucketOptions.length > 1 && (
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Affected location</span>
+              <select className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}>
+                {bucketOptions.map((b) => (
+                  <option key={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE} value={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE}>
+                    {b.label} ({b.balance})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
             <span className={labelClass}>New disposition</span>
             <select className={inputClass} value={partialDisposition} onChange={(e) => setPartialDisposition(e.target.value)}>
@@ -125,6 +159,18 @@ export function QualityActionPanel({
               onChange={(e) => setQuantity(e.target.value)}
             />
           </label>
+          {bucketOptions.length > 1 && (
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Affected location</span>
+              <select className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}>
+                {bucketOptions.map((b) => (
+                  <option key={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE} value={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE}>
+                    {b.label} ({b.balance})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1">
             <span className={labelClass}>Corrected decision</span>
             <select className={inputClass} value={correctedDisposition} onChange={(e) => setCorrectedDisposition(e.target.value)}>
@@ -167,14 +213,22 @@ export function QualityActionPanel({
           onClick={() => {
             const iso = new Date(effectiveTime).toISOString();
             if (kind === "ORDINARY") onSubmitOrdinary?.({ reason, effectiveTime: iso });
-            if (kind === "PARTIAL") onSubmitPartial?.({ quantity, disposition: partialDisposition, reason, effectiveTime: iso });
+            if (kind === "PARTIAL") {
+              onSubmitPartial?.({
+                quantity, disposition: partialDisposition, reason, effectiveTime: iso,
+                custodyLocationId: resolvedCustodyLocationId,
+              });
+            }
             if (kind === "CORRECT") {
               onSubmitCorrect?.({
                 reason, replacementDisposition: replacementDisposition || null, effectiveTime: iso,
               });
             }
             if (kind === "PARTIAL_CORRECT") {
-              onSubmitPartialCorrect?.({ quantity, correctedDisposition, reason, effectiveTime: iso });
+              onSubmitPartialCorrect?.({
+                quantity, correctedDisposition, reason, effectiveTime: iso,
+                custodyLocationId: resolvedCustodyLocationId,
+              });
             }
           }}
         >

@@ -11,14 +11,16 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
+from app.models.inventory_storage_movement import InventoryStorageMovement
 from app.services.audit import append_audit_event
 from app.services.errors import (
+    ExistenceBelowCustodyError,
     InsufficientCohortBalanceError,
     InventoryAdjustmentCommandReusedWithDifferentPayloadError,
     InventoryExistenceLedgerEntryNotFoundError,
@@ -40,6 +42,61 @@ def get_cohort_balance(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
     return db.execute(
         select(func.coalesce(func.sum(InventoryExistenceLedgerEntry.quantity_delta_base), 0)).where(
             InventoryExistenceLedgerEntry.inventory_quantity_cohort_id == cohort_id
+        )
+    ).scalar_one()
+
+
+# --- STORE-INV-002B: physical custody -----------------------------------
+# Co-located here (not in inventory_storage_service.py) purely to avoid a
+# circular import: inventory_storage_service imports `_lock_cohort`/
+# `get_cohort_balance` from this module, so this module must never import
+# back from it -- these two helpers only need the `InventoryStorageMovement`
+# MODEL, never the storage service itself.
+
+
+def get_cohort_total_custody(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
+    """Total physical custody currently recorded for this cohort, across
+    every Bin -- `putaway`/`split_in` credit, `split_out` debits,
+    `transfer` nets to zero for the cohort as a whole (it only
+    redistributes between Bins). Never exceeds `get_cohort_balance`
+    (STORE-INV-002B's own existence/custody safety invariant)."""
+    return db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (InventoryStorageMovement.movement_kind.in_(("putaway", "split_in")), InventoryStorageMovement.moved_quantity_base),
+                        (InventoryStorageMovement.movement_kind == "split_out", -InventoryStorageMovement.moved_quantity_base),
+                        else_=0,
+                    )
+                ),
+                0,
+            )
+        ).where(InventoryStorageMovement.inventory_quantity_cohort_id == cohort_id)
+    ).scalar_one()
+
+
+def get_cohort_bin_balance(db: Session, *, cohort_id: uuid.UUID, location_id: uuid.UUID) -> Decimal:
+    """This cohort's current custody balance in one specific Bin --
+    destination credits, source debits, regardless of movement_kind."""
+    return db.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case((InventoryStorageMovement.destination_location_id == location_id, InventoryStorageMovement.moved_quantity_base), else_=0)
+                ),
+                0,
+            )
+            - func.coalesce(
+                func.sum(
+                    case((InventoryStorageMovement.source_location_id == location_id, InventoryStorageMovement.moved_quantity_base), else_=0)
+                ),
+                0,
+            )
+        ).where(
+            InventoryStorageMovement.inventory_quantity_cohort_id == cohort_id,
+            (InventoryStorageMovement.source_location_id == location_id)
+            | (InventoryStorageMovement.destination_location_id == location_id),
         )
     ).scalar_one()
 
@@ -142,6 +199,14 @@ def record_adjustment(
         raise InsufficientCohortBalanceError(
             f"adjustment would drive cohort {cohort_id} balance negative (balance={balance}, delta={quantity_delta})"
         )
+    if quantity_delta < 0:
+        # STORE-INV-002B: physical custody can never exceed existence.
+        total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
+        if balance + quantity_delta < total_custody:
+            raise ExistenceBelowCustodyError(
+                f"adjustment would leave cohort {cohort_id} existence ({balance + quantity_delta}) below its "
+                f"current physical custody ({total_custody})"
+            )
 
     entry = InventoryExistenceLedgerEntry(
         tenant_id=tenant_id, inventory_quantity_cohort_id=cohort.id, inventory_item_id=cohort.inventory_item_id,
@@ -249,6 +314,14 @@ def reverse_ledger_entry(
         raise InsufficientCohortBalanceError(
             f"reversal would drive cohort {cohort.id} balance negative (balance={balance}, delta={negated})"
         )
+    if negated < 0:
+        # STORE-INV-002B: physical custody can never exceed existence.
+        total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
+        if balance + negated < total_custody:
+            raise ExistenceBelowCustodyError(
+                f"reversal would leave cohort {cohort.id} existence ({balance + negated}) below its current "
+                f"physical custody ({total_custody})"
+            )
 
     entry = InventoryExistenceLedgerEntry(
         tenant_id=tenant_id, inventory_quantity_cohort_id=cohort.id, inventory_item_id=cohort.inventory_item_id,

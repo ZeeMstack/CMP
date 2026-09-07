@@ -9,7 +9,7 @@ import { QualityActionPanel } from "@/components/store-inventory/QualityActionPa
 import type { QualityWorkQueueRowRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
-  useApplyQualityDispositionToPartialQuantity, useCorrectQualityDisposition,
+  useApplyQualityDispositionToPartialQuantity, useCohortStorageBreakdown, useCorrectQualityDisposition,
   useCorrectQualityDispositionForPartialQuantity, useQualityWorkQueue, useRecordQualityDisposition,
 } from "@/lib/query/hooks";
 
@@ -56,6 +56,11 @@ export default function StoreInventoryQualityPage() {
   const partialMutation = useApplyQualityDispositionToPartialQuantity();
   const correctMutation = useCorrectQualityDisposition();
   const partialCorrectMutation = useCorrectQualityDispositionForPartialQuantity();
+  // STORE-INV-002B: eligible physical buckets for the currently-selected
+  // PARTIAL/PARTIAL_CORRECT action only -- undefined (disabled) otherwise.
+  const bucketsQuery = useCohortStorageBreakdown(
+    selection?.kind === "PARTIAL" || selection?.kind === "PARTIAL_CORRECT" ? selection.cohortId : undefined,
+  );
 
   const rows = [...(queueQuery.data ?? [])].sort(
     (a, b) => new Date(b.receipt_received_at).getTime() - new Date(a.receipt_received_at).getTime(),
@@ -175,6 +180,11 @@ export default function StoreInventoryQualityPage() {
                           : selection.kind === "CORRECT" ? ["RELEASED", "HELD", "REJECTED", "HOLD_RELEASED"]
                           : undefined
                       }
+                      buckets={
+                        selection.kind === "PARTIAL" || selection.kind === "PARTIAL_CORRECT"
+                          ? bucketsQuery.data?.buckets
+                          : undefined
+                      }
                       isSubmitting={
                         dispositionMutation.isPending || partialMutation.isPending || correctMutation.isPending ||
                         partialCorrectMutation.isPending
@@ -195,7 +205,7 @@ export default function StoreInventoryQualityPage() {
                           { onSuccess: close, onError: (err) => setError(asAppError(err)) },
                         );
                       }}
-                      onSubmitPartial={({ quantity, disposition, reason, effectiveTime }) => {
+                      onSubmitPartial={({ quantity, disposition, reason, effectiveTime, custodyLocationId }) => {
                         setError(null);
                         partialMutation.mutate(
                           {
@@ -205,6 +215,7 @@ export default function StoreInventoryQualityPage() {
                             disposition,
                             effective_time: effectiveTime,
                             reason: reason.trim() || null,
+                            custody_location_id: custodyLocationId,
                           },
                           { onSuccess: close, onError: (err) => setError(asAppError(err)) },
                         );
@@ -223,7 +234,7 @@ export default function StoreInventoryQualityPage() {
                           { onSuccess: close, onError: (err) => setError(asAppError(err)) },
                         );
                       }}
-                      onSubmitPartialCorrect={({ quantity, correctedDisposition, reason, effectiveTime }) => {
+                      onSubmitPartialCorrect={({ quantity, correctedDisposition, reason, effectiveTime, custodyLocationId }) => {
                         setError(null);
                         partialCorrectMutation.mutate(
                           {
@@ -234,6 +245,7 @@ export default function StoreInventoryQualityPage() {
                             corrected_disposition: correctedDisposition,
                             reason,
                             effective_time: effectiveTime,
+                            custody_location_id: custodyLocationId,
                           },
                           { onSuccess: close, onError: (err) => setError(asAppError(err)) },
                         );

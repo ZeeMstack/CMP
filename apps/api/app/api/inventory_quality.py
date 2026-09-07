@@ -21,6 +21,7 @@ from app.schemas.inventory_quality import (
 )
 from app.services import inventory_quality_service
 from app.services.errors import (
+    IneligibleStorageBinError,
     InvalidQualityDispositionTransitionError,
     InventoryQuantityCohortNotFoundError,
     InventoryQuantityCohortSplitAllocationExceedsBalanceError,
@@ -32,6 +33,7 @@ from app.services.errors import (
     QualityPartialCorrectionCommandReusedWithDifferentPayloadError,
     QualityPartialDispositionCommandReusedWithDifferentPayloadError,
     QualitySegregationOfDutiesError,
+    StorageBinNotFoundError,
 )
 
 router = APIRouter(tags=["inventory-quality"])
@@ -114,15 +116,20 @@ def apply_quality_disposition_to_partial_quantity(
             db, tenant_id=ctx.tenant_id, actor_user_id=ctx.user_id, client_command_id=payload.client_command_id,
             source_cohort_id=payload.inventory_quantity_cohort_id, quantity=payload.quantity,
             disposition=payload.disposition, effective_time=payload.effective_time, reason=payload.reason,
+            custody_location_id=payload.custody_location_id,
         )
     except InventoryQuantityCohortNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found") from exc
+    except StorageBinNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store bin not found") from exc
     except QualityPartialDispositionCommandReusedWithDifferentPayloadError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="client_command_id already used with a different payload",
         ) from exc
     except InvalidQualityDispositionTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except IneligibleStorageBinError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except QualitySegregationOfDutiesError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -131,6 +138,7 @@ def apply_quality_disposition_to_partial_quantity(
     return QualityPartialDispositionRead(
         child_cohort_id=child.id, source_cohort_id=payload.inventory_quantity_cohort_id,
         quantity=payload.quantity, disposition=payload.disposition,
+        custody_location_id=payload.custody_location_id,
     )
 
 
@@ -149,9 +157,12 @@ def correct_quality_disposition_for_partial_quantity(
             source_cohort_id=payload.inventory_quantity_cohort_id, target_event_id=payload.target_event_id,
             quantity=payload.quantity, corrected_disposition=payload.corrected_disposition,
             reason=payload.reason, effective_time=payload.effective_time,
+            custody_location_id=payload.custody_location_id,
         )
     except (InventoryQuantityCohortNotFoundError, QualityDispositionEventNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except StorageBinNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store bin not found") from exc
     except QualityPartialCorrectionCommandReusedWithDifferentPayloadError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -161,6 +172,8 @@ def correct_quality_disposition_for_partial_quantity(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidQualityDispositionTransitionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except IneligibleStorageBinError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except QualitySegregationOfDutiesError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InventoryQuantityCohortSplitAllocationExceedsBalanceError as exc:
@@ -169,6 +182,7 @@ def correct_quality_disposition_for_partial_quantity(
         child_cohort_id=child.id, source_cohort_id=payload.inventory_quantity_cohort_id,
         target_event_id=payload.target_event_id, quantity=payload.quantity,
         corrected_disposition=payload.corrected_disposition,
+        custody_location_id=payload.custody_location_id,
     )
 
 
