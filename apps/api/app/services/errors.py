@@ -1955,3 +1955,56 @@ class QualityCorrectionTargetNotCurrentError(DomainError):
     decision was recorded after the operator observed it. Never silently
     reinterpreted onto the newer decision (docs/domain/
     STORE_INVENTORY_MODEL.md §11)."""
+
+
+# --- STORE-INV-002B: physical custody / putaway -----------------------------
+
+class InventoryStorageCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class StorageBinNotFoundError(DomainError):
+    """Raised when a referenced location does not resolve to a Location
+    owned by this tenant/Farm."""
+
+
+class IneligibleStorageBinError(DomainError):
+    """Raised when a referenced location is not a `store_bin`-typed
+    Location -- only a `store_bin` is ever a physical custody target."""
+
+
+class InactiveStorageBinError(DomainError):
+    """Raised when a destination `store_bin` is not currently active."""
+
+
+class InsufficientNotPutAwayQuantityError(DomainError):
+    """Raised when a putaway (or a partial Quality action targeting the
+    "Not put away" bucket) requests more than the cohort's current
+    not-put-away quantity."""
+
+
+class InsufficientStorageBinBalanceError(DomainError):
+    """Raised when a transfer, or a partial Quality action targeting a
+    specific Bin bucket, requests more than that cohort's current balance
+    in the named source Bin."""
+
+
+class StorageBinsMustDifferError(DomainError):
+    """Raised when a transfer's source and destination Bin are the same."""
+
+
+class LocationHasActiveInventoryCustodyError(DomainError):
+    """Raised when DEACTIVATE targets a `store_bin` Location that still
+    holds nonzero consumable Inventory custody (docs/domain/
+    STORE_INVENTORY_MODEL.md §10, STORE-INV-002B frozen rule) -- mirrors
+    `LocationHasActiveOccupancyError`'s own precedent for the identity-
+    based Occupancy engine, applied to the separate quantity-custody
+    model."""
+
+
+class ExistenceBelowCustodyError(DomainError):
+    """Raised when an existence-decreasing Adjustment or Reversal would
+    leave a cohort's existence quantity below its current physical
+    custody quantity -- physical custody can never exceed existence
+    (STORE-INV-002B frozen invariant). The remedy is a future stock-count
+    correction workflow, not silently allowing this state."""

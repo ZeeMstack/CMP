@@ -993,6 +993,16 @@ export type QualityWorkQueueRowRead = components["schemas"]["QualityWorkQueueRow
 export type InventoryItemUsableExistenceRead = components["schemas"]["InventoryItemUsableExistenceRead"];
 export type InventoryLotUsableExistenceRead = components["schemas"]["InventoryLotUsableExistenceRead"];
 
+// --- STORE-INV-002B -- physical custody / putaway ----------------------------
+export type InventoryPutawayCreate = components["schemas"]["InventoryPutawayCreate"];
+export type InventoryStorageTransferCreate = components["schemas"]["InventoryStorageTransferCreate"];
+export type InventoryStorageMovementRead = components["schemas"]["InventoryStorageMovementRead"];
+export type StorageBucketRead = components["schemas"]["StorageBucketRead"];
+export type CohortStorageBreakdownRead = components["schemas"]["CohortStorageBreakdownRead"];
+export type NotPutAwayQueueEntryRead = components["schemas"]["NotPutAwayQueueEntryRead"];
+export type ItemStorageBinBalanceRead = components["schemas"]["ItemStorageBinBalanceRead"];
+export type ItemStorageBreakdownRead = components["schemas"]["ItemStorageBreakdownRead"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
@@ -1364,6 +1374,42 @@ export function correctQualityDispositionForPartialQuantity(
   signal?: AbortSignal,
 ): Promise<QualityPartialCorrectionRead> {
   return postJson<QualityPartialCorrectionRead>("/quality-partial-corrections", payload, signal);
+}
+
+// STORE-INV-002B -- physical custody / putaway. "Putaway" and "Move stock"
+// (transfer) are Farm-scoped commands (the destination/source Bins live
+// under one Farm); the "Not put away" queue and per-cohort/item breakdown
+// reads are company-wide, mirroring the Quality work queue's own split.
+
+export function recordInventoryPutaway(
+  farmId: string,
+  payload: InventoryPutawayCreate,
+  signal?: AbortSignal,
+): Promise<InventoryStorageMovementRead> {
+  return postJson<InventoryStorageMovementRead>(`/farms/${farmId}/inventory-putaways`, payload, signal);
+}
+
+export function recordInventoryStorageTransfer(
+  farmId: string,
+  payload: InventoryStorageTransferCreate,
+  signal?: AbortSignal,
+): Promise<InventoryStorageMovementRead> {
+  return postJson<InventoryStorageMovementRead>(`/farms/${farmId}/inventory-storage-transfers`, payload, signal);
+}
+
+export function getNotPutAwayQueue(signal?: AbortSignal): Promise<NotPutAwayQueueEntryRead[]> {
+  return getJson<NotPutAwayQueueEntryRead[]>("/inventory-not-put-away-queue", signal);
+}
+
+export function getCohortStorageBreakdown(
+  cohortId: string,
+  signal?: AbortSignal,
+): Promise<CohortStorageBreakdownRead> {
+  return getJson<CohortStorageBreakdownRead>(`/inventory-quantity-cohorts/${cohortId}/storage-breakdown`, signal);
+}
+
+export function getItemStorageBreakdown(itemId: string, signal?: AbortSignal): Promise<ItemStorageBreakdownRead> {
+  return getJson<ItemStorageBreakdownRead>(`/inventory-items/${itemId}/storage-breakdown`, signal);
 }
 
 export function getQualityWorkQueue(signal?: AbortSignal): Promise<QualityWorkQueueRowRead[]> {

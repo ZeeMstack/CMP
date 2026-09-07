@@ -26,12 +26,19 @@ const QUEUE_ROW = {
   receipt_received_at: "2026-09-07T08:00:00Z", balance: "500.000", current_state: "RECEIVED_QUARANTINED",
   last_actor_user_id: null, last_effective_time: null,
 };
+const NOT_PUT_AWAY_ROW = {
+  inventory_quantity_cohort_id: "coh-1", inventory_item_id: "item-1", item_name: "Calcium Nitrate",
+  base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: "LOT-1",
+  received_at_farm_id: "farm-1", receipt_code: "GR-F1-20260907-001", receipt_received_at: "2026-09-07T08:00:00Z",
+  not_put_away_quantity: "500.000",
+};
 
 function stubFetch(overrides: Record<string, unknown> = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/farms/farm-1/goods-receipts")) return jsonResponse(overrides.receipts ?? [RECEIPT]);
     if (url.endsWith("/quality-work-queue")) return jsonResponse(overrides.queue ?? [QUEUE_ROW]);
+    if (url.includes("/inventory-not-put-away-queue")) return jsonResponse(overrides.notPutAway ?? [NOT_PUT_AWAY_ROW]);
     if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
     return jsonResponse([]);
   });
@@ -64,5 +71,20 @@ describe("StoreInventoryOverviewPage", () => {
     stubFetch({ queue: [] });
     render(withQueryClient(<StoreInventoryOverviewPage />));
     await waitFor(() => expect(screen.getByText(/nothing is currently quarantined/i)).toBeInTheDocument());
+  });
+
+  it("STORE-INV-002B: shows a factual awaiting-putaway count with a link to Putaway", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText(/not yet put away/i)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Go to Putaway" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/putaway",
+    );
+  });
+
+  it("STORE-INV-002B: shows nothing-awaiting-putaway message when the not-put-away queue is empty", async () => {
+    stubFetch({ notPutAway: [] });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText(/nothing is currently awaiting putaway/i)).toBeInTheDocument());
   });
 });

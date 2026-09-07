@@ -40,6 +40,8 @@ import type {
   InventoryItemSeedProfileRemove,
   InventoryItemSeedProfileUpdate,
   InventoryItemUpdate,
+  InventoryPutawayCreate,
+  InventoryStorageTransferCreate,
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
   LocationCreate,
@@ -2055,6 +2057,11 @@ export function useQualityWorkQueue() {
 function _invalidateQuality(queryClient: ReturnType<typeof useQueryClient>, tenantId: string) {
   queryClient.invalidateQueries({ queryKey: queryKeys.qualityWorkQueue(tenantId) });
   queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-items"] });
+  // STORE-INV-002B: a partial Quality action bucketed against a Bin also
+  // reassigns physical custody (docs §11's integration seam) -- keep the
+  // custody read model in sync too.
+  queryClient.invalidateQueries({ queryKey: queryKeys.notPutAwayQueue(tenantId) });
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-quantity-cohorts"] });
 }
 
 export function useRecordQualityDisposition() {
@@ -2117,6 +2124,75 @@ export function useCorrectQualityDispositionForPartialQuantity() {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateQuality(queryClient, tenantId);
+    },
+  });
+}
+
+// --- STORE-INV-002B: physical custody / putaway -----------------------------
+
+export function useNotPutAwayQueue() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.notPutAwayQueue(tenantId ?? ""),
+    queryFn: ({ signal }) => api.getNotPutAwayQueue(signal),
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCohortStorageBreakdown(cohortId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cohortStorageBreakdown(tenantId ?? "", cohortId ?? ""),
+    queryFn: ({ signal }) => api.getCohortStorageBreakdown(cohortId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(cohortId),
+  });
+}
+
+export function useItemStorageBreakdown(itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.itemStorageBreakdown(tenantId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getItemStorageBreakdown(itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(itemId),
+  });
+}
+
+function _invalidateCustody(queryClient: ReturnType<typeof useQueryClient>, tenantId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.notPutAwayQueue(tenantId) });
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-quantity-cohorts"] });
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-items"] });
+}
+
+export function useRecordInventoryPutaway() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ farmId, payload }: { farmId: string; payload: InventoryPutawayCreate }) =>
+      api.recordInventoryPutaway(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateCustody(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateCustody(queryClient, tenantId);
+    },
+  });
+}
+
+export function useRecordInventoryStorageTransfer() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ farmId, payload }: { farmId: string; payload: InventoryStorageTransferCreate }) =>
+      api.recordInventoryStorageTransfer(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateCustody(queryClient, tenantId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateCustody(queryClient, tenantId);
     },
   });
 }

@@ -1,10 +1,11 @@
 import hashlib
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.inventory_storage_movement import InventoryStorageMovement
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
@@ -17,6 +18,7 @@ from app.services.errors import (
     InvalidLocationHierarchyError,
     LocationDeactivationReusedWithDifferentPayloadError,
     LocationHasActiveChildrenError,
+    LocationHasActiveInventoryCustodyError,
     LocationHasActiveOccupancyError,
     LocationNotActiveError,
     LocationNotFoundError,
@@ -633,6 +635,31 @@ def deactivate_location(
     ).scalar_one()
     if active_child_count > 0:
         raise LocationHasActiveChildrenError(str(location_id))
+
+    # STORE-INV-002B: a store_bin holding nonzero physical custody (across
+    # every cohort, any Inventory Item) can never be deactivated -- custody
+    # is a fact about material actually sitting in this Bin, and deactivating
+    # it out from under that material would silently orphan it.
+    if get_location_type_code_map(db).get(location.location_type_id) == "store_bin":
+        total_bin_custody = db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (InventoryStorageMovement.destination_location_id == location_id, InventoryStorageMovement.moved_quantity_base),
+                            (InventoryStorageMovement.source_location_id == location_id, -InventoryStorageMovement.moved_quantity_base),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                )
+            ).where(
+                (InventoryStorageMovement.source_location_id == location_id)
+                | (InventoryStorageMovement.destination_location_id == location_id)
+            )
+        ).scalar_one()
+        if total_bin_custody > 0:
+            raise LocationHasActiveInventoryCustodyError(str(location_id))
 
     location.status = "inactive"
     location.deactivation_client_command_id = client_command_id

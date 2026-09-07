@@ -47,6 +47,7 @@ from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.quality_disposition_event import QualityDispositionEvent
 from app.services.audit import append_audit_event
 from app.services.errors import (
+    IneligibleStorageBinError,
     InvalidQualityDispositionTransitionError,
     InventoryQuantityCohortSplitAllocationExceedsBalanceError,
     QualityCorrectionCommandReusedWithDifferentPayloadError,
@@ -62,7 +63,10 @@ from app.services.inventory_existence_ledger_service import (
     _lock_cohort,
     _split_cohort_core,
     get_cohort_balance,
+    get_cohort_bin_balance,
+    get_cohort_total_custody,
 )
+from app.services.inventory_storage_service import _lock_bin, split_custody_core
 
 # The four ordinary human-decision event kinds a caller may request as a
 # disposition or a correction's replacement/corrected outcome.
@@ -277,11 +281,11 @@ def _compute_correction_fingerprint(
 
 def _compute_partial_fingerprint(
     *, tenant_id: uuid.UUID, actor_user_id: uuid.UUID, source_cohort_id: uuid.UUID, quantity: Decimal,
-    disposition: str, reason: str | None, effective_time: datetime,
+    disposition: str, reason: str | None, effective_time: datetime, custody_location_id: uuid.UUID | None = None,
 ) -> str:
     parts = [
         str(tenant_id), str(actor_user_id), str(source_cohort_id), str(quantity), disposition, reason or "",
-        effective_time.isoformat(),
+        effective_time.isoformat(), str(custody_location_id or ""),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
@@ -289,10 +293,11 @@ def _compute_partial_fingerprint(
 def _compute_partial_correction_fingerprint(
     *, tenant_id: uuid.UUID, actor_user_id: uuid.UUID, source_cohort_id: uuid.UUID, target_event_id: uuid.UUID,
     quantity: Decimal, corrected_disposition: str, reason: str, effective_time: datetime,
+    custody_location_id: uuid.UUID | None = None,
 ) -> str:
     parts = [
         str(tenant_id), str(actor_user_id), str(source_cohort_id), str(target_event_id), str(quantity),
-        corrected_disposition, reason, effective_time.isoformat(),
+        corrected_disposition, reason, effective_time.isoformat(), str(custody_location_id or ""),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
@@ -505,12 +510,21 @@ def apply_quality_disposition_to_partial_quantity(
     disposition: str,
     effective_time: datetime,
     reason: str | None = None,
+    custody_location_id: uuid.UUID | None = None,
 ) -> InventoryQuantityCohort:
     """"Apply disposition to part of quantity" -- an ORDINARY partial
     transition (still validated against the frozen state machine).
     Internally composes `.1`'s internal `_split_cohort_core` primitive
     with this child's own opening `QualityDispositionEvent`, all in ONE
-    transaction ending in ONE commit."""
+    transaction ending in ONE commit.
+
+    STORE-INV-002B: `custody_location_id` names the exact physical
+    "bucket" this partial action acts against -- `None` for "Not put
+    away", or a specific `store_bin` id. The requested quantity is
+    validated against THAT bucket's own balance, never the cohort's whole
+    existence balance, and when the bucket is a Bin, custody is logically
+    reassigned to the child cohort in the same transaction (docs §11's
+    partial-quality/custody integration seam)."""
     if disposition not in VALID_DISPOSITIONS:
         raise InvalidQualityDispositionTransitionError(f"{disposition!r} is not a valid disposition")
     if quantity <= 0:
@@ -519,6 +533,7 @@ def apply_quality_disposition_to_partial_quantity(
     fingerprint = _compute_partial_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, source_cohort_id=source_cohort_id, quantity=quantity,
         disposition=disposition, reason=reason, effective_time=effective_time,
+        custody_location_id=custody_location_id,
     )
 
     def _replay() -> InventoryQuantityCohort | None:
@@ -555,10 +570,18 @@ def apply_quality_disposition_to_partial_quantity(
         db, tenant_id=tenant_id, cohort=source, actor_user_id=actor_user_id, resulting_state=disposition
     )
 
-    balance = get_cohort_balance(db, cohort_id=source.id)
-    if quantity > balance:
+    if custody_location_id is None:
+        bucket_balance = get_cohort_balance(db, cohort_id=source.id) - get_cohort_total_custody(
+            db, cohort_id=source.id
+        )
+    else:
+        bin_ = _lock_bin(db, tenant_id=tenant_id, farm_id=source.receiving_farm_id, location_id=custody_location_id)
+        if bin_.status != "active":
+            raise IneligibleStorageBinError(str(custody_location_id))
+        bucket_balance = get_cohort_bin_balance(db, cohort_id=source.id, location_id=custody_location_id)
+    if quantity > bucket_balance:
         raise InventoryQuantityCohortSplitAllocationExceedsBalanceError(
-            f"requested quantity {quantity} exceeds cohort {source_cohort_id} balance {balance}"
+            f"requested quantity {quantity} exceeds bucket balance {bucket_balance} for cohort {source_cohort_id}"
         )
 
     command = _insert_command(
@@ -573,6 +596,13 @@ def apply_quality_disposition_to_partial_quantity(
     )
     child = children[0]
 
+    if custody_location_id is not None:
+        split_custody_core(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, farm_id=source.receiving_farm_id,
+            source_cohort_id=source.id, child_cohort_id=child.id, location_id=custody_location_id,
+            quantity=quantity, effective_time=effective_time,
+        )
+
     opening_event = QualityDispositionEvent(
         tenant_id=tenant_id, inventory_quantity_cohort_id=child.id, event_kind=disposition,
         effective_time=effective_time, recorded_time=datetime.now(effective_time.tzinfo),
@@ -586,7 +616,7 @@ def apply_quality_disposition_to_partial_quantity(
         entity_type="inventory_quantity_cohort", entity_id=child.id,
         event_data={
             "source_cohort_id": str(source.id), "quantity": str(quantity), "disposition": disposition,
-            "reason": reason,
+            "reason": reason, "custody_location_id": str(custody_location_id) if custody_location_id else None,
         },
     )
     db.commit()
@@ -606,6 +636,7 @@ def correct_quality_disposition_for_partial_quantity(
     corrected_disposition: str,
     reason: str,
     effective_time: datetime,
+    custody_location_id: uuid.UUID | None = None,
 ) -> InventoryQuantityCohort:
     """"Correct decision for part of quantity" -- compensating quantity
     partitioning for a mistaken classification, NEVER an ordinary forward
@@ -631,7 +662,7 @@ def correct_quality_disposition_for_partial_quantity(
     fingerprint = _compute_partial_correction_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, source_cohort_id=source_cohort_id,
         target_event_id=target_event_id, quantity=quantity, corrected_disposition=corrected_disposition,
-        reason=reason, effective_time=effective_time,
+        reason=reason, effective_time=effective_time, custody_location_id=custody_location_id,
     )
 
     def _replay() -> InventoryQuantityCohort | None:
@@ -680,10 +711,18 @@ def correct_quality_disposition_for_partial_quantity(
         db, tenant_id=tenant_id, cohort=source, actor_user_id=actor_user_id, resulting_state=corrected_disposition
     )
 
-    balance = get_cohort_balance(db, cohort_id=source.id)
-    if quantity > balance:
+    if custody_location_id is None:
+        bucket_balance = get_cohort_balance(db, cohort_id=source.id) - get_cohort_total_custody(
+            db, cohort_id=source.id
+        )
+    else:
+        bin_ = _lock_bin(db, tenant_id=tenant_id, farm_id=source.receiving_farm_id, location_id=custody_location_id)
+        if bin_.status != "active":
+            raise IneligibleStorageBinError(str(custody_location_id))
+        bucket_balance = get_cohort_bin_balance(db, cohort_id=source.id, location_id=custody_location_id)
+    if quantity > bucket_balance:
         raise InventoryQuantityCohortSplitAllocationExceedsBalanceError(
-            f"requested quantity {quantity} exceeds cohort {source_cohort_id} balance {balance}"
+            f"requested quantity {quantity} exceeds bucket balance {bucket_balance} for cohort {source_cohort_id}"
         )
 
     command = _insert_command(
@@ -697,6 +736,13 @@ def correct_quality_disposition_for_partial_quantity(
         allocations=[quantity], reason=reason, effective_time=effective_time,
     )
     child = children[0]
+
+    if custody_location_id is not None:
+        split_custody_core(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, farm_id=source.receiving_farm_id,
+            source_cohort_id=source.id, child_cohort_id=child.id, location_id=custody_location_id,
+            quantity=quantity, effective_time=effective_time,
+        )
 
     opening_event = QualityDispositionEvent(
         tenant_id=tenant_id, inventory_quantity_cohort_id=child.id, event_kind=corrected_disposition,
@@ -712,6 +758,7 @@ def correct_quality_disposition_for_partial_quantity(
         event_data={
             "source_cohort_id": str(source.id), "target_event_id": str(target_event_id), "quantity": str(quantity),
             "corrected_disposition": corrected_disposition, "reason": reason,
+            "custody_location_id": str(custody_location_id) if custody_location_id else None,
         },
     )
     db.commit()

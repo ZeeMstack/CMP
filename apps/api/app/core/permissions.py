@@ -209,6 +209,13 @@ class Permission(StrEnum):
     # unrouted primitive with no `Permission` of its own.
     INVENTORY_QUALITY_MANAGE = "inventory_quality.manage"
 
+    # STORE-INV-002B: physical custody / putaway (Bin placement and
+    # bin-to-bin transfer) is its own control power, deliberately separate
+    # from `INVENTORY_QUALITY_MANAGE` -- a QC officer decides disposition,
+    # not where material physically sits, so `qc_officer` is explicitly
+    # NOT granted this permission.
+    INVENTORY_CUSTODY_MANAGE = "inventory_custody.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -272,6 +279,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # inventory_quality.manage, which stay with the specialists who
         # execute routine receiving/quality work.
         Permission.INVENTORY_READ, Permission.INVENTORY_ADJUSTMENT_MANAGE,
+        # STORE-INV-002B: farm_manager's senior/accountable tier also
+        # extends to physical custody (Bin deactivation is LOCATION_MANAGE,
+        # already held above; custody commands are their own permission).
+        Permission.INVENTORY_CUSTODY_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -402,6 +413,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # §N), matching this role's existing narrow "one genuine function"
         # characterization.
         Permission.INVENTORY_READ, Permission.INVENTORY_RECEIPT_MANAGE,
+        # STORE-INV-002B: putaway/transfer is the routine "where does it
+        # physically sit" custody work this role executes day-to-day --
+        # never inventory_quality.manage, which stays with the QC
+        # specialist.
+        Permission.INVENTORY_CUSTODY_MANAGE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy

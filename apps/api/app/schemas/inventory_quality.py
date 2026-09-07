@@ -82,6 +82,7 @@ class QualityPartialDispositionCreate(BaseModel):
     disposition: str
     effective_time: datetime
     reason: str | None = None
+    custody_location_id: uuid.UUID | None = None
 
     @field_validator("quantity")
     @classmethod
@@ -113,6 +114,7 @@ class QualityPartialCorrectionCreate(BaseModel):
     corrected_disposition: str
     reason: str
     effective_time: datetime
+    custody_location_id: uuid.UUID | None = None
 
     @field_validator("quantity")
     @classmethod
@@ -140,6 +142,7 @@ class QualityPartialCorrectionRead(BaseModel):
     target_event_id: uuid.UUID
     quantity: Decimal
     corrected_disposition: str
+    custody_location_id: uuid.UUID | None = None
 
 
 class QualityDispositionEventRead(BaseModel):
@@ -169,6 +172,7 @@ class QualityPartialDispositionRead(BaseModel):
     source_cohort_id: uuid.UUID
     quantity: Decimal
     disposition: str
+    custody_location_id: uuid.UUID | None = None
 
 
 class QualityWorkQueueRowRead(BaseModel):

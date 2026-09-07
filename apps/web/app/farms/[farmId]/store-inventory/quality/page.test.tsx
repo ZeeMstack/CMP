@@ -24,11 +24,20 @@ function queueRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function stubFetch(queue: unknown[], postHandler?: (url: string, body: unknown) => Response) {
+function stubFetch(
+  queue: unknown[],
+  postHandler?: (url: string, body: unknown) => Response,
+  breakdown?: unknown,
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (!init || init.method === undefined) {
       if (url.endsWith("/quality-work-queue")) return jsonResponse(queue);
+      if (url.includes("/storage-breakdown")) {
+        return jsonResponse(
+          breakdown ?? { inventory_quantity_cohort_id: "coh-1", not_put_away_quantity: "500.000", buckets: [] },
+        );
+      }
       return jsonResponse([]);
     }
     const body = init.body ? JSON.parse(String(init.body)) : {};
@@ -170,6 +179,38 @@ describe("StoreInventoryQualityPage", () => {
     fireEvent.change(screen.getByLabelText(/Reason \(required\)/), { target: { value: "attempt" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.getByText(/changed since you opened this action/i)).toBeInTheDocument());
+  });
+
+  it("STORE-INV-002B: offers an 'Affected location' bucket picker for a partial action with multiple buckets, and threads custody_location_id", async () => {
+    let posted: unknown = null;
+    stubFetch(
+      [queueRow()],
+      (url, body) => {
+        if (url.endsWith("/quality-partial-dispositions")) {
+          posted = body;
+          return jsonResponse({ child_cohort_id: "coh-child", source_cohort_id: "coh-1", quantity: "30", disposition: "HELD" });
+        }
+        return jsonResponse({});
+      },
+      {
+        inventory_quantity_cohort_id: "coh-1", not_put_away_quantity: "200.000",
+        buckets: [
+          { location_id: null, label: "Not put away", balance: "200.000" },
+          { location_id: "bin-1", label: "Main Store / Bin 01", balance: "300.000" },
+        ],
+      },
+    );
+    render(withQueryClient(<StoreInventoryQualityPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Apply to part of quantity" }));
+
+    await waitFor(() => expect(screen.getByText(/affected location/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/affected location/i), { target: { value: "bin-1" } });
+    fireEvent.change(screen.getByLabelText(/^Quantity/), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(posted).not.toBeNull());
+    expect((posted as { custody_location_id: string | null }).custody_location_id).toBe("bin-1");
   });
 
   it("shows nothing-to-do message when the queue is empty", async () => {

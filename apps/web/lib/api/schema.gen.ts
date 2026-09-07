@@ -1424,6 +1424,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/inventory-putaways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Putaway */
+        post: operations["record_putaway_farms__farm_id__inventory_putaways_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/inventory-storage-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Transfer */
+        post: operations["record_transfer_farms__farm_id__inventory_storage_transfers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-not-put-away-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Not Put Away Queue */
+        get: operations["get_not_put_away_queue_inventory_not_put_away_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-quantity-cohorts/{cohort_id}/storage-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cohort Storage Breakdown */
+        get: operations["get_cohort_storage_breakdown_inventory_quantity_cohorts__cohort_id__storage_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-items/{item_id}/storage-breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item Storage Breakdown */
+        get: operations["get_item_storage_breakdown_inventory_items__item_id__storage_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/movements": {
         parameters: {
             query?: never;
@@ -4469,6 +4554,18 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CohortStorageBreakdownRead */
+        CohortStorageBreakdownRead: {
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Not Put Away Quantity */
+            not_put_away_quantity: string;
+            /** Buckets */
+            buckets: components["schemas"]["StorageBucketRead"][];
+        };
         /** Completeness */
         Completeness: {
             /** Trace Complete */
@@ -6980,6 +7077,147 @@ export interface components {
             usable_quantity: string;
         };
         /**
+         * InventoryPutawayCreate
+         * @description "Not put away" quantity -> a Store Bin. Existence-neutral,
+         *     Quality-neutral.
+         */
+        InventoryPutawayCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** InventoryStorageMovementRead */
+        InventoryStorageMovementRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Movement Kind */
+            movement_kind: string;
+            /** Source Location Id */
+            source_location_id: string | null;
+            /** Destination Location Id */
+            destination_location_id: string | null;
+            /** Moved Quantity Base */
+            moved_quantity_base: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /** Client Command Id */
+            client_command_id: string | null;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * InventoryStorageTransferCreate
+         * @description Store Bin A -> Store Bin B, within the same Farm. Existence-neutral,
+         *     Quality-neutral.
+         */
+        InventoryStorageTransferCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Source Location Id
+             * Format: uuid
+             */
+            source_location_id: string;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** ItemStorageBinBalanceRead */
+        ItemStorageBinBalanceRead: {
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Label */
+            label: string;
+            /** Balance */
+            balance: string;
+        };
+        /** ItemStorageBreakdownRead */
+        ItemStorageBreakdownRead: {
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Not Put Away Quantity */
+            not_put_away_quantity: string;
+            /** Bins */
+            bins: components["schemas"]["ItemStorageBinBalanceRead"][];
+        };
+        /**
          * LeafyHarvestEventRead
          * @description One HarvestEvent/HarvestedProduceLot pair, Leafy-aware. `original_*`
          *     mirrors `HarvestedProduceLot.total_*` (immutable, never presented as
@@ -7725,6 +7963,44 @@ export interface components {
             actor_user_id: string | null;
             /** Reason */
             reason: string | null;
+        };
+        /** NotPutAwayQueueEntryRead */
+        NotPutAwayQueueEntryRead: {
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Item Name */
+            item_name: string;
+            /**
+             * Base Uom Id
+             * Format: uuid
+             */
+            base_uom_id: string;
+            /** Inventory Lot Id */
+            inventory_lot_id: string | null;
+            /** Manufacturer Lot Reference */
+            manufacturer_lot_reference: string | null;
+            /**
+             * Received At Farm Id
+             * Format: uuid
+             */
+            received_at_farm_id: string;
+            /** Receipt Code */
+            receipt_code: string;
+            /**
+             * Receipt Received At
+             * Format: date-time
+             */
+            receipt_received_at: string;
+            /** Not Put Away Quantity */
+            not_put_away_quantity: string;
         };
         /**
          * NurserySectionConfig
@@ -8974,6 +9250,8 @@ export interface components {
              * Format: date-time
              */
             effective_time: string;
+            /** Custody Location Id */
+            custody_location_id?: string | null;
         };
         /** QualityPartialCorrectionRead */
         QualityPartialCorrectionRead: {
@@ -8996,6 +9274,8 @@ export interface components {
             quantity: string;
             /** Corrected Disposition */
             corrected_disposition: string;
+            /** Custody Location Id */
+            custody_location_id?: string | null;
         };
         /**
          * QualityPartialDispositionCreate
@@ -9024,6 +9304,8 @@ export interface components {
             effective_time: string;
             /** Reason */
             reason?: string | null;
+            /** Custody Location Id */
+            custody_location_id?: string | null;
         };
         /** QualityPartialDispositionRead */
         QualityPartialDispositionRead: {
@@ -9041,6 +9323,8 @@ export interface components {
             quantity: string;
             /** Disposition */
             disposition: string;
+            /** Custody Location Id */
+            custody_location_id?: string | null;
         };
         /** QualityWorkQueueRowRead */
         QualityWorkQueueRowRead: {
@@ -10215,6 +10499,19 @@ export interface components {
             name: string;
             /** Is Terminal */
             is_terminal: boolean;
+        };
+        /**
+         * StorageBucketRead
+         * @description One eligible physical bucket for a Quality partial action --
+         *     "Not put away" (`location_id` is None) or one specific Bin.
+         */
+        StorageBucketRead: {
+            /** Location Id */
+            location_id: string | null;
+            /** Label */
+            label: string;
+            /** Balance */
+            balance: string;
         };
         /** StorageMovementRead */
         StorageMovementRead: {
@@ -15363,6 +15660,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryLotUsableExistenceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_putaway_farms__farm_id__inventory_putaways_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryPutawayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryStorageMovementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_transfer_farms__farm_id__inventory_storage_transfers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryStorageTransferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryStorageMovementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_not_put_away_queue_inventory_not_put_away_queue_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotPutAwayQueueEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cohort_storage_breakdown_inventory_quantity_cohorts__cohort_id__storage_breakdown_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortStorageBreakdownRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_storage_breakdown_inventory_items__item_id__storage_breakdown_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemStorageBreakdownRead"];
                 };
             };
             /** @description Validation Error */

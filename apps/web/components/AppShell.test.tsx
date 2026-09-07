@@ -212,12 +212,13 @@ describe("AppShell contextual sidebar", () => {
     );
   });
 
-  it("STORE-INV-002A.2: exposes exactly Overview / Receive Goods / Inventory / Quality, no placeholders", () => {
+  it("STORE-INV-002B: exposes exactly Overview / Receive Goods / Putaway / Inventory / Quality, no placeholders", () => {
     renderShell("/farms/farm-1/store-inventory");
     const aside = sidebar();
     const expected: Record<string, string> = {
       Overview: "/farms/farm-1/store-inventory",
       "Receive Goods": "/farms/farm-1/store-inventory/receive-goods",
+      Putaway: "/farms/farm-1/store-inventory/putaway",
       Inventory: "/farms/farm-1/store-inventory/inventory",
       Quality: "/farms/farm-1/store-inventory/quality",
     };
@@ -238,6 +239,7 @@ describe("AppShell contextual sidebar", () => {
   it.each([
     "/farms/farm-1/store-inventory",
     "/farms/farm-1/store-inventory/receive-goods",
+    "/farms/farm-1/store-inventory/putaway",
     "/farms/farm-1/store-inventory/inventory",
     "/farms/farm-1/store-inventory/quality",
   ])("STORE-INV-002A.2: %s keeps Store & Inventory active in the top nav, not Store & Inventory Setup", (pathname) => {

@@ -47,7 +47,7 @@ def test_downgrade_clean_when_empty(test_engine, alembic_head_restore) -> None:
     never depends on execution order relative to any other test that
     commits real command/event rows via a separate connection."""
     scripts.reset_test_database.main()
-    command.downgrade(_cfg(), "-1")
+    command.downgrade(_cfg(), "f1a4c8e7b2d5")
     with test_engine.connect() as conn:
         tables = conn.execute(
             text(
@@ -118,7 +118,7 @@ def test_downgrade_blocked_once_inventory_quality_command_exists(test_engine, al
         conn.close()
 
     with pytest.raises(RuntimeError, match="inventory quality command idempotency"):
-        command.downgrade(_cfg(), "-1")
+        command.downgrade(_cfg(), "f1a4c8e7b2d5")
 
 
 # --- Direct-SQL bypass proofs for enforce_inventory_quality_command_insert_integrity ---

@@ -26,6 +26,10 @@ function stubFetch() {
     if (url.endsWith("/existence")) return jsonResponse({ inventory_item_id: "item-1", existing_quantity: "500.000" });
     if (url.endsWith("/usable-existence")) return jsonResponse({ inventory_item_id: "item-1", usable_quantity: "450.000" });
     if (url.endsWith("/provenance")) return jsonResponse([]);
+    if (url.includes("/storage-breakdown")) {
+      return jsonResponse({ inventory_item_id: "item-1", not_put_away_quantity: "120.000", bins: [] });
+    }
+    if (url.includes("/locations/tree")) return jsonResponse([]);
     return jsonResponse([]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -36,7 +40,7 @@ afterEach(() => {
 });
 
 describe("StoreInventoryInventoryPage", () => {
-  it("shows Exists and Usable quantities, company-wide, never labeled Available", async () => {
+  it("shows Exists, Usable, and Not put away quantities, company-wide, never labeled Available", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryInventoryPage />));
     await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
@@ -44,6 +48,7 @@ describe("StoreInventoryInventoryPage", () => {
     expect(screen.getByText("450.000")).toBeInTheDocument();
     expect(screen.getAllByText(/usable/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^available$/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/current store\/bin location is not yet tracked/i)).toBeInTheDocument();
+    expect(screen.getByText("Not put away")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("120.000")).toBeInTheDocument());
   });
 });
