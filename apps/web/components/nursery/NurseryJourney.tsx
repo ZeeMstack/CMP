@@ -3,7 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
-export type NurseryStage = "seeding" | "germination" | "seedling" | "intersalads";
+export type NurseryStage = "seeding" | "germination" | "seedling" | "intersalads" | "intervines";
 
 const STAGES: { id: NurseryStage; label: string; hrefSuffix: string }[] = [
   { id: "seeding", label: "Seeding", hrefSuffix: "/nursery/sowings/new" },
@@ -13,6 +13,11 @@ const STAGES: { id: NurseryStage; label: string; hrefSuffix: string }[] = [
   // every internal identifier stays InterSalads (CEO_ALIGNMENT_SPEC.md
   // terminology decisions).
   { id: "intersalads", label: "Transfer to Inter Leafy Greens", hrefSuffix: "/nursery/intersalads" },
+  // VINES-OPS-001A: the sibling Vines destination from the same Seedling
+  // stage -- which of the two a given Batch actually uses depends on its
+  // own crop workflow, never a branch here (this nav is purely a route
+  // indicator, crop-agnostic like every other Nursery screen).
+  { id: "intervines", label: "Transfer to InterVines", hrefSuffix: "/nursery/intervines" },
 ];
 
 /** Purely presentational route indicator shared by the four Nursery

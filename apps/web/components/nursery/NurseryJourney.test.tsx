@@ -4,12 +4,13 @@ import { describe, expect, it } from "vitest";
 import { NurseryJourney } from "./NurseryJourney";
 
 describe("NurseryJourney", () => {
-  it("renders exactly the four frozen stage labels", () => {
+  it("renders exactly the five frozen stage labels", () => {
     render(<NurseryJourney farmId="farm-1" current="seeding" />);
     expect(screen.getByRole("link", { name: /Seeding/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Germination/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Seedling/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Transfer to Inter Leafy Greens/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Transfer to InterVines/ })).toBeInTheDocument();
   });
 
   it("links every stage to its real, farm-scoped route", () => {
@@ -21,6 +22,10 @@ describe("NurseryJourney", () => {
       "href",
       "/farms/farm-42/nursery/intersalads",
     );
+    expect(screen.getByRole("link", { name: /Transfer to InterVines/ })).toHaveAttribute(
+      "href",
+      "/farms/farm-42/nursery/intervines",
+    );
   });
 
   it("marks only the current stage active, via aria-current and not color alone", () => {
@@ -29,6 +34,7 @@ describe("NurseryJourney", () => {
     expect(screen.getByRole("link", { name: /^Seeding/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: /Germination/ })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: /Transfer to Inter Leafy Greens/ })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: /Transfer to InterVines/ })).not.toHaveAttribute("aria-current");
     // A visible, non-color cue accompanies the highlighted stage.
     expect(screen.getByText("Current:")).toBeInTheDocument();
   });
@@ -39,6 +45,13 @@ describe("NurseryJourney", () => {
     expect(link).toHaveAttribute("aria-current", "step");
     expect(link).toHaveAttribute("href", "/farms/farm-1/nursery/intersalads");
     expect(screen.queryByRole("link", { name: /^InterSalads$/ })).not.toBeInTheDocument();
+  });
+
+  it("marks InterVines active with its own route when current", () => {
+    render(<NurseryJourney farmId="farm-1" current="intervines" />);
+    const link = screen.getByRole("link", { name: /Transfer to InterVines/ });
+    expect(link).toHaveAttribute("aria-current", "step");
+    expect(link).toHaveAttribute("href", "/farms/farm-1/nursery/intervines");
   });
 
   it("is an accessible landmark nav distinct from the page's primary navigation", () => {

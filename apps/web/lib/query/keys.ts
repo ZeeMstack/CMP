@@ -273,4 +273,12 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "outstanding-issued-material"] as const,
   issueLineReconciliation: (tenantId: string, issueLineId: string) =>
     ["tenant", tenantId, "inventory-issue-lines", issueLineId, "reconciliation"] as const,
+
+  // --- VINES-OPS-001A ---------------------------------------------------------
+  availableGrowCubePools: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "intervines", "available-grow-cubes"] as const,
+  intervinesPlacements: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "intervines", "placements"] as const,
+  intervinesPlacementGrowCubes: (tenantId: string, farmId: string, batchId: string, tableId: string) =>
+    ["tenant", tenantId, "farms", farmId, "nursery", "intervines", "placements", batchId, tableId, "grow-cubes"] as const,
 };

@@ -25,6 +25,7 @@ import type {
   GradingReversalEventCreate,
   GreenhouseSetupCreate,
   IntersaladsTransplantCreate,
+  IntervinesTransplantCreate,
   InventoryCategoryCreate,
   InventoryCategoryDeactivate,
   InventoryCategoryReactivate,
@@ -1049,6 +1050,73 @@ export function useRecordIntersaladsTransplant(farmId: string) {
       for (const tableId of tableIds) {
         queryClient.invalidateQueries({ queryKey: queryKeys.locationOccupants(tenantId, farmId, tableId) });
       }
+    },
+  });
+}
+
+// --- VINES-OPS-001A ----------------------------------------------------------
+// InterVines Transplant operator UI: Grow Cube pool eligibility read (source
+// picking reuses `useSeedlingBiologicalTrays` above unchanged -- eligibility
+// for a Seedling source is identical regardless of which downstream
+// destination it feeds), the compact aggregated read view, its per-row
+// drill-down, and the composite submit itself.
+
+export function useAvailableGrowCubePools(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableGrowCubePools(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAvailableGrowCubePools(farmId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useIntervinesPlacements(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.intervinesPlacements(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listIntervinesPlacements(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** On-demand only (mirrors `useLocationOccupants`'s own pattern): fetched
+ * only once an operator actually expands one aggregated placement row's
+ * drill-down, never for every row up front. */
+export function useIntervinesPlacementGrowCubes(farmId: string, batchId: string | null, tableId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.intervinesPlacementGrowCubes(tenantId ?? "", farmId, batchId ?? "", tableId ?? ""),
+    queryFn: ({ signal }) => api.listIntervinesPlacementGrowCubes(farmId, batchId as string, tableId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId) && Boolean(tableId),
+  });
+}
+
+/** Idempotency key lives in the payload itself, same replay-safe pattern as
+ * `useRecordIntersaladsTransplant`. Success changes source availability, the
+ * Grow Cube pool, and the InterVines read view -- all three are invalidated. */
+export function useRecordIntervinesTransplant(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: IntervinesTransplantCreate }) =>
+      api.recordIntervinesTransplant(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowCubePools(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.intervinesPlacements(tenantId, farmId) });
+    },
+    // Section 10 (frozen, mirrors InterSalads): a 409 means the state this
+    // draft was built against has changed elsewhere (the source or the Grow
+    // Cube pool just changed) -- never auto-resubmit, only refresh the
+    // authoritative queries the draft depends on.
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowCubePools(tenantId, farmId) });
     },
   });
 }

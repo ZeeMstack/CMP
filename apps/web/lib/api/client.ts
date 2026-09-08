@@ -97,6 +97,11 @@ export type CarrierBulkCreate = components["schemas"]["CarrierBulkCreate"];
 export type IntersaladsTransplantCreate = components["schemas"]["IntersaladsTransplantCreate"];
 export type IntersaladsTransplantRead = components["schemas"]["IntersaladsTransplantRead"];
 export type AvailableNurseryCultivationPlateRead = components["schemas"]["AvailableNurseryCultivationPlateRead"];
+export type IntervinesTransplantCreate = components["schemas"]["IntervinesTransplantCreate"];
+export type IntervinesTransplantRead = components["schemas"]["IntervinesTransplantRead"];
+export type AvailableGrowCubePoolRead = components["schemas"]["AvailableGrowCubePoolRead"];
+export type IntervinesPlacementRead = components["schemas"]["IntervinesPlacementRead"];
+export type IntervinesPlacementGrowCubeRead = components["schemas"]["IntervinesPlacementGrowCubeRead"];
 export type LeafyProductionTransferCreate = components["schemas"]["LeafyProductionTransferCreate"];
 export type LeafyProductionTransferRead = components["schemas"]["LeafyProductionTransferRead"];
 export type AvailableLeafyProductionSourceRead = components["schemas"]["AvailableLeafyProductionSourceRead"];
@@ -757,6 +762,50 @@ export function listAvailableIntersaladsPlates(
 ): Promise<AvailableNurseryCultivationPlateRead[]> {
   return getJson<AvailableNurseryCultivationPlateRead[]>(
     `/farms/${farmId}/nursery/intersalads/available-plates`, signal,
+  );
+}
+
+// --- VINES-OPS-001A -----------------------------------------------------------
+// InterVines Transplant: composite biological Transplant (Seedling source
+// Tray) + server-allocated Grow Cube pool + physical placement on one
+// InterVines Table, one atomic command. `listAvailableGrowCubePools` backs
+// the Grow Cube specification picker/available-count display;
+// `listIntervinesPlacements`/`listIntervinesPlacementGrowCubes` back the
+// compact InterVines read view and its per-row drill-down.
+
+export function recordIntervinesTransplant(
+  farmId: string,
+  batchId: string,
+  payload: IntervinesTransplantCreate,
+  signal?: AbortSignal,
+): Promise<IntervinesTransplantRead> {
+  return postJson<IntervinesTransplantRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/intervines-transplants`, payload, signal,
+  );
+}
+
+export function listAvailableGrowCubePools(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<AvailableGrowCubePoolRead[]> {
+  return getJson<AvailableGrowCubePoolRead[]>(`/farms/${farmId}/nursery/intervines/available-grow-cubes`, signal);
+}
+
+export function listIntervinesPlacements(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<IntervinesPlacementRead[]> {
+  return getJson<IntervinesPlacementRead[]>(`/farms/${farmId}/nursery/intervines/placements`, signal);
+}
+
+export function listIntervinesPlacementGrowCubes(
+  farmId: string,
+  batchId: string,
+  tableId: string,
+  signal?: AbortSignal,
+): Promise<IntervinesPlacementGrowCubeRead[]> {
+  return getJson<IntervinesPlacementGrowCubeRead[]>(
+    `/farms/${farmId}/nursery/intervines/placements/${batchId}/${tableId}/grow-cubes`, signal,
   );
 }
 

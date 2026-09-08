@@ -46,6 +46,7 @@ def build_transplant_ready_scenario(
     db_session, tenant, user, farm, *, suffix=None, tray_count=4, normal=200, abnormal=0,
     transplanting_required_type="cultivation_plate", legacy_seed_tray_no_specification=False,
     destination_specification_id=None, intersalads_table_count=0, intersalads_table_capacity=None,
+    intervines_table_count=0, intervines_table_capacity=None,
     production_stage=False, second_transplant_required_type=None,
 ):
     """A Batch with `tray_count` Seed Trays, each sown, germinated, and
@@ -236,6 +237,14 @@ def build_transplant_ready_scenario(
             code_prefix=f"IS{suffix[:4]}", start=1, end=intersalads_table_count, pad_width=2,
             capacity=intersalads_table_capacity,
         )
+    # VINES-OPS-001A: opt-in InterVines Tables, same greenhouse -- 0
+    # (default) is unchanged behavior for every existing caller of this
+    # shared scenario builder.
+    if intervines_table_count > 0:
+        nursery_config_kwargs["intervines_tables"] = TableGeneratorConfig(
+            code_prefix=f"IV{suffix[:4]}", start=1, end=intervines_table_count, pad_width=2,
+            capacity=intervines_table_capacity,
+        )
     setup = farm_setup_service.create_greenhouse_setup(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         payload=GreenhouseSetupCreate(
@@ -251,6 +260,9 @@ def build_transplant_ready_scenario(
     table_ids = [t.id for t in structure.nursery_seedling.tables]
     intersalads_table_ids = (
         [t.id for t in structure.nursery_intersalads.tables] if structure.nursery_intersalads else []
+    )
+    intervines_table_ids = (
+        [t.id for t in structure.nursery_intervines.tables] if structure.nursery_intervines else []
     )
 
     trolley = asset_service.register_asset(
@@ -379,5 +391,5 @@ def build_transplant_ready_scenario(
         "source_carriers": carriers, "source_assignment_ids": source_assignment_ids, "entry_ids": entry_ids,
         "entry_time": entry_time, "sow_time": sow_time, "starting": normal + abnormal,
         "destination_carriers": destination_carriers, "intersalads_table_ids": intersalads_table_ids,
-        "seedling_table_ids": table_ids,
+        "intervines_table_ids": intervines_table_ids, "seedling_table_ids": table_ids,
     }
