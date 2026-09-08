@@ -212,7 +212,7 @@ describe("AppShell contextual sidebar", () => {
     );
   });
 
-  it("STORE-INV-002B: exposes exactly Overview / Receive Goods / Putaway / Inventory / Quality, no placeholders", () => {
+  it("STORE-INV-003: exposes exactly Overview / Receive Goods / Putaway / Inventory / Quality / Issue, no placeholders", () => {
     renderShell("/farms/farm-1/store-inventory");
     const aside = sidebar();
     const expected: Record<string, string> = {
@@ -221,15 +221,18 @@ describe("AppShell contextual sidebar", () => {
       Putaway: "/farms/farm-1/store-inventory/putaway",
       Inventory: "/farms/farm-1/store-inventory/inventory",
       Quality: "/farms/farm-1/store-inventory/quality",
+      Issue: "/farms/farm-1/store-inventory/issue",
     };
     for (const [label, href] of Object.entries(expected)) {
       expect(within(aside).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
-    // No future/unbuilt concepts (Reservations, Issues, Returns, Transfers,
-    // Work Orders) and no duplication of the separate, config-only
-    // "Store & Inventory Setup" workspace entries.
+    // No future/unbuilt concepts (a separate Reservations module, Returns,
+    // Transfers, Work Orders) and no duplication of the separate,
+    // config-only "Store & Inventory Setup" workspace entries. Reservation
+    // is deliberately a mode INSIDE the "Issue" page, never its own
+    // top-level nav entry.
     for (const forbidden of [
-      "Reservations", "Issues", "Returns", "Transfers", "Work Orders",
+      "Reservations", "Returns", "Transfers", "Work Orders",
       "Store & Inventory Setup", "Storage", "Inventory Catalog", "Settings",
     ]) {
       expect(within(aside).queryByRole("link", { name: forbidden })).not.toBeInTheDocument();
@@ -242,6 +245,7 @@ describe("AppShell contextual sidebar", () => {
     "/farms/farm-1/store-inventory/putaway",
     "/farms/farm-1/store-inventory/inventory",
     "/farms/farm-1/store-inventory/quality",
+    "/farms/farm-1/store-inventory/issue",
   ])("STORE-INV-002A.2: %s keeps Store & Inventory active in the top nav, not Store & Inventory Setup", (pathname) => {
     renderShell(pathname);
     const nav = topNav();

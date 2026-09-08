@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -26,10 +26,17 @@ function stubFetch() {
     if (url.endsWith("/existence")) return jsonResponse({ inventory_item_id: "item-1", existing_quantity: "500.000" });
     if (url.endsWith("/usable-existence")) return jsonResponse({ inventory_item_id: "item-1", usable_quantity: "450.000" });
     if (url.endsWith("/provenance")) return jsonResponse([]);
+    if (url.includes("/availability")) {
+      return jsonResponse({
+        inventory_item_id: "item-1", farm_id: "farm-1", in_store_quantity: "400.000", reserved_quantity: "70.000",
+        issued_to_operations_quantity: "30.000", available_to_issue_quantity: "330.000",
+      });
+    }
     if (url.includes("/storage-breakdown")) {
       return jsonResponse({ inventory_item_id: "item-1", not_put_away_quantity: "120.000", bins: [] });
     }
     if (url.includes("/locations/tree")) return jsonResponse([]);
+    if (url.endsWith("/uoms")) return jsonResponse([{ id: "uom-1", code: "kg", name: "Kilogram", quantity_kind: "mass", conversion_family: "mass" }]);
     return jsonResponse([]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -40,15 +47,30 @@ afterEach(() => {
 });
 
 describe("StoreInventoryInventoryPage", () => {
-  it("shows Exists, Usable, and Not put away quantities, company-wide, never labeled Available", async () => {
+  it("shows Exists, Usable, and Available to issue quantities, never labeled just Available", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryInventoryPage />));
     await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
-    expect(screen.getByText("500.000")).toBeInTheDocument();
-    expect(screen.getByText("450.000")).toBeInTheDocument();
-    expect(screen.getAllByText(/usable/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("500.000 kg")).toBeInTheDocument();
+    expect(screen.getByText("450.000 kg")).toBeInTheDocument();
+    expect(screen.getByText("Available to issue")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("330.000 kg")).toBeInTheDocument());
     expect(screen.queryByText(/^available$/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Not put away")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("120.000")).toBeInTheDocument());
+  });
+
+  it("shows In Store / Reserved / Issued to operations / Not put away only inside expanded detail", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+
+    expect(screen.queryByText(/not put away/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
+
+    await waitFor(() => expect(screen.getByText(/In Store \(this Farm\)/)).toBeInTheDocument());
+    expect(screen.getByText(/Reserved \(this Farm\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Issued to operations \(this Farm\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Not put away \(company-wide\)/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("120.000 kg")).toBeInTheDocument());
   });
 });

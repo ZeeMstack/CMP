@@ -1003,6 +1003,19 @@ export type NotPutAwayQueueEntryRead = components["schemas"]["NotPutAwayQueueEnt
 export type ItemStorageBinBalanceRead = components["schemas"]["ItemStorageBinBalanceRead"];
 export type ItemStorageBreakdownRead = components["schemas"]["ItemStorageBreakdownRead"];
 
+// --- STORE-INV-003 -- Reservation & Issue ------------------------------------
+export type ReservationLineCreate = components["schemas"]["ReservationLineCreate"];
+export type InventoryReservationCreate = components["schemas"]["InventoryReservationCreate"];
+export type InventoryReservationReleaseCreate = components["schemas"]["InventoryReservationReleaseCreate"];
+export type InventoryReservationLineRead = components["schemas"]["InventoryReservationLineRead"];
+export type InventoryReservationRead = components["schemas"]["InventoryReservationRead"];
+export type IssueLineCreate = components["schemas"]["IssueLineCreate"];
+export type InventoryIssueCreate = components["schemas"]["InventoryIssueCreate"];
+export type InventoryIssueLineRead = components["schemas"]["InventoryIssueLineRead"];
+export type InventoryIssueRead = components["schemas"]["InventoryIssueRead"];
+export type ItemFarmAvailabilityRead = components["schemas"]["ItemFarmAvailabilityRead"];
+export type IssuableSourceRead = components["schemas"]["IssuableSourceRead"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
@@ -1410,6 +1423,59 @@ export function getCohortStorageBreakdown(
 
 export function getItemStorageBreakdown(itemId: string, signal?: AbortSignal): Promise<ItemStorageBreakdownRead> {
   return getJson<ItemStorageBreakdownRead>(`/inventory-items/${itemId}/storage-breakdown`, signal);
+}
+
+// STORE-INV-003 -- Reservation (a fungible CLAIM, Farm + Item, never
+// touching Existence/Quality/custody) and Issue (a CUSTODY TRANSFER, Store
+// Bin -> "Issued to operations"). Both Farm-scoped commands; reads are
+// either Farm-scoped (lists, availability) or by-id (detail).
+
+export function createInventoryReservation(
+  farmId: string,
+  payload: InventoryReservationCreate,
+  signal?: AbortSignal,
+): Promise<InventoryReservationRead> {
+  return postJson<InventoryReservationRead>(`/farms/${farmId}/inventory-reservations`, payload, signal);
+}
+
+export function listInventoryReservations(farmId: string, signal?: AbortSignal): Promise<InventoryReservationRead[]> {
+  return getJson<InventoryReservationRead[]>(`/farms/${farmId}/inventory-reservations`, signal);
+}
+
+export function getInventoryReservation(reservationId: string, signal?: AbortSignal): Promise<InventoryReservationRead> {
+  return getJson<InventoryReservationRead>(`/inventory-reservations/${reservationId}`, signal);
+}
+
+export function releaseInventoryReservationLine(
+  lineId: string,
+  payload: InventoryReservationReleaseCreate,
+  signal?: AbortSignal,
+): Promise<InventoryReservationLineRead> {
+  return postJson<InventoryReservationLineRead>(`/inventory-reservation-lines/${lineId}/releases`, payload, signal);
+}
+
+export function recordInventoryIssue(
+  farmId: string,
+  payload: InventoryIssueCreate,
+  signal?: AbortSignal,
+): Promise<InventoryIssueRead> {
+  return postJson<InventoryIssueRead>(`/farms/${farmId}/inventory-issues`, payload, signal);
+}
+
+export function listInventoryIssues(farmId: string, signal?: AbortSignal): Promise<InventoryIssueRead[]> {
+  return getJson<InventoryIssueRead[]>(`/farms/${farmId}/inventory-issues`, signal);
+}
+
+export function getItemFarmAvailability(
+  farmId: string,
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<ItemFarmAvailabilityRead> {
+  return getJson<ItemFarmAvailabilityRead>(`/farms/${farmId}/inventory-items/${itemId}/availability`, signal);
+}
+
+export function listIssuableSources(farmId: string, itemId: string, signal?: AbortSignal): Promise<IssuableSourceRead[]> {
+  return getJson<IssuableSourceRead[]>(`/farms/${farmId}/inventory-items/${itemId}/issuable-sources`, signal);
 }
 
 export function getQualityWorkQueue(signal?: AbortSignal): Promise<QualityWorkQueueRowRead[]> {

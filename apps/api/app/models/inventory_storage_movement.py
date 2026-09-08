@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-INVENTORY_STORAGE_MOVEMENT_KINDS = ("putaway", "transfer", "split_out", "split_in")
+INVENTORY_STORAGE_MOVEMENT_KINDS = ("putaway", "transfer", "split_out", "split_in", "issue")
 
 
 class InventoryStorageMovement(Base):
@@ -50,7 +50,19 @@ class InventoryStorageMovement(Base):
     always `SUM(quantity_delta)` over this table (destination = +, source
     = -), grouped by `inventory_quantity_cohort_id` and/or
     `location_id` -- never a stored aggregate anywhere on this table or
-    on `InventoryQuantityCohort`."""
+    on `InventoryQuantityCohort`.
+
+    STORE-INV-003: `issue` (source a `store_bin`, destination NULL -- the
+    same shape as `split_out`) is a genuine operator command (an
+    `InventoryIssue`), composed with `client_command_id = NULL` exactly
+    like `split_out`/`split_in` -- idempotency instead lives one level up,
+    on the `InventoryIssue` header. This one row IS the Issue line: Store
+    Bin custody -> "Issued to operations" custody, never touching
+    `InventoryExistenceLedgerEntry`. Deliberately excluded from
+    `get_cohort_total_custody`'s formula (STORE-INV-002B, unchanged) so
+    "Not put away" stays provably unaffected by Issue; "in Store Bin"
+    quantity is instead `total_custody - SUM(issue)`, computed by
+    `inventory_availability_service`."""
 
     __tablename__ = "inventory_storage_movements"
 
@@ -72,21 +84,30 @@ class InventoryStorageMovement(Base):
     client_command_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     request_fingerprint: Mapped[str | None] = mapped_column(String, nullable=True)
     note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # STORE-INV-003: set exactly when movement_kind = 'issue' -- this row IS
+    # the Issue line (one movement row is simultaneously the physical
+    # custody debit and the Issue line, never a separate/duplicated fact).
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # STORE-INV-003: optional even for an 'issue' movement -- NULL for a
+    # direct Issue line, set when this specific line fulfills part of one
+    # Reservation line.
+    reservation_line_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
     __table_args__ = (
         CheckConstraint(
-            "movement_kind IN ('putaway', 'transfer', 'split_out', 'split_in')",
+            "movement_kind IN ('putaway', 'transfer', 'split_out', 'split_in', 'issue')",
             name="ck_inventory_storage_movements_kind_allowed",
         ),
         # putaway/split_in: source NULL, destination populated.
-        # transfer: both populated, distinct. split_out: source
+        # transfer: both populated, distinct. split_out/issue: source
         # populated, destination NULL.
         CheckConstraint(
             "(movement_kind IN ('putaway', 'split_in') AND source_location_id IS NULL "
             "  AND destination_location_id IS NOT NULL) "
             "OR (movement_kind = 'transfer' AND source_location_id IS NOT NULL "
             "     AND destination_location_id IS NOT NULL AND source_location_id <> destination_location_id) "
-            "OR (movement_kind = 'split_out' AND source_location_id IS NOT NULL AND destination_location_id IS NULL)",
+            "OR (movement_kind IN ('split_out', 'issue') AND source_location_id IS NOT NULL "
+            "     AND destination_location_id IS NULL)",
             name="ck_inventory_storage_movements_shape",
         ),
         CheckConstraint(
@@ -95,15 +116,21 @@ class InventoryStorageMovement(Base):
             name="ck_inventory_storage_movements_quantity_positive",
         ),
         # putaway/transfer are real operator commands and always carry
-        # idempotency evidence; split_out/split_in are the internal
-        # custody-side half of a Quality command (already idempotent at
-        # the InventoryQualityCommand layer) and never carry their own.
+        # idempotency evidence; split_out/split_in/issue are the internal
+        # custody-side half of a larger command (already idempotent at that
+        # command's own header layer -- InventoryQualityCommand or
+        # InventoryIssue) and never carry their own.
         CheckConstraint(
             "(movement_kind IN ('putaway', 'transfer') AND client_command_id IS NOT NULL "
             "  AND request_fingerprint IS NOT NULL) "
-            "OR (movement_kind IN ('split_out', 'split_in') AND client_command_id IS NULL "
+            "OR (movement_kind IN ('split_out', 'split_in', 'issue') AND client_command_id IS NULL "
             "  AND request_fingerprint IS NULL)",
             name="ck_inventory_storage_movements_command_evidence_matches_kind",
+        ),
+        CheckConstraint(
+            "(movement_kind = 'issue' AND issue_id IS NOT NULL) "
+            "OR (movement_kind != 'issue' AND issue_id IS NULL AND reservation_line_id IS NULL)",
+            name="ck_inventory_storage_movements_issue_reference_matches_kind",
         ),
         Index(
             "ux_inventory_storage_movements_tenant_client_command_id", "tenant_id", "client_command_id",
@@ -123,6 +150,15 @@ class InventoryStorageMovement(Base):
             ["tenant_id", "farm_id", "destination_location_id"],
             ["locations.tenant_id", "locations.farm_id", "locations.id"],
             name="fk_inventory_storage_movements_tenant_farm_dest_location",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "issue_id"], ["inventory_issues.tenant_id", "inventory_issues.id"],
+            name="fk_inventory_storage_movements_tenant_issue",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "reservation_line_id"],
+            ["inventory_reservation_lines.tenant_id", "inventory_reservation_lines.id"],
+            name="fk_inventory_storage_movements_tenant_reservation_line",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_inventory_storage_movements_tenant_id_id"),
     )

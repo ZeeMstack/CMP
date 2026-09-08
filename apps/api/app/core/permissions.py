@@ -216,6 +216,15 @@ class Permission(StrEnum):
     # NOT granted this permission.
     INVENTORY_CUSTODY_MANAGE = "inventory_custody.manage"
 
+    # STORE-INV-003: Reservation (a fungible CLAIM, never touching
+    # existence/custody/quality) and Issue (a CUSTODY TRANSFER out of Store
+    # Bins) are deliberately two separate control powers, mirroring this
+    # catalog's own established segregation-of-duty precedent
+    # (INVENTORY_QUALITY_MANAGE vs INVENTORY_CUSTODY_MANAGE) -- `qc_officer`
+    # is explicitly NOT granted either.
+    INVENTORY_RESERVATION_MANAGE = "inventory_reservation.manage"
+    INVENTORY_ISSUE_MANAGE = "inventory_issue.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -283,6 +292,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # extends to physical custody (Bin deactivation is LOCATION_MANAGE,
         # already held above; custody commands are their own permission).
         Permission.INVENTORY_CUSTODY_MANAGE,
+        # STORE-INV-003: farm_manager's senior/accountable tier extends to
+        # Reservation and Issue as well -- the same "day-to-day operational
+        # execution" authority already granted for custody.
+        Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -418,6 +431,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # never inventory_quality.manage, which stays with the QC
         # specialist.
         Permission.INVENTORY_CUSTODY_MANAGE,
+        # STORE-INV-003: reserving stock for planned use and issuing it to
+        # farm operations are this role's own routine day-to-day execution
+        # work, same tier as receiving/custody above.
+        Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy

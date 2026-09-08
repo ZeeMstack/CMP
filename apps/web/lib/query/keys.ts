@@ -254,4 +254,17 @@ export const queryKeys = {
     ["tenant", tenantId, "inventory-quantity-cohorts", cohortId, "storage-breakdown"] as const,
   itemStorageBreakdown: (tenantId: string, itemId: string) =>
     ["tenant", tenantId, "inventory-items", itemId, "storage-breakdown"] as const,
+
+  // STORE-INV-003: Reservation & Issue -- Farm-scoped (Reservation is
+  // frozen at Farm + Item).
+  inventoryReservations: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "inventory-reservations"] as const,
+  inventoryReservation: (tenantId: string, reservationId: string) =>
+    ["tenant", tenantId, "inventory-reservations", reservationId] as const,
+  inventoryIssues: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "inventory-issues"] as const,
+  itemFarmAvailability: (tenantId: string, farmId: string, itemId: string) =>
+    ["tenant", tenantId, "farms", farmId, "inventory-items", itemId, "availability"] as const,
+  issuableSources: (tenantId: string, farmId: string, itemId: string) =>
+    ["tenant", tenantId, "farms", farmId, "inventory-items", itemId, "issuable-sources"] as const,
 };

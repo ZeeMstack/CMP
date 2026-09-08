@@ -40,7 +40,10 @@ import type {
   InventoryItemSeedProfileRemove,
   InventoryItemSeedProfileUpdate,
   InventoryItemUpdate,
+  InventoryIssueCreate,
   InventoryPutawayCreate,
+  InventoryReservationCreate,
+  InventoryReservationReleaseCreate,
   InventoryStorageTransferCreate,
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
@@ -2194,6 +2197,114 @@ export function useRecordInventoryStorageTransfer() {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateCustody(queryClient, tenantId);
     },
+  });
+}
+
+// --- STORE-INV-003: Reservation & Issue --------------------------------------
+
+function _invalidateReservationsAndIssues(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.inventoryReservations(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.inventoryIssues(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "inventory-items"] });
+  // Issue also moves physical custody -- keep the custody read model
+  // (Not put away / per-Bin balances) in sync too.
+  _invalidateCustody(queryClient, tenantId);
+}
+
+export function useInventoryReservations(farmId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.inventoryReservations(tenantId ?? "", farmId ?? ""),
+    queryFn: ({ signal }) => api.listInventoryReservations(farmId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useInventoryReservation(reservationId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.inventoryReservation(tenantId ?? "", reservationId ?? ""),
+    queryFn: ({ signal }) => api.getInventoryReservation(reservationId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(reservationId),
+  });
+}
+
+export function useCreateInventoryReservation() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ farmId, payload }: { farmId: string; payload: InventoryReservationCreate }) =>
+      api.createInventoryReservation(farmId, payload),
+    onSuccess: (_data, { farmId }) => {
+      if (!tenantId) return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+    onError: (error, { farmId }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useReleaseInventoryReservationLine() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { lineId, payload }: { lineId: string; payload: InventoryReservationReleaseCreate; farmId: string },
+    ) => api.releaseInventoryReservationLine(lineId, payload),
+    onSuccess: (_data, { farmId }) => {
+      if (!tenantId) return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+    onError: (error, { farmId }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useInventoryIssues(farmId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.inventoryIssues(tenantId ?? "", farmId ?? ""),
+    queryFn: ({ signal }) => api.listInventoryIssues(farmId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useRecordInventoryIssue() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ farmId, payload }: { farmId: string; payload: InventoryIssueCreate }) =>
+      api.recordInventoryIssue(farmId, payload),
+    onSuccess: (_data, { farmId }) => {
+      if (!tenantId) return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+    onError: (error, { farmId }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useItemFarmAvailability(farmId: string | undefined, itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.itemFarmAvailability(tenantId ?? "", farmId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.getItemFarmAvailability(farmId as string, itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(itemId),
+  });
+}
+
+export function useIssuableSources(farmId: string | undefined, itemId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.issuableSources(tenantId ?? "", farmId ?? "", itemId ?? ""),
+    queryFn: ({ signal }) => api.listIssuableSources(farmId as string, itemId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(itemId),
   });
 }
 
