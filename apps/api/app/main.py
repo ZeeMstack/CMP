@@ -29,6 +29,7 @@ from app.api.inventory_item_packaging import router as inventory_item_packaging_
 from app.api.inventory_item_seed_profiles import router as inventory_item_seed_profiles_router
 from app.api.inventory_issues import router as inventory_issues_router
 from app.api.inventory_items import router as inventory_items_router
+from app.api.inventory_material_events import router as inventory_material_events_router
 from app.api.inventory_quality import router as inventory_quality_router
 from app.api.inventory_reservations import router as inventory_reservations_router
 from app.api.inventory_storage import router as inventory_storage_router
@@ -85,6 +86,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(inventory_storage_router)
     api.include_router(inventory_reservations_router)
     api.include_router(inventory_issues_router)
+    api.include_router(inventory_material_events_router)
     api.include_router(movements_router)
     api.include_router(crops_router)
     api.include_router(production_systems_router)

@@ -41,9 +41,12 @@ import type {
   InventoryItemSeedProfileUpdate,
   InventoryItemUpdate,
   InventoryIssueCreate,
+  InventoryConsumptionCreate,
   InventoryPutawayCreate,
   InventoryReservationCreate,
   InventoryReservationReleaseCreate,
+  InventoryReturnCreate,
+  InventoryScrapCreate,
   InventoryStorageTransferCreate,
   LeafyProductionTransferCreate,
   LocationBulkChildrenCreate,
@@ -2305,6 +2308,90 @@ export function useIssuableSources(farmId: string | undefined, itemId: string | 
     queryKey: queryKeys.issuableSources(tenantId ?? "", farmId ?? "", itemId ?? ""),
     queryFn: ({ signal }) => api.listIssuableSources(farmId as string, itemId as string, signal),
     enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(itemId),
+  });
+}
+
+// --- STORE-INV-004: Consumption, Return & Scrap ------------------------------
+
+function _invalidateMaterialEvents(
+  queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string, issueLineId?: string,
+) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.outstandingIssuedMaterial(tenantId, farmId) });
+  if (issueLineId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.issueLineReconciliation(tenantId, issueLineId) });
+  }
+  _invalidateReservationsAndIssues(queryClient, tenantId, farmId);
+}
+
+export function useOutstandingIssuedMaterial(farmId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.outstandingIssuedMaterial(tenantId ?? "", farmId ?? ""),
+    queryFn: ({ signal }) => api.listOutstandingIssuedMaterial(farmId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useIssueLineReconciliation(issueLineId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.issueLineReconciliation(tenantId ?? "", issueLineId ?? ""),
+    queryFn: ({ signal }) => api.getIssueLineReconciliation(issueLineId as string, signal),
+    enabled: Boolean(tenantId) && Boolean(issueLineId),
+  });
+}
+
+export function useRecordInventoryConsumption() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ payload }: { farmId: string; payload: InventoryConsumptionCreate }) =>
+      api.recordInventoryConsumption(payload),
+    onSuccess: (_data, { farmId, payload }) => {
+      if (!tenantId) return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id);
+    },
+    onError: (error, { farmId, payload }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id);
+    },
+  });
+}
+
+export function useRecordInventoryReturn() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ payload }: { farmId: string; payload: InventoryReturnCreate }) =>
+      api.recordInventoryReturn(payload),
+    onSuccess: (_data, { farmId, payload }) => {
+      if (!tenantId) return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id);
+      _invalidateCustody(queryClient, tenantId);
+    },
+    onError: (error, { farmId, payload }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id);
+      _invalidateCustody(queryClient, tenantId);
+    },
+  });
+}
+
+export function useRecordInventoryScrap() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ payload }: { farmId: string; payload: InventoryScrapCreate }) => api.recordInventoryScrap(payload),
+    onSuccess: (_data, { farmId, payload }) => {
+      if (!tenantId) return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id ?? undefined);
+      _invalidateCustody(queryClient, tenantId);
+    },
+    onError: (error, { farmId, payload }) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateMaterialEvents(queryClient, tenantId, farmId, payload.issue_line_id ?? undefined);
+      _invalidateCustody(queryClient, tenantId);
+    },
   });
 }
 

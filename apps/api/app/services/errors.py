@@ -2072,3 +2072,51 @@ class InventoryIssueSourceNotUsableError(DomainError):
 class ReservationLineItemMismatchError(DomainError):
     """Raised when an Issue line's `reservation_line_id` targets a
     Reservation line for a different `InventoryItem` than the line's own."""
+
+
+# --- STORE-INV-004: Consumption, Return & Scrap -----------------------------
+
+
+class InventoryIssueLineNotFoundError(DomainError):
+    """Raised when a referenced `issue_line_id` does not resolve to an
+    `InventoryStorageMovement` row (`movement_kind = 'issue'`) owned by this
+    tenant."""
+
+
+class InsufficientIssueLineOutstandingError(DomainError):
+    """Raised when a Consumption, Return, or Scrap-from-issued command
+    requests more than an Issue line's own current outstanding balance
+    (`issued - consumed - returned - scrapped`, never a stored aggregate)."""
+
+
+class InventoryConsumptionSourceNotUsableError(DomainError):
+    """Raised when a Consumption command's Issue line's own source cohort is
+    not CURRENTLY usable (quarantined/held/rejected/expired) -- Quality
+    safety always wins, mirroring `InventoryIssueSourceNotUsableError`.
+    Return and Scrap of the same material remain permitted regardless."""
+
+
+class InventoryMaterialEventCommandReusedWithDifferentPayloadError(DomainError):
+    """Shared idempotency-conflict error for Consumption/Return/Scrap --
+    mirrors `InventoryStorageCommandReusedWithDifferentPayloadError`'s own
+    one-class-per-command-family precedent."""
+
+
+class InventoryMaterialEventValidationError(DomainError):
+    """Generic domain-validation bucket for a Consumption/Return/Scrap
+    command's structural shape (source_kind/issue_line_id/
+    source_location_id/destination_location_id combination, or a scrap with
+    no reason)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InventoryExistenceReversalUnsupportedForEntryKindError(DomainError):
+    """Raised when a generic existence-ledger reversal targets a
+    `consumption` or `scrap` entry -- reversing either would restore
+    existence without restoring the matching custody/Issue-line state
+    (docs/domain/STORE_INVENTORY_MODEL.md), so this path is blocked outright
+    rather than building an unsafe partial correction. A future coordinated
+    correction workflow, if ever built, is a separate ticket."""

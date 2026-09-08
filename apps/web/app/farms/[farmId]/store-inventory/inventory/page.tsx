@@ -10,7 +10,8 @@ import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
 import {
   useCohortStorageBreakdown, useInventoryItems, useItemExistenceProvenance, useItemFarmAvailability,
-  useItemsExistenceSummary, useItemStorageBreakdown, useLocationsTree, useRecordInventoryStorageTransfer, useUoms,
+  useItemsExistenceSummary, useItemStorageBreakdown, useLocationsTree, useRecordInventoryScrap,
+  useRecordInventoryStorageTransfer, useUoms,
 } from "@/lib/query/hooks";
 
 const inputClass =
@@ -128,6 +129,83 @@ function MoveStockForm({
   );
 }
 
+/** STORE-INV-004: compact "Record scrap" -- Source (Not put away / a
+ * specific Bin) / Qty / Reason, scoped to one cohort. Mirrors
+ * `MoveStockForm`'s own compact shape exactly. */
+function ScrapForm({
+  cohortId, farmId, buckets, onDone,
+}: {
+  cohortId: string;
+  farmId: string;
+  buckets: { location_id: string | null; label: string; balance: string }[];
+  onDone: () => void;
+}) {
+  const [sourceKey, setSourceKey] = useState(buckets[0] ? (buckets[0].location_id ?? "not_put_away") : "");
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
+  const scrapMutation = useRecordInventoryScrap();
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-surface p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Source</span>
+          <select className={inputClass} value={sourceKey} onChange={(e) => setSourceKey(e.target.value)}>
+            {buckets.map((b) => (
+              <option key={b.location_id ?? "not_put_away"} value={b.location_id ?? "not_put_away"}>
+                {b.label} ({b.balance})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Quantity</span>
+          <input
+            className={inputClass} type="number" min="0" step="any" value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Reason</span>
+          <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. damaged packaging" />
+        </label>
+      </div>
+
+      {error && <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{error.message}</p>}
+
+      <div className="flex gap-2">
+        <Button
+          type="button" variant="primary"
+          disabled={scrapMutation.isPending || !sourceKey || !quantity || Number(quantity) <= 0 || !reason.trim()}
+          onClick={() => {
+            setError(null);
+            const isNotPutAway = sourceKey === "not_put_away";
+            scrapMutation.mutate(
+              {
+                farmId,
+                payload: {
+                  client_command_id: crypto.randomUUID(),
+                  source_kind: isNotPutAway ? "not_put_away" : "store_bin",
+                  inventory_quantity_cohort_id: cohortId,
+                  source_location_id: isNotPutAway ? null : sourceKey,
+                  quantity, reason: reason.trim(), effective_time: new Date().toISOString(),
+                },
+              },
+              { onSuccess: () => { setQuantity(""); setReason(""); onDone(); }, onError: (err) => setError(asAppError(err)) },
+            );
+          }}
+        >
+          {scrapMutation.isPending ? "Recording…" : "Record scrap"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onDone} disabled={scrapMutation.isPending}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CohortCustodyRow({
   cohortId, farmId, activeBins,
 }: {
@@ -137,6 +215,7 @@ function CohortCustodyRow({
 }) {
   const breakdownQuery = useCohortStorageBreakdown(cohortId);
   const [moving, setMoving] = useState(false);
+  const [scrapping, setScrapping] = useState(false);
   const buckets = breakdownQuery.data?.buckets ?? [];
   const binBuckets = buckets.filter((b) => b.location_id !== null) as { location_id: string; label: string; balance: string }[];
 
@@ -150,11 +229,18 @@ function CohortCustodyRow({
             ? "Nothing recorded"
             : buckets.map((b) => `${b.label}: ${b.balance}`).join(" · ")}
         </span>
-        {binBuckets.length > 0 && !moving && (
-          <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setMoving(true)}>
-            Move stock
-          </button>
-        )}
+        <div className="flex gap-2">
+          {binBuckets.length > 0 && !moving && (
+            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setMoving(true)}>
+              Move stock
+            </button>
+          )}
+          {buckets.length > 0 && !scrapping && (
+            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setScrapping(true)}>
+              Scrap
+            </button>
+          )}
+        </div>
       </div>
       {moving && binBuckets.length > 0 && (
         <MoveStockForm
@@ -164,6 +250,9 @@ function CohortCustodyRow({
           toBins={activeBins}
           onDone={() => setMoving(false)}
         />
+      )}
+      {scrapping && buckets.length > 0 && (
+        <ScrapForm cohortId={cohortId} farmId={farmId} buckets={buckets} onDone={() => setScrapping(false)} />
       )}
     </div>
   );

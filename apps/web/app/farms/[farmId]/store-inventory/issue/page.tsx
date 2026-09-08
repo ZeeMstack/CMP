@@ -7,14 +7,22 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
-import type { InventoryReservationLineRead, InventoryReservationRead, IssuableSourceRead } from "@/lib/api/client";
+import type {
+  InventoryReservationLineRead, InventoryReservationRead, IssuableSourceRead, OutstandingIssuedMaterialRowRead,
+} from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { activeBinsWithPaths } from "@/lib/locations/bins";
 import {
   useCreateInventoryReservation,
   useInventoryItems,
   useInventoryReservations,
   useIssuableSources,
+  useLocationsTree,
+  useOutstandingIssuedMaterial,
+  useRecordInventoryConsumption,
   useRecordInventoryIssue,
+  useRecordInventoryReturn,
+  useRecordInventoryScrap,
   useReleaseInventoryReservationLine,
   useUoms,
 } from "@/lib/query/hooks";
@@ -388,7 +396,9 @@ function ReservationLineDrawerRow({
           {formatQty(line.requested_quantity_base, uomCode)}
         </span>
         {line.blocked_by_quality && (
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">Blocked by quality</span>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+            Blocked — insufficient usable Store stock
+          </span>
         )}
       </div>
 
@@ -479,7 +489,7 @@ function ReservationRow({ farmId, reservation }: { farmId: string; reservation: 
   const itemNames = reservation.lines
     .map((l) => items.find((i) => i.id === l.inventory_item_id)?.name ?? l.inventory_item_id)
     .join(", ");
-  const status = totalRemaining === 0 ? "Fulfilled" : anyBlocked ? "Blocked by quality" : "Active";
+  const status = totalRemaining === 0 ? "Fulfilled" : anyBlocked ? "Blocked — insufficient usable Store stock" : "Active";
   const firstUom = items.find((i) => i.id === reservation.lines[0]?.inventory_item_id);
   const uomCode = firstUom ? uomsById.get(firstUom.base_uom_id) : undefined;
 
@@ -541,6 +551,204 @@ function ReservationsPanel({ farmId }: { farmId: string }) {
   );
 }
 
+// --- ISSUED MATERIAL -------------------------------------------------------------
+
+type IssuedMaterialAction = "consume" | "return" | "scrap" | null;
+
+function ConsumeInlinePanel({ farmId, row, onDone }: { farmId: string; row: OutstandingIssuedMaterialRowRead; onDone: () => void }) {
+  const [quantity, setQuantity] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
+  const consumeMutation = useRecordInventoryConsumption();
+  const { uomsById } = useItemOptions();
+  const uomCode = uomsById.get(row.base_uom_id);
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
+        <input
+          className={inputClass} type="number" min="0" step="any" value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+        />
+      </label>
+      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      <Button
+        type="button" variant="primary"
+        disabled={!quantity || Number(quantity) <= 0 || consumeMutation.isPending}
+        onClick={() => {
+          setError(null);
+          consumeMutation.mutate(
+            { farmId, payload: { client_command_id: crypto.randomUUID(), issue_line_id: row.issue_line_id, quantity, effective_time: nowIso() } },
+            { onSuccess: onDone, onError: (err) => setError(asAppError(err)) },
+          );
+        }}
+      >
+        {consumeMutation.isPending ? "Recording…" : "Confirm consumption"}
+      </Button>
+      <Button type="button" variant="secondary" onClick={onDone} disabled={consumeMutation.isPending}>Cancel</Button>
+    </div>
+  );
+}
+
+function ReturnInlinePanel({
+  farmId, row, activeBins, onDone,
+}: { farmId: string; row: OutstandingIssuedMaterialRowRead; activeBins: { id: string; label: string }[]; onDone: () => void }) {
+  const [quantity, setQuantity] = useState("");
+  const [binId, setBinId] = useState(activeBins[0]?.id ?? "");
+  const [error, setError] = useState<AppError | null>(null);
+  const returnMutation = useRecordInventoryReturn();
+  const { uomsById } = useItemOptions();
+  const uomCode = uomsById.get(row.base_uom_id);
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
+        <input
+          className={inputClass} type="number" min="0" step="any" value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Bin</span>
+        <select className={inputClass} value={binId} onChange={(e) => setBinId(e.target.value)}>
+          {activeBins.map((b) => (
+            <option key={b.id} value={b.id}>{b.label}</option>
+          ))}
+        </select>
+      </label>
+      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      <Button
+        type="button" variant="primary"
+        disabled={!quantity || Number(quantity) <= 0 || !binId || returnMutation.isPending}
+        onClick={() => {
+          setError(null);
+          returnMutation.mutate(
+            {
+              farmId,
+              payload: {
+                client_command_id: crypto.randomUUID(), issue_line_id: row.issue_line_id,
+                destination_location_id: binId, quantity, effective_time: nowIso(),
+              },
+            },
+            { onSuccess: onDone, onError: (err) => setError(asAppError(err)) },
+          );
+        }}
+      >
+        {returnMutation.isPending ? "Recording…" : "Confirm return"}
+      </Button>
+      <Button type="button" variant="secondary" onClick={onDone} disabled={returnMutation.isPending}>Cancel</Button>
+    </div>
+  );
+}
+
+function ScrapFromIssuedInlinePanel({ farmId, row, onDone }: { farmId: string; row: OutstandingIssuedMaterialRowRead; onDone: () => void }) {
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
+  const scrapMutation = useRecordInventoryScrap();
+  const { uomsById } = useItemOptions();
+  const uomCode = uomsById.get(row.base_uom_id);
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
+        <input
+          className={inputClass} type="number" min="0" step="any" value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Reason</span>
+        <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. spill" />
+      </label>
+      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      <Button
+        type="button" variant="primary"
+        disabled={!quantity || Number(quantity) <= 0 || !reason.trim() || scrapMutation.isPending}
+        onClick={() => {
+          setError(null);
+          scrapMutation.mutate(
+            {
+              farmId,
+              payload: {
+                client_command_id: crypto.randomUUID(), source_kind: "issued", issue_line_id: row.issue_line_id,
+                quantity, reason: reason.trim(), effective_time: nowIso(),
+              },
+            },
+            { onSuccess: onDone, onError: (err) => setError(asAppError(err)) },
+          );
+        }}
+      >
+        {scrapMutation.isPending ? "Recording…" : "Record scrap"}
+      </Button>
+      <Button type="button" variant="secondary" onClick={onDone} disabled={scrapMutation.isPending}>Cancel</Button>
+    </div>
+  );
+}
+
+function IssuedMaterialRow({ farmId, row, activeBins }: { farmId: string; row: OutstandingIssuedMaterialRowRead; activeBins: { id: string; label: string }[] }) {
+  const [action, setAction] = useState<IssuedMaterialAction>(null);
+  const { uomsById } = useItemOptions();
+  const uomCode = uomsById.get(row.base_uom_id);
+
+  return (
+    <li className="rounded-xl border border-wl-border bg-wl-surface-raised">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3 text-xs">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-wl-text">{row.issue_code} · {row.purpose}</span>
+          <span className="text-[11px] text-wl-text-tertiary">
+            {row.item_name}{row.manufacturer_lot_reference ? ` — Lot ${row.manufacturer_lot_reference}` : ""}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-wl-text-secondary">
+          <span>Issued: {formatQty(row.issued_quantity, uomCode)}</span>
+          <span className="font-medium text-wl-text">Outstanding: {formatQty(row.outstanding_quantity, uomCode)}</span>
+          <div className="flex gap-1">
+            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setAction(action === "consume" ? null : "consume")}>Consume</button>
+            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setAction(action === "return" ? null : "return")}>Return</button>
+            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setAction(action === "scrap" ? null : "scrap")}>Scrap</button>
+          </div>
+        </div>
+      </div>
+      {action === "consume" && (
+        <div className="border-t border-wl-border/60 p-2">
+          <ConsumeInlinePanel farmId={farmId} row={row} onDone={() => setAction(null)} />
+        </div>
+      )}
+      {action === "return" && (
+        <div className="border-t border-wl-border/60 p-2">
+          <ReturnInlinePanel farmId={farmId} row={row} activeBins={activeBins} onDone={() => setAction(null)} />
+        </div>
+      )}
+      {action === "scrap" && (
+        <div className="border-t border-wl-border/60 p-2">
+          <ScrapFromIssuedInlinePanel farmId={farmId} row={row} onDone={() => setAction(null)} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+function IssuedMaterialPanel({ farmId }: { farmId: string }) {
+  const rowsQuery = useOutstandingIssuedMaterial(farmId);
+  const treeQuery = useLocationsTree(farmId);
+  const activeBins = activeBinsWithPaths(treeQuery.data ?? []);
+  const rows = rowsQuery.data ?? [];
+
+  if (rowsQuery.isLoading) return <p className="text-sm text-wl-text-secondary">Loading…</p>;
+  if (rows.length === 0) return <p className="text-sm text-wl-text">No outstanding issued material.</p>;
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {rows.map((row) => (
+        <IssuedMaterialRow key={row.issue_line_id} farmId={farmId} row={row} activeBins={activeBins} />
+      ))}
+    </ul>
+  );
+}
+
 // --- PAGE ----------------------------------------------------------------------
 
 /** STORE-INV-003: Issue -- one compact two-mode page, never separate
@@ -549,13 +757,13 @@ function ReservationsPanel({ farmId }: { farmId: string }) {
  * them via a compact per-line drawer. */
 export default function StoreInventoryIssuePage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const [mode, setMode] = useState<"issue-now" | "reservations">("issue-now");
+  const [mode, setMode] = useState<"issue-now" | "reservations" | "issued-material">("issue-now");
 
   return (
     <div>
       <PageHeader
         title="Issue"
-        description="Move material from Store Bin custody to farm-operational custody, directly or against a Reservation."
+        description="Move material from Store Bin custody to farm-operational custody, and settle it once it's been consumed, returned, or scrapped."
         breadcrumbs={
           <Breadcrumbs
             items={[
@@ -568,13 +776,18 @@ export default function StoreInventoryIssuePage() {
       />
       <div className="mb-4">
         <Tabs
-          tabs={[{ id: "issue-now", label: "Issue now" }, { id: "reservations", label: "Reservations" }]}
+          tabs={[
+            { id: "issue-now", label: "Issue now" }, { id: "reservations", label: "Reservations" },
+            { id: "issued-material", label: "Issued material" },
+          ]}
           activeId={mode}
-          onChange={(id) => setMode(id as "issue-now" | "reservations")}
+          onChange={(id) => setMode(id as "issue-now" | "reservations" | "issued-material")}
           aria-label="Issue mode"
         />
       </div>
-      {mode === "issue-now" ? <IssueNowPanel farmId={farmId} /> : <ReservationsPanel farmId={farmId} />}
+      {mode === "issue-now" && <IssueNowPanel farmId={farmId} />}
+      {mode === "reservations" && <ReservationsPanel farmId={farmId} />}
+      {mode === "issued-material" && <IssuedMaterialPanel farmId={farmId} />}
     </div>
   );
 }

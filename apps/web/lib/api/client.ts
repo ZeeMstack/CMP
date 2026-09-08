@@ -1016,6 +1016,14 @@ export type InventoryIssueRead = components["schemas"]["InventoryIssueRead"];
 export type ItemFarmAvailabilityRead = components["schemas"]["ItemFarmAvailabilityRead"];
 export type IssuableSourceRead = components["schemas"]["IssuableSourceRead"];
 
+// --- STORE-INV-004 -- Consumption, Return & Scrap ----------------------------
+export type InventoryConsumptionCreate = components["schemas"]["InventoryConsumptionCreate"];
+export type InventoryReturnCreate = components["schemas"]["InventoryReturnCreate"];
+export type InventoryScrapCreate = components["schemas"]["InventoryScrapCreate"];
+export type InventoryMaterialEventRead = components["schemas"]["InventoryMaterialEventRead"];
+export type IssueLineReconciliationRead = components["schemas"]["IssueLineReconciliationRead"];
+export type OutstandingIssuedMaterialRowRead = components["schemas"]["OutstandingIssuedMaterialRowRead"];
+
 export type PackSpecificationRead = components["schemas"]["PackSpecificationRead"];
 export type PackSpecificationCreate = components["schemas"]["PackSpecificationCreate"];
 export type PackSpecificationVersionRead = components["schemas"]["PackSpecificationVersionRead"];
@@ -1476,6 +1484,40 @@ export function getItemFarmAvailability(
 
 export function listIssuableSources(farmId: string, itemId: string, signal?: AbortSignal): Promise<IssuableSourceRead[]> {
   return getJson<IssuableSourceRead[]>(`/farms/${farmId}/inventory-items/${itemId}/issuable-sources`, signal);
+}
+
+// STORE-INV-004 -- Consumption (reduces Existence + Issue-line outstanding),
+// Return (Issue-line outstanding -> a Store Bin, Existence unchanged), and
+// Scrap (reduces Existence, from exactly one of three source buckets).
+
+export function recordInventoryConsumption(
+  payload: InventoryConsumptionCreate, signal?: AbortSignal,
+): Promise<InventoryMaterialEventRead> {
+  return postJson<InventoryMaterialEventRead>("/inventory-consumptions", payload, signal);
+}
+
+export function recordInventoryReturn(
+  payload: InventoryReturnCreate, signal?: AbortSignal,
+): Promise<InventoryMaterialEventRead> {
+  return postJson<InventoryMaterialEventRead>("/inventory-returns", payload, signal);
+}
+
+export function recordInventoryScrap(
+  payload: InventoryScrapCreate, signal?: AbortSignal,
+): Promise<InventoryMaterialEventRead> {
+  return postJson<InventoryMaterialEventRead>("/inventory-scraps", payload, signal);
+}
+
+export function getIssueLineReconciliation(
+  issueLineId: string, signal?: AbortSignal,
+): Promise<IssueLineReconciliationRead> {
+  return getJson<IssueLineReconciliationRead>(`/inventory-issue-lines/${issueLineId}/reconciliation`, signal);
+}
+
+export function listOutstandingIssuedMaterial(
+  farmId: string, signal?: AbortSignal,
+): Promise<OutstandingIssuedMaterialRowRead[]> {
+  return getJson<OutstandingIssuedMaterialRowRead[]>(`/farms/${farmId}/outstanding-issued-material`, signal);
 }
 
 export function getQualityWorkQueue(signal?: AbortSignal): Promise<QualityWorkQueueRowRead[]> {

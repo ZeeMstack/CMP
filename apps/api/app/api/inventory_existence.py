@@ -22,6 +22,7 @@ from app.services.errors import (
     InventoryExistenceReversalCommandReusedWithDifferentPayloadError,
     InventoryExistenceReversalOfReversalError,
     InventoryExistenceReversalTargetAlreadyReversedError,
+    InventoryExistenceReversalUnsupportedForEntryKindError,
     InventoryQuantityCohortNotFoundError,
 )
 
@@ -77,7 +78,7 @@ def record_existence_reversal(
         ) from exc
     except (
         InventoryExistenceReversalOfReversalError, InventoryExistenceReversalTargetAlreadyReversedError,
-        InsufficientCohortBalanceError,
+        InsufficientCohortBalanceError, InventoryExistenceReversalUnsupportedForEntryKindError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return InventoryExistenceLedgerEntryRead.model_validate(entry)

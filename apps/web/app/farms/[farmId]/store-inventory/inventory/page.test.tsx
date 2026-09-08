@@ -19,18 +19,30 @@ const ITEM = {
   status: "active", created_at: "2026-09-01T00:00:00Z",
 };
 
-function stubFetch() {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+type PostHandler = (url: string, body: Record<string, unknown>) => Response;
+
+function stubFetch(
+  opts: { provenance?: unknown[]; cohortBuckets?: unknown[]; postHandler?: PostHandler } = {},
+) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (init?.method === "POST") {
+      const body = init.body ? JSON.parse(String(init.body)) : {};
+      if (opts.postHandler) return opts.postHandler(url, body);
+      return jsonResponse({});
+    }
     if (url.includes("/inventory-items?") || url.endsWith("/inventory-items")) return jsonResponse([ITEM]);
     if (url.endsWith("/existence")) return jsonResponse({ inventory_item_id: "item-1", existing_quantity: "500.000" });
     if (url.endsWith("/usable-existence")) return jsonResponse({ inventory_item_id: "item-1", usable_quantity: "450.000" });
-    if (url.endsWith("/provenance")) return jsonResponse([]);
+    if (url.endsWith("/provenance")) return jsonResponse(opts.provenance ?? []);
     if (url.includes("/availability")) {
       return jsonResponse({
         inventory_item_id: "item-1", farm_id: "farm-1", in_store_quantity: "400.000", reserved_quantity: "70.000",
         issued_to_operations_quantity: "30.000", available_to_issue_quantity: "330.000",
       });
+    }
+    if (url.includes("/inventory-quantity-cohorts/") && url.includes("/storage-breakdown")) {
+      return jsonResponse({ inventory_quantity_cohort_id: "cohort-1", buckets: opts.cohortBuckets ?? [] });
     }
     if (url.includes("/storage-breakdown")) {
       return jsonResponse({ inventory_item_id: "item-1", not_put_away_quantity: "120.000", bins: [] });
@@ -72,5 +84,43 @@ describe("StoreInventoryInventoryPage", () => {
     expect(screen.getByText(/Issued to operations \(this Farm\)/)).toBeInTheDocument();
     expect(screen.getByText(/Not put away \(company-wide\)/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("120.000 kg")).toBeInTheDocument());
+  });
+
+  it("records a compact Scrap against a Store Bin bucket", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    stubFetch({
+      provenance: [{ inventory_quantity_cohort_id: "cohort-1", balance: "20.000", received_at_farm_id: "farm-1" }],
+      cohortBuckets: [{ location_id: "bin-1", label: "Bin 01", balance: "20.000" }],
+      postHandler: (url, body) => {
+        if (url.includes("/inventory-scraps")) {
+          capturedBody = body;
+          return jsonResponse({
+            id: "evt-1", event_kind: "scrap", source_kind: "store_bin", issue_line_id: null,
+            inventory_quantity_cohort_id: "cohort-1", source_location_id: "bin-1", destination_location_id: null,
+            quantity_base: body.quantity, reason: body.reason, effective_time: "2026-09-01T00:00:00Z",
+            recorded_time: "2026-09-01T00:00:00Z", actor_user_id: "u1",
+          }, 201);
+        }
+        return jsonResponse({});
+      },
+    });
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
+    await waitFor(() => expect(screen.getByText(/Bin 01/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Scrap" }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/damaged packaging/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getAllByRole("spinbutton")[0], { target: { value: "2" } });
+    fireEvent.change(screen.getByPlaceholderText(/damaged packaging/i), { target: { value: "torn bag" } });
+    fireEvent.click(screen.getByRole("button", { name: /record scrap/i }));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({
+      source_kind: "store_bin", inventory_quantity_cohort_id: "cohort-1", source_location_id: "bin-1",
+      quantity: "2", reason: "torn bag",
+    });
   });
 });

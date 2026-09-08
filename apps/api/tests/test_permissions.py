@@ -71,6 +71,15 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.INVENTORY_ITEM_READ, Permission.INVENTORY_ITEM_MANAGE,
         Permission.UNIT_OF_MEASURE_READ,
         Permission.INVENTORY_READ, Permission.INVENTORY_ADJUSTMENT_MANAGE,
+        # STORE-INV-002B/STORE-INV-003 (pre-existing, previously untranscribed
+        # here): farm_manager's own senior/accountable tier already extended
+        # to physical custody, Reservation, and Issue.
+        Permission.INVENTORY_CUSTODY_MANAGE,
+        Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
+        # STORE-INV-004: and now to Consumption, Return, and Scrap -- same
+        # senior/accountable tier as Issue above.
+        Permission.INVENTORY_CONSUMPTION_MANAGE, Permission.INVENTORY_RETURN_MANAGE,
+        Permission.INVENTORY_SCRAP_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -174,6 +183,15 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # STORE-INV-002A.1: the first genuinely operational Store &
         # Inventory authority -- receiving only, never adjustment/quality.
         Permission.INVENTORY_READ, Permission.INVENTORY_RECEIPT_MANAGE,
+        # STORE-INV-002B/STORE-INV-003 (pre-existing, previously untranscribed
+        # here): this role's own routine day-to-day physical custody,
+        # Reservation, and Issue execution work.
+        Permission.INVENTORY_CUSTODY_MANAGE,
+        Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
+        # STORE-INV-004: and now Return, Scrap, and Consumption too -- same
+        # routine execution tier as Issue above.
+        Permission.INVENTORY_RETURN_MANAGE, Permission.INVENTORY_SCRAP_MANAGE,
+        Permission.INVENTORY_CONSUMPTION_MANAGE,
     }),
     "qc_officer": frozenset({
         Permission.FARM_READ,
@@ -184,6 +202,14 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.INVENTORY_CATEGORY_READ,
         Permission.INVENTORY_ITEM_READ,
         Permission.UNIT_OF_MEASURE_READ,
+        # STORE-INV-002A.2 (pre-existing, previously untranscribed here):
+        # qc_officer's own genuinely operational Store & Inventory
+        # authority -- visibility into existence/receipts/lots plus the
+        # quality-disposition workflow itself. Deliberately never
+        # inventory_receipt.manage/inventory_adjustment.manage, and (as of
+        # STORE-INV-004) never inventory_consumption/return/scrap.manage
+        # either -- qc_officer decides disposition, not execution.
+        Permission.INVENTORY_READ, Permission.INVENTORY_QUALITY_MANAGE,
         Permission.CROP_READ,
         Permission.CROP_BATCH_READ,
         Permission.SEED_LOT_READ,
@@ -302,8 +328,11 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
 }
 
 _EXPECTED_COUNTS = {
-    "farm_manager": 36, "head_grower": 31, "production_supervisor": 31, "operator": 21,
-    "storekeeper": 14, "qc_officer": 23, "packing_supervisor": 16, "cold_store_supervisor": 15,
+    # farm_manager/storekeeper: STORE-INV-004 additions on top of the
+    # STORE-INV-002B/003 grants this pin had never caught up with either
+    # (see the "previously untranscribed" comments above).
+    "farm_manager": 42, "head_grower": 31, "production_supervisor": 31, "operator": 21,
+    "storekeeper": 20, "qc_officer": 25, "packing_supervisor": 16, "cold_store_supervisor": 15,
     "dispatch_officer": 15, "auditor": 24, "read_only": 24,
 }
 
@@ -311,7 +340,12 @@ _EXPECTED_COUNTS = {
 def test_tenant_admin_has_every_currently_defined_permission() -> None:
     assert get_permissions_for_role("tenant_admin") == _ALL_PERMISSIONS
     assert len(_ALL_PERMISSIONS) > 0  # sanity: the catalog is not accidentally empty
-    assert len(_ALL_PERMISSIONS) == 55
+    # STORE-INV-004 adds 3 (inventory_consumption/return/scrap.manage); the
+    # prior "55" was already stale by 4 (INVENTORY_QUALITY_MANAGE,
+    # INVENTORY_CUSTODY_MANAGE, INVENTORY_RESERVATION_MANAGE,
+    # INVENTORY_ISSUE_MANAGE from STORE-INV-002A.2/002B/003, never
+    # transcribed here either) -- 55 + 4 + 3 = 62, the actual current size.
+    assert len(_ALL_PERMISSIONS) == 62
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -447,6 +481,33 @@ def test_qc_officer_negative_grants() -> None:
     assert Permission.OBSERVATION_ENTRY_MANAGE in granted
     assert Permission.OBSERVATION_DEFINITION_MANAGE not in granted
     assert Permission.RECALL_MANAGE not in granted
+    # STORE-INV-004: qc_officer decides disposition, not Consumption/
+    # Return/Scrap execution -- none of the three are granted.
+    assert Permission.INVENTORY_CONSUMPTION_MANAGE not in granted
+    assert Permission.INVENTORY_RETURN_MANAGE not in granted
+    assert Permission.INVENTORY_SCRAP_MANAGE not in granted
+
+
+def test_farm_manager_and_storekeeper_hold_consumption_return_scrap_manage() -> None:
+    """STORE-INV-004: dedicated, explicitly-named checks for the three new
+    permissions this ticket adds -- both the day-to-day execution role
+    (storekeeper) and the senior/accountable tier (farm_manager) hold all
+    three, mirroring their existing Issue grant exactly."""
+    for role in ("farm_manager", "storekeeper"):
+        granted = get_permissions_for_role(role)
+        assert Permission.INVENTORY_CONSUMPTION_MANAGE in granted
+        assert Permission.INVENTORY_RETURN_MANAGE in granted
+        assert Permission.INVENTORY_SCRAP_MANAGE in granted
+
+
+def test_tenant_admin_holds_consumption_return_scrap_manage() -> None:
+    """STORE-INV-004: tenant_admin receives the three new permissions
+    exclusively through the all-permissions mechanism (`_ALL_PERMISSIONS`),
+    never a separate explicit grant."""
+    granted = get_permissions_for_role("tenant_admin")
+    assert Permission.INVENTORY_CONSUMPTION_MANAGE in granted
+    assert Permission.INVENTORY_RETURN_MANAGE in granted
+    assert Permission.INVENTORY_SCRAP_MANAGE in granted
 
 
 def test_storekeeper_negative_grants() -> None:
@@ -479,10 +540,9 @@ def test_dispatch_officer_negative_grants() -> None:
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (47 as of BIOLOGICAL-DISPOSITION-AUTHZ-001), not the
-    literal number 43."""
+    catalog size (62 as of STORE-INV-004), not the literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 55
+    assert len(granted) == 62
     assert granted == _ALL_PERMISSIONS
 
 

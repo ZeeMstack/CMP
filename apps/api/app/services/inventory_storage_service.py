@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.models.goods_receipt import GoodsReceipt
 from app.models.goods_receipt_line import GoodsReceiptLine
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_lot import InventoryLot
+from app.models.inventory_material_event import InventoryMaterialEvent
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.inventory_storage_movement import InventoryStorageMovement
 from app.models.location import Location
@@ -302,10 +303,32 @@ def split_custody_core(
 # --- Reads -----------------------------------------------------------------
 
 
+def _cohort_settled_from_issued(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
+    """STORE-INV-004: total Consumption + Scrap-from-issued ever settled
+    against this cohort's own Issue lines -- reduces Existence without
+    touching `get_cohort_total_custody`'s own formula, so it must be added
+    back explicitly wherever "Not put away" is derived from those two
+    (see `get_cohort_not_put_away`)."""
+    return db.execute(
+        select(func.coalesce(func.sum(InventoryMaterialEvent.quantity_base), 0)).where(
+            InventoryMaterialEvent.inventory_quantity_cohort_id == cohort_id,
+            InventoryMaterialEvent.source_kind == "issued",
+            InventoryMaterialEvent.event_kind.in_(("consumption", "scrap")),
+        )
+    ).scalar_one()
+
+
 def get_cohort_not_put_away(db: Session, *, tenant_id: uuid.UUID, cohort_id: uuid.UUID) -> Decimal:
+    """`existence - in-Store - issued-to-operations` (docs' own formula),
+    computed here as `(existence - total_custody) + settled-from-issued` --
+    algebraically identical (STORE-INV-004 keeps `total_custody` and
+    `issued`/`returned` movement-only, so Consumption/Scrap-from-issued,
+    which touch existence but no movement row, must be added back to
+    avoid double-subtracting them)."""
     balance = get_cohort_balance(db, cohort_id=cohort_id)
     total_custody = get_cohort_total_custody(db, cohort_id=cohort_id)
-    return balance - total_custody
+    settled_from_issued = _cohort_settled_from_issued(db, cohort_id=cohort_id)
+    return balance - total_custody + settled_from_issued
 
 
 def get_cohort_bucket_breakdown(db: Session, *, tenant_id: uuid.UUID, cohort_id: uuid.UUID) -> list[dict]:
@@ -401,10 +424,12 @@ def get_item_storage_breakdown(db: Session, *, tenant_id: uuid.UUID, inventory_i
 
     total_existence = Decimal("0")
     total_custody = Decimal("0")
+    total_settled_from_issued = Decimal("0")
     per_bin: dict[uuid.UUID, Decimal] = {}
     for cohort_id in cohort_ids:
         total_existence += get_cohort_balance(db, cohort_id=cohort_id)
         total_custody += get_cohort_total_custody(db, cohort_id=cohort_id)
+        total_settled_from_issued += _cohort_settled_from_issued(db, cohort_id=cohort_id)
         rows = db.execute(
             select(
                 InventoryStorageMovement.source_location_id, InventoryStorageMovement.destination_location_id,
@@ -426,4 +451,4 @@ def get_item_storage_breakdown(db: Session, *, tenant_id: uuid.UUID, inventory_i
         {"location_id": loc_id, "label": (locations[loc_id].name if loc_id in locations else str(loc_id)), "balance": per_bin[loc_id]}
         for loc_id in bin_ids
     ]
-    return {"not_put_away_quantity": total_existence - total_custody, "bins": bins}
+    return {"not_put_away_quantity": total_existence - total_custody + total_settled_from_issued, "bins": bins}

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-ENTRY_KINDS = ("receipt", "adjustment", "reversal", "split_out", "split_in")
+ENTRY_KINDS = ("receipt", "adjustment", "reversal", "split_out", "split_in", "consumption", "scrap")
 
 
 class InventoryExistenceLedgerEntry(Base):
@@ -35,8 +35,16 @@ class InventoryExistenceLedgerEntry(Base):
     one reversal per target, no reversal-of-reversal. `split_out`/
     `split_in`: existence-neutral cohort-split pair (STORE-INV-002A.1
     schema foundation; the operator-facing partial-disposition command is
-    STORE-INV-002A.2 scope) -- reserved for `STORE-INV-004`:
-    `consumption`/`scrap`."""
+    STORE-INV-002A.2 scope).
+
+    STORE-INV-004: `consumption` (material actually used by farm
+    operations) and `scrap` (material disposed of/lost, from any of the
+    three physical buckets) are both negative, non-zero existence facts,
+    shaped exactly like `adjustment` (no reversal/split-source references)
+    but semantically distinct and never reversible through the generic
+    `reversal` path (`inventory_material_event_service` blocks it --
+    reversing either would restore existence without restoring the
+    matching custody/Issue-line state)."""
 
     __tablename__ = "inventory_existence_ledger_entries"
 
@@ -65,7 +73,7 @@ class InventoryExistenceLedgerEntry(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "entry_kind IN ('receipt', 'adjustment', 'reversal', 'split_out', 'split_in')",
+            "entry_kind IN ('receipt', 'adjustment', 'reversal', 'split_out', 'split_in', 'consumption', 'scrap')",
             name="ck_inventory_existence_ledger_entries_kind_allowed",
         ),
         CheckConstraint(
@@ -77,6 +85,8 @@ class InventoryExistenceLedgerEntry(Base):
             "      AND quantity_delta_base > -100000000000 AND quantity_delta_base < 100000000000)"
             "  OR (entry_kind = 'split_out' AND quantity_delta_base < 0 AND quantity_delta_base > -100000000000)"
             "  OR (entry_kind = 'split_in' AND quantity_delta_base > 0 AND quantity_delta_base < 100000000000)"
+            "  OR (entry_kind = 'consumption' AND quantity_delta_base < 0 AND quantity_delta_base > -100000000000)"
+            "  OR (entry_kind = 'scrap' AND quantity_delta_base < 0 AND quantity_delta_base > -100000000000)"
             ")",
             name="ck_inventory_existence_ledger_entries_envelope",
         ),
@@ -87,9 +97,10 @@ class InventoryExistenceLedgerEntry(Base):
         # Typed-source shape, exhaustive per kind (mirrors
         # finished_goods_ledger_entries' own typed-source XOR idiom): only
         # 'reversal' ever populates reversal_of_entry_id; only 'split_in'
-        # ever populates source_split_out_entry_id.
+        # ever populates source_split_out_entry_id. 'consumption'/'scrap'
+        # are shaped like 'adjustment'/'split_out' -- neither reference.
         CheckConstraint(
-            "(entry_kind IN ('receipt', 'adjustment', 'split_out') "
+            "(entry_kind IN ('receipt', 'adjustment', 'split_out', 'consumption', 'scrap') "
             "  AND reversal_of_entry_id IS NULL AND source_split_out_entry_id IS NULL) "
             "OR (entry_kind = 'reversal' "
             "  AND reversal_of_entry_id IS NOT NULL AND source_split_out_entry_id IS NULL) "
