@@ -547,4 +547,19 @@ Grants activated directly by that ticket (not merely proposed):
 Updated grant totals: TA **45**, FM **27**, HG **26**, PS **26**, OP **18**, SK **7**, QC **20**, PK **13**, CS **12**, DO **12**, AU **21**, RO **21** — each is the pre-addendum Matrix A total (§12) plus 1 (`carrier_specification.read`), plus a further 1 for `farm_manager` (`carrier_specification.manage`). `tests/test_permissions.py`'s `EXPECTED_ROLE_GRANTS`/`_EXPECTED_COUNTS` pin was updated to match these totals in the same change.
 
 This addendum does not otherwise alter Matrix A/B, does not reopen any §13 gap, and does not change any `carrier.*` grant.
+
+## 15. POSTHARVEST-OPS-001 addendum — `grading.read` / `grading.manage`
+
+POSTHARVEST-OPS-001 (implementation ticket, post-dates AUTHZ-002B2) gave grading/sorting its own permission pair. Grading (`GradingEvent`/`GradedProduceLot`, POSTHARVEST-OPS-001C) originally reused `packing.read`/`packing.manage` exactly, on the reasoning that grading and packing were the same authority tier with no policy guidance yet written for a separate tier. This addendum splits that reuse into a dedicated pair, deliberately granted as an EXACT mirror of every role's existing `packing.*` grant — no role's authority level changes, only the permission name it is expressed through.
+
+Grants activated directly by this ticket (not merely proposed):
+
+- **`grading.read`** — every role that already holds `packing.read`: `farm_manager`, `qc_officer`, `packing_supervisor`, `cold_store_supervisor`, `dispatch_officer`, `auditor`, `read_only` (7 roles).
+- **`grading.manage`** — `packing_supervisor` only, mirroring that role's existing sole ownership of `packing.manage`. `farm_manager` deliberately does NOT receive `grading.manage`, for the identical §3 reason it does not receive `packing.manage` — a farm manager overseeing does not need to personally execute a post-harvest production step; that stays with the specialist who owns the stage.
+
+`tenant_admin` receives both automatically (holds every defined permission). `head_grower`, `production_supervisor`, `operator`, and `storekeeper` receive neither, mirroring their existing complete absence of `packing.read`/`packing.manage`.
+
+Updated grant totals (on top of the CARRIER-CONFIG-001 addendum totals above): TA **+2**, FM **+1** (`grading.read`), QC **+1**, PK **+2** (`grading.read` + `grading.manage`), CS **+1**, DO **+1**, AU **+1**, RO **+1** — HG/PS/OP/SK unchanged. `tests/test_permissions.py`'s `EXPECTED_ROLE_GRANTS`/`_EXPECTED_COUNTS` pin was updated to match in the same change.
+
+This addendum does not otherwise alter Matrix A/B, does not reopen any §13 gap, and does not change any `packing.*` grant.
 - Is the design/policy record for the now-active Imperial Pilot policy, and remains the proposal artifact for whatever future, explicitly-scoped ticket takes on External Commercial V1 hardening.

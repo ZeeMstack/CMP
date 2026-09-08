@@ -22,7 +22,16 @@ split from TRANSPLANT_MANAGE exactly: `production_supervisor` keeps both
 existing TRANSPLANT_CORRECT-without-TRANSPLANT_MANAGE grant); `operator`
 keeps MANAGE only, explicitly excluded from CORRECT (same pattern as its
 existing TRANSPLANT_MANAGE-without-TRANSPLANT_CORRECT grant). Catalog size
-46 -> 47."""
+46 -> 47.
+
+POSTHARVEST-OPS-001 added `grading.read`/`grading.manage`, splitting
+grading's authorization out of the `packing.read`/`packing.manage` pair it
+originally (POSTHARVEST-OPS-001C) reused. Granted to an EXACT mirror of
+every role's existing `packing.*` grant -- `farm_manager` gets
+`grading.read` only, never `grading.manage` (same pattern as its existing
+`packing.read`-without-`packing.manage` grant; see
+app/core/permissions.py's `GRADING_MANAGE` comment for the full
+rationale). Catalog size 62 -> 64."""
 
 import uuid
 
@@ -93,6 +102,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ, Permission.RECALL_MANAGE,
@@ -219,6 +229,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ, Permission.QUALITY_HOLD_MANAGE,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -237,6 +248,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ, Permission.PACKING_MANAGE,
+        Permission.GRADING_READ, Permission.GRADING_MANAGE,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
@@ -252,6 +264,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -268,6 +281,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
         Permission.RECALL_READ,
@@ -294,6 +308,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -320,6 +335,7 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -331,9 +347,11 @@ _EXPECTED_COUNTS = {
     # farm_manager/storekeeper: STORE-INV-004 additions on top of the
     # STORE-INV-002B/003 grants this pin had never caught up with either
     # (see the "previously untranscribed" comments above).
-    "farm_manager": 42, "head_grower": 31, "production_supervisor": 31, "operator": 21,
-    "storekeeper": 20, "qc_officer": 25, "packing_supervisor": 16, "cold_store_supervisor": 15,
-    "dispatch_officer": 15, "auditor": 24, "read_only": 24,
+    # POSTHARVEST-OPS-001: +1 grading.read for every role that already held
+    # packing.read; packing_supervisor gets +2 (also grading.manage).
+    "farm_manager": 43, "head_grower": 31, "production_supervisor": 31, "operator": 21,
+    "storekeeper": 20, "qc_officer": 26, "packing_supervisor": 18, "cold_store_supervisor": 16,
+    "dispatch_officer": 16, "auditor": 25, "read_only": 25,
 }
 
 
@@ -344,8 +362,10 @@ def test_tenant_admin_has_every_currently_defined_permission() -> None:
     # prior "55" was already stale by 4 (INVENTORY_QUALITY_MANAGE,
     # INVENTORY_CUSTODY_MANAGE, INVENTORY_RESERVATION_MANAGE,
     # INVENTORY_ISSUE_MANAGE from STORE-INV-002A.2/002B/003, never
-    # transcribed here either) -- 55 + 4 + 3 = 62, the actual current size.
-    assert len(_ALL_PERMISSIONS) == 62
+    # transcribed here either) -- 55 + 4 + 3 = 62. POSTHARVEST-OPS-001 adds
+    # 2 more (grading.read/grading.manage) -- 62 + 2 = 64, the actual
+    # current size.
+    assert len(_ALL_PERMISSIONS) == 64
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -444,6 +464,11 @@ def test_farm_manager_negative_grants() -> None:
     # role's existing TRANSPLANT_CORRECT-without-TRANSPLANT_MANAGE grant.
     assert Permission.BIOLOGICAL_DISPOSITION_CORRECT in granted
     assert Permission.BIOLOGICAL_DISPOSITION_MANAGE not in granted
+    # POSTHARVEST-OPS-001: full oversight visibility, but execution of this
+    # post-harvest production step stays with packing_supervisor, mirroring
+    # this role's existing PACKING_READ-without-PACKING_MANAGE grant.
+    assert Permission.GRADING_READ in granted
+    assert Permission.GRADING_MANAGE not in granted
 
 
 def test_head_grower_negative_grants() -> None:
@@ -486,6 +511,10 @@ def test_qc_officer_negative_grants() -> None:
     assert Permission.INVENTORY_CONSUMPTION_MANAGE not in granted
     assert Permission.INVENTORY_RETURN_MANAGE not in granted
     assert Permission.INVENTORY_SCRAP_MANAGE not in granted
+    # POSTHARVEST-OPS-001: inspection visibility only, mirrors this role's
+    # existing PACKING_READ-without-PACKING_MANAGE grant.
+    assert Permission.GRADING_READ in granted
+    assert Permission.GRADING_MANAGE not in granted
 
 
 def test_farm_manager_and_storekeeper_hold_consumption_return_scrap_manage() -> None:
@@ -520,12 +549,16 @@ def test_packing_supervisor_negative_grants() -> None:
     granted = get_permissions_for_role("packing_supervisor")
     assert Permission.FINISHED_GOODS_STORAGE_MANAGE not in granted
     assert Permission.DISPATCH_MANAGE not in granted
+    # POSTHARVEST-OPS-001: owns grading execution too, same tier as packing.
+    assert Permission.GRADING_READ in granted
+    assert Permission.GRADING_MANAGE in granted
 
 
 def test_cold_store_supervisor_negative_grants() -> None:
     granted = get_permissions_for_role("cold_store_supervisor")
     assert Permission.PACKING_MANAGE not in granted
     assert Permission.DISPATCH_MANAGE not in granted
+    assert Permission.GRADING_MANAGE not in granted
 
 
 def test_dispatch_officer_negative_grants() -> None:
@@ -535,14 +568,25 @@ def test_dispatch_officer_negative_grants() -> None:
     granted = get_permissions_for_role("dispatch_officer")
     assert Permission.PACKING_MANAGE not in granted
     assert Permission.FINISHED_GOODS_STORAGE_MANAGE not in granted
+    assert Permission.GRADING_MANAGE not in granted
+
+
+def test_storekeeper_and_head_grower_and_production_supervisor_and_operator_hold_no_grading() -> None:
+    """POSTHARVEST-OPS-001: mirrors these four roles' existing complete
+    absence of packing.read/packing.manage -- none of them touch grading
+    either."""
+    for role in ("storekeeper", "head_grower", "production_supervisor", "operator"):
+        granted = get_permissions_for_role(role)
+        assert Permission.GRADING_READ not in granted
+        assert Permission.GRADING_MANAGE not in granted
 
 
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (62 as of STORE-INV-004), not the literal number 43."""
+    catalog size (64 as of POSTHARVEST-OPS-001), not the literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 62
+    assert len(granted) == 64
     assert granted == _ALL_PERMISSIONS
 
 

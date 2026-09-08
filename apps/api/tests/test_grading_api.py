@@ -1,8 +1,14 @@
-"""POSTHARVEST-OPS-001C: HTTP-level authorization, tenant-isolation, and
-farm-isolation proofs for the grading-events/graded-produce-lots API,
-reusing packing.read/packing.manage exactly. Mirrors
-test_authz_role_activation_http.py's own committed-scenario + role-header
-bridging pattern for HTTP tests against `test_engine`-committed data."""
+"""POSTHARVEST-OPS-001C/001 (permission split): HTTP-level authorization,
+tenant-isolation, and farm-isolation proofs for the grading-events/graded-
+produce-lots API. Originally reused `packing.read`/`packing.manage`
+exactly (POSTHARVEST-OPS-001C); POSTHARVEST-OPS-001 gave grading its own
+dedicated `grading.read`/`grading.manage` pair, granted to an exact mirror
+of every role that already held the `packing.*` equivalent -- `farm_manager`
+still does not get manage-tier authority, for the same reason it does not
+get `packing.manage` (see `app.core.permissions.Permission.GRADING_MANAGE`).
+Mirrors test_authz_role_activation_http.py's own committed-scenario +
+role-header bridging pattern for HTTP tests against `test_engine`-committed
+data."""
 import uuid
 from datetime import datetime, timezone
 
@@ -57,7 +63,7 @@ def _grading_payload(scenario, *, code="GPL-API") -> dict:
 
 
 @pytest.mark.integration
-def test_packing_read_can_read_but_not_mutate(_scenario_cleanup, client, db_session, test_engine) -> None:
+def test_grading_read_can_read_but_not_mutate(_scenario_cleanup, client, db_session, test_engine) -> None:
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
     _scenario_cleanup.append(scenario["tenant_id"])
     headers, _user = _role_headers(db_session, tenant_id=scenario["tenant_id"], role_code="qc_officer")
@@ -75,7 +81,43 @@ def test_packing_read_can_read_but_not_mutate(_scenario_cleanup, client, db_sess
 
 
 @pytest.mark.integration
-def test_packing_manage_can_mutate(_scenario_cleanup, client, db_session, test_engine) -> None:
+def test_storekeeper_denied_read_and_manage(_scenario_cleanup, client, db_session, test_engine) -> None:
+    """POSTHARVEST-OPS-001: storekeeper holds neither grading.read nor
+    grading.manage -- the expected matrix explicitly excludes this role."""
+    scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
+    _scenario_cleanup.append(scenario["tenant_id"])
+    headers, _user = _role_headers(db_session, tenant_id=scenario["tenant_id"], role_code="storekeeper")
+
+    list_response = client.get(f"/farms/{scenario['farm_id']}/grading-events", headers=headers)
+    assert list_response.status_code == 403
+
+    create_response = client.post(
+        f"/farms/{scenario['farm_id']}/grading-events", json=_grading_payload(scenario), headers=headers
+    )
+    assert create_response.status_code == 403
+
+
+@pytest.mark.integration
+def test_farm_manager_can_read_but_not_mutate(_scenario_cleanup, client, db_session, test_engine) -> None:
+    """POSTHARVEST-OPS-001: farm_manager holds grading.read (full
+    oversight visibility) but deliberately not grading.manage -- execution
+    stays with the packing_supervisor role that owns this stage, mirroring
+    farm_manager's identical exclusion from packing.manage."""
+    scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
+    _scenario_cleanup.append(scenario["tenant_id"])
+    headers, _user = _role_headers(db_session, tenant_id=scenario["tenant_id"], role_code="farm_manager")
+
+    list_response = client.get(f"/farms/{scenario['farm_id']}/grading-events", headers=headers)
+    assert list_response.status_code == 200
+
+    create_response = client.post(
+        f"/farms/{scenario['farm_id']}/grading-events", json=_grading_payload(scenario), headers=headers
+    )
+    assert create_response.status_code == 403
+
+
+@pytest.mark.integration
+def test_grading_manage_can_mutate(_scenario_cleanup, client, db_session, test_engine) -> None:
     scenario = build_committed_scenario(test_engine, lot_a_weight="10.000", lot_a_count=None)
     _scenario_cleanup.append(scenario["tenant_id"])
     headers, _user = _role_headers(db_session, tenant_id=scenario["tenant_id"], role_code="packing_supervisor")

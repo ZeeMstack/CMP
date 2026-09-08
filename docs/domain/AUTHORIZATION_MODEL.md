@@ -94,6 +94,8 @@ Unknown permission values cannot silently succeed: `Permission` is a closed `Str
 | `harvest.manage` | `POST .../crop-batches/{id}/harvests` | **Enforced** (AUTHZ-001B2) |
 | `packing.read` | `GET /farms/{farm_id}/packing-events*`, `GET .../finished-goods-lots*` (incl. ledger, balance) | **Enforced** (AUTHZ-001B1) |
 | `packing.manage` | `POST /farms/{farm_id}/packing-events` | **Enforced** (AUTHZ-001B2) |
+| `grading.read` | `GET /farms/{farm_id}/grading-events*`, `GET .../graded-produce-lots*` (incl. ledger, balance), `GET .../grading-events/{id}/reversal` | **Enforced** (POSTHARVEST-OPS-001 — originally gated by `packing.read`, split into its own permission) |
+| `grading.manage` | `POST /farms/{farm_id}/grading-events`, `POST .../grading-events/{id}/reversal` | **Enforced** (POSTHARVEST-OPS-001 — originally gated by `packing.manage`, split into its own permission) |
 | `finished_goods_storage.read` | `GET .../finished-goods-lots/{id}/storage-movements`, `.../placements`, `GET .../locations/{id}/finished-goods-inventory` | **Enforced** (AUTHZ-001B1) |
 | `finished_goods_storage.manage` | `POST /farms/{farm_id}/finished-goods-storage-movements` | **Enforced** (AUTHZ-001B2) |
 | `dispatch.read` | `GET /farms/{farm_id}/dispatches*` | **Enforced** (AUTHZ-001B1) |
@@ -116,7 +118,9 @@ This exemption list is itself enforced, not just documented: `tests/test_authz_r
 
 `app.core.permissions.ROLE_PERMISSIONS` — the single centralized mapping; no route or service compares `role_code` directly (enforced by `tests/test_authz_architecture.py`).
 
-**AUTHZ-002B2 activated the Imperial Pilot role policy.** Every one of the 12 `APPROVED_ROLE_CODES` now has a real, explicit, non-empty (except where the policy genuinely intends zero mutation authority) grant — this is no longer "all non-admin roles have zero permissions." The source of truth for exactly what each role holds is `docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md`'s Matrix A ("Imperial Pilot"); this table summarizes it, but that document is authoritative if the two ever disagree.
+**AUTHZ-002B2 activated the Imperial Pilot role policy.** Every one of the 12 `APPROVED_ROLE_CODES` now has a real, explicit, non-empty (except where the policy genuinely intends zero mutation authority) grant — this is no longer "all non-admin roles have zero permissions." The source of truth for exactly what each role holds is `docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md`'s Matrix A ("Imperial Pilot"); this table summarizes it, but that document is authoritative if the two ever disagree. (The per-role counts below predate several additive tickets — CARRIER-CONFIG-001, STORE-INV-002A.2/002B/003/004, BIOLOGICAL-DISPOSITION-AUTHZ-001, POSTHARVEST-OPS-001 — and are known-stale; `tests/test_permissions.py` carries the currently-accurate counts.)
+
+**POSTHARVEST-OPS-001** gave grading its own `grading.read`/`grading.manage` pair (previously it reused `packing.read`/`packing.manage` exactly). Every role's `grading.*` grant is an exact mirror of that same role's `packing.*` grant — including `farm_manager`, which holds `grading.read` but deliberately not `grading.manage`, for the identical reason it does not hold `packing.manage` (execution of a post-harvest production step belongs to the specialist who owns that stage, not the overseeing farm manager).
 
 | `role_code` | Permission count | Summary |
 |---|---|---|
