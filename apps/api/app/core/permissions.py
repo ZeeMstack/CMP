@@ -151,6 +151,23 @@ class Permission(StrEnum):
     PACKING_READ = "packing.read"
     PACKING_MANAGE = "packing.manage"
 
+    # POSTHARVEST-OPS-001: grading/sorting is its own post-harvest stage
+    # (Harvest -> Grading -> Packing), deliberately given its own permission
+    # pair rather than continuing to reuse `PACKING_READ`/`PACKING_MANAGE`
+    # (the grading endpoints' original, now-superseded gate) -- mirroring
+    # this catalog's own precedent of a dedicated pair per operational
+    # stage. Every role's grant below is an exact mirror of that same
+    # role's `PACKING_READ`/`PACKING_MANAGE` grant: grading and packing
+    # have always been the same authority tier in practice (the same
+    # packhouse-floor role performs both), and `farm_manager` deliberately
+    # does NOT get `GRADING_MANAGE` for the identical reason it does not
+    # get `PACKING_MANAGE` -- execution of a post-harvest production step
+    # belongs to the specialist who owns that stage, not to the overseeing
+    # farm manager (see `docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md`
+    # Matrix A / the farm_manager `packing.manage` removal rationale).
+    GRADING_READ = "grading.read"
+    GRADING_MANAGE = "grading.manage"
+
     FINISHED_GOODS_STORAGE_READ = "finished_goods_storage.read"
     FINISHED_GOODS_STORAGE_MANAGE = "finished_goods_storage.manage"
 
@@ -322,6 +339,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ, Permission.RECALL_MANAGE,
@@ -487,6 +505,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ, Permission.QUALITY_HOLD_MANAGE,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -510,6 +529,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ, Permission.PACKING_MANAGE,
+        Permission.GRADING_READ, Permission.GRADING_MANAGE,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
@@ -528,6 +548,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -548,6 +569,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.UNIT_OF_MEASURE_READ,
         Permission.QUALITY_HOLD_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
         Permission.RECALL_READ,
@@ -580,6 +602,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
@@ -608,6 +631,7 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ,
         Permission.PACKING_READ,
+        Permission.GRADING_READ,
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,

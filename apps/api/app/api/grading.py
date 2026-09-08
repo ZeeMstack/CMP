@@ -48,7 +48,7 @@ def record_grading(
     farm_id: uuid.UUID,
     payload: GradingEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_MANAGE)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_MANAGE)),
 ) -> GradingEventRead:
     outputs = [
         {
@@ -107,7 +107,7 @@ def list_grading_events(
     farm_id: uuid.UUID,
     source_harvested_produce_lot_id: uuid.UUID | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> list[GradingEventRead]:
     try:
         return grading_service.list_grading_events(
@@ -123,7 +123,7 @@ def get_grading_event(
     farm_id: uuid.UUID,
     grading_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> GradingEventRead:
     try:
         return grading_service.get_grading_event(
@@ -143,7 +143,7 @@ def reverse_grading_event(
     grading_event_id: uuid.UUID,
     payload: GradingReversalEventCreate,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_MANAGE)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_MANAGE)),
 ) -> GradingReversalEventRead:
     try:
         grading_service.reverse_grading_event(
@@ -179,7 +179,7 @@ def get_grading_reversal_event(
     farm_id: uuid.UUID,
     grading_event_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> GradingReversalEventRead:
     try:
         return grading_service.get_grading_reversal_event(
@@ -197,7 +197,7 @@ def list_graded_produce_lots(
     grade_definition_version_id: uuid.UUID | None = Query(default=None),
     grading_event_id: uuid.UUID | None = Query(default=None),
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> list[GradedProduceLotRead]:
     try:
         return grading_service.list_graded_produce_lots(
@@ -215,7 +215,7 @@ def get_graded_produce_lot(
     farm_id: uuid.UUID,
     graded_produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> GradedProduceLotRead:
     try:
         return grading_service.get_graded_produce_lot(
@@ -233,7 +233,7 @@ def get_graded_produce_lot_ledger(
     farm_id: uuid.UUID,
     graded_produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> list[GradedProduceLotLedgerEntryRead]:
     try:
         return graded_produce_lot_ledger_service.get_ledger(
@@ -251,7 +251,7 @@ def get_graded_produce_lot_balance(
     farm_id: uuid.UUID,
     graded_produce_lot_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission(Permission.PACKING_READ)),
+    ctx: TenantContext = Depends(require_permission(Permission.GRADING_READ)),
 ) -> GradedProduceLotBalanceRead:
     try:
         return graded_produce_lot_ledger_service.get_balance(
