@@ -3182,6 +3182,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/vines-production-transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Vines Production Transfer
+         * @description VINES-OPS-001B: one atomic operator command -- biological Transplant
+         *     of the requested plant quantity from a named InterVines (Batch, Table)
+         *     group onto a server-allocated pool of Grow Bag(s), then physical
+         *     placement of every allocated Grow Bag onto a free Grow Bag Position
+         *     under the selected Grow Gutter, one transaction. Gated by
+         *     `TRANSPLANT_MANAGE` alone, mirroring `intervines_transplants.record_
+         *     intervines_transplant`'s own identical rationale.
+         */
+        post: operations["record_vines_production_transfer_farms__farm_id__crop_batches__batch_id__vines_production_transfers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/available-grow-bags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Grow Bag Pools
+         * @description VINES-OPS-001B: narrow, read-only support for the Vines Production
+         *     Transfer operator UI's Grow Bag specification picker and available-
+         *     capacity display.
+         */
+        get: operations["list_available_grow_bag_pools_farms__farm_id__vines_production_available_grow_bags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vines Production Placements
+         * @description VINES-OPS-001B: the compact Vines Production read view -- one
+         *     aggregated row per (Batch, Grow Gutter).
+         */
+        get: operations["list_vines_production_placements_farms__farm_id__vines_production_placements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/placements/{batch_id}/{gutter_id}/grow-bags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vines Production Placement Grow Bags
+         * @description VINES-OPS-001B: drill-down individual Grow Bag / Grow Cube / Seed
+         *     Tray traceability for one aggregated Vines Production placement row --
+         *     never the default view.
+         */
+        get: operations["list_vines_production_placement_grow_bags_farms__farm_id__vines_production_placements__batch_id___gutter_id__grow_bags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/leafy-production-transfers": {
         parameters: {
             query?: never;
@@ -4136,6 +4227,32 @@ export interface components {
             email: string;
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * AvailableGrowBagPoolRead
+         * @description VINES-OPS-001B: one row per Grow Bag CarrierSpecification currently
+         *     eligible as a Vines Production Transfer destination in this Farm --
+         *     active status, no currently-active `BatchCarrierAssignment`. When
+         *     `destination_grow_gutter_id` is supplied to the listing call,
+         *     `available_position_count`/`available_plant_capacity` are additionally
+         *     bounded by that Gutter's own currently-free Grow Bag Positions (the true
+         *     ceiling on how many Bags can actually be PLACED there); otherwise
+         *     `available_position_count` is `None` and `available_plant_capacity`
+         *     reflects the Bag pool alone.
+         */
+        AvailableGrowBagPoolRead: {
+            /**
+             * Specification Id
+             * Format: uuid
+             */
+            specification_id: string;
+            specification: components["schemas"]["CarrierSpecificationSummary"];
+            /** Available Bag Count */
+            available_bag_count: number;
+            /** Available Position Count */
+            available_position_count: number | null;
+            /** Available Plant Capacity */
+            available_plant_capacity: number;
         };
         /**
          * AvailableGrowCubePoolRead
@@ -12259,6 +12376,235 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** VinesProductionGrowBagPlacementRead */
+        VinesProductionGrowBagPlacementRead: {
+            /**
+             * Destination Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            destination_batch_carrier_assignment_id: string;
+            grow_bag: components["schemas"]["CarrierSummary"];
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /**
+             * Grow Bag Position Id
+             * Format: uuid
+             */
+            grow_bag_position_id: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+        };
+        /**
+         * VinesProductionPlacementGrowBagRead
+         * @description Drill-down detail for one aggregated Vines Production placement row:
+         *     every individual Grow Bag currently carrying living plants there, and
+         *     every Grow Cube (with its own Seed Tray lineage) inside each Bag.
+         */
+        VinesProductionPlacementGrowBagRead: {
+            grow_bag: components["schemas"]["CarrierSummary"];
+            /** Grow Bag Position Code */
+            grow_bag_position_code: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Assigned Plant Count */
+            assigned_plant_count: number;
+            /**
+             * Assigned Effective Time
+             * Format: date-time
+             */
+            assigned_effective_time: string;
+            /** Grow Cubes */
+            grow_cubes: components["schemas"]["VinesProductionPlacementGrowCubeRead"][];
+        };
+        /**
+         * VinesProductionPlacementGrowCubeRead
+         * @description One living plant inside a drilled-down Grow Bag: its own Grow Cube
+         *     identity plus, when resolvable, the originating Seed Tray -- the
+         *     ticket's required backward lineage (Grow Bag -> Grow Cube -> Seed Tray)
+         *     in one compact row.
+         */
+        VinesProductionPlacementGrowCubeRead: {
+            grow_cube: components["schemas"]["CarrierSummary"];
+            source_seed_tray: components["schemas"]["CarrierSummary"] | null;
+        };
+        /**
+         * VinesProductionPlacementRead
+         * @description VINES-OPS-001B: the compact Vines Production read view -- one
+         *     aggregated row per (Batch, Grow Gutter), never one row per plant/Grow
+         *     Bag (ticket: "Batch | Crop | Variety | Greenhouse | Gutter | Plants |
+         *     Days in Production").
+         */
+        VinesProductionPlacementRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Crop Code */
+            crop_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Id */
+            variety_id: string | null;
+            /** Variety Code */
+            variety_code: string | null;
+            /** Variety Name */
+            variety_name: string | null;
+            /**
+             * Greenhouse Id
+             * Format: uuid
+             */
+            greenhouse_id: string;
+            /** Greenhouse Code */
+            greenhouse_code: string;
+            /** Greenhouse Name */
+            greenhouse_name: string;
+            /**
+             * Gutter Id
+             * Format: uuid
+             */
+            gutter_id: string;
+            /** Gutter Code */
+            gutter_code: string;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Earliest Assigned Effective Time
+             * Format: date-time
+             */
+            earliest_assigned_effective_time: string;
+            /** Days In Production */
+            days_in_production: number;
+        };
+        /**
+         * VinesProductionTransferCreate
+         * @description `plant_count` is bounded by `MAX_SOURCE_LINES` (matching `_record_
+         *     transplant_core`'s own hard limit -- one source line per Grow Cube)
+         *     so an over-large request is rejected by Pydantic before ever touching
+         *     either pool or the database. `grow_bag_specification_id` is REQUIRED
+         *     (unlike `IntervinesTransplantCreate`'s optional Grow Cube specification)
+         *     -- a Grow Bag's plant capacity must always be an explicit, configured
+         *     fact for this command; there is no "no filter, use any capacity"
+         *     equivalent here.
+         */
+        VinesProductionTransferCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Source Intervines Table Id
+             * Format: uuid
+             */
+            source_intervines_table_id: string;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Destination Grow Gutter Id
+             * Format: uuid
+             */
+            destination_grow_gutter_id: string;
+            /**
+             * Grow Bag Specification Id
+             * Format: uuid
+             */
+            grow_bag_specification_id: string;
+        };
+        /** VinesProductionTransferRead */
+        VinesProductionTransferRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Workflow Version Id
+             * Format: uuid
+             */
+            workflow_version_id: string;
+            stage: components["schemas"]["StageSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Source Intervines Table Id
+             * Format: uuid
+             */
+            source_intervines_table_id: string;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Destination Grow Gutter Id
+             * Format: uuid
+             */
+            destination_grow_gutter_id: string;
+            /**
+             * Grow Bag Specification Id
+             * Format: uuid
+             */
+            grow_bag_specification_id: string;
+            /** Source Grow Cubes */
+            source_grow_cubes: components["schemas"]["CarrierSummary"][];
+            /** Grow Bags */
+            grow_bags: components["schemas"]["VinesProductionGrowBagPlacementRead"][];
         };
         /** VinesSetupConfig */
         VinesSetupConfig: {
@@ -21142,6 +21488,159 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntervinesPlacementGrowCubeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_vines_production_transfer_farms__farm_id__crop_batches__batch_id__vines_production_transfers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VinesProductionTransferCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesProductionTransferRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_grow_bag_pools_farms__farm_id__vines_production_available_grow_bags_get: {
+        parameters: {
+            query?: {
+                destination_grow_gutter_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableGrowBagPoolRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vines_production_placements_farms__farm_id__vines_production_placements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesProductionPlacementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vines_production_placement_grow_bags_farms__farm_id__vines_production_placements__batch_id___gutter_id__grow_bags_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+                gutter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesProductionPlacementGrowBagRead"][];
                 };
             };
             /** @description Validation Error */

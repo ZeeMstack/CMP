@@ -102,6 +102,12 @@ export type IntervinesTransplantRead = components["schemas"]["IntervinesTranspla
 export type AvailableGrowCubePoolRead = components["schemas"]["AvailableGrowCubePoolRead"];
 export type IntervinesPlacementRead = components["schemas"]["IntervinesPlacementRead"];
 export type IntervinesPlacementGrowCubeRead = components["schemas"]["IntervinesPlacementGrowCubeRead"];
+export type VinesProductionTransferCreate = components["schemas"]["VinesProductionTransferCreate"];
+export type VinesProductionTransferRead = components["schemas"]["VinesProductionTransferRead"];
+export type AvailableGrowBagPoolRead = components["schemas"]["AvailableGrowBagPoolRead"];
+export type VinesProductionPlacementRead = components["schemas"]["VinesProductionPlacementRead"];
+export type VinesProductionPlacementGrowBagRead = components["schemas"]["VinesProductionPlacementGrowBagRead"];
+export type VinesProductionPlacementGrowCubeRead = components["schemas"]["VinesProductionPlacementGrowCubeRead"];
 export type LeafyProductionTransferCreate = components["schemas"]["LeafyProductionTransferCreate"];
 export type LeafyProductionTransferRead = components["schemas"]["LeafyProductionTransferRead"];
 export type AvailableLeafyProductionSourceRead = components["schemas"]["AvailableLeafyProductionSourceRead"];
@@ -806,6 +812,57 @@ export function listIntervinesPlacementGrowCubes(
 ): Promise<IntervinesPlacementGrowCubeRead[]> {
   return getJson<IntervinesPlacementGrowCubeRead[]>(
     `/farms/${farmId}/nursery/intervines/placements/${batchId}/${tableId}/grow-cubes`, signal,
+  );
+}
+
+// --- VINES-OPS-001B -----------------------------------------------------------
+// Vines Production Transfer: composite biological Transplant (living
+// InterVines Grow Cube source(s), pool-selected) + server-allocated Grow Bag
+// pool (configurable plant capacity) + physical placement on free Grow Bag
+// Position(s) under one Grow Gutter, one atomic command.
+// `listAvailableGrowBagPools` backs the Grow Bag specification picker/
+// available-capacity display; `listVinesProductionPlacements`/
+// `listVinesProductionPlacementGrowBags` back the compact Vines Production
+// read view and its per-row drill-down (Grow Bag -> Grow Cube -> Seed Tray
+// lineage).
+
+export function recordVinesProductionTransfer(
+  farmId: string,
+  batchId: string,
+  payload: VinesProductionTransferCreate,
+  signal?: AbortSignal,
+): Promise<VinesProductionTransferRead> {
+  return postJson<VinesProductionTransferRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/vines-production-transfers`, payload, signal,
+  );
+}
+
+export function listAvailableGrowBagPools(
+  farmId: string,
+  destinationGrowGutterId?: string,
+  signal?: AbortSignal,
+): Promise<AvailableGrowBagPoolRead[]> {
+  const query = destinationGrowGutterId
+    ? `?destination_grow_gutter_id=${encodeURIComponent(destinationGrowGutterId)}`
+    : "";
+  return getJson<AvailableGrowBagPoolRead[]>(`/farms/${farmId}/vines-production/available-grow-bags${query}`, signal);
+}
+
+export function listVinesProductionPlacements(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<VinesProductionPlacementRead[]> {
+  return getJson<VinesProductionPlacementRead[]>(`/farms/${farmId}/vines-production/placements`, signal);
+}
+
+export function listVinesProductionPlacementGrowBags(
+  farmId: string,
+  batchId: string,
+  gutterId: string,
+  signal?: AbortSignal,
+): Promise<VinesProductionPlacementGrowBagRead[]> {
+  return getJson<VinesProductionPlacementGrowBagRead[]>(
+    `/farms/${farmId}/vines-production/placements/${batchId}/${gutterId}/grow-bags`, signal,
   );
 }
 

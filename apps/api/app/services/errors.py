@@ -2152,3 +2152,48 @@ class InventoryExistenceReversalUnsupportedForEntryKindError(DomainError):
     (docs/domain/STORE_INVENTORY_MODEL.md), so this path is blocked outright
     rather than building an unsafe partial correction. A future coordinated
     correction workflow, if ever built, is a separate ticket."""
+
+
+class InsufficientAvailableInterVinesPlantsError(DomainError):
+    """VINES-OPS-001B: raised when a Nursery->Vines Production transfer
+    requests more living plants than are currently available (active,
+    unreleased Grow Cube BatchCarrierAssignments) at the named InterVines
+    (Batch, Table) source group, under lock. Raised before any write."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InsufficientAvailableGrowBagsError(DomainError):
+    """VINES-OPS-001B: raised when a Vines Production transfer requests more
+    Grow Bag capacity than currently-available (active, unassigned) Grow
+    Bags of the requested specification can provide, under lock. Raised
+    before any write."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InsufficientAvailableGrowBagPositionsError(DomainError):
+    """VINES-OPS-001B: raised when a Vines Production transfer requests more
+    Grow Bags than there are currently-free Grow Bag Positions under the
+    selected Grow Gutter, under lock. Raised before any write."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class VinesProductionTransferReplayStateConflictError(DomainError):
+    """VINES-OPS-001B: raised on a replay of a composite Vines Production
+    Transfer command (same `client_command_id`) whose already-committed
+    Grow Bag/position placements cannot be reconciled with the replay
+    request -- mirrors `IntervinesTransplantReplayStateConflictError`'s own
+    role for this command's own server-allocated-on-BOTH-sides (source Grow
+    Cubes AND destination Grow Bags/Positions) shape."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

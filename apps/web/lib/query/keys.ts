@@ -281,4 +281,14 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "nursery", "intervines", "placements"] as const,
   intervinesPlacementGrowCubes: (tenantId: string, farmId: string, batchId: string, tableId: string) =>
     ["tenant", tenantId, "farms", farmId, "nursery", "intervines", "placements", batchId, tableId, "grow-cubes"] as const,
+
+  // --- VINES-OPS-001B ---------------------------------------------------------
+  // `gutterId` defaults to "" (unfiltered farm-wide pool) so the unfiltered
+  // and Gutter-scoped variants never collide in cache.
+  availableGrowBagPools: (tenantId: string, farmId: string, gutterId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "available-grow-bags", gutterId] as const,
+  vinesProductionPlacements: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "placements"] as const,
+  vinesProductionPlacementGrowBags: (tenantId: string, farmId: string, batchId: string, gutterId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "placements", batchId, gutterId, "grow-bags"] as const,
 };

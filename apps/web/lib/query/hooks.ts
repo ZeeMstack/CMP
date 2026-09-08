@@ -80,6 +80,7 @@ import type {
   SeedLotCreate,
   SowNewBatchCreate,
   VarietyCreate,
+  VinesProductionTransferCreate,
   WorkflowCreate,
   WorkflowStageCreate,
   WorkflowTransitionCreate,
@@ -1117,6 +1118,75 @@ export function useRecordIntervinesTransplant(farmId: string) {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       queryClient.invalidateQueries({ queryKey: queryKeys.seedlingBiologicalTrays(tenantId, farmId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowCubePools(tenantId, farmId) });
+    },
+  });
+}
+
+// --- VINES-OPS-001B ----------------------------------------------------------
+// Vines Production Transfer operator UI: source picking reuses
+// `useIntervinesPlacements` above unchanged (each aggregated InterVines row
+// IS a legitimate transfer source), Grow Bag pool eligibility read
+// (optionally Gutter-scoped for the true placeable-capacity ceiling), the
+// compact aggregated Vines Production read view, its per-row drill-down, and
+// the composite submit itself.
+
+export function useAvailableGrowBagPools(farmId: string, destinationGrowGutterId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.availableGrowBagPools(tenantId ?? "", farmId, destinationGrowGutterId ?? ""),
+    queryFn: ({ signal }) => api.listAvailableGrowBagPools(farmId, destinationGrowGutterId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useVinesProductionPlacements(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesProductionPlacements(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listVinesProductionPlacements(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** On-demand only (mirrors `useIntervinesPlacementGrowCubes`'s own pattern):
+ * fetched only once an operator expands one aggregated placement row's
+ * drill-down. */
+export function useVinesProductionPlacementGrowBags(farmId: string, batchId: string | null, gutterId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesProductionPlacementGrowBags(tenantId ?? "", farmId, batchId ?? "", gutterId ?? ""),
+    queryFn: ({ signal }) => api.listVinesProductionPlacementGrowBags(farmId, batchId as string, gutterId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId) && Boolean(gutterId),
+  });
+}
+
+/** Idempotency key lives in the payload itself, same replay-safe pattern as
+ * `useRecordIntervinesTransplant`. Success changes InterVines availability
+ * (the source Grow Cubes are consumed), the Grow Bag pool, and the Vines
+ * Production read view -- all three are invalidated. */
+export function useRecordVinesProductionTransfer(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: VinesProductionTransferCreate }) =>
+      api.recordVinesProductionTransfer(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.intervinesPlacements(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowBagPools(tenantId, farmId, "") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vinesProductionPlacements(tenantId, farmId) });
+    },
+    // Section 10 (frozen, mirrors InterVines/InterSalads): a 409 means the
+    // state this draft was built against has changed elsewhere -- never
+    // auto-resubmit, only refresh the authoritative queries the draft
+    // depends on.
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.intervinesPlacements(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowBagPools(tenantId, farmId, "") });
     },
   });
 }

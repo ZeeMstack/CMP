@@ -174,6 +174,14 @@ export function IntervinesTransplantForm({
   }
 
   async function goToReview() {
+    // `available_grow_cubes` is normally kept in sync by the effect above,
+    // but that effect can still lag one render behind this handler (e.g.
+    // the Grow Cube pool query resolving in the same tick as a fast
+    // sequence of field changes) -- writing it synchronously here, from the
+    // SAME render closure the on-screen "Available Grow Cubes" figure was
+    // just derived from, guarantees validation checks exactly what the
+    // operator saw before clicking, never a stale effect-synced value.
+    setValue("available_grow_cubes", availableGrowCubes);
     const valid = await trigger();
     if (valid) setStep("review");
   }

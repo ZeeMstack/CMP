@@ -827,30 +827,40 @@ def test_packing_consumption_blocks_crossing_below_cmp014_staged(test_engine, al
         cleanup_scenario(test_engine, scenario["tenant_id"])
 
 
-def _walk_down_revisions(cfg: Config, steps: int) -> list[str]:
-    """[head, head-1, head-2, ..., head-steps], derived by walking
+def _walk_down_revisions(cfg: Config, steps: int, *, start: str | None = None) -> list[str]:
+    """[start, start-1, start-2, ..., start-steps], derived by walking
     `down_revision` from the live script graph -- never a hardcoded
-    assumption about which specific revision is "current head"."""
+    assumption about which specific revision is "current head". `start`
+    defaults to the current head; pass a fixed, named revision id instead
+    when the walk must stay anchored to a specific historical point
+    regardless of how many later migrations (e.g. VINES-OPS-001B) have
+    since been layered on top of head."""
     script = ScriptDirectory.from_config(cfg)
-    revs = [script.get_current_head()]
+    revs = [start or script.get_current_head()]
     for _ in range(steps):
         revs.append(script.get_revision(revs[-1]).down_revision)
     return revs
 
 
+CMP017_REVISION = "63d4d7e184e2"
+
+
 @pytest.mark.integration
 def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine, alembic_head_restore) -> None:
     """CMP-017 verification pass: an explicit, single-step-at-a-time walk
-    head (CMP-017) -> CMP-016A -> CMP-016 -> CMP-015 -> CMP-014, with no
-    dispatch or packing history at all, proving every individual leg is
-    legal on its own (not just as part of a larger multi-step jump) --
-    and that CMP-016A's own env.py guard does not block any of them.
-    Revisions are resolved dynamically from the live graph; only the
-    number of steps (4, matching CMP-017/CMP-016A/CMP-016/CMP-015) is
-    fixed, since that is a structural fact about this linear history, not
-    a "current head" assumption."""
+    CMP-017 -> CMP-016A -> CMP-016 -> CMP-015 -> CMP-014, with no dispatch
+    or packing history at all, proving every individual leg is legal on
+    its own (not just as part of a larger multi-step jump) -- and that
+    CMP-016A's own env.py guard does not block any of them. The walk is
+    anchored at CMP-017's own fixed revision id (not "current head"):
+    VINES-OPS-001B (and any later ticket) layers further migrations, and
+    eventually a merge revision with a tuple `down_revision`, on top of
+    head, so counting a fixed number of steps down from a moving head no
+    longer lands on this linear CMP-014..CMP-017 leg at all. The number of
+    steps below CMP-017 (3, reaching CMP-016A/CMP-016/CMP-015) is a
+    structural fact about this older, still-linear portion of history."""
     require_cmp_test(test_engine)
-    head, cmp016a, cmp016, cmp015, cmp014 = _walk_down_revisions(_cfg(), 4)
+    cmp016a, cmp016, cmp015, cmp014 = _walk_down_revisions(_cfg(), 3, start=CMP017_REVISION)
 
     command.downgrade(_cfg(), cmp016a)
     _assert_at(test_engine, cmp016a)
@@ -862,7 +872,7 @@ def test_staged_downgrade_head_through_cmp014_each_leg_legal(test_engine, alembi
     _assert_at(test_engine, cmp014)
 
     command.upgrade(_cfg(), "head")
-    _assert_at(test_engine, head)
+    _assert_at(test_engine, _resolve_head_revision(_cfg()))
 
 
 # --- clean paths, ambiguity, upgrades, boundaries ----------------------------
