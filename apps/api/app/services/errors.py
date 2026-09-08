@@ -609,6 +609,38 @@ class IntersaladsTransplantReplayStateConflictError(DomainError):
         self.reason = reason
 
 
+class InsufficientAvailableGrowCubesError(DomainError):
+    """VINES-OPS-001A: raised when an InterVines Transplant command requests
+    more Grow Cubes than are currently available (active, unassigned) in
+    the farm -- optionally scoped to one CarrierSpecification -- under lock.
+    Raised before any write (no TransplantEvent, TransplantDestinationLine,
+    or Movement row is ever created), so the caller's outer transaction has
+    nothing to roll back: the whole command atomically fails closed."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class IntervinesTransplantReplayStateConflictError(DomainError):
+    """VINES-OPS-001A: raised on a replay of a composite InterVines
+    Transplant command (same `client_command_id`) whose already-committed
+    Grow Cube placements cannot be reconciled with the replay request --
+    either the previously-recorded `TransplantEvent`'s own destination lines
+    don't match the requested `plant_count`/`source_assignment_id`/
+    `destination_location_id`/`grow_cube_specification_id`, or a derived
+    per-Grow-Cube Movement command id resolves to no Movement at all, or to
+    one whose occupant/destination does not match. Mirrors
+    `IntersaladsTransplantReplayStateConflictError`'s own role exactly, for
+    the pool-allocated (server-chosen destination Carrier) shape this
+    composite command uses instead of client-supplied destination Carrier
+    ids."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class BatchDerivationEventNotFoundError(DomainError):
     pass
 

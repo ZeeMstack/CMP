@@ -3091,6 +3091,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/intervines-transplants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Intervines Transplant
+         * @description VINES-OPS-001A: one atomic operator command -- biological Transplant
+         *     of the requested plant quantity from one Seedling source Tray onto a
+         *     server-allocated pool of Grow Cube(s), then physical placement of every
+         *     allocated Grow Cube onto the selected InterVines Table, one transaction.
+         *     Gated by `TRANSPLANT_MANAGE` alone, mirroring `intersalads_transplants.
+         *     record_intersalads_transplant`'s own identical rationale: the physical
+         *     placement is an inseparable side effect of the approved biological
+         *     Transplant workflow.
+         */
+        post: operations["record_intervines_transplant_farms__farm_id__crop_batches__batch_id__intervines_transplants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/intervines/available-grow-cubes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Available Grow Cube Pools
+         * @description VINES-OPS-001A: narrow, read-only support for the InterVines
+         *     Transplant operator UI's Grow Cube specification picker and available-
+         *     count display.
+         */
+        get: operations["list_available_grow_cube_pools_farms__farm_id__nursery_intervines_available_grow_cubes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/intervines/placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Intervines Placements
+         * @description VINES-OPS-001A: the compact InterVines read view -- one aggregated
+         *     row per (Batch, InterVines Table).
+         */
+        get: operations["list_intervines_placements_farms__farm_id__nursery_intervines_placements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nursery/intervines/placements/{batch_id}/{table_id}/grow-cubes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Intervines Placement Grow Cubes
+         * @description VINES-OPS-001A: drill-down individual Grow Cube traceability for one
+         *     aggregated InterVines placement row -- never the default view.
+         */
+        get: operations["list_intervines_placement_grow_cubes_farms__farm_id__nursery_intervines_placements__batch_id___table_id__grow_cubes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/leafy-production-transfers": {
         parameters: {
             query?: never;
@@ -4045,6 +4136,25 @@ export interface components {
             email: string;
             /** Display Name */
             display_name: string;
+        };
+        /**
+         * AvailableGrowCubePoolRead
+         * @description VINES-OPS-001A: one row per distinct `CarrierSpecification` (or one
+         *     row with `specification=None` for un-specified Grow Cubes) currently
+         *     eligible as InterVines Transplant destinations in this Farm -- active
+         *     status, no currently-active `BatchCarrierAssignment`. The frontend shows
+         *     the specification picker only when more than one row is returned (ticket:
+         *     "Grow Cube specification [ select, if more than one valid option ]").
+         *     A single aggregated count per group, never a per-Grow-Cube row list --
+         *     the ticket is explicit that the pool must not be rendered as hundreds of
+         *     individual rows.
+         */
+        AvailableGrowCubePoolRead: {
+            /** Specification Id */
+            specification_id: string | null;
+            specification: components["schemas"]["CarrierSpecificationSummary"] | null;
+            /** Available Count */
+            available_count: number;
         };
         /**
          * AvailableLeafyProductionSourceRead
@@ -6784,6 +6894,208 @@ export interface components {
             total_discarded_plant_count: number;
             /** Total Remainder After */
             total_remainder_after: number;
+        };
+        /**
+         * IntervinesGrowCubePlacementRead
+         * @description One allocated Grow Cube: its own permanent Carrier identity, the
+         *     BatchCarrierAssignment created for it, and the Movement that physically
+         *     placed it on the requested InterVines Table -- every fact the ticket's
+         *     required traceability chain (Batch -> Seedling source -> InterVines
+         *     transplant -> Grow Cube -> InterVines Table) needs, re-derivable
+         *     identically on an exact replay.
+         */
+        IntervinesGrowCubePlacementRead: {
+            /**
+             * Destination Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            destination_batch_carrier_assignment_id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /**
+             * Movement Id
+             * Format: uuid
+             */
+            movement_id: string;
+        };
+        /**
+         * IntervinesPlacementGrowCubeRead
+         * @description Drill-down detail for one (Batch, InterVines Table) row: every
+         *     individual Grow Cube currently carrying a live plant there.
+         */
+        IntervinesPlacementGrowCubeRead: {
+            carrier: components["schemas"]["CarrierSummary"];
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Assigned Effective Time
+             * Format: date-time
+             */
+            assigned_effective_time: string;
+        };
+        /**
+         * IntervinesPlacementRead
+         * @description VINES-OPS-001A: one aggregated row per (Batch, InterVines Table) --
+         *     the compact InterVines read view (ticket: "Batch | Crop | Variety |
+         *     Table | Plants | Days in InterVines | Action"). Never one row per Grow
+         *     Cube; drill-down into individual Grow Cube traceability is a separate,
+         *     narrower endpoint.
+         */
+        IntervinesPlacementRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Crop Code */
+            crop_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Id */
+            variety_id: string | null;
+            /** Variety Code */
+            variety_code: string | null;
+            /** Variety Name */
+            variety_name: string | null;
+            /**
+             * Table Id
+             * Format: uuid
+             */
+            table_id: string;
+            /** Table Code */
+            table_code: string;
+            /** Table Name */
+            table_name: string;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Earliest Assigned Effective Time
+             * Format: date-time
+             */
+            earliest_assigned_effective_time: string;
+            /** Days In Intervines */
+            days_in_intervines: number;
+        };
+        /**
+         * IntervinesTransplantCreate
+         * @description `plant_count` is bounded by `MAX_DESTINATION_LINES` (matching
+         *     `_record_transplant_core`'s own hard limit -- one destination line per
+         *     Grow Cube) so an over-large request is rejected by Pydantic before ever
+         *     touching the Grow Cube pool or the database.
+         */
+        IntervinesTransplantCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Source Assignment Id
+             * Format: uuid
+             */
+            source_assignment_id: string;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Grow Cube Specification Id */
+            grow_cube_specification_id?: string | null;
+        };
+        /** IntervinesTransplantRead */
+        IntervinesTransplantRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Workflow Version Id
+             * Format: uuid
+             */
+            workflow_version_id: string;
+            stage: components["schemas"]["StageSummary"];
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Source Assignment Id
+             * Format: uuid
+             */
+            source_assignment_id: string;
+            source_carrier: components["schemas"]["CarrierSummary"];
+            /** Total Source Available Before */
+            total_source_available_before: number;
+            /** Total Remainder After */
+            total_remainder_after: number;
+            /** Plant Count */
+            plant_count: number;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Grow Cubes */
+            grow_cubes: components["schemas"]["IntervinesGrowCubePlacementRead"][];
         };
         /** InventoryAdjustmentCreate */
         InventoryAdjustmentCreate: {
@@ -20679,6 +20991,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AvailableNurseryCultivationPlateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_intervines_transplant_farms__farm_id__crop_batches__batch_id__intervines_transplants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntervinesTransplantCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntervinesTransplantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_grow_cube_pools_farms__farm_id__nursery_intervines_available_grow_cubes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableGrowCubePoolRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intervines_placements_farms__farm_id__nursery_intervines_placements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntervinesPlacementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intervines_placement_grow_cubes_farms__farm_id__nursery_intervines_placements__batch_id___table_id__grow_cubes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntervinesPlacementGrowCubeRead"][];
                 };
             };
             /** @description Validation Error */
