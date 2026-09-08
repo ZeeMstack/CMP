@@ -225,6 +225,15 @@ class Permission(StrEnum):
     INVENTORY_RESERVATION_MANAGE = "inventory_reservation.manage"
     INVENTORY_ISSUE_MANAGE = "inventory_issue.manage"
 
+    # STORE-INV-004: Consumption/Return/Scrap are their own control powers,
+    # deliberately separate from `INVENTORY_ISSUE_MANAGE` (Issue is a
+    # custody transfer only) -- mirroring this catalog's established
+    # segregation-of-duty precedent. `qc_officer` is explicitly NOT granted
+    # any of the three.
+    INVENTORY_CONSUMPTION_MANAGE = "inventory_consumption.manage"
+    INVENTORY_RETURN_MANAGE = "inventory_return.manage"
+    INVENTORY_SCRAP_MANAGE = "inventory_scrap.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -296,6 +305,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # Reservation and Issue as well -- the same "day-to-day operational
         # execution" authority already granted for custody.
         Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
+        # STORE-INV-004: farm_manager's senior/accountable tier extends to
+        # Consumption/Return/Scrap as well, same tier as Issue above.
+        Permission.INVENTORY_CONSUMPTION_MANAGE, Permission.INVENTORY_RETURN_MANAGE,
+        Permission.INVENTORY_SCRAP_MANAGE,
         Permission.CROP_READ,
         Permission.PRODUCTION_SYSTEM_READ,
         Permission.WORKFLOW_READ,
@@ -435,6 +448,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # farm operations are this role's own routine day-to-day execution
         # work, same tier as receiving/custody above.
         Permission.INVENTORY_RESERVATION_MANAGE, Permission.INVENTORY_ISSUE_MANAGE,
+        # STORE-INV-004: recording what comes back (Return), what is
+        # disposed of (Scrap), and what was actually consumed by operations
+        # are this role's own routine day-to-day execution work too --
+        # same tier as Issue above.
+        Permission.INVENTORY_RETURN_MANAGE, Permission.INVENTORY_SCRAP_MANAGE,
+        Permission.INVENTORY_CONSUMPTION_MANAGE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy

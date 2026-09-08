@@ -1630,6 +1630,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory-consumptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Consumption */
+        post: operations["record_consumption_inventory_consumptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Return */
+        post: operations["record_return_inventory_returns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-scraps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Scrap */
+        post: operations["record_scrap_inventory_scraps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-issue-lines/{issue_line_id}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Issue Line Reconciliation */
+        get: operations["get_issue_line_reconciliation_inventory_issue_lines__issue_line_id__reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/outstanding-issued-material": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Outstanding Issued Material */
+        get: operations["list_outstanding_issued_material_farms__farm_id__outstanding_issued_material_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/movements": {
         parameters: {
             query?: never;
@@ -6788,6 +6873,31 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * InventoryConsumptionCreate
+         * @description Material actually used by farm operations -- acts only on an Issue
+         *     line's own outstanding balance, reduces Existence, never touches
+         *     physical custody.
+         */
+        InventoryConsumptionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Issue Line Id
+             * Format: uuid
+             */
+            issue_line_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
         /** InventoryExistenceLedgerEntryRead */
         InventoryExistenceLedgerEntryRead: {
             /**
@@ -7284,6 +7394,48 @@ export interface components {
             /** Usable Quantity */
             usable_quantity: string;
         };
+        /** InventoryMaterialEventRead */
+        InventoryMaterialEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Event Kind */
+            event_kind: string;
+            /** Source Kind */
+            source_kind: string;
+            /** Issue Line Id */
+            issue_line_id: string | null;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Source Location Id */
+            source_location_id: string | null;
+            /** Destination Location Id */
+            destination_location_id: string | null;
+            /** Quantity Base */
+            quantity_base: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+        };
         /**
          * InventoryPutawayCreate
          * @description "Not put away" quantity -> a Store Bin. Existence-neutral,
@@ -7414,6 +7566,71 @@ export interface components {
             effective_time: string;
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * InventoryReturnCreate
+         * @description Unused issued material physically comes back to a Store Bin in the
+         *     SAME Farm -- reduces the Issue line's own outstanding balance,
+         *     increases Bin custody, Existence and Quality unchanged.
+         */
+        InventoryReturnCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Issue Line Id
+             * Format: uuid
+             */
+            issue_line_id: string;
+            /**
+             * Destination Location Id
+             * Format: uuid
+             */
+            destination_location_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
+        /**
+         * InventoryScrapCreate
+         * @description Material physically ceases to exist -- from exactly one of three
+         *     truthful source buckets. `issue_line_id` only for `source_kind =
+         *     'issued'`; `inventory_quantity_cohort_id` (+ `source_location_id`) for
+         *     `'store_bin'`/`'not_put_away'`. A mandatory human-readable `reason` is
+         *     always required.
+         */
+        InventoryScrapCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "issued" | "store_bin" | "not_put_away";
+            /** Issue Line Id */
+            issue_line_id?: string | null;
+            /** Inventory Quantity Cohort Id */
+            inventory_quantity_cohort_id?: string | null;
+            /** Source Location Id */
+            source_location_id?: string | null;
+            /** Quantity */
+            quantity: number | string;
+            /** Reason */
+            reason: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
         };
         /** InventoryStorageMovementRead */
         InventoryStorageMovementRead: {
@@ -7552,6 +7769,24 @@ export interface components {
             quantity: number | string;
             /** Reservation Line Id */
             reservation_line_id?: string | null;
+        };
+        /** IssueLineReconciliationRead */
+        IssueLineReconciliationRead: {
+            /**
+             * Issue Line Id
+             * Format: uuid
+             */
+            issue_line_id: string;
+            /** Issued Quantity */
+            issued_quantity: string;
+            /** Consumed Quantity */
+            consumed_quantity: string;
+            /** Returned Quantity */
+            returned_quantity: string;
+            /** Scrapped Quantity */
+            scrapped_quantity: string;
+            /** Outstanding Quantity */
+            outstanding_quantity: string;
         };
         /** ItemFarmAvailabilityRead */
         ItemFarmAvailabilityRead: {
@@ -8718,6 +8953,45 @@ export interface components {
             is_terminal: boolean;
             /** Stage Category */
             stage_category: string;
+        };
+        /** OutstandingIssuedMaterialRowRead */
+        OutstandingIssuedMaterialRowRead: {
+            /**
+             * Issue Line Id
+             * Format: uuid
+             */
+            issue_line_id: string;
+            /**
+             * Issue Id
+             * Format: uuid
+             */
+            issue_id: string;
+            /** Issue Code */
+            issue_code: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Item Name */
+            item_name: string;
+            /**
+             * Base Uom Id
+             * Format: uuid
+             */
+            base_uom_id: string;
+            /** Inventory Lot Id */
+            inventory_lot_id: string | null;
+            /** Manufacturer Lot Reference */
+            manufacturer_lot_reference: string | null;
+            /** Source Location Id */
+            source_location_id: string | null;
+            /** Issued Quantity */
+            issued_quantity: string;
+            /** Outstanding Quantity */
+            outstanding_quantity: string;
         };
         /** PackSpecificationCreate */
         PackSpecificationCreate: {
@@ -16575,6 +16849,192 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuableSourceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_consumption_inventory_consumptions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryConsumptionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMaterialEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_return_inventory_returns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReturnCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMaterialEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_scrap_inventory_scraps_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryScrapCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryMaterialEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_issue_line_reconciliation_inventory_issue_lines__issue_line_id__reconciliation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                issue_line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueLineReconciliationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outstanding_issued_material_farms__farm_id__outstanding_issued_material_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutstandingIssuedMaterialRowRead"][];
                 };
             };
             /** @description Validation Error */

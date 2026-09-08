@@ -39,9 +39,18 @@ const RESERVATION = {
   ],
 };
 
+const OUTSTANDING_ROW = {
+  issue_line_id: "line-9", issue_id: "iss-9", issue_code: "ISS-0009", purpose: "Fertigation prep",
+  inventory_item_id: "item-1", item_name: "Calcium Nitrate", base_uom_id: "uom-1", inventory_lot_id: "lot-1",
+  manufacturer_lot_reference: "LOT-1", source_location_id: "bin-1", issued_quantity: "10.000",
+  outstanding_quantity: "6.000",
+};
+
 type PostHandler = (url: string, body: Record<string, unknown>) => Response;
 
-function stubFetch(opts: { reservations?: unknown[]; postHandler?: PostHandler } = {}) {
+function stubFetch(
+  opts: { reservations?: unknown[]; outstanding?: unknown[]; locationsTree?: unknown[]; postHandler?: PostHandler } = {},
+) {
   const reservations = opts.reservations ?? [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -53,6 +62,8 @@ function stubFetch(opts: { reservations?: unknown[]; postHandler?: PostHandler }
     if (url.includes("/inventory-items?") || url.endsWith("/inventory-items")) return jsonResponse([ITEM]);
     if (url.endsWith("/uoms")) return jsonResponse([UOM]);
     if (url.includes("/issuable-sources")) return jsonResponse([SOURCE]);
+    if (url.includes("/outstanding-issued-material")) return jsonResponse(opts.outstanding ?? []);
+    if (url.includes("/locations/tree")) return jsonResponse(opts.locationsTree ?? []);
     if (url.includes("/inventory-reservations")) return jsonResponse(reservations);
     return jsonResponse([]);
   });
@@ -186,5 +197,112 @@ describe("StoreInventoryIssuePage", () => {
 
     await waitFor(() => expect(releaseBody).not.toBeNull());
     expect(releaseBody).toMatchObject({ quantity: "3" });
+  });
+
+  it("Issued material: records a Consumption against an outstanding Issue line", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    stubFetch({
+      outstanding: [OUTSTANDING_ROW],
+      postHandler: (url, body) => {
+        if (url.includes("/inventory-consumptions")) {
+          capturedBody = body;
+          return jsonResponse({
+            id: "evt-1", event_kind: "consumption", source_kind: "issued", issue_line_id: "line-9",
+            inventory_quantity_cohort_id: "cohort-1", source_location_id: null, destination_location_id: null,
+            quantity_base: body.quantity, reason: null, effective_time: "2026-09-01T00:00:00Z",
+            recorded_time: "2026-09-01T00:00:00Z", actor_user_id: "u1",
+          }, 201);
+        }
+        return jsonResponse({});
+      },
+    });
+    render(withQueryClient(<StoreInventoryIssuePage />));
+    await waitFor(() => expect(screen.getByText("Issue now")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Issued material" }));
+    await waitFor(() => expect(screen.getByText(/ISS-0009/)).toBeInTheDocument());
+    expect(screen.getByText(/Outstanding: 6.000 kg/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Consume" }));
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm consumption/i }));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({ issue_line_id: "line-9", quantity: "4" });
+  });
+
+  it("Issued material: records a Return to a Store Bin", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    stubFetch({
+      outstanding: [OUTSTANDING_ROW],
+      locationsTree: [
+        {
+          id: "bin-1", code: "BIN-01", name: "Bin 01", location_type_id: "lt-1", location_type_code: "store_bin",
+          status: "active", occupiable: false, capacity: null, children: [],
+        },
+      ],
+      postHandler: (url, body) => {
+        if (url.includes("/inventory-returns")) {
+          capturedBody = body;
+          return jsonResponse({
+            id: "evt-2", event_kind: "return", source_kind: "issued", issue_line_id: "line-9",
+            inventory_quantity_cohort_id: "cohort-1", source_location_id: null, destination_location_id: "bin-1",
+            quantity_base: body.quantity, reason: null, effective_time: "2026-09-01T00:00:00Z",
+            recorded_time: "2026-09-01T00:00:00Z", actor_user_id: "u1",
+          }, 201);
+        }
+        return jsonResponse({});
+      },
+    });
+    render(withQueryClient(<StoreInventoryIssuePage />));
+    await waitFor(() => expect(screen.getByText("Issue now")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Issued material" }));
+    await waitFor(() => expect(screen.getByText(/ISS-0009/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Return" }));
+    await waitFor(() => expect(screen.getByText("Bin 01")).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm return/i }));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({ issue_line_id: "line-9", destination_location_id: "bin-1", quantity: "3" });
+  });
+
+  it("Issued material: records a Scrap with a mandatory reason", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    stubFetch({
+      outstanding: [OUTSTANDING_ROW],
+      postHandler: (url, body) => {
+        if (url.includes("/inventory-scraps")) {
+          capturedBody = body;
+          return jsonResponse({
+            id: "evt-3", event_kind: "scrap", source_kind: "issued", issue_line_id: "line-9",
+            inventory_quantity_cohort_id: "cohort-1", source_location_id: null, destination_location_id: null,
+            quantity_base: body.quantity, reason: body.reason, effective_time: "2026-09-01T00:00:00Z",
+            recorded_time: "2026-09-01T00:00:00Z", actor_user_id: "u1",
+          }, 201);
+        }
+        return jsonResponse({});
+      },
+    });
+    render(withQueryClient(<StoreInventoryIssuePage />));
+    await waitFor(() => expect(screen.getByText("Issue now")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Issued material" }));
+    await waitFor(() => expect(screen.getByText(/ISS-0009/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Scrap" }));
+    const scrapButton = screen.getByRole("button", { name: /record scrap/i });
+    expect(scrapButton).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "1" } });
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. spill/i), { target: { value: "spilled during transfer" } });
+    fireEvent.click(screen.getByRole("button", { name: /record scrap/i }));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({
+      source_kind: "issued", issue_line_id: "line-9", quantity: "1", reason: "spilled during transfer",
+    });
   });
 });

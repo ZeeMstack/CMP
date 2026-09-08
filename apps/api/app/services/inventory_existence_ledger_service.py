@@ -27,6 +27,7 @@ from app.services.errors import (
     InventoryExistenceReversalCommandReusedWithDifferentPayloadError,
     InventoryExistenceReversalOfReversalError,
     InventoryExistenceReversalTargetAlreadyReversedError,
+    InventoryExistenceReversalUnsupportedForEntryKindError,
     InventoryQuantityCohortNotFoundError,
     InventoryQuantityCohortSplitAllocationExceedsBalanceError,
 )
@@ -56,17 +57,26 @@ def get_cohort_balance(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
 
 def get_cohort_total_custody(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
     """Total physical custody currently recorded for this cohort, across
-    every Bin -- `putaway`/`split_in` credit, `split_out` debits,
-    `transfer` nets to zero for the cohort as a whole (it only
+    every Bin -- `putaway`/`split_in` credit, `split_out`/`scrap_bin`
+    debits, `transfer` nets to zero for the cohort as a whole (it only
     redistributes between Bins). Never exceeds `get_cohort_balance`
-    (STORE-INV-002B's own existence/custody safety invariant)."""
+    (STORE-INV-002B's own existence/custody safety invariant).
+
+    STORE-INV-004: `scrap_bin` is a debit here (mirroring `split_out`)
+    because that quantity has genuinely left "put away" custody forever --
+    it always pairs with a negative `consumption`/`scrap` existence entry
+    in the same transaction, so `get_cohort_balance` drops by the same
+    amount and the safety invariant above stays intact. `issue`/`return`
+    remain deliberately excluded (their own `ELSE 0` branch) -- neither
+    changes whether material is "put away", they only redistribute it
+    between a Bin and "Issued to operations"."""
     return db.execute(
         select(
             func.coalesce(
                 func.sum(
                     case(
                         (InventoryStorageMovement.movement_kind.in_(("putaway", "split_in")), InventoryStorageMovement.moved_quantity_base),
-                        (InventoryStorageMovement.movement_kind == "split_out", -InventoryStorageMovement.moved_quantity_base),
+                        (InventoryStorageMovement.movement_kind.in_(("split_out", "scrap_bin")), -InventoryStorageMovement.moved_quantity_base),
                         else_=0,
                     )
                 ),
@@ -286,6 +296,12 @@ def reverse_ledger_entry(
         raise InventoryExistenceLedgerEntryNotFoundError(str(target_entry_id))
     if target.entry_kind == "reversal":
         raise InventoryExistenceReversalOfReversalError(str(target_entry_id))
+    if target.entry_kind in ("consumption", "scrap"):
+        # STORE-INV-004: reversing a consumption/scrap existence entry
+        # through this GENERIC path would restore existence without
+        # restoring the matching custody/Issue-line state -- blocked
+        # outright (also enforced at the DB layer, defense-in-depth).
+        raise InventoryExistenceReversalUnsupportedForEntryKindError(str(target_entry_id))
 
     cohort = _lock_cohort(db, tenant_id=tenant_id, cohort_id=target.inventory_quantity_cohort_id)
 

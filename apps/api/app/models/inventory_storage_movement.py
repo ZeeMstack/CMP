@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 
-INVENTORY_STORAGE_MOVEMENT_KINDS = ("putaway", "transfer", "split_out", "split_in", "issue")
+INVENTORY_STORAGE_MOVEMENT_KINDS = ("putaway", "transfer", "split_out", "split_in", "issue", "return", "scrap_bin")
 
 
 class InventoryStorageMovement(Base):
@@ -61,8 +61,24 @@ class InventoryStorageMovement(Base):
     `InventoryExistenceLedgerEntry`. Deliberately excluded from
     `get_cohort_total_custody`'s formula (STORE-INV-002B, unchanged) so
     "Not put away" stays provably unaffected by Issue; "in Store Bin"
-    quantity is instead `total_custody - SUM(issue)`, computed by
-    `inventory_availability_service`."""
+    quantity is instead `total_custody - SUM(issue) + SUM(return)`, computed
+    by `inventory_availability_service`.
+
+    STORE-INV-004: `return` (source NULL, destination a `store_bin` --
+    same shape as `putaway`) is the physical-custody half of a Return
+    command ("Issued to operations" -> a Bin, always the SAME Farm) --
+    composed by `inventory_material_event_service`, `client_command_id =
+    NULL` exactly like `issue`/`split_out`/`split_in`. Like `issue`,
+    deliberately excluded from `get_cohort_total_custody`'s own formula
+    (Return neither creates nor destroys "put away" material, it only
+    redistributes it between the Bin and Issued-to-operations buckets).
+    `scrap_bin` (source a `store_bin`, destination NULL -- same shape as
+    `split_out`/`issue`) is the physical-custody half of a Scrap-from-Bin
+    command -- UNLIKE `issue`/`return`, it IS included in
+    `get_cohort_total_custody`'s formula as a debit (mirroring `split_out`)
+    because that quantity has genuinely left "put away" custody forever
+    (it also always pairs with a negative `InventoryExistenceLedgerEntry`,
+    written in the same transaction)."""
 
     __tablename__ = "inventory_storage_movements"
 
@@ -95,18 +111,18 @@ class InventoryStorageMovement(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "movement_kind IN ('putaway', 'transfer', 'split_out', 'split_in', 'issue')",
+            "movement_kind IN ('putaway', 'transfer', 'split_out', 'split_in', 'issue', 'return', 'scrap_bin')",
             name="ck_inventory_storage_movements_kind_allowed",
         ),
-        # putaway/split_in: source NULL, destination populated.
-        # transfer: both populated, distinct. split_out/issue: source
-        # populated, destination NULL.
+        # putaway/split_in/return: source NULL, destination populated.
+        # transfer: both populated, distinct. split_out/issue/scrap_bin:
+        # source populated, destination NULL.
         CheckConstraint(
-            "(movement_kind IN ('putaway', 'split_in') AND source_location_id IS NULL "
+            "(movement_kind IN ('putaway', 'split_in', 'return') AND source_location_id IS NULL "
             "  AND destination_location_id IS NOT NULL) "
             "OR (movement_kind = 'transfer' AND source_location_id IS NOT NULL "
             "     AND destination_location_id IS NOT NULL AND source_location_id <> destination_location_id) "
-            "OR (movement_kind IN ('split_out', 'issue') AND source_location_id IS NOT NULL "
+            "OR (movement_kind IN ('split_out', 'issue', 'scrap_bin') AND source_location_id IS NOT NULL "
             "     AND destination_location_id IS NULL)",
             name="ck_inventory_storage_movements_shape",
         ),
@@ -116,15 +132,16 @@ class InventoryStorageMovement(Base):
             name="ck_inventory_storage_movements_quantity_positive",
         ),
         # putaway/transfer are real operator commands and always carry
-        # idempotency evidence; split_out/split_in/issue are the internal
-        # custody-side half of a larger command (already idempotent at that
-        # command's own header layer -- InventoryQualityCommand or
-        # InventoryIssue) and never carry their own.
+        # idempotency evidence; split_out/split_in/issue/return/scrap_bin
+        # are the internal custody-side half of a larger command (already
+        # idempotent at that command's own header layer -- InventoryQuality
+        # Command, InventoryIssue, or InventoryMaterialEvent) and never
+        # carry their own.
         CheckConstraint(
             "(movement_kind IN ('putaway', 'transfer') AND client_command_id IS NOT NULL "
             "  AND request_fingerprint IS NOT NULL) "
-            "OR (movement_kind IN ('split_out', 'split_in', 'issue') AND client_command_id IS NULL "
-            "  AND request_fingerprint IS NULL)",
+            "OR (movement_kind IN ('split_out', 'split_in', 'issue', 'return', 'scrap_bin') "
+            "  AND client_command_id IS NULL AND request_fingerprint IS NULL)",
             name="ck_inventory_storage_movements_command_evidence_matches_kind",
         ),
         CheckConstraint(

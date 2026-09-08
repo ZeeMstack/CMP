@@ -267,4 +267,10 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "inventory-items", itemId, "availability"] as const,
   issuableSources: (tenantId: string, farmId: string, itemId: string) =>
     ["tenant", tenantId, "farms", farmId, "inventory-items", itemId, "issuable-sources"] as const,
+
+  // STORE-INV-004: Consumption, Return & Scrap.
+  outstandingIssuedMaterial: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "outstanding-issued-material"] as const,
+  issueLineReconciliation: (tenantId: string, issueLineId: string) =>
+    ["tenant", tenantId, "inventory-issue-lines", issueLineId, "reconciliation"] as const,
 };

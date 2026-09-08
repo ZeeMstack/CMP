@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.inventory_lot import InventoryLot
+from app.models.inventory_material_event import InventoryMaterialEvent
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.inventory_reservation import InventoryReservation
 from app.models.inventory_reservation_line import InventoryReservationLine
@@ -44,10 +45,9 @@ def _farm_scoped_cohort_ids(
 
 
 def get_cohort_issued_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
-    """Total quantity of this cohort ever issued out of Store Bin custody --
-    STORE-INV-003 has no Return/Consume/Scrap yet, so this IS the cohort's
-    current "Issued to operations" custody (STORE-INV-004 will subtract
-    Return/Consume/Scrap from this same figure, never redefine it)."""
+    """Total quantity of this cohort EVER issued out of Store Bin custody --
+    gross, never reduced by a later Return/Consume/Scrap (that reduction is
+    `get_cohort_issued_to_operations_quantity`'s own job, STORE-INV-004)."""
     return db.execute(
         select(func.coalesce(func.sum(InventoryStorageMovement.moved_quantity_base), 0)).where(
             InventoryStorageMovement.inventory_quantity_cohort_id == cohort_id,
@@ -56,15 +56,55 @@ def get_cohort_issued_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
     ).scalar_one()
 
 
+def get_cohort_returned_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
+    """STORE-INV-004: total quantity of this cohort ever returned from
+    "Issued to operations" custody back into a Store Bin."""
+    return db.execute(
+        select(func.coalesce(func.sum(InventoryStorageMovement.moved_quantity_base), 0)).where(
+            InventoryStorageMovement.inventory_quantity_cohort_id == cohort_id,
+            InventoryStorageMovement.movement_kind == "return",
+        )
+    ).scalar_one()
+
+
+def get_cohort_settled_from_issued_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
+    """STORE-INV-004: total quantity of this cohort's own outstanding
+    Issued-to-operations balance ever consumed or scrapped (never Return --
+    Return is tracked separately via the physical `return` movement, since
+    it also affects "in Store")."""
+    return db.execute(
+        select(func.coalesce(func.sum(InventoryMaterialEvent.quantity_base), 0)).where(
+            InventoryMaterialEvent.inventory_quantity_cohort_id == cohort_id,
+            InventoryMaterialEvent.source_kind == "issued",
+            InventoryMaterialEvent.event_kind.in_(("consumption", "scrap")),
+        )
+    ).scalar_one()
+
+
+def get_cohort_issued_to_operations_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
+    """STORE-INV-004: `issued - returned - consumed - scrapped-from-issued`
+    -- the cohort's CURRENT outstanding Issued-to-operations custody, never
+    below zero in a healthy system (every settlement is bounded against its
+    own Issue line's own outstanding balance, service-layer + trigger)."""
+    issued = get_cohort_issued_quantity(db, cohort_id=cohort_id)
+    returned = get_cohort_returned_quantity(db, cohort_id=cohort_id)
+    settled = get_cohort_settled_from_issued_quantity(db, cohort_id=cohort_id)
+    return issued - returned - settled
+
+
 def get_cohort_in_store_quantity(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
     """This cohort's quantity currently sitting in a Store Bin -- total
-    custody (STORE-INV-002B's own unchanged formula) minus whatever of that
-    has since been issued out. Never negative in a healthy system (Issue's
-    own service-layer + trigger checks bound it against the source Bin's
-    current balance before insert)."""
+    custody (STORE-INV-002B's own formula, STORE-INV-004 additionally
+    debiting `scrap_bin`) minus whatever of that has since been issued out,
+    plus whatever has since been returned. Consumption and Scrap-from-issued
+    never appear here -- neither ever puts material back in a Bin. Never
+    negative in a healthy system (Issue/Return's own service-layer +
+    trigger checks bound each against its own source balance before
+    insert)."""
     total_custody = inventory_existence_ledger_service.get_cohort_total_custody(db, cohort_id=cohort_id)
     issued = get_cohort_issued_quantity(db, cohort_id=cohort_id)
-    return total_custody - issued
+    returned = get_cohort_returned_quantity(db, cohort_id=cohort_id)
+    return total_custody - issued + returned
 
 
 def get_item_usable_in_store_quantity(
@@ -165,15 +205,17 @@ def get_item_available_to_issue(
 def get_item_issued_to_operations_quantity(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, inventory_item_id: uuid.UUID
 ) -> Decimal:
+    """STORE-INV-004: `issued - returned - consumed - scrapped-from-issued`,
+    summed across every one of this Item's cohorts at this Farm -- the
+    CURRENT outstanding Issued-to-operations custody, never the gross
+    ever-issued figure."""
     cohort_ids = _farm_scoped_cohort_ids(db, tenant_id=tenant_id, farm_id=farm_id, inventory_item_id=inventory_item_id)
     if not cohort_ids:
         return Decimal("0")
-    return db.execute(
-        select(func.coalesce(func.sum(InventoryStorageMovement.moved_quantity_base), 0)).where(
-            InventoryStorageMovement.inventory_quantity_cohort_id.in_(cohort_ids),
-            InventoryStorageMovement.movement_kind == "issue",
-        )
-    ).scalar_one()
+    total = Decimal("0")
+    for cohort_id in cohort_ids:
+        total += get_cohort_issued_to_operations_quantity(db, cohort_id=cohort_id)
+    return total
 
 
 def get_item_in_store_quantity(
