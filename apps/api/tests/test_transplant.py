@@ -806,13 +806,18 @@ def test_transplant_routes_exactly_four_no_lineage_route() -> None:
     (`/transplants/{event_id}/correct`) -- this guard's own name/count was
     updated to match rather than broadened to accept an arbitrary count, so
     it keeps proving its original intent (no ACCIDENTAL extra mutation/
-    lineage route) without being broken by either intentional addition."""
+    lineage route) without being broken by either intentional addition.
+    VINES-OPS-001A added a further deliberate composite route
+    (`/intervines-transplants`, matching the same "transplant" substring),
+    also excluded here by the same convention -- VINES-OPS-001B's own
+    `/vines-production-transfers` route does not match the substring at
+    all, so it needs no exclusion."""
     from app.main import app
 
     schema = app.openapi()
     transplant_paths = {
         p: ops for p, ops in schema["paths"].items()
-        if "transplant" in p and "intersalads-transplants" not in p
+        if "transplant" in p and "intersalads-transplants" not in p and "intervines-transplants" not in p
     }
     ops_count = sum(len(ops) for ops in transplant_paths.values())
     assert ops_count == 4, transplant_paths

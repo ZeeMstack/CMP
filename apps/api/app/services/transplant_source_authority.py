@@ -47,6 +47,7 @@ from app.services import seedling_disposition_service, seedling_source_lineage
 
 SEED_TRAY_CARRIER_TYPE_CODE = "seed_tray"
 NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE = "nursery_cultivation_plate"
+GROW_CUBE_CARRIER_TYPE_CODE = "grow_cube"
 
 # NURSERY-OPS-005A section 6/19: the smallest safe gating mechanism -- a
 # fixed, explicit allowlist of eligible Transplant source Carrier types,
@@ -54,8 +55,19 @@ NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE = "nursery_cultivation_plate"
 # is NOT here: having a population authority (every supported transplant-
 # created destination gets one, see `derive_or_get_opening_authority`)
 # does not by itself imply Transplant-source eligibility.
+#
+# VINES-OPS-001B: `grow_cube` joins this set for the identical reason
+# `nursery_cultivation_plate` originally did -- a Grow Cube is itself a
+# transplant-created destination (VINES-OPS-001A's own InterVines command),
+# and now must also be usable as the SOURCE for the Nursery -> Vines
+# Production transfer. It dispatches to the exact same `batch_carrier_
+# population` authority below, unchanged: that mechanism was already fully
+# generic (keyed on the assignment id, never on carrier type), so a Grow
+# Cube's own opening `TransplantDestinationLine.assigned_plant_count`
+# (always 1, VINES-OPS-001A's own structural guarantee) is resolved as its
+# anchor with zero new code.
 ELIGIBLE_SOURCE_CARRIER_TYPE_CODES = frozenset(
-    {SEED_TRAY_CARRIER_TYPE_CODE, NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE}
+    {SEED_TRAY_CARRIER_TYPE_CODE, NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE, GROW_CUBE_CARRIER_TYPE_CODE}
 )
 
 
@@ -86,7 +98,7 @@ def resolve_source_authority(
         if entry is None:
             return None
         return SourceAuthority(kind="seedling_entry", seedling_entry=entry)
-    if carrier_type_code == NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE:
+    if carrier_type_code in (NURSERY_CULTIVATION_PLATE_CARRIER_TYPE_CODE, GROW_CUBE_CARRIER_TYPE_CODE):
         return SourceAuthority(kind="batch_carrier_population")
     return None
 

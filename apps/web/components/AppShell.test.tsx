@@ -39,6 +39,7 @@ function topNav() {
 const GROUP_LABELS = [
   "Nursery Operations",
   "Production Operations",
+  "Vines Production",
   "Harvest & Post-Harvest",
   "Dispatch & Traceability",
   "Store & Inventory",
@@ -48,6 +49,7 @@ const GROUP_LABELS = [
 const GROUP_FIRST_CHILD: Record<string, string> = {
   "Nursery Operations": "/farms/farm-1/nursery/sowings/new",
   "Production Operations": "/farms/farm-1/leafy-production",
+  "Vines Production": "/farms/farm-1/vines-production",
   "Harvest & Post-Harvest": "/farms/farm-1/leafy-production/harvest",
   "Dispatch & Traceability": "/farms/farm-1/processing/dispatch",
   "Store & Inventory": "/farms/farm-1/store-inventory",
@@ -183,6 +185,28 @@ describe("AppShell contextual sidebar", () => {
     expect(within(aside).getByRole("link", { name: "Crops & Varieties" })).toBeInTheDocument();
     expect(within(aside).queryByRole("link", { name: "Seeding" })).not.toBeInTheDocument();
     expect(within(aside).queryByRole("link", { name: "Leafy Production" })).not.toBeInTheDocument();
+  });
+
+  it("VINES-OPS-001A: Nursery sidebar includes Transfer to InterVines", () => {
+    renderShell("/farms/farm-1/nursery/sowings/new");
+    expect(within(sidebar()).getByRole("link", { name: "Transfer to InterVines" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/nursery/intervines",
+    );
+  });
+
+  it("VINES-OPS-001B: Vines Production shows its own two entries when active", () => {
+    renderShell("/farms/farm-1/vines-production");
+    const aside = sidebar();
+    expect(within(aside).getByRole("link", { name: "Vines Production" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/vines-production",
+    );
+    expect(within(aside).getByRole("link", { name: "Transfer to Production" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/vines-production/transfer",
+    );
+    expect(within(aside).queryByRole("link", { name: "Seeding" })).not.toBeInTheDocument();
   });
 
   it("UX-IA-001: exposes exactly one Store & Inventory Setup entry, and none of the four superseded entries", () => {

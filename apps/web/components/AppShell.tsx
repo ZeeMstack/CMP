@@ -55,6 +55,10 @@ function navGroups(farmId: string): NavGroupDef[] {
         { label: "Germination", href: `/farms/${farmId}/nursery/germination` },
         { label: "Seedling", href: `/farms/${farmId}/nursery/seedling` },
         { label: "Transfer to Inter Leafy Greens", href: `/farms/${farmId}/nursery/intersalads` },
+        // VINES-OPS-001A shipped this page but never registered it here --
+        // closing that gap now (it was otherwise only reachable via direct
+        // URL or the in-page NurseryJourney strip).
+        { label: "Transfer to InterVines", href: `/farms/${farmId}/nursery/intervines` },
       ],
     },
     {
@@ -63,6 +67,14 @@ function navGroups(farmId: string): NavGroupDef[] {
       items: [
         { label: "Leafy Production", href: `/farms/${farmId}/leafy-production` },
         { label: "Transfer to Production", href: `/farms/${farmId}/leafy-production/transfer` },
+      ],
+    },
+    {
+      id: "vines_production",
+      label: "Vines Production",
+      items: [
+        { label: "Vines Production", href: `/farms/${farmId}/vines-production` },
+        { label: "Transfer to Production", href: `/farms/${farmId}/vines-production/transfer` },
       ],
     },
     {
