@@ -2008,3 +2008,67 @@ class ExistenceBelowCustodyError(DomainError):
     custody quantity -- physical custody can never exceed existence
     (STORE-INV-002B frozen invariant). The remedy is a future stock-count
     correction workflow, not silently allowing this state."""
+
+
+# --- STORE-INV-003: Reservation & Issue -------------------------------------
+
+
+class InventoryReservationCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryReservationNotFoundError(DomainError):
+    pass
+
+
+class InventoryReservationLineNotFoundError(DomainError):
+    pass
+
+
+class InsufficientAvailableToIssueError(DomainError):
+    """Raised when a Reservation create/expand, or a direct Issue, would
+    leave the Farm/Item's own "Available to issue" quantity (usable
+    in-Store quantity minus every OTHER active Reservation's remaining
+    claim) negative."""
+
+
+class InventoryReservationReleaseCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InsufficientReservationBalanceError(DomainError):
+    """Raised when a Release or an Issue-against-reservation requests more
+    than a Reservation line's current remaining balance."""
+
+
+class InventoryIssueCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class InventoryIssueNotFoundError(DomainError):
+    pass
+
+
+class TooManyInventoryIssueLinesError(DomainError):
+    pass
+
+
+class InventoryIssueLineValidationError(DomainError):
+    """Raised for any structural problem with a single Issue line -- wrong
+    Item for the referenced Reservation line, a source Bin/cohort that does
+    not belong to this tenant/Farm, or a non-positive quantity."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class InventoryIssueSourceNotUsableError(DomainError):
+    """Raised when an Issue line's source cohort is not currently usable
+    (quarantined/held/rejected/expired) -- Quality safety always wins over
+    Reservation/Issue (docs/domain/STORE_INVENTORY_MODEL.md §11)."""
+
+
+class ReservationLineItemMismatchError(DomainError):
+    """Raised when an Issue line's `reservation_line_id` targets a
+    Reservation line for a different `InventoryItem` than the line's own."""

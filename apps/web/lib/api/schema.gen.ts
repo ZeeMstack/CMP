@@ -1509,6 +1509,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/inventory-reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservations */
+        get: operations["list_reservations_farms__farm_id__inventory_reservations_get"];
+        put?: never;
+        /** Create Reservation */
+        post: operations["create_reservation_farms__farm_id__inventory_reservations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-reservations/{reservation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reservation */
+        get: operations["get_reservation_inventory_reservations__reservation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-reservation-lines/{line_id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release Reservation Line */
+        post: operations["release_reservation_line_inventory_reservation_lines__line_id__releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/inventory-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Issues */
+        get: operations["list_issues_farms__farm_id__inventory_issues_get"];
+        put?: never;
+        /** Record Issue */
+        post: operations["record_issue_farms__farm_id__inventory_issues_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/inventory-issues/{issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Issue */
+        get: operations["get_issue_inventory_issues__issue_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/inventory-items/{item_id}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Item Farm Availability */
+        get: operations["get_item_farm_availability_farms__farm_id__inventory_items__item_id__availability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/inventory-items/{item_id}/issuable-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Issuable Sources */
+        get: operations["list_issuable_sources_farms__farm_id__inventory_items__item_id__issuable_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/movements": {
         parameters: {
             query?: never;
@@ -6730,6 +6851,93 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * InventoryIssueCreate
+         * @description A CUSTODY TRANSFER: Store Bin custody -> "Issued to operations"
+         *     custody. Never touches Existence or Quality. Serves both Direct Issue
+         *     (no `reservation_id`/line `reservation_line_id`) and Issue against
+         *     Reservation (one or more lines pin a `reservation_line_id`).
+         */
+        InventoryIssueCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reservation Id */
+            reservation_id?: string | null;
+            /** Lines */
+            lines: components["schemas"]["IssueLineCreate"][];
+        };
+        /** InventoryIssueLineRead */
+        InventoryIssueLineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Inventory Item Id */
+            inventory_item_id?: string | null;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Source Location Id */
+            source_location_id: string | null;
+            /** Moved Quantity Base */
+            moved_quantity_base: string;
+            /** Reservation Line Id */
+            reservation_line_id: string | null;
+        };
+        /** InventoryIssueRead */
+        InventoryIssueRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Issued By User Id
+             * Format: uuid
+             */
+            issued_by_user_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /** Reservation Id */
+            reservation_id: string | null;
+            /** Lines */
+            lines: components["schemas"]["InventoryIssueLineRead"][];
+        };
         /** InventoryItemCohortProvenanceRead */
         InventoryItemCohortProvenanceRead: {
             /**
@@ -7107,6 +7315,106 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /**
+         * InventoryReservationCreate
+         * @description A fungible CLAIM against usable in-Store quantity, frozen at
+         *     Farm + Item -- never touches Existence, Quality, or physical custody.
+         */
+        InventoryReservationCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Lines */
+            lines: components["schemas"]["ReservationLineCreate"][];
+        };
+        /** InventoryReservationLineRead */
+        InventoryReservationLineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Requested Quantity Base */
+            requested_quantity_base: string;
+            /** Remaining Quantity Base */
+            remaining_quantity_base: string;
+            /** Blocked By Quality */
+            blocked_by_quality: boolean;
+        };
+        /** InventoryReservationRead */
+        InventoryReservationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Requested By User Id
+             * Format: uuid
+             */
+            requested_by_user_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /** Lines */
+            lines: components["schemas"]["InventoryReservationLineRead"][];
+        };
+        /**
+         * InventoryReservationReleaseCreate
+         * @description Releases (part of) the unused CLAIM on one reservation line -- never
+         *     moves stock, never alters Existence/Quality.
+         */
+        InventoryReservationReleaseCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** InventoryStorageMovementRead */
         InventoryStorageMovementRead: {
             /**
@@ -7192,6 +7500,79 @@ export interface components {
             effective_time: string;
             /** Note */
             note?: string | null;
+        };
+        /**
+         * IssuableSourceRead
+         * @description One (Cohort, Bin) pair an operator may pick as an Issue line's
+         *     physical source -- usable, not expired, positive Bin balance.
+         */
+        IssuableSourceRead: {
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /** Inventory Lot Id */
+            inventory_lot_id: string | null;
+            /** Lot Label */
+            lot_label: string | null;
+            /**
+             * Source Location Id
+             * Format: uuid
+             */
+            source_location_id: string;
+            /** Bin Label */
+            bin_label: string;
+            /** Balance */
+            balance: string;
+        };
+        /**
+         * IssueLineCreate
+         * @description The operator's actual physical source: Item, usable Cohort, and
+         *     Store Bin -- `reservation_line_id` set only when this line fulfills
+         *     part of a Reservation line.
+         */
+        IssueLineCreate: {
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /**
+             * Inventory Quantity Cohort Id
+             * Format: uuid
+             */
+            inventory_quantity_cohort_id: string;
+            /**
+             * Source Location Id
+             * Format: uuid
+             */
+            source_location_id: string;
+            /** Quantity */
+            quantity: number | string;
+            /** Reservation Line Id */
+            reservation_line_id?: string | null;
+        };
+        /** ItemFarmAvailabilityRead */
+        ItemFarmAvailabilityRead: {
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** In Store Quantity */
+            in_store_quantity: string;
+            /** Reserved Quantity */
+            reserved_quantity: string;
+            /** Issued To Operations Quantity */
+            issued_to_operations_quantity: string;
+            /** Available To Issue Quantity */
+            available_to_issue_quantity: string;
         };
         /** ItemStorageBinBalanceRead */
         ItemStorageBinBalanceRead: {
@@ -9709,6 +10090,16 @@ export interface components {
             effective_time: string;
             /** Note */
             note?: string | null;
+        };
+        /** ReservationLineCreate */
+        ReservationLineCreate: {
+            /**
+             * Inventory Item Id
+             * Format: uuid
+             */
+            inventory_item_id: string;
+            /** Quantity */
+            quantity: number | string;
         };
         /** ResolvedLocationRead */
         ResolvedLocationRead: {
@@ -15846,6 +16237,344 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemStorageBreakdownRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservations_farms__farm_id__inventory_reservations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reservation_farms__farm_id__inventory_reservations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reservation_inventory_reservations__reservation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_reservation_line_inventory_reservation_lines__line_id__releases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryReservationReleaseCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryReservationLineRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_issues_farms__farm_id__inventory_issues_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryIssueRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_issue_farms__farm_id__inventory_issues_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryIssueCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_issue_inventory_issues__issue_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_farm_availability_farms__farm_id__inventory_items__item_id__availability_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemFarmAvailabilityRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_issuable_sources_farms__farm_id__inventory_items__item_id__issuable_sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuableSourceRead"][];
                 };
             };
             /** @description Validation Error */

@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
 import {
-  useCohortStorageBreakdown, useInventoryItems, useItemExistenceProvenance, useItemsExistenceSummary,
-  useItemStorageBreakdown, useLocationsTree, useRecordInventoryStorageTransfer,
+  useCohortStorageBreakdown, useInventoryItems, useItemExistenceProvenance, useItemFarmAvailability,
+  useItemsExistenceSummary, useItemStorageBreakdown, useLocationsTree, useRecordInventoryStorageTransfer, useUoms,
 } from "@/lib/query/hooks";
 
 const inputClass =
@@ -169,6 +169,21 @@ function CohortCustodyRow({
   );
 }
 
+function FarmAvailabilitySummary({ itemId, farmId, uomCode }: { itemId: string; farmId: string; uomCode: string | undefined }) {
+  const availabilityQuery = useItemFarmAvailability(farmId, itemId);
+  const notPutAwayQuery = useItemStorageBreakdown(itemId);
+  const fmt = (v: string | undefined) => (v === undefined ? "…" : uomCode ? `${v} ${uomCode}` : v);
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-wl-border/60 px-3 py-2 text-[11px] text-wl-text-secondary">
+      <span>In Store (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.in_store_quantity)}</span></span>
+      <span>Reserved (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.reserved_quantity)}</span></span>
+      <span>Issued to operations (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.issued_to_operations_quantity)}</span></span>
+      <span>Not put away (company-wide): <span className="font-medium text-wl-text">{fmt(notPutAwayQuery.data?.not_put_away_quantity)}</span></span>
+    </div>
+  );
+}
+
 function ProvenanceRows({ itemId, farmId, activeBins }: { itemId: string; farmId: string; activeBins: { id: string; label: string }[] }) {
   const provenanceQuery = useItemExistenceProvenance(itemId);
   const rows = provenanceQuery.data ?? [];
@@ -220,6 +235,8 @@ export default function StoreInventoryInventoryPage() {
   const itemsQuery = useInventoryItems({ status: "active" });
   const items = itemsQuery.data ?? [];
   const summary = useItemsExistenceSummary(items.map((i) => i.id));
+  const uomsQuery = useUoms();
+  const uomsById = new Map((uomsQuery.data ?? []).map((u) => [u.id, u.code]));
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const treeQuery = useLocationsTree(farmId);
   const activeBins = activeBinsWithPaths(treeQuery.data ?? []);
@@ -240,7 +257,8 @@ export default function StoreInventoryInventoryPage() {
         }
       />
       <p className="mb-4 text-xs text-wl-text-tertiary">
-        Selecting a different Farm changes which Bins &ldquo;Move stock&rdquo; can target, not the totals below.
+        Exists/Usable are company-wide. Available to issue, and the expanded detail&apos;s In Store/Reserved/Issued
+        to operations, are scoped to the selected Farm.
       </p>
 
       {itemsQuery.isLoading ? (
@@ -255,7 +273,7 @@ export default function StoreInventoryInventoryPage() {
                 <th className="p-3 font-medium">Item</th>
                 <th className="p-3 font-medium">Exists</th>
                 <th className="p-3 font-medium">Usable</th>
-                <th className="p-3 font-medium">Not put away</th>
+                <th className="p-3 font-medium">Available to issue</th>
                 <th className="p-3 font-medium" />
               </tr>
             </thead>
@@ -263,6 +281,7 @@ export default function StoreInventoryInventoryPage() {
               {items.map((item) => {
                 const row = summary.byItemId[item.id];
                 const isExpanded = expandedItemId === item.id;
+                const uomCode = uomsById.get(item.base_uom_id);
                 return (
                   <Fragment key={item.id}>
                     <tr className="border-b border-wl-border last:border-0">
@@ -274,10 +293,14 @@ export default function StoreInventoryInventoryPage() {
                           </span>
                         )}
                       </td>
-                      <td className="p-3 text-wl-text">{summary.isLoading ? "…" : row?.existing ?? "0"}</td>
-                      <td className="p-3 text-wl-text">{summary.isLoading ? "…" : row?.usable ?? "0"}</td>
                       <td className="p-3 text-wl-text">
-                        <NotPutAwayCell itemId={item.id} />
+                        {summary.isLoading ? "…" : row?.existing !== undefined ? `${row.existing} ${uomCode ?? ""}`.trim() : "0"}
+                      </td>
+                      <td className="p-3 text-wl-text">
+                        {summary.isLoading ? "…" : row?.usable !== undefined ? `${row.usable} ${uomCode ?? ""}`.trim() : "0"}
+                      </td>
+                      <td className="p-3 text-wl-text">
+                        <AvailableToIssueCell itemId={item.id} farmId={farmId} uomCode={uomCode} />
                       </td>
                       <td className="p-3 text-right">
                         <button
@@ -292,6 +315,7 @@ export default function StoreInventoryInventoryPage() {
                     {isExpanded && (
                       <tr className="border-b border-wl-border bg-wl-surface last:border-0">
                         <td colSpan={5} className="p-0">
+                          <FarmAvailabilitySummary itemId={item.id} farmId={farmId} uomCode={uomCode} />
                           <ProvenanceRows itemId={item.id} farmId={farmId} activeBins={activeBins} />
                         </td>
                       </tr>
@@ -307,8 +331,9 @@ export default function StoreInventoryInventoryPage() {
   );
 }
 
-function NotPutAwayCell({ itemId }: { itemId: string }) {
-  const breakdownQuery = useItemStorageBreakdown(itemId);
-  if (breakdownQuery.isLoading) return <>…</>;
-  return <>{breakdownQuery.data?.not_put_away_quantity ?? "0"}</>;
+function AvailableToIssueCell({ itemId, farmId, uomCode }: { itemId: string; farmId: string; uomCode: string | undefined }) {
+  const availabilityQuery = useItemFarmAvailability(farmId, itemId);
+  if (availabilityQuery.isLoading) return <>…</>;
+  const value = availabilityQuery.data?.available_to_issue_quantity ?? "0";
+  return <>{uomCode ? `${value} ${uomCode}` : value}</>;
 }

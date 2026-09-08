@@ -93,9 +93,10 @@ function navGroups(farmId: string): NavGroupDef[] {
       // from "Store & Inventory Setup" above (configuration: Stores/Bins,
       // Inventory Catalog, Categories, UOM reference). This module is
       // OPERATIONS: receiving, existence/usable-quantity visibility, Quality
-      // disposition, and -- as of STORE-INV-002B -- physical custody/putaway.
-      // Deliberately no Reservations/Issues/Returns/Work Orders entries --
-      // none of them exist yet.
+      // disposition, physical custody/putaway (STORE-INV-002B), and -- as of
+      // STORE-INV-003 -- Reservation & Issue (one compact "Issue" entry, no
+      // separate top-level Reservations module). Deliberately no
+      // Returns/Work Orders entries yet -- STORE-INV-004 scope.
       id: "store-inventory",
       label: "Store & Inventory",
       items: [
@@ -104,6 +105,7 @@ function navGroups(farmId: string): NavGroupDef[] {
         { label: "Putaway", href: `/farms/${farmId}/store-inventory/putaway` },
         { label: "Inventory", href: `/farms/${farmId}/store-inventory/inventory` },
         { label: "Quality", href: `/farms/${farmId}/store-inventory/quality` },
+        { label: "Issue", href: `/farms/${farmId}/store-inventory/issue` },
       ],
     },
     {
