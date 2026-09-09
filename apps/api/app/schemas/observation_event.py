@@ -124,6 +124,19 @@ class ObservationDefinitionSummary(BaseModel):
     unit: str | None
 
 
+class ObservationTargetRead(BaseModel):
+    """AGRONOMY-OPS-001: one of a batch's currently active (unreleased)
+    BatchCarrierAssignments, for operator target selection when recording a
+    carrier_assignment-scoped Observation -- crop/carrier-type-agnostic by
+    construction (CLAUDE.md rule 1), mirrors the existing occupancy-join
+    pattern used by `production_disposition_service.list_active_production_
+    plates` rather than introducing a new location-resolution mechanism."""
+
+    id: uuid.UUID
+    carrier: CarrierSummary
+    location_label: str | None
+
+
 class ObservationValueRead(BaseModel):
     id: uuid.UUID
     definition: ObservationDefinitionSummary

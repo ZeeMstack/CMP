@@ -305,4 +305,11 @@ export const queryKeys = {
   // --- VINES-OPS-002 ------------------------------------------------------------
   vinesProductionDispositionHistory: (tenantId: string, farmId: string, batchId: string) =>
     ["tenant", tenantId, "farms", farmId, "vines-production", "dispositions", batchId] as const,
+
+  // --- AGRONOMY-OPS-001 --------------------------------------------------------
+  observationDefinitions: (tenantId: string) => ["tenant", tenantId, "observation-definitions"] as const,
+  observationHistory: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "observations"] as const,
+  observationTargets: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "observation-targets"] as const,
 };

@@ -57,6 +57,7 @@ import type {
   LocationReactivate,
   LocationUpdate,
   MovementCreate,
+  ObservationEventCreate,
   PackagingUnitCreate,
   PackagingUnitRetire,
   PackingEventCreate,
@@ -3126,6 +3127,62 @@ export function useCreatePlatformTenant() {
     mutationFn: (payload: PlatformTenantOnboardingCreate) => api.createPlatformTenant(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.platformTenants() });
+    },
+  });
+}
+
+// --- AGRONOMY-OPS-001 --------------------------------------------------------
+// Crop Observations operator UI. Definitions are tenant-level (not
+// farm-scoped, mirrors `/observation-definitions`'s own route shape);
+// history and target selection are per-batch, so this workspace works
+// identically for Nursery/Leafy/Vines batches without any stage-specific
+// branching.
+
+export function useObservationDefinitions() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.observationDefinitions(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listObservationDefinitions(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useObservationHistory(farmId: string, batchId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.observationHistory(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listObservations(farmId, batchId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+export function useBatchObservationTargets(farmId: string, batchId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.observationTargets(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listBatchObservationTargets(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+/** Idempotency key (`client_command_id`) lives in the payload itself, same
+ * replay-safe pattern as every other command here. Success only refreshes
+ * this batch's own observation history -- recording an Observation never
+ * changes placement/occupancy/population, so no other query is invalidated. */
+export function useRecordObservation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, payload }: { batchId: string; payload: ObservationEventCreate }) =>
+      api.recordObservation(farmId, batchId, payload),
+    onSuccess: (_result, variables) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.observationHistory(tenantId, farmId, variables.batchId),
+      });
     },
   });
 }

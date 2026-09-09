@@ -67,6 +67,10 @@ function navGroups(farmId: string): NavGroupDef[] {
       items: [
         { label: "Leafy Production", href: `/farms/${farmId}/leafy-production` },
         { label: "Transfer to Production", href: `/farms/${farmId}/leafy-production/transfer` },
+        // AGRONOMY-OPS-001: one shared workspace across Nursery/Leafy/Vines
+        // batches (not stage-specific), placed here per the ticket's own
+        // preferred IA rather than duplicated into every crop-stage group.
+        { label: "Observations", href: `/farms/${farmId}/observations` },
       ],
     },
     {

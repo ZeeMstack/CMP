@@ -2143,3 +2143,48 @@ export function createPlatformTenant(
 ): Promise<PlatformTenantOnboardingResponse> {
   return postJson<PlatformTenantOnboardingResponse>("/platform/tenants", payload, signal);
 }
+
+// --- AGRONOMY-OPS-001 --------------------------------------------------------
+// Crop Observations operator UI: reuses the existing Observation Definition/
+// Event backend verbatim (no domain changes) -- Definitions, per-batch
+// history, and one new small read (`observation-targets`, see
+// app/api/observations.py) for carrier-assignment target selection, kept
+// crop-agnostic by construction (works identically for Nursery/Leafy/Vines).
+
+export type ObservationDefinitionRead = components["schemas"]["ObservationDefinitionRead"];
+export type ObservationEventCreate = components["schemas"]["ObservationEventCreate"];
+export type ObservationEventRead = components["schemas"]["ObservationEventRead"];
+export type ObservationValueIn = components["schemas"]["ObservationValueIn"];
+export type ObservationValueRead = components["schemas"]["ObservationValueRead"];
+export type ObservationTargetRead = components["schemas"]["ObservationTargetRead"];
+
+export function listObservationDefinitions(signal?: AbortSignal): Promise<ObservationDefinitionRead[]> {
+  return getJson<ObservationDefinitionRead[]>("/observation-definitions", signal);
+}
+
+export function listObservations(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<ObservationEventRead[]> {
+  return getJson<ObservationEventRead[]>(`/farms/${farmId}/crop-batches/${batchId}/observations`, signal);
+}
+
+export function recordObservation(
+  farmId: string,
+  batchId: string,
+  payload: ObservationEventCreate,
+  signal?: AbortSignal,
+): Promise<ObservationEventRead> {
+  return postJson<ObservationEventRead>(`/farms/${farmId}/crop-batches/${batchId}/observations`, payload, signal);
+}
+
+export function listBatchObservationTargets(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<ObservationTargetRead[]> {
+  return getJson<ObservationTargetRead[]>(
+    `/farms/${farmId}/crop-batches/${batchId}/observation-targets`, signal,
+  );
+}

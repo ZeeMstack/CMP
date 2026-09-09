@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
-from app.schemas.observation_event import ObservationEventCreate, ObservationEventRead
+from app.schemas.observation_event import ObservationEventCreate, ObservationEventRead, ObservationTargetRead
 from app.services import observation_service
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
@@ -126,4 +126,22 @@ def get_observation(
             observation_event_id=observation_event_id,
         )
     except (FarmNotFoundError, CropBatchNotFoundError, ObservationEventNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+
+
+@router.get(
+    "/farms/{farm_id}/crop-batches/{batch_id}/observation-targets",
+    response_model=list[ObservationTargetRead],
+)
+def list_observation_targets(
+    farm_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.OBSERVATION_READ)),
+) -> list[ObservationTargetRead]:
+    try:
+        return observation_service.list_batch_observation_targets(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id
+        )
+    except (FarmNotFoundError, CropBatchNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
