@@ -2197,3 +2197,31 @@ class VinesProductionTransferReplayStateConflictError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+# --- VINES-OPS-002 -----------------------------------------------------------------
+
+
+class ProductionDispositionGrowCubeNotInAssignmentError(DomainError):
+    """VINES-OPS-002: a requested `grow_cube_carrier_id` does not exist, or
+    is not one of the specific Grow Cubes this Grow Bag's own
+    BatchCarrierAssignment was populated with by its one Vines Production
+    Transfer -- disposition must always target a real, specific plant
+    placement actually inside the named Grow Bag, never an arbitrary or
+    foreign Carrier id."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ProductionDispositionGrowCubeAlreadyDisposedError(DomainError):
+    """VINES-OPS-002: a requested `grow_cube_carrier_id` already has a
+    non-reversed disposition REDUCTION recorded against it -- the specific
+    plant it names cannot be disposed twice. Correcting (voiding) the prior
+    REDUCTION restores eligibility (see `ProductionDispositionEventGrowCube`'s
+    own model docstring)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

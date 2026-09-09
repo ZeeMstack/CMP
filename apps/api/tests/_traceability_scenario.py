@@ -469,6 +469,21 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         for table in ("seedling_disposition_events", "seedling_disposition_commands"):
             if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
                 conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        # VINES-OPS-002: production_disposition_event_grow_cubes is new to
+        # this shared cleanup -- must precede production_disposition_events
+        # immediately below (it FKs to it), mirroring the same "new
+        # disposition-shaped table" pattern LEAFY-OPS-001 and NURSERY-OPS-003B
+        # already established just above. Without this delete, leftover rows
+        # survive into later tests in the same session and trip this
+        # ticket's own downgrade guard (which counts live rows) for every
+        # subsequent migration-downgrade test.
+        if conn.execute(text("SELECT to_regclass('production_disposition_event_grow_cubes')")).scalar() is not None:
+            conn.execute(
+                text(
+                    "DELETE FROM production_disposition_event_grow_cubes WHERE tenant_id = :tid"
+                ),
+                {"tid": tenant_id},
+            )
         # LEAFY-OPS-001: production_disposition_events/_commands are new to
         # this shared cleanup, mirroring seedling_disposition_events/
         # _commands immediately above exactly -- must precede batch_carrier_

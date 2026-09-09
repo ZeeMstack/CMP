@@ -81,6 +81,8 @@ import type {
   SowNewBatchCreate,
   VarietyCreate,
   VinesProductionTransferCreate,
+  RecordVinesGrowCubeDispositionCreate,
+  CorrectVinesGrowCubeDispositionCreate,
   WorkflowCreate,
   WorkflowStageCreate,
   WorkflowTransitionCreate,
@@ -1187,6 +1189,69 @@ export function useRecordVinesProductionTransfer(farmId: string) {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       queryClient.invalidateQueries({ queryKey: queryKeys.intervinesPlacements(tenantId, farmId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.availableGrowBagPools(tenantId, farmId, "") });
+    },
+  });
+}
+
+// --- VINES-OPS-002 ------------------------------------------------------------
+// Vines Production plant loss (Biological Disposition): current population +
+// drill-down live in the same `vinesProductionPlacements`/`vinesProduction
+// PlacementGrowBags` queries already established by 001B (now enriched with
+// living/lost data) -- a successful record/correct invalidates BOTH those and
+// its own history query, mirroring `useRecordProductionDisposition`'s own
+// established discipline for the sibling Leafy authority.
+
+export function useVinesProductionDispositionHistory(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesProductionDispositionHistory(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listVinesProductionDispositionHistory(farmId, { batchId }, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+function _invalidateVinesProductionDisposition(
+  queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string,
+) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.vinesProductionPlacements(tenantId, farmId) });
+  queryClient.invalidateQueries({
+    queryKey: ["tenant", tenantId, "farms", farmId, "vines-production", "placements"],
+  });
+  queryClient.invalidateQueries({
+    queryKey: ["tenant", tenantId, "farms", farmId, "vines-production", "dispositions"],
+  });
+}
+
+export function useRecordVinesGrowCubeDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordVinesGrowCubeDispositionCreate) => api.recordVinesGrowCubeDisposition(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateVinesProductionDisposition(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateVinesProductionDisposition(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useCorrectVinesGrowCubeDisposition(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventId, payload }: { eventId: string; payload: CorrectVinesGrowCubeDispositionCreate }) =>
+      api.correctVinesGrowCubeDisposition(farmId, eventId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateVinesProductionDisposition(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateVinesProductionDisposition(queryClient, tenantId, farmId);
     },
   });
 }

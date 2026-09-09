@@ -3273,6 +3273,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/vines-production/dispositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vines Production Disposition History */
+        get: operations["list_vines_production_disposition_history_farms__farm_id__vines_production_dispositions_get"];
+        put?: never;
+        /** Record Vines Grow Cube Disposition */
+        post: operations["record_vines_grow_cube_disposition_farms__farm_id__vines_production_dispositions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/dispositions/{event_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Vines Grow Cube Disposition */
+        post: operations["correct_vines_grow_cube_disposition_farms__farm_id__vines_production_dispositions__event_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/leafy-production-transfers": {
         parameters: {
             query?: never;
@@ -5073,6 +5108,18 @@ export interface components {
              */
             client_command_id: string;
             corrected?: components["schemas"]["CorrectedDispositionIn"] | null;
+        };
+        /**
+         * CorrectVinesGrowCubeDispositionCreate
+         * @description Void (pure reversal) only -- see `correct_grow_cube_disposition`'s own
+         *     docstring for why replacement is intentionally not exposed yet.
+         */
+        CorrectVinesGrowCubeDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
         };
         /** CorrectedDispositionIn */
         CorrectedDispositionIn: {
@@ -10794,6 +10841,35 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /**
+         * RecordVinesGrowCubeDispositionCreate
+         * @description The operator supplies the specific Grow Cube(s) actually lost --
+         *     never a bare count. The service translates this into `quantity_delta =
+         *     -len(grow_cube_carrier_ids)`.
+         */
+        RecordVinesGrowCubeDispositionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Grow Cube Carrier Ids */
+            grow_cube_carrier_ids: string[];
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note?: string | null;
+        };
         /** ReservationLineCreate */
         ReservationLineCreate: {
             /**
@@ -12377,6 +12453,163 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** VinesGrowCubeDispositionCorrectResult */
+        VinesGrowCubeDispositionCorrectResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            target_event: components["schemas"]["VinesGrowCubeDispositionEventRead"];
+            reversal_event: components["schemas"]["VinesGrowCubeDispositionEventRead"];
+            /** Previous Living Population */
+            previous_living_population: number;
+            /** Resulting Living Population */
+            resulting_living_population: number;
+        };
+        /** VinesGrowCubeDispositionEventRead */
+        VinesGrowCubeDispositionEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            /**
+             * Event Kind
+             * @enum {string}
+             */
+            event_kind: "REDUCTION" | "REVERSAL";
+            /** Reason Code */
+            reason_code: string;
+            /** Quantity Delta */
+            quantity_delta: number;
+            /** Plant Loss Quantity */
+            plant_loss_quantity: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Note */
+            note: string | null;
+            /** Reverses Event Id */
+            reverses_event_id: string | null;
+            /** Is Reversed */
+            is_reversed: boolean;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /** Grow Cubes */
+            grow_cubes: components["schemas"]["CarrierSummary"][];
+        };
+        /** VinesGrowCubeDispositionRecordResult */
+        VinesGrowCubeDispositionRecordResult: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            event: components["schemas"]["VinesGrowCubeDispositionEventRead"];
+            /** Previous Living Population */
+            previous_living_population: number;
+            /** Resulting Living Population */
+            resulting_living_population: number;
+            /** Assignment Released */
+            assignment_released: boolean;
+        };
+        /**
+         * VinesGrowCubeDispositionSummary
+         * @description VINES-OPS-002: the disposing fact for one removed Grow Cube -- present
+         *     only when `status == "removed"`.
+         */
+        VinesGrowCubeDispositionSummary: {
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note: string | null;
+        };
+        /**
+         * VinesProductionDispositionHistoryRead
+         * @description Full, un-collapsed event history for one Grow Bag population lineage
+         *     -- never hides original erroneous facts. Remains accessible after the
+         *     lineage's active BCA is released (mirrors `ProductionDispositionHistoryRead`'s
+         *     own established rule).
+         */
+        VinesProductionDispositionHistoryRead: {
+            /**
+             * Population Root Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            population_root_batch_carrier_assignment_id: string;
+            /** Grow Bag Code */
+            grow_bag_code: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Gutter Code */
+            gutter_code: string | null;
+            /** Opening Population */
+            opening_population: number;
+            /** Current Living Population */
+            current_living_population: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Events */
+            events: components["schemas"]["VinesGrowCubeDispositionEventRead"][];
+        };
         /** VinesProductionGrowBagPlacementRead */
         VinesProductionGrowBagPlacementRead: {
             /**
@@ -12402,7 +12635,11 @@ export interface components {
          * VinesProductionPlacementGrowBagRead
          * @description Drill-down detail for one aggregated Vines Production placement row:
          *     every individual Grow Bag currently carrying living plants there, and
-         *     every Grow Cube (with its own Seed Tray lineage) inside each Bag.
+         *     every Grow Cube (with its own Seed Tray lineage and living/removed
+         *     status) inside each Bag. VINES-OPS-002: `living_plant_count`/`capacity`/
+         *     `free_capacity` expose the "Grow Bag capacity after loss" facts the
+         *     ticket requires -- `assigned_plant_count`/capacity themselves never
+         *     change; only living/free do.
          */
         VinesProductionPlacementGrowBagRead: {
             grow_bag: components["schemas"]["CarrierSummary"];
@@ -12415,6 +12652,12 @@ export interface components {
             batch_carrier_assignment_id: string;
             /** Assigned Plant Count */
             assigned_plant_count: number;
+            /** Living Plant Count */
+            living_plant_count: number;
+            /** Capacity */
+            capacity: number | null;
+            /** Free Capacity */
+            free_capacity: number | null;
             /**
              * Assigned Effective Time
              * Format: date-time
@@ -12425,21 +12668,34 @@ export interface components {
         };
         /**
          * VinesProductionPlacementGrowCubeRead
-         * @description One living plant inside a drilled-down Grow Bag: its own Grow Cube
+         * @description One plant placement inside a drilled-down Grow Bag: its own Grow Cube
          *     identity plus, when resolvable, the originating Seed Tray -- the
          *     ticket's required backward lineage (Grow Bag -> Grow Cube -> Seed Tray)
-         *     in one compact row.
+         *     in one compact row. VINES-OPS-002: `status`/`disposition` distinguish a
+         *     currently-living plant from one already removed -- a disposed Grow Cube
+         *     is never dropped from this list (immutable history), only marked.
          */
         VinesProductionPlacementGrowCubeRead: {
             grow_cube: components["schemas"]["CarrierSummary"];
             source_seed_tray: components["schemas"]["CarrierSummary"] | null;
+            /**
+             * Status
+             * @default living
+             */
+            status: string;
+            disposition?: components["schemas"]["VinesGrowCubeDispositionSummary"] | null;
         };
         /**
          * VinesProductionPlacementRead
          * @description VINES-OPS-001B: the compact Vines Production read view -- one
          *     aggregated row per (Batch, Grow Gutter), never one row per plant/Grow
-         *     Bag (ticket: "Batch | Crop | Variety | Greenhouse | Gutter | Plants |
-         *     Days in Production").
+         *     Bag (ticket: "Batch | Crop | Variety | Greenhouse | Gutter | Living
+         *     Plants | Lost | Days in Production"). VINES-OPS-002: `plant_count`
+         *     keeps its original opening/assigned meaning (backward compatible for the
+         *     001B Transfer page); `living_plant_count`/`lost_plant_count` are the new
+         *     authoritative-population fields (via `production_disposition_service.
+         *     get_current_living_population`, carrier-agnostic, unchanged formula) the
+         *     Vines Production workspace itself renders.
          */
         VinesProductionPlacementRead: {
             /**
@@ -12482,6 +12738,10 @@ export interface components {
             gutter_code: string;
             /** Plant Count */
             plant_count: number;
+            /** Living Plant Count */
+            living_plant_count: number;
+            /** Lost Plant Count */
+            lost_plant_count: number;
             /**
              * Earliest Assigned Effective Time
              * Format: date-time
@@ -21641,6 +21901,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VinesProductionPlacementGrowBagRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vines_production_disposition_history_farms__farm_id__vines_production_dispositions_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesProductionDispositionHistoryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_vines_grow_cube_disposition_farms__farm_id__vines_production_dispositions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordVinesGrowCubeDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesGrowCubeDispositionRecordResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_vines_grow_cube_disposition_farms__farm_id__vines_production_dispositions__event_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectVinesGrowCubeDispositionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesGrowCubeDispositionCorrectResult"];
                 };
             };
             /** @description Validation Error */

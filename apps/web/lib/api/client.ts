@@ -108,6 +108,14 @@ export type AvailableGrowBagPoolRead = components["schemas"]["AvailableGrowBagPo
 export type VinesProductionPlacementRead = components["schemas"]["VinesProductionPlacementRead"];
 export type VinesProductionPlacementGrowBagRead = components["schemas"]["VinesProductionPlacementGrowBagRead"];
 export type VinesProductionPlacementGrowCubeRead = components["schemas"]["VinesProductionPlacementGrowCubeRead"];
+export type VinesGrowCubeDispositionSummary = components["schemas"]["VinesGrowCubeDispositionSummary"];
+// --- VINES-OPS-002 -------------------------------------------------------------
+export type RecordVinesGrowCubeDispositionCreate = components["schemas"]["RecordVinesGrowCubeDispositionCreate"];
+export type CorrectVinesGrowCubeDispositionCreate = components["schemas"]["CorrectVinesGrowCubeDispositionCreate"];
+export type VinesGrowCubeDispositionEventRead = components["schemas"]["VinesGrowCubeDispositionEventRead"];
+export type VinesGrowCubeDispositionRecordResult = components["schemas"]["VinesGrowCubeDispositionRecordResult"];
+export type VinesGrowCubeDispositionCorrectResult = components["schemas"]["VinesGrowCubeDispositionCorrectResult"];
+export type VinesProductionDispositionHistoryRead = components["schemas"]["VinesProductionDispositionHistoryRead"];
 export type LeafyProductionTransferCreate = components["schemas"]["LeafyProductionTransferCreate"];
 export type LeafyProductionTransferRead = components["schemas"]["LeafyProductionTransferRead"];
 export type AvailableLeafyProductionSourceRead = components["schemas"]["AvailableLeafyProductionSourceRead"];
@@ -864,6 +872,42 @@ export function listVinesProductionPlacementGrowBags(
   return getJson<VinesProductionPlacementGrowBagRead[]>(
     `/farms/${farmId}/vines-production/placements/${batchId}/${gutterId}/grow-bags`, signal,
   );
+}
+
+// --- VINES-OPS-002 ------------------------------------------------------------
+// Vines Production plant loss (Biological Disposition) -- record targets
+// specific Grow Cube(s) inside one Grow Bag; correct is void-only for now.
+
+export function recordVinesGrowCubeDisposition(
+  farmId: string,
+  payload: RecordVinesGrowCubeDispositionCreate,
+  signal?: AbortSignal,
+): Promise<VinesGrowCubeDispositionRecordResult> {
+  return postJson<VinesGrowCubeDispositionRecordResult>(
+    `/farms/${farmId}/vines-production/dispositions`, payload, signal,
+  );
+}
+
+export function correctVinesGrowCubeDisposition(
+  farmId: string,
+  eventId: string,
+  payload: CorrectVinesGrowCubeDispositionCreate,
+  signal?: AbortSignal,
+): Promise<VinesGrowCubeDispositionCorrectResult> {
+  return postJson<VinesGrowCubeDispositionCorrectResult>(
+    `/farms/${farmId}/vines-production/dispositions/${eventId}/correct`, payload, signal,
+  );
+}
+
+export function listVinesProductionDispositionHistory(
+  farmId: string,
+  params: { batchId?: string } = {},
+  signal?: AbortSignal,
+): Promise<VinesProductionDispositionHistoryRead[]> {
+  const search = new URLSearchParams();
+  if (params.batchId) search.set("batch_id", params.batchId);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return getJson<VinesProductionDispositionHistoryRead[]>(`/farms/${farmId}/vines-production/dispositions${query}`, signal);
 }
 
 // --- NURSERY-OPS-005B --------------------------------------------------------
