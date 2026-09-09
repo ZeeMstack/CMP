@@ -2781,6 +2781,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/crop-batches/{batch_id}/observation-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Observation Targets */
+        get: operations["list_observation_targets_farms__farm_id__crop_batches__batch_id__observation_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/germination-outcomes": {
         parameters: {
             query?: never;
@@ -9385,6 +9402,25 @@ export interface components {
             values: components["schemas"]["ObservationValueRead"][];
             /** Germination Checks */
             germination_checks: components["schemas"]["GerminationCheckRead"][];
+        };
+        /**
+         * ObservationTargetRead
+         * @description AGRONOMY-OPS-001: one of a batch's currently active (unreleased)
+         *     BatchCarrierAssignments, for operator target selection when recording a
+         *     carrier_assignment-scoped Observation -- crop/carrier-type-agnostic by
+         *     construction (CLAUDE.md rule 1), mirrors the existing occupancy-join
+         *     pattern used by `production_disposition_service.list_active_production_
+         *     plates` rather than introducing a new location-resolution mechanism.
+         */
+        ObservationTargetRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            carrier: components["schemas"]["CarrierSummary"];
+            /** Location Label */
+            location_label: string | null;
         };
         /** ObservationValueIn */
         ObservationValueIn: {
@@ -21110,6 +21146,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ObservationEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_observation_targets_farms__farm_id__crop_batches__batch_id__observation_targets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationTargetRead"][];
                 };
             };
             /** @description Validation Error */

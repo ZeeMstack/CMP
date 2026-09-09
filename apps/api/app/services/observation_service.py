@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
 from app.models.observation_definition import ObservationDefinition
 from app.models.observation_event import ObservationEvent
 from app.models.observation_value import ObservationValue
+from app.models.occupancy import Occupancy
 from app.models.sowing_event_line import SowingEventLine
 from app.models.workflow_stage import WorkflowStage
 from app.schemas.crop_batch import StageSummary
@@ -25,6 +26,7 @@ from app.schemas.observation_event import (
     GerminationCheckRead,
     ObservationDefinitionSummary,
     ObservationEventRead,
+    ObservationTargetRead,
     ObservationValueRead,
 )
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary
@@ -784,3 +786,78 @@ def list_observation_events(
     values_by_event = _load_values_for_events(db, event_ids=event_ids)
     checks_by_event = _load_germination_checks_for_events(db, event_ids=event_ids)
     return [_row_to_observation_event_read(r, values_by_event[r[0].id], checks_by_event[r[0].id]) for r in rows]
+
+
+# --- Observation target selection (AGRONOMY-OPS-001) ------------------------------
+
+
+def _resolve_location_ancestry_label(db: Session, *, location_id: uuid.UUID) -> str:
+    """Operator context only, never biological authority -- walks
+    `parent_location_id` up to a bounded depth, mirroring `production_
+    disposition_service._resolve_location_ancestry_label`'s own established
+    precedent (each read-service module owns its own small copy rather than
+    sharing one cross-module helper, consistent with this codebase)."""
+    codes: list[str] = []
+    current_id: uuid.UUID | None = location_id
+    hops = 0
+    while current_id is not None and hops < 10:
+        row = db.execute(
+            text("SELECT code, parent_location_id FROM locations WHERE id = :id"), {"id": current_id}
+        ).mappings().first()
+        if row is None:
+            break
+        codes.append(row["code"])
+        current_id = row["parent_location_id"]
+        hops += 1
+    return " / ".join(reversed(codes))
+
+
+def list_batch_observation_targets(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch_id: uuid.UUID
+) -> list[ObservationTargetRead]:
+    """Every currently active (unreleased) BatchCarrierAssignment for this
+    batch, for UI target selection when recording a carrier_assignment-
+    scoped Observation. Crop/carrier-type-agnostic: no filter on carrier
+    type, so this works identically for a Leafy Production Plate, a Vines
+    Grow Bag position, or a Nursery Tray -- whatever carriers this batch
+    currently has active. `location_label` is None when the carrier's
+    active occupancy (if any) targets an asset position rather than a
+    Location directly, or when it has no active occupancy at all -- the UI
+    must degrade gracefully, never invent a location."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    _get_batch_row(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id)
+
+    rows = db.execute(
+        select(BatchCarrierAssignment, Carrier, CarrierType)
+        .join(Carrier, Carrier.id == BatchCarrierAssignment.carrier_id)
+        .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+        .where(
+            BatchCarrierAssignment.tenant_id == tenant_id,
+            BatchCarrierAssignment.farm_id == farm_id,
+            BatchCarrierAssignment.batch_id == batch_id,
+            BatchCarrierAssignment.released_effective_time.is_(None),
+        )
+        .order_by(Carrier.code)
+    ).all()
+
+    results: list[ObservationTargetRead] = []
+    for assignment, carrier, carrier_type in rows:
+        location_id = db.execute(
+            select(Occupancy.target_location_id).where(
+                Occupancy.occupant_carrier_id == carrier.id, Occupancy.end_time.is_(None)
+            )
+        ).scalar_one_or_none()
+        location_label = (
+            _resolve_location_ancestry_label(db, location_id=location_id) if location_id is not None else None
+        )
+        results.append(
+            ObservationTargetRead(
+                id=assignment.id,
+                carrier=CarrierSummary(
+                    id=carrier.id, code=carrier.code,
+                    carrier_type=CarrierTypeSummary(id=carrier_type.id, code=carrier_type.code, name=carrier_type.name),
+                ),
+                location_label=location_label,
+            )
+        )
+    return results

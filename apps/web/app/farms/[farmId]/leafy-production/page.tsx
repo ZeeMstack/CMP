@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
@@ -273,6 +274,12 @@ export default function LeafyProductionPage() {
                         >
                           Record Plant Loss
                         </Button>
+                        <Link
+                          href={`/farms/${farmId}/observations?batchId=${plate.batch_id}`}
+                          className="inline-flex h-9 items-center justify-center rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover"
+                        >
+                          Record observation
+                        </Link>
                       </div>
                     </li>
                   ))}

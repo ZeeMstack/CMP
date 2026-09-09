@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
@@ -122,13 +123,21 @@ export default function VinesProductionPage() {
                           </td>
                           <td className="p-3 text-ink">{row.days_in_production}</td>
                           <td className="p-3">
-                            <button
-                              type="button"
-                              onClick={() => setExpanded(isExpanded ? null : { batchId: row.batch_id, gutterId: row.gutter_id })}
-                              className="min-h-9 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-                            >
-                              {isExpanded ? "Hide Grow Bags" : "Grow Bags"}
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpanded(isExpanded ? null : { batchId: row.batch_id, gutterId: row.gutter_id })}
+                                className="min-h-9 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
+                              >
+                                {isExpanded ? "Hide Grow Bags" : "Grow Bags"}
+                              </button>
+                              <Link
+                                href={`/farms/${farmId}/observations?batchId=${row.batch_id}`}
+                                className="flex min-h-9 items-center rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
+                              >
+                                Record observation
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && (

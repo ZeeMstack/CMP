@@ -635,3 +635,29 @@ def test_observation_api_smoke(client, active_context_with_farm, db_session) -> 
         f"/farms/{farm.id}/crop-batches/{s['batch'].id}/observations/{event['id']}", headers=headers
     )
     assert get_resp.status_code == 200
+
+
+@pytest.mark.integration
+def test_observation_targets_lists_active_carrier_assignments(client, active_context_with_farm, db_session) -> None:
+    """AGRONOMY-OPS-001: the new observation-targets read returns every
+    currently active BatchCarrierAssignment for the batch (crop/carrier-type
+    -agnostic -- `_build_scenario`'s carriers are plain seed trays with no
+    placement yet), each with a None `location_label` since none has an
+    active occupancy."""
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    db_session.commit()
+
+    resp = client.get(f"/farms/{farm.id}/crop-batches/{s['batch'].id}/observation-targets", headers=headers)
+    assert resp.status_code == 200
+    targets = resp.json()
+    assert {t["id"] for t in targets} == {str(a) for a in s["assignment_ids"]}
+    assert {t["carrier"]["code"] for t in targets} == {c.code for c in s["carriers"]}
+    assert all(t["location_label"] is None for t in targets)
+
+
+@pytest.mark.integration
+def test_observation_targets_unknown_batch_404s(client, active_context_with_farm) -> None:
+    _tenant, _user, headers, farm = active_context_with_farm
+    resp = client.get(f"/farms/{farm.id}/crop-batches/{uuid.uuid4()}/observation-targets", headers=headers)
+    assert resp.status_code == 404
