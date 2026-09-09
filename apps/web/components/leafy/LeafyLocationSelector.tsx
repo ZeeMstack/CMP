@@ -58,6 +58,7 @@ export function LeafyLocationSelector({
   value,
   onChange,
   errors,
+  excludeLocationId,
 }: {
   farmId: string;
   leafyGreenhouses: GreenhouseOverviewItem[];
@@ -70,6 +71,14 @@ export function LeafyLocationSelector({
     span_id?: { message?: string };
     destination_location_id?: { message?: string };
   };
+  /** LEAFY-OPS-002: when set, this Table id is never offered as a
+   * destination option -- used by "Move plate" so a Plate's own current
+   * Table can never be selected as its own destination (the generic
+   * Movement command would reject that as a no-op anyway, but excluding it
+   * here keeps the operator from ever seeing/picking it). Every other
+   * caller (e.g. `ProductionTransferForm.tsx`) omits this prop and keeps
+   * its existing, unfiltered behavior exactly. */
+  excludeLocationId?: string | null;
 }) {
   const structureQuery = useGreenhouseStructure(farmId, value.leafy_greenhouse_id || "__none__");
   const zones = value.leafy_greenhouse_id ? (structureQuery.data?.leafy_zones ?? []) : [];
@@ -81,11 +90,13 @@ export function LeafyLocationSelector({
 
   const zoneOptions: FilterableSelectOption[] = zones.map((z) => ({ value: z.id, label: z.code }));
   const spanOptions: FilterableSelectOption[] = spans.map((s) => ({ value: s.id, label: s.code }));
-  const tableOptions: FilterableSelectOption[] = tables.map((t) => ({
-    value: t.id,
-    label: t.code,
-    description: `capacity: ${t.capacity ?? "unlimited"}`,
-  }));
+  const tableOptions: FilterableSelectOption[] = tables
+    .filter((t) => t.id !== excludeLocationId)
+    .map((t) => ({
+      value: t.id,
+      label: t.code,
+      description: `capacity: ${t.capacity ?? "unlimited"}`,
+    }));
 
   function ancestryLabel(tableCode: string): string {
     return [selectedGreenhouse?.code, selectedZone?.code, selectedSpan?.code, tableCode].filter(Boolean).join(" / ");

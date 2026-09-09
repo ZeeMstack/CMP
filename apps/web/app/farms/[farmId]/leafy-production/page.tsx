@@ -8,17 +8,19 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { MoveProductionPlateForm } from "@/components/leafy/MoveProductionPlateForm";
 import { PlantLossHistoryPanel } from "@/components/leafy/PlantLossHistoryPanel";
 import { RecordPlantLossForm } from "@/components/leafy/RecordPlantLossForm";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
-import type { ActiveProductionPlateRead, CorrectProductionDispositionCreate } from "@/lib/api/client";
+import type { ActiveProductionPlateRead, CorrectProductionDispositionCreate, MovementCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useActiveProductionPlates,
   useCorrectProductionDisposition,
   useProductionDispositionHistory,
   useRecordProductionDisposition,
+  useRelocateLeafyProductionPlate,
 } from "@/lib/query/hooks";
 
 const TABS = [
@@ -43,11 +45,15 @@ export default function LeafyProductionPage() {
   const [recordSuccess, setRecordSuccess] = useState<{ plateCode: string; resulting: number; released: boolean } | null>(null);
   const [correctingEventId, setCorrectingEventId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
+  const [movingPlateId, setMovingPlateId] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<AppError | null>(null);
+  const [moveSuccess, setMoveSuccess] = useState<{ plateCode: string; toLabel: string } | null>(null);
 
   const activePlatesQuery = useActiveProductionPlates(farmId);
   const historyQuery = useProductionDispositionHistory(farmId);
   const recordMutation = useRecordProductionDisposition(farmId);
   const correctMutation = useCorrectProductionDisposition(farmId);
+  const relocateMutation = useRelocateLeafyProductionPlate(farmId);
 
   // Derived, never a frozen snapshot: a 409 on record invalidates the
   // Active Production Plates query, and this stays in sync with the
@@ -57,6 +63,8 @@ export default function LeafyProductionPage() {
   // re-review" half is the form's own back-to-Configure reset).
   const selectedPlate: ActiveProductionPlateRead | null =
     (activePlatesQuery.data ?? []).find((p) => p.batch_carrier_assignment_id === selectedPlateId) ?? null;
+  const movingPlate: ActiveProductionPlateRead | null =
+    (activePlatesQuery.data ?? []).find((p) => p.batch_carrier_assignment_id === movingPlateId) ?? null;
 
   return (
     <div>
@@ -120,6 +128,32 @@ export default function LeafyProductionPage() {
                 Done
               </Button>
             </div>
+          ) : moveSuccess ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <h2 className="font-serif text-base font-semibold text-ink">Plate moved</h2>
+              <dl className="text-sm">
+                <div>
+                  <dt className="text-ink-muted">Plate</dt>
+                  <dd className="font-medium text-ink">{moveSuccess.plateCode}</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">New location</dt>
+                  <dd className="font-medium text-ink">{moveSuccess.toLabel}</dd>
+                </div>
+              </dl>
+              <Button
+                type="button"
+                variant="primary"
+                className="self-start"
+                onClick={() => {
+                  setMovingPlateId(null);
+                  setMoveSuccess(null);
+                  setMoveError(null);
+                }}
+              >
+                Done
+              </Button>
+            </div>
           ) : selectedPlate ? (
             <RecordPlantLossForm
               plateCode={selectedPlate.plate_code}
@@ -157,6 +191,38 @@ export default function LeafyProductionPage() {
                 Back to Active Production Plates
               </Button>
             </div>
+          ) : movingPlate ? (
+            <MoveProductionPlateForm
+              farmId={farmId}
+              plate={movingPlate}
+              isSubmitting={relocateMutation.isPending}
+              serverError={moveError}
+              onCancel={() => {
+                setMovingPlateId(null);
+                setMoveError(null);
+              }}
+              onSubmit={(payload: MovementCreate, toLabel: string) => {
+                setMoveError(null);
+                relocateMutation.mutate(payload, {
+                  onSuccess: () => {
+                    setMoveSuccess({ plateCode: movingPlate.plate_code, toLabel });
+                  },
+                  onError: (error) => setMoveError(asAppError(error)),
+                });
+              }}
+            />
+          ) : movingPlateId ? (
+            // The Plate being moved is no longer active (e.g. its living
+            // population reached zero elsewhere before this form loaded) --
+            // never a blank/frozen form.
+            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
+              <p className="text-sm text-ink-muted">
+                This Plate is no longer active — it may have already been moved or released elsewhere.
+              </p>
+              <Button type="button" variant="secondary" className="self-start" onClick={() => setMovingPlateId(null)}>
+                Back to Active Production Plates
+              </Button>
+            </div>
           ) : (
             <>
               {activePlatesQuery.isLoading && <LoadingSkeleton rows={4} label="Loading active Production Plates" />}
@@ -191,14 +257,23 @@ export default function LeafyProductionPage() {
                           <span className="text-xs text-red-700">No current Leafy location on record</span>
                         )}
                       </div>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        className="self-start sm:self-center"
-                        onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
-                      >
-                        Record Plant Loss
-                      </Button>
+                      <div className="flex flex-wrap gap-2 self-start sm:self-center">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={!plate.current_location}
+                          onClick={() => setMovingPlateId(plate.batch_carrier_assignment_id)}
+                        >
+                          Move plate
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
+                        >
+                          Record Plant Loss
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>

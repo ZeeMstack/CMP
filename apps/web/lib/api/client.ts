@@ -125,6 +125,15 @@ export type RecordProductionDispositionCreate = components["schemas"]["RecordPro
 export type ProductionDispositionRecordResult = components["schemas"]["ProductionDispositionRecordResult"];
 export type CorrectProductionDispositionCreate = components["schemas"]["CorrectProductionDispositionCreate"];
 export type ProductionDispositionCorrectResult = components["schemas"]["ProductionDispositionCorrectResult"];
+// LEAFY-OPS-002: the generic Movement command/read, reused unchanged --
+// never a Leafy-specific relocation type. `LocationPathRead` is the
+// existing generic `/locations/{id}/path` ancestor-path read, reused here
+// to prefill "Move plate"'s destination Greenhouse/Zone/Span from the
+// Plate's current Table.
+export type MovementCreate = components["schemas"]["MovementCreate"];
+export type MovementRead = components["schemas"]["MovementRead"];
+export type LocationPathRead = components["schemas"]["LocationPathRead"];
+export type LocationPathEntry = components["schemas"]["LocationPathEntry"];
 export type ProductionDispositionHistoryRead = components["schemas"]["ProductionDispositionHistoryRead"];
 export type ProductionDispositionEventRead = components["schemas"]["ProductionDispositionEventRead"];
 export type TargetOccupantsRead = components["schemas"]["TargetOccupantsRead"];
@@ -993,6 +1002,28 @@ export function listProductionDispositionHistory(
   if (params.batchId) search.set("batch_id", params.batchId);
   const query = search.toString() ? `?${search.toString()}` : "";
   return getJson<ProductionDispositionHistoryRead[]>(`/farms/${farmId}/leafy-production/dispositions${query}`, signal);
+}
+
+// --- LEAFY-OPS-002 ----------------------------------------------------------
+// Production relocation: the generic Movement command (`POST /movements`)
+// and the generic Location ancestor-path read, both reused entirely
+// unchanged from their existing, already-proven backend implementations --
+// no new backend endpoint. Only the frontend wiring is new.
+
+export function createMovement(
+  farmId: string,
+  payload: MovementCreate,
+  signal?: AbortSignal,
+): Promise<MovementRead> {
+  return postJson<MovementRead>(`/farms/${farmId}/movements`, payload, signal);
+}
+
+export function getLocationPath(
+  farmId: string,
+  locationId: string,
+  signal?: AbortSignal,
+): Promise<LocationPathRead> {
+  return getJson<LocationPathRead>(`/farms/${farmId}/locations/${locationId}/path`, signal);
 }
 
 // --- HARVEST-OPS-001 SLICE 2 -----------------------------------------------------
