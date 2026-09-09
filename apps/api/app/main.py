@@ -37,6 +37,7 @@ from app.api.inventory_quality import router as inventory_quality_router
 from app.api.inventory_reservations import router as inventory_reservations_router
 from app.api.inventory_storage import router as inventory_storage_router
 from app.api.leafy_harvest import router as leafy_harvest_router
+from app.api.vines_harvest import router as vines_harvest_router
 from app.api.leafy_production_disposition import router as leafy_production_disposition_router
 from app.api.leafy_production_transfers import router as leafy_production_transfers_router
 from app.api.locations import router as locations_router
@@ -116,6 +117,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(leafy_production_transfers_router)
     api.include_router(leafy_production_disposition_router)
     api.include_router(leafy_harvest_router)
+    api.include_router(vines_harvest_router)
     api.include_router(harvests_router)
     api.include_router(grading_router)
     api.include_router(packing_router)

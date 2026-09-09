@@ -18,7 +18,10 @@ from app.models.harvest_event import HarvestEvent
 from app.models.harvest_population_event import HarvestPopulationEvent
 from app.models.harvest_source_line import HarvestSourceLine
 from app.models.harvest_source_line_correction import HarvestSourceLineCorrection
+from app.models.harvest_source_line_grow_bag import HarvestSourceLineGrowBag
 from app.models.harvested_produce_lot import HarvestedProduceLot
+from app.models.location import Location
+from app.models.location_type import LocationType
 from app.models.produce_lot_ledger_entry import ProduceLotLedgerEntry
 from app.models.variety import Variety
 from app.models.workflow import Workflow
@@ -30,6 +33,7 @@ from app.schemas.harvest import (
     HarvestedProduceLotRead,
     HarvestEventRead,
     HarvestSourceLineRead,
+    HarvestSourceLocationSummary,
     canonical_decimal_str,
 )
 from app.schemas.leafy_harvest import (
@@ -41,12 +45,21 @@ from app.schemas.leafy_harvest import (
     LeafyLocationSlotRead,
 )
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary
+from app.schemas.vines_harvest import (
+    VinesHarvestableSourceRead,
+    VinesHarvestEventRead,
+    VinesHarvestLocationRead,
+    VinesHarvestSourceLineCorrectionRead,
+    VinesHarvestSourceLineRead,
+    VinesLocationSlotRead,
+)
 from app.services import (
     farm_service,
     leafy_population_service,
     movement_service,
     produce_lot_ledger_service,
     quality_hold_service,
+    vines_production_transfer_service,
 )
 from app.services.audit import append_audit_event
 from app.services.errors import (
@@ -68,6 +81,7 @@ from app.services.errors import (
     HarvestSourceLineNotFoundError,
     HarvestValidationError,
     InvalidHarvestEffectiveTimeError,
+    LocationNotFoundError,
     NoPopulationRootError,
     QualityHoldOpenError,
     TooManyHarvestLinesError,
@@ -76,6 +90,7 @@ from app.services.errors import (
 
 MAX_SOURCE_LINES = 500
 PRODUCTION_CULTIVATION_PLATE_CARRIER_TYPE_CODE = "production_cultivation_plate"
+GROW_GUTTER_LOCATION_TYPE_CODE = "grow_gutter"
 
 
 def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID):
@@ -102,20 +117,31 @@ def _get_batch_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, bat
     return batch
 
 
+def _line_anchor_key(line: dict) -> object:
+    """VINES-OPS-003: a line carries exactly one anchor -- the original
+    `batch_carrier_assignment_id` or the new `source_location_id` -- so
+    every sort/fingerprint/grouping operation over `source_lines` resolves
+    "this line's own identity" through this one helper, never a bare
+    `line["batch_carrier_assignment_id"]` that would `KeyError` on a
+    Gutter-anchored line."""
+    return line.get("batch_carrier_assignment_id") or line.get("source_location_id")
+
+
 def _compute_harvest_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, batch_id: uuid.UUID,
     effective_time: datetime, produce_lot_code: str, note: str | None, source_lines: list[dict],
 ) -> str:
-    sorted_lines = sorted(source_lines, key=lambda line: str(line["batch_carrier_assignment_id"]))
+    sorted_lines = sorted(source_lines, key=lambda line: str(_line_anchor_key(line)))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(batch_id),
         effective_time.astimezone(timezone.utc).isoformat(), produce_lot_code, note or "",
     ]
     for line in sorted_lines:
+        whole_unit_count = line.get("whole_unit_count")
         parts.extend(
             [
-                str(line["batch_carrier_assignment_id"]), canonical_decimal_str(line["harvested_weight_kg"]),
-                str(line["whole_unit_count"]) if line["whole_unit_count"] is not None else "",
+                str(_line_anchor_key(line)), canonical_decimal_str(line["harvested_weight_kg"]),
+                str(whole_unit_count) if whole_unit_count is not None else "",
                 line.get("note") or "",
             ]
         )
@@ -295,7 +321,14 @@ def _write_harvest_event_and_lot(
 
     event_id = uuid.uuid4()
     lot_id = uuid.uuid4()
-    line_ids = {aid: uuid.uuid4() for aid in assignment_ids}
+    # VINES-OPS-003: keyed by whichever anchor a line actually carries
+    # (`batch_carrier_assignment_id` for the original shape, `source_
+    # location_id` for the new Vines/Gutter shape) -- the two id spaces
+    # never collide (distinct tables), and every line has exactly one.
+    line_ids = {
+        (line.get("batch_carrier_assignment_id") or line["source_location_id"]): uuid.uuid4()
+        for line in source_lines
+    }
 
     try:
         event = HarvestEvent(
@@ -334,12 +367,16 @@ def _write_harvest_event_and_lot(
         db.flush()
 
         for line in source_lines:
-            aid = line["batch_carrier_assignment_id"]
+            aid = line.get("batch_carrier_assignment_id")
+            loc_id = line.get("source_location_id")
+            key = aid or loc_id
             db.add(
                 HarvestSourceLine(
-                    id=line_ids[aid], tenant_id=tenant_id, farm_id=farm_id, harvest_event_id=event.id,
-                    batch_carrier_assignment_id=aid, carrier_id=assignments_by_id[aid].carrier_id,
-                    harvested_weight_kg=line["harvested_weight_kg"], whole_unit_count=line["whole_unit_count"],
+                    id=line_ids[key], tenant_id=tenant_id, farm_id=farm_id, harvest_event_id=event.id,
+                    batch_carrier_assignment_id=aid,
+                    carrier_id=(assignments_by_id[aid].carrier_id if aid is not None else None),
+                    source_location_id=loc_id,
+                    harvested_weight_kg=line["harvested_weight_kg"], whole_unit_count=line.get("whole_unit_count"),
                     note=line.get("note"),
                 )
             )
@@ -595,6 +632,558 @@ def record_leafy_harvest(
     )
 
 
+# --- Vines Production Harvest ------------------------------------------------------
+#
+# VINES-OPS-003: reuses every write primitive `record_leafy_harvest` above
+# already established (idempotency, CropBatch lock, Quality Hold, active
+# check, the shared insert-block-plus-commit), but is genuinely simpler than
+# Leafy in one respect: NO population consequence is ever created (a vine
+# plant stays alive and re-harvestable after its fruit is picked -- see
+# `5a26ba0dae6c`'s own migration docstring for why this needed no new
+# biological-ledger machinery at all, only a second source-line anchor
+# shape). Source lines are anchored to a Grow Gutter Location (never a
+# single biological Carrier, since a Gutter aggregates several Grow Bags at
+# once and the ticket forbids fabricating a per-Bag weight split); the
+# currently-living Grow Bag lineage under each harvested Gutter is instead
+# snapshotted, identity-only, via `HarvestSourceLineGrowBag`.
+
+
+def _lock_and_validate_vines_harvest_gutters(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch: CropBatch, gutter_ids: list[uuid.UUID],
+):
+    """Validates each Grow Gutter Location (exists, this tenant/farm, active,
+    genuinely `grow_gutter`-typed) and resolves its CURRENTLY LIVING Grow
+    Bags for this specific Batch via VINES-OPS-002's own already-proven read
+    model (`vines_production_transfer_service.list_vines_production_
+    placement_grow_bags`, unmodified) -- never a second, independently
+    recomputed living-population authority. A Gutter with zero living Grow
+    Bags for this Batch is rejected before any write (this is also what
+    structurally forbids a cross-Batch source mix-up: a Gutter belonging to
+    a DIFFERENT Batch always resolves to zero living Bags for THIS Batch).
+    No row locking here -- Harvest never mutates population/BCA state, so
+    there is nothing here that needs a write-lock; the CropBatch lock
+    already held by `_lock_batch_for_harvest` is the only lock this command
+    needs."""
+    gutter_type_id = db.execute(
+        select(LocationType.id).where(LocationType.code == GROW_GUTTER_LOCATION_TYPE_CODE)
+    ).scalar_one_or_none()
+    bags_by_gutter: dict[uuid.UUID, list] = {}
+    for gutter_id in gutter_ids:
+        gutter = db.execute(
+            select(Location).where(
+                Location.id == gutter_id, Location.tenant_id == tenant_id, Location.farm_id == farm_id,
+                Location.location_type_id == gutter_type_id, Location.status == "active",
+            )
+        ).scalar_one_or_none()
+        if gutter is None:
+            raise LocationNotFoundError(str(gutter_id))
+        bags = vines_production_transfer_service.list_vines_production_placement_grow_bags(
+            db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch.id, gutter_id=gutter_id,
+        )
+        living_bags = [b for b in bags if b.living_plant_count > 0]
+        if not living_bags:
+            raise HarvestValidationError(
+                f"gutter {gutter_id} has no currently living Vines Production placement for this batch"
+            )
+        bags_by_gutter[gutter_id] = living_bags
+    return bags_by_gutter
+
+
+def record_vines_harvest(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    effective_time: datetime,
+    produce_lot_code: str,
+    note: str | None,
+    source_lines: list[dict],
+) -> HarvestEvent:
+    """VINES-OPS-003: one Gutter-anchored source line per Grow Gutter,
+    weight-only (`whole_unit_count` always `None` -- Vines Harvest is
+    weight-based for the current pilot crops). No `stage_category` gate, no
+    population consequence -- mirrors `record_leafy_harvest`'s own decision
+    3 exactly, via the sibling `cmp.vines_harvest` trigger escape hatch."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    if effective_time > datetime.now(timezone.utc):
+        raise InvalidHarvestEffectiveTimeError("effective_time cannot be in the future")
+    if len(source_lines) > MAX_SOURCE_LINES:
+        raise TooManyHarvestLinesError(f"a harvest command may include at most {MAX_SOURCE_LINES} source lines")
+
+    fingerprint = _compute_harvest_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+        effective_time=effective_time, produce_lot_code=produce_lot_code, note=note, source_lines=source_lines,
+    )
+
+    batch, replay = _lock_batch_for_harvest(
+        db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id,
+        client_command_id=client_command_id, fingerprint=fingerprint,
+    )
+    if replay is not None:
+        return replay
+
+    # No stage_category gate for Vines Harvest either -- still requires a
+    # real active stage run, since HarvestEvent's own schema requires one.
+    active_run = _lock_active_stage_run(db, batch=batch)
+
+    gutter_ids = sorted({line["source_location_id"] for line in source_lines}, key=str)
+    bags_by_gutter = _lock_and_validate_vines_harvest_gutters(
+        db, tenant_id=tenant_id, farm_id=farm_id, batch=batch, gutter_ids=gutter_ids,
+    )
+
+    def _after_lines_inserted(
+        db: Session, event: HarvestEvent, lot: HarvestedProduceLot, line_ids: dict[uuid.UUID, uuid.UUID]
+    ) -> None:
+        for gutter_id, bags in bags_by_gutter.items():
+            line_id = line_ids[gutter_id]
+            for bag in bags:
+                db.add(
+                    HarvestSourceLineGrowBag(
+                        id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id,
+                        harvest_source_line_id=line_id, grow_bag_carrier_id=bag.grow_bag.id,
+                    )
+                )
+        db.flush()
+
+    # Widens `enforce_harvest_event_insert_integrity`'s own escape hatch --
+    # transaction-local, reset automatically at commit/rollback, never
+    # leaks across connections (mirrors `record_leafy_harvest`'s own
+    # `cmp.leafy_harvest` marker exactly, see the 5a26ba0dae6c migration).
+    db.execute(text("SET LOCAL cmp.vines_harvest = 'true'"))
+
+    return _write_harvest_event_and_lot(
+        db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch=batch, active_run=active_run,
+        client_command_id=client_command_id, fingerprint=fingerprint, effective_time=effective_time,
+        produce_lot_code=produce_lot_code, note=note, source_lines=source_lines, assignments_by_id={},
+        after_lines_inserted=_after_lines_inserted,
+    )
+
+
+# --- Vines Production Harvest: reads ------------------------------------------------
+
+
+def list_vines_harvestable_sources(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch_id: uuid.UUID | None = None,
+) -> list[VinesHarvestableSourceRead]:
+    """Every currently-eligible (Batch, Grow Gutter) Vines Harvest source --
+    reuses VINES-OPS-002's own `list_vines_production_placements` (already
+    scoped to active, currently-living Grow Bag population) as the sole
+    living-population authority, never a second recomputation. A quality-
+    held Batch DOES still appear here (visibly flagged, never hidden) --
+    the write path alone actually blocks a new Harvest while the hold is
+    open, mirroring `list_harvestable_production_plates`'s own established
+    rationale exactly."""
+    placements = vines_production_transfer_service.list_vines_production_placements(
+        db, tenant_id=tenant_id, farm_id=farm_id,
+    )
+    if batch_id is not None:
+        placements = [p for p in placements if p.batch_id == batch_id]
+
+    quality_hold_by_batch: dict[uuid.UUID, bool] = {}
+    results: list[VinesHarvestableSourceRead] = []
+    for p in placements:
+        if p.batch_id not in quality_hold_by_batch:
+            quality_hold_by_batch[p.batch_id] = quality_hold_service.has_open_quality_hold(db, batch_id=p.batch_id)
+        last_harvest = db.execute(
+            select(func.max(HarvestEvent.effective_time))
+            .select_from(HarvestSourceLine)
+            .join(HarvestEvent, HarvestEvent.id == HarvestSourceLine.harvest_event_id)
+            .where(
+                HarvestEvent.tenant_id == tenant_id, HarvestEvent.batch_id == p.batch_id,
+                HarvestSourceLine.source_location_id == p.gutter_id,
+            )
+        ).scalar_one_or_none()
+        results.append(
+            VinesHarvestableSourceRead(
+                batch_id=p.batch_id, batch_code=p.batch_code, crop_common_name=p.crop_common_name,
+                variety_name=p.variety_name, greenhouse_id=p.greenhouse_id, greenhouse_code=p.greenhouse_code,
+                gutter_id=p.gutter_id, gutter_code=p.gutter_code, living_plant_count=p.living_plant_count,
+                last_harvest_effective_time=last_harvest, quality_hold_open=quality_hold_by_batch[p.batch_id],
+            )
+        )
+    return results
+
+
+_VINES_HARVEST_LOCATION_TYPE_CODES = ("greenhouse", "zone", "span", "grow_gutter")
+
+
+def _resolve_vines_harvest_location_breakdown(db: Session, *, location_id: uuid.UUID) -> dict[str, VinesLocationSlotRead]:
+    slots: dict[str, VinesLocationSlotRead] = {}
+    current_id: uuid.UUID | None = location_id
+    hops = 0
+    while current_id is not None and hops < 10:
+        row = db.execute(
+            text(
+                "SELECT l.id, l.code, l.name, l.parent_location_id, lt.code AS type_code "
+                "FROM locations l JOIN location_types lt ON lt.id = l.location_type_id WHERE l.id = :id"
+            ),
+            {"id": current_id},
+        ).mappings().first()
+        if row is None:
+            break
+        if row["type_code"] in _VINES_HARVEST_LOCATION_TYPE_CODES and row["type_code"] not in slots:
+            slots[row["type_code"]] = VinesLocationSlotRead(id=row["id"], code=row["code"], name=row["name"])
+        current_id = row["parent_location_id"]
+        hops += 1
+    return slots
+
+
+def _vines_harvest_location_read(db: Session, *, location_id: uuid.UUID | None) -> VinesHarvestLocationRead | None:
+    if location_id is None:
+        return None
+    slots = _resolve_vines_harvest_location_breakdown(db, location_id=location_id)
+    return VinesHarvestLocationRead(
+        greenhouse=slots.get("greenhouse"), zone=slots.get("zone"), span=slots.get("span"),
+        gutter=slots.get("grow_gutter"),
+    )
+
+
+def _vines_harvest_source_line_read(db: Session, *, source_line: HarvestSourceLine) -> VinesHarvestSourceLineRead:
+    effective = get_current_effective_source_line(db, harvest_source_line_id=source_line.id)
+    history = get_correction_history(db, harvest_source_line_id=source_line.id)
+    gutter_row = db.execute(
+        select(Location.id, Location.code, Location.name).where(Location.id == source_line.source_location_id)
+    ).one()
+    grow_bag_rows = db.execute(
+        select(Carrier.id, Carrier.code, CarrierType.id, CarrierType.code, CarrierType.name)
+        .select_from(HarvestSourceLineGrowBag)
+        .join(Carrier, Carrier.id == HarvestSourceLineGrowBag.grow_bag_carrier_id)
+        .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+        .where(HarvestSourceLineGrowBag.harvest_source_line_id == source_line.id)
+        .order_by(Carrier.code)
+    ).all()
+    is_void = effective["is_void"]
+    return VinesHarvestSourceLineRead(
+        id=source_line.id,
+        gutter=VinesLocationSlotRead(id=gutter_row[0], code=gutter_row[1], name=gutter_row[2]),
+        harvest_location=_vines_harvest_location_read(db, location_id=source_line.source_location_id),
+        grow_bags=[
+            CarrierSummary(id=r[0], code=r[1], carrier_type=CarrierTypeSummary(id=r[2], code=r[3], name=r[4]))
+            for r in grow_bag_rows
+        ],
+        original_harvested_weight_kg=effective["original_harvested_weight_kg"],
+        current_harvested_weight_kg=(Decimal("0") if is_void else effective["harvested_weight_kg"]),
+        state=("VOID" if is_void else "ACTIVE"),
+        correction_tip_id=effective["tip_correction_id"],
+        correction_history=[
+            VinesHarvestSourceLineCorrectionRead(
+                id=c.id, supersedes_correction_id=c.supersedes_correction_id, is_void=c.is_void,
+                corrected_harvested_weight_kg=c.corrected_harvested_weight_kg, reason_code=c.reason_code,
+                note=c.note, actor_user_id=c.actor_user_id, recorded_time=c.recorded_at,
+            )
+            for c in history
+        ],
+    )
+
+
+def _load_vines_source_lines(
+    db: Session, *, event_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[VinesHarvestSourceLineRead]]:
+    grouped: dict[uuid.UUID, list[VinesHarvestSourceLineRead]] = {eid: [] for eid in event_ids}
+    if not event_ids:
+        return grouped
+    rows = db.execute(
+        select(HarvestSourceLine)
+        .where(HarvestSourceLine.harvest_event_id.in_(event_ids), HarvestSourceLine.source_location_id.is_not(None))
+        .order_by(HarvestSourceLine.id)
+    ).scalars().all()
+    for source_line in rows:
+        grouped[source_line.harvest_event_id].append(_vines_harvest_source_line_read(db, source_line=source_line))
+    return grouped
+
+
+def _row_to_vines_harvest_event_read(
+    db: Session, row, source_lines: list[VinesHarvestSourceLineRead], *, tenant_id: uuid.UUID, farm_id: uuid.UUID,
+) -> VinesHarvestEventRead:
+    event: HarvestEvent = row[0]
+    m = row._mapping
+    crop: Crop = row[6]
+    variety: Variety | None = row[7]
+    original_total_weight = sum((line.original_harvested_weight_kg for line in source_lines), Decimal("0"))
+    current_total_weight = sum((line.current_harvested_weight_kg for line in source_lines), Decimal("0"))
+    balance = produce_lot_ledger_service.get_balance(
+        db, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=m["lot_id"]
+    )
+    return VinesHarvestEventRead(
+        id=event.id, tenant_id=event.tenant_id, farm_id=event.farm_id, batch_id=event.batch_id,
+        batch_code=m["batch_code"], crop=CropSummary(id=crop.id, code=crop.code, common_name=crop.common_name),
+        variety=(VarietySummary(id=variety.id, code=variety.code, name=variety.name) if variety is not None else None),
+        effective_time=event.effective_time, recorded_time=event.recorded_time, actor_user_id=event.actor_user_id,
+        produce_lot_id=m["lot_id"], produce_lot_code=m["lot_code"], note=event.note,
+        original_total_harvested_weight_kg=original_total_weight, current_total_harvested_weight_kg=current_total_weight,
+        available_balance_weight_kg=balance.available_weight_kg, source_lines=source_lines,
+    )
+
+
+def get_vines_harvest_event(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, harvest_event_id: uuid.UUID,
+) -> VinesHarvestEventRead:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    row = db.execute(
+        _harvest_event_header_query().where(
+            HarvestEvent.id == harvest_event_id, HarvestEvent.tenant_id == tenant_id, HarvestEvent.farm_id == farm_id,
+        )
+    ).first()
+    if row is None:
+        raise HarvestEventNotFoundError(str(harvest_event_id))
+    source_lines = _load_vines_source_lines(db, event_ids=[harvest_event_id])[harvest_event_id]
+    if not source_lines:
+        # This HarvestEvent exists but has no Gutter-anchored (Vines) source
+        # line -- not a Vines Harvest event at all (e.g. a Leafy/generic
+        # one). Never surfaced through the Vines-specific read surface.
+        raise HarvestEventNotFoundError(str(harvest_event_id))
+    return _row_to_vines_harvest_event_read(db, row, source_lines, tenant_id=tenant_id, farm_id=farm_id)
+
+
+def list_vines_harvest_events(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch_id: uuid.UUID | None = None,
+) -> list[VinesHarvestEventRead]:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    vines_event_ids = (
+        select(HarvestSourceLine.harvest_event_id).where(HarvestSourceLine.source_location_id.is_not(None)).distinct()
+    )
+    query = _harvest_event_header_query().where(
+        HarvestEvent.tenant_id == tenant_id, HarvestEvent.farm_id == farm_id, HarvestEvent.id.in_(vines_event_ids),
+    )
+    if batch_id is not None:
+        query = query.where(HarvestEvent.batch_id == batch_id)
+    rows = db.execute(query.order_by(HarvestEvent.effective_time, HarvestEvent.recorded_time)).all()
+    event_ids = [r[0].id for r in rows]
+    source_by_event = _load_vines_source_lines(db, event_ids=event_ids)
+    return [
+        _row_to_vines_harvest_event_read(db, r, source_by_event[r[0].id], tenant_id=tenant_id, farm_id=farm_id)
+        for r in rows
+    ]
+
+
+# --- Vines Production Harvest correction --------------------------------------------
+#
+# VINES-OPS-003: purely commercial/audit -- reuses `HarvestSourceLineCorrection`
+# and every already-generic chain-walking/idempotency helper below
+# (`resolve_current_correction`, `get_current_effective_source_line`,
+# `get_correction_history`, `_find_existing_correction`) completely
+# unmodified. Skips the ENTIRE population/BCA/restoration section `correct_
+# leafy_harvest` needs (no `HarvestPopulationEvent` was ever created by
+# `record_vines_harvest`, so there is never one to reverse or replace) --
+# genuinely simpler than the Leafy correction, not a cut corner.
+
+
+def _compute_vines_correction_fingerprint(
+    *, tenant_id, farm_id, actor_user_id, harvest_source_line_id, supersedes_correction_id, is_void,
+    corrected_harvested_weight_kg, reason_code: str, note: str,
+) -> str:
+    return _compute_correction_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id,
+        harvest_source_line_id=harvest_source_line_id, supersedes_correction_id=supersedes_correction_id,
+        is_void=is_void, corrected_harvested_weight_kg=corrected_harvested_weight_kg,
+        corrected_whole_unit_count=None, reason_code=reason_code, note=note,
+    )
+
+
+def correct_vines_harvest(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    harvest_source_line_id: uuid.UUID,
+    supersedes_correction_id: uuid.UUID | None,
+    is_void: bool,
+    corrected_harvested_weight_kg: Decimal | None,
+    reason_code: str,
+    note: str,
+) -> HarvestSourceLineCorrection:
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    if is_void:
+        if corrected_harvested_weight_kg is not None:
+            raise HarvestCorrectionValidationError("a void correction must not carry a corrected value")
+    else:
+        if corrected_harvested_weight_kg is None or corrected_harvested_weight_kg <= 0:
+            raise HarvestCorrectionValidationError(
+                "corrected_harvested_weight_kg is required and must be positive for a non-void correction"
+            )
+    if not reason_code or not reason_code.strip():
+        raise HarvestCorrectionValidationError("reason_code is required")
+    if not note or not note.strip():
+        raise HarvestCorrectionValidationError("note is required")
+
+    fingerprint = _compute_vines_correction_fingerprint(
+        tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id,
+        harvest_source_line_id=harvest_source_line_id, supersedes_correction_id=supersedes_correction_id,
+        is_void=is_void, corrected_harvested_weight_kg=corrected_harvested_weight_kg, reason_code=reason_code,
+        note=note,
+    )
+
+    existing = _find_existing_correction(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise HarvestCorrectionCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    line = db.execute(
+        select(HarvestSourceLine).where(
+            HarvestSourceLine.id == harvest_source_line_id, HarvestSourceLine.tenant_id == tenant_id,
+            HarvestSourceLine.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if line is None or line.source_location_id is None:
+        raise HarvestSourceLineNotFoundError(str(harvest_source_line_id))
+
+    event = db.execute(select(HarvestEvent).where(HarvestEvent.id == line.harvest_event_id)).scalar_one()
+
+    # Section 34-equivalent: CropBatch first (shared lock-order convention).
+    batch = db.execute(select(CropBatch).where(CropBatch.id == event.batch_id).with_for_update()).scalar_one()
+
+    existing = _find_existing_correction(db, tenant_id=tenant_id, client_command_id=client_command_id)
+    if existing is not None:
+        if existing.request_fingerprint == fingerprint:
+            return existing
+        raise HarvestCorrectionCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    if batch.state != "active":
+        raise CropBatchClosedError(str(batch.id))
+
+    current_tip_id = resolve_current_correction(db, harvest_source_line_id=harvest_source_line_id)
+    if current_tip_id != supersedes_correction_id:
+        raise HarvestCorrectionAlreadySupersededError(str(harvest_source_line_id))
+
+    if supersedes_correction_id is None:
+        predecessor_weight = line.harvested_weight_kg
+    else:
+        predecessor = db.get(HarvestSourceLineCorrection, supersedes_correction_id)
+        predecessor_weight = Decimal("0") if predecessor.is_void else predecessor.corrected_harvested_weight_kg
+
+    new_weight = Decimal("0") if is_void else corrected_harvested_weight_kg
+    if new_weight == predecessor_weight:
+        raise HarvestCorrectionValidationError(
+            "this correction does not change the effective value from its own immediate predecessor"
+        )
+
+    lot = db.execute(
+        select(HarvestedProduceLot).where(HarvestedProduceLot.harvest_event_id == line.harvest_event_id)
+    ).scalar_one()
+
+    correction_id = uuid.uuid4()
+    try:
+        correction = HarvestSourceLineCorrection(
+            id=correction_id, tenant_id=tenant_id, farm_id=farm_id, harvest_source_line_id=harvest_source_line_id,
+            supersedes_correction_id=supersedes_correction_id, is_void=is_void,
+            corrected_harvested_weight_kg=corrected_harvested_weight_kg, corrected_whole_unit_count=None,
+            reason_code=reason_code, note=note, actor_user_id=actor_user_id, client_command_id=client_command_id,
+            request_fingerprint=fingerprint,
+        )
+        db.add(correction)
+        db.flush()
+
+        db.execute(
+            select(HarvestedProduceLot.id).where(HarvestedProduceLot.id == lot.id).with_for_update()
+        ).scalar_one()
+        prior_weight = db.execute(
+            select(func.coalesce(func.sum(ProduceLotLedgerEntry.weight_delta_kg), 0)).where(
+                ProduceLotLedgerEntry.produce_lot_id == lot.id
+            )
+        ).scalar_one()
+
+        weight_delta = new_weight - predecessor_weight
+        if weight_delta != 0:
+            remaining_weight = prior_weight + weight_delta
+            if remaining_weight < 0:
+                raise HarvestLedgerBalanceError(
+                    "this correction would reduce the available Harvest Lot below zero because some quantity has "
+                    "already been consumed in grading"
+                )
+            db.add(
+                ProduceLotLedgerEntry(
+                    id=correction.id, tenant_id=tenant_id, farm_id=farm_id, produce_lot_id=lot.id,
+                    harvest_source_line_correction_id=correction.id, entry_kind="harvest_adjustment",
+                    weight_delta_kg=weight_delta, whole_unit_count_delta=None,
+                    effective_time=event.effective_time, recorded_time=correction.recorded_at,
+                    actor_user_id=actor_user_id, note=note,
+                )
+            )
+            db.flush()
+
+        append_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.harvest_corrected",
+            entity_type="harvest_source_line_correction", entity_id=correction.id,
+            event_data={
+                "correction_id": str(correction.id), "client_command_id": str(client_command_id),
+                "harvest_source_line_id": str(harvest_source_line_id),
+                "supersedes_correction_id": str(supersedes_correction_id) if supersedes_correction_id else None,
+                "is_void": is_void, "reason_code": reason_code, "note": note,
+                "original_harvested_weight_kg": canonical_decimal_str(line.harvested_weight_kg),
+                "predecessor_harvested_weight_kg": canonical_decimal_str(predecessor_weight),
+                "corrected_harvested_weight_kg": (
+                    canonical_decimal_str(corrected_harvested_weight_kg)
+                    if corrected_harvested_weight_kg is not None else None
+                ),
+                "ledger_weight_delta_kg": canonical_decimal_str(weight_delta),
+            },
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint = _constraint_name(exc)
+        if constraint == "ux_harvest_source_line_corrections_tenant_client_command_id":
+            replay = _find_existing_correction(db, tenant_id=tenant_id, client_command_id=client_command_id)
+            if replay is not None and replay.request_fingerprint == fingerprint:
+                return replay
+            raise HarvestCorrectionCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        if constraint in (
+            "ux_harvest_source_line_corrections_root_once", "ux_harvest_source_line_corrections_successor_once",
+        ):
+            raise HarvestCorrectionAlreadySupersededError(str(harvest_source_line_id)) from exc
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(correction)
+    return correction
+
+
+def correct_vines_harvest_source_line(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    harvest_event_id: uuid.UUID,
+    harvest_source_line_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    supersedes_correction_id: uuid.UUID | None,
+    is_void: bool,
+    corrected_harvested_weight_kg: Decimal | None,
+    reason_code: str,
+    note: str,
+) -> HarvestSourceLineCorrection:
+    """HTTP-layer ownership wrapper -- verifies the given `harvest_source_
+    line_id` genuinely belongs to the given `harvest_event_id` (and
+    tenant/farm) BEFORE delegating, mirroring `correct_leafy_harvest_source_
+    line`'s own established rationale exactly (a mismatched pair must 404,
+    never silently correct the wrong line)."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    line = db.execute(
+        select(HarvestSourceLine).where(
+            HarvestSourceLine.id == harvest_source_line_id, HarvestSourceLine.tenant_id == tenant_id,
+            HarvestSourceLine.farm_id == farm_id, HarvestSourceLine.harvest_event_id == harvest_event_id,
+        )
+    ).scalar_one_or_none()
+    if line is None:
+        raise HarvestSourceLineNotFoundError(str(harvest_source_line_id))
+    return correct_vines_harvest(
+        db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, client_command_id=client_command_id,
+        harvest_source_line_id=harvest_source_line_id, supersedes_correction_id=supersedes_correction_id,
+        is_void=is_void, corrected_harvested_weight_kg=corrected_harvested_weight_kg, reason_code=reason_code,
+        note=note,
+    )
+
+
 # --- Reads ------------------------------------------------------------------------
 
 
@@ -622,27 +1211,50 @@ def _opener_kind_and_id(assignment: BatchCarrierAssignment) -> tuple[str, uuid.U
 
 
 def _load_source_lines(db: Session, *, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[HarvestSourceLineRead]]:
+    """VINES-OPS-003: LEFT JOINs Carrier/BatchCarrierAssignment (never
+    INNER) -- a Gutter-anchored (Vines) line has neither, and an INNER JOIN
+    would silently DROP it from every generic Harvest read (`GET .../
+    harvests`, `GET .../harvested-produce-lots`), corrupting their own
+    `total_harvested_weight_kg` recomputation. `source_location` is
+    populated from a small separate batched query instead of a third JOIN
+    leg, since a location-anchored line has no Carrier/CarrierType/BCA row
+    to join through at all."""
     grouped: dict[uuid.UUID, list[HarvestSourceLineRead]] = {eid: [] for eid in event_ids}
     if not event_ids:
         return grouped
     rows = db.execute(
         select(HarvestSourceLine, Carrier, CarrierType, BatchCarrierAssignment)
-        .join(Carrier, Carrier.id == HarvestSourceLine.carrier_id)
-        .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
-        .join(BatchCarrierAssignment, BatchCarrierAssignment.id == HarvestSourceLine.batch_carrier_assignment_id)
+        .outerjoin(Carrier, Carrier.id == HarvestSourceLine.carrier_id)
+        .outerjoin(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+        .outerjoin(BatchCarrierAssignment, BatchCarrierAssignment.id == HarvestSourceLine.batch_carrier_assignment_id)
         .where(HarvestSourceLine.harvest_event_id.in_(event_ids))
-        .order_by(Carrier.code, Carrier.id)
+        .order_by(HarvestSourceLine.id)
     ).all()
+
+    location_ids = [sl.source_location_id for sl, *_ in rows if sl.source_location_id is not None]
+    locations_by_id: dict[uuid.UUID, Location] = {}
+    if location_ids:
+        locations_by_id = {
+            loc.id: loc for loc in db.execute(select(Location).where(Location.id.in_(location_ids))).scalars()
+        }
+
     for source_line, carrier, carrier_type, assignment in rows:
-        opening_kind, opening_id = _opener_kind_and_id(assignment)
+        if assignment is not None:
+            opening_kind, opening_id = _opener_kind_and_id(assignment)
+            carrier_summary = CarrierSummary(
+                id=carrier.id, code=carrier.code,
+                carrier_type=CarrierTypeSummary(id=carrier_type.id, code=carrier_type.code, name=carrier_type.name),
+            )
+            source_location = None
+        else:
+            opening_kind, opening_id, carrier_summary = None, None, None
+            loc = locations_by_id[source_line.source_location_id]
+            source_location = HarvestSourceLocationSummary(id=loc.id, code=loc.code, name=loc.name)
         grouped[source_line.harvest_event_id].append(
             HarvestSourceLineRead(
                 id=source_line.id, batch_carrier_assignment_id=source_line.batch_carrier_assignment_id,
-                carrier=CarrierSummary(
-                    id=carrier.id, code=carrier.code,
-                    carrier_type=CarrierTypeSummary(id=carrier_type.id, code=carrier_type.code, name=carrier_type.name),
-                ),
-                opening_kind=opening_kind, opening_id=opening_id,
+                carrier=carrier_summary, opening_kind=opening_kind, opening_id=opening_id,
+                source_location=source_location,
                 harvested_weight_kg=source_line.harvested_weight_kg, whole_unit_count=source_line.whole_unit_count,
                 note=source_line.note,
             )

@@ -417,6 +417,13 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
         # above is: a downgrade-guard test may call this cleanup while
         # cmp_test is deliberately downgraded below the migration that
         # creates these two tables.
+        # VINES-OPS-003: harvest_source_line_grow_bags is new to this shared
+        # cleanup -- must precede harvest_source_lines below (it FKs to it),
+        # same rationale as the pair immediately above.
+        if conn.execute(text("SELECT to_regclass('harvest_source_line_grow_bags')")).scalar() is not None:
+            conn.execute(
+                text("DELETE FROM harvest_source_line_grow_bags WHERE tenant_id = :tid"), {"tid": tenant_id}
+            )
         for table in ("harvest_population_events", "harvest_source_line_corrections"):
             if conn.execute(text("SELECT to_regclass(:t)"), {"t": table}).scalar() is not None:
                 conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})

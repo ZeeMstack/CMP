@@ -82,6 +82,7 @@ function navGroups(farmId: string): NavGroupDef[] {
       label: "Harvest & Post-Harvest",
       items: [
         { label: "Harvest", href: `/farms/${farmId}/leafy-production/harvest` },
+        { label: "Vines Harvest", href: `/farms/${farmId}/vines-production/harvest` },
         { label: "Grading", href: `/farms/${farmId}/processing/grading` },
         { label: "Graded Produce", href: `/farms/${farmId}/processing/graded-lots` },
         { label: "Packing", href: `/farms/${farmId}/processing/packing` },
