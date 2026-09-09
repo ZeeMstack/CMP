@@ -9,6 +9,7 @@ import type {
   CarrierSpecificationCreate,
   CarrierSpecificationUpdate,
   CorrectLeafyHarvestSourceLineCreate,
+  CorrectVinesHarvestSourceLineCreate,
   CorrectProductionDispositionCreate,
   CorrectSeedlingDispositionCreate,
   CropCreate,
@@ -74,6 +75,7 @@ import type {
   RecallCaseClose,
   RecallCaseCreate,
   RecordLeafyHarvestCreate,
+  RecordVinesHarvestCreate,
   RecordProductionDispositionCreate,
   RecordSeedlingDispositionCreate,
   SeedlingEntryCreate,
@@ -1449,6 +1451,84 @@ export function useRecordLeafyHarvest(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateLeafyHarvest(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+// --- VINES-OPS-003 ------------------------------------------------------------
+// Vines Harvestable sources / Harvest history reads, and the record command
+// -- mirrors HARVEST-OPS-001 SLICE 2's own invalidation discipline exactly.
+
+export function useVinesHarvestableSources(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesHarvestableSources(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listVinesHarvestableSources(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useVinesHarvests(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesHarvests(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listVinesHarvests(farmId, batchId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useVinesHarvest(farmId: string, harvestEventId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.vinesHarvest(tenantId ?? "", farmId, harvestEventId ?? ""),
+    queryFn: ({ signal }) => api.getVinesHarvest(farmId, harvestEventId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(harvestEventId),
+  });
+}
+
+function _invalidateVinesHarvest(queryClient: ReturnType<typeof useQueryClient>, tenantId: string, farmId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.vinesHarvestableSources(tenantId, farmId, "") });
+  queryClient.invalidateQueries({ queryKey: queryKeys.vinesHarvests(tenantId, farmId, "") });
+  queryClient.invalidateQueries({
+    queryKey: ["tenant", tenantId, "farms", farmId, "vines-production", "harvests", "detail"],
+  });
+}
+
+export function useRecordVinesHarvest(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordVinesHarvestCreate) => api.recordVinesHarvest(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateVinesHarvest(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateVinesHarvest(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+export function useCorrectVinesHarvestSourceLine(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { harvestEventId, harvestSourceLineId, payload }: {
+        harvestEventId: string; harvestSourceLineId: string; payload: CorrectVinesHarvestSourceLineCreate;
+      },
+    ) => api.correctVinesHarvestSourceLine(farmId, harvestEventId, harvestSourceLineId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      _invalidateVinesHarvest(queryClient, tenantId, farmId);
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      _invalidateVinesHarvest(queryClient, tenantId, farmId);
     },
   });
 }

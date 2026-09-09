@@ -1066,6 +1066,69 @@ export function getLocationOccupants(
   return getJson<TargetOccupantsRead>(`/farms/${farmId}/locations/${locationId}/occupants`, signal);
 }
 
+// --- VINES-OPS-003 --------------------------------------------------------
+// Vines Production Harvest -- reuses the generic Harvest domain (source
+// lines anchored to a Grow Gutter Location instead of a single biological
+// Carrier), weight-only, never a second Harvest write path.
+
+export type VinesLocationSlotRead = components["schemas"]["VinesLocationSlotRead"];
+export type VinesHarvestLocationRead = components["schemas"]["VinesHarvestLocationRead"];
+export type VinesHarvestableSourceRead = components["schemas"]["VinesHarvestableSourceRead"];
+export type RecordVinesHarvestCreate = components["schemas"]["RecordVinesHarvestCreate"];
+export type RecordVinesHarvestSourceLineIn = components["schemas"]["RecordVinesHarvestSourceLineIn"];
+export type VinesHarvestEventRead = components["schemas"]["VinesHarvestEventRead"];
+export type VinesHarvestSourceLineRead = components["schemas"]["VinesHarvestSourceLineRead"];
+export type VinesHarvestSourceLineCorrectionRead = components["schemas"]["VinesHarvestSourceLineCorrectionRead"];
+export type CorrectVinesHarvestSourceLineCreate = components["schemas"]["CorrectVinesHarvestSourceLineCreate"];
+
+export function listVinesHarvestableSources(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<VinesHarvestableSourceRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<VinesHarvestableSourceRead[]>(`/farms/${farmId}/vines-production/harvestable-sources${query}`, signal);
+}
+
+export function recordVinesHarvest(
+  farmId: string,
+  payload: RecordVinesHarvestCreate,
+  signal?: AbortSignal,
+): Promise<VinesHarvestEventRead> {
+  return postJson<VinesHarvestEventRead>(`/farms/${farmId}/vines-production/harvests`, payload, signal);
+}
+
+export function listVinesHarvests(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<VinesHarvestEventRead[]> {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
+  return getJson<VinesHarvestEventRead[]>(`/farms/${farmId}/vines-production/harvests${query}`, signal);
+}
+
+export function getVinesHarvest(
+  farmId: string,
+  harvestEventId: string,
+  signal?: AbortSignal,
+): Promise<VinesHarvestEventRead> {
+  return getJson<VinesHarvestEventRead>(`/farms/${farmId}/vines-production/harvests/${harvestEventId}`, signal);
+}
+
+export function correctVinesHarvestSourceLine(
+  farmId: string,
+  harvestEventId: string,
+  harvestSourceLineId: string,
+  payload: CorrectVinesHarvestSourceLineCreate,
+  signal?: AbortSignal,
+): Promise<VinesHarvestEventRead> {
+  return postJson<VinesHarvestEventRead>(
+    `/farms/${farmId}/vines-production/harvests/${harvestEventId}/source-lines/${harvestSourceLineId}/correct`,
+    payload,
+    signal,
+  );
+}
+
 // --- POSTHARVEST-OPS-001G --------------------------------------------------
 // Processing & Packing UI: Grading (Harvested Produce Lot -> Graded Produce
 // Lots), Graded Produce Lots read access, Packing (Graded Produce Lots ->

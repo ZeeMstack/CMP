@@ -3503,6 +3503,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/vines-production/harvestable-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vines Harvestable Sources */
+        get: operations["list_vines_harvestable_sources_farms__farm_id__vines_production_harvestable_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/harvests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vines Harvests */
+        get: operations["list_vines_harvests_farms__farm_id__vines_production_harvests_get"];
+        put?: never;
+        /** Record Vines Harvest */
+        post: operations["record_vines_harvest_farms__farm_id__vines_production_harvests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/harvests/{harvest_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Vines Harvest */
+        get: operations["get_vines_harvest_farms__farm_id__vines_production_harvests__harvest_event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/vines-production/harvests/{harvest_event_id}/source-lines/{harvest_source_line_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct Vines Harvest Source Line */
+        post: operations["correct_vines_harvest_source_line_farms__farm_id__vines_production_harvests__harvest_event_id__source_lines__harvest_source_line_id__correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/crop-batches/{batch_id}/harvests": {
         parameters: {
             query?: never;
@@ -5120,6 +5189,24 @@ export interface components {
              * Format: uuid
              */
             client_command_id: string;
+        };
+        /** CorrectVinesHarvestSourceLineCreate */
+        CorrectVinesHarvestSourceLineCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Supersedes Correction Id */
+            supersedes_correction_id?: string | null;
+            /** Is Void */
+            is_void: boolean;
+            /** Corrected Harvested Weight Kg */
+            corrected_harvested_weight_kg?: number | string | null;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string;
         };
         /** CorrectedDispositionIn */
         CorrectedDispositionIn: {
@@ -6782,32 +6869,47 @@ export interface components {
             /** Note */
             note?: string | null;
         };
-        /** HarvestSourceLineRead */
+        /**
+         * HarvestSourceLineRead
+         * @description VINES-OPS-003: a source line now has exactly one of two anchor
+         *     shapes (see `HarvestSourceLine`'s own model docstring) -- the original
+         *     `batch_carrier_assignment_id`/`carrier`/`opening_kind`/`opening_id`
+         *     (a single biological source Carrier) is populated for the original
+         *     shape and `None` for a Vines/Gutter-anchored line, whose `source_
+         *     location` is populated instead (and `None` the other way around).
+         */
         HarvestSourceLineRead: {
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /**
-             * Batch Carrier Assignment Id
-             * Format: uuid
-             */
-            batch_carrier_assignment_id: string;
-            carrier: components["schemas"]["CarrierSummary"];
+            /** Batch Carrier Assignment Id */
+            batch_carrier_assignment_id: string | null;
+            carrier: components["schemas"]["CarrierSummary"] | null;
             /** Opening Kind */
-            opening_kind: string;
-            /**
-             * Opening Id
-             * Format: uuid
-             */
-            opening_id: string;
+            opening_kind: string | null;
+            /** Opening Id */
+            opening_id: string | null;
+            source_location: components["schemas"]["HarvestSourceLocationSummary"] | null;
             /** Harvested Weight Kg */
             harvested_weight_kg: string;
             /** Whole Unit Count */
             whole_unit_count: number | null;
             /** Note */
             note: string | null;
+        };
+        /** HarvestSourceLocationSummary */
+        HarvestSourceLocationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
         };
         /**
          * HarvestablePlateRead
@@ -10870,6 +10972,42 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** RecordVinesHarvestCreate */
+        RecordVinesHarvestCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Produce Lot Code */
+            produce_lot_code: string;
+            /** Note */
+            note?: string | null;
+            /** Source Lines */
+            source_lines: components["schemas"]["RecordVinesHarvestSourceLineIn"][];
+        };
+        /** RecordVinesHarvestSourceLineIn */
+        RecordVinesHarvestSourceLineIn: {
+            /**
+             * Gutter Id
+             * Format: uuid
+             */
+            gutter_id: string;
+            /** Harvested Weight Kg */
+            harvested_weight_kg: number | string;
+            /** Note */
+            note?: string | null;
+        };
         /** ReservationLineCreate */
         ReservationLineCreate: {
             /**
@@ -12576,6 +12714,192 @@ export interface components {
             effective_time: string;
             /** Note */
             note: string | null;
+        };
+        /**
+         * VinesHarvestEventRead
+         * @description One HarvestEvent/HarvestedProduceLot pair, Vines-aware -- mirrors
+         *     `LeafyHarvestEventRead`'s shape exactly, minus `*_whole_unit_count`
+         *     (weight-only).
+         */
+        VinesHarvestEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /**
+             * Actor User Id
+             * Format: uuid
+             */
+            actor_user_id: string;
+            /**
+             * Produce Lot Id
+             * Format: uuid
+             */
+            produce_lot_id: string;
+            /** Produce Lot Code */
+            produce_lot_code: string;
+            /** Note */
+            note: string | null;
+            /** Original Total Harvested Weight Kg */
+            original_total_harvested_weight_kg: string;
+            /** Current Total Harvested Weight Kg */
+            current_total_harvested_weight_kg: string;
+            /** Available Balance Weight Kg */
+            available_balance_weight_kg: string;
+            /** Source Lines */
+            source_lines: components["schemas"]["VinesHarvestSourceLineRead"][];
+        };
+        /**
+         * VinesHarvestLocationRead
+         * @description One Location breakdown, broken out by the fixed Vines chain
+         *     (`zone -> span -> grow_gutter`, always under one `greenhouse`) --
+         *     resolved by walking `parent_location_id`, never a hardcoded depth.
+         */
+        VinesHarvestLocationRead: {
+            greenhouse: components["schemas"]["VinesLocationSlotRead"] | null;
+            zone: components["schemas"]["VinesLocationSlotRead"] | null;
+            span: components["schemas"]["VinesLocationSlotRead"] | null;
+            gutter: components["schemas"]["VinesLocationSlotRead"] | null;
+        };
+        /** VinesHarvestSourceLineCorrectionRead */
+        VinesHarvestSourceLineCorrectionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Supersedes Correction Id */
+            supersedes_correction_id: string | null;
+            /** Is Void */
+            is_void: boolean;
+            /** Corrected Harvested Weight Kg */
+            corrected_harvested_weight_kg: string | null;
+            /** Reason Code */
+            reason_code: string;
+            /** Note */
+            note: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+        };
+        /**
+         * VinesHarvestSourceLineRead
+         * @description Both the immutable ORIGINAL fact and the structurally-resolved
+         *     CURRENT effective truth for one Gutter's own contribution -- mirrors
+         *     `LeafyHarvestSourceLineRead`'s shape, minus every population/BCA field
+         *     (Vines Harvest never has one) and minus `whole_unit_count` (weight-only).
+         *     `grow_bags` is the point-in-time lineage snapshot -- identity only,
+         *     never a weight split.
+         */
+        VinesHarvestSourceLineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            gutter: components["schemas"]["VinesLocationSlotRead"];
+            harvest_location: components["schemas"]["VinesHarvestLocationRead"] | null;
+            /** Grow Bags */
+            grow_bags: components["schemas"]["CarrierSummary"][];
+            /** Original Harvested Weight Kg */
+            original_harvested_weight_kg: string;
+            /** Current Harvested Weight Kg */
+            current_harvested_weight_kg: string;
+            /** State */
+            state: string;
+            /** Correction Tip Id */
+            correction_tip_id: string | null;
+            /** Correction History */
+            correction_history: components["schemas"]["VinesHarvestSourceLineCorrectionRead"][];
+        };
+        /**
+         * VinesHarvestableSourceRead
+         * @description One row per currently-eligible (Batch, Grow Gutter) Vines Harvest
+         *     source -- at least one currently-living Grow Bag/Grow Cube under this
+         *     Gutter for this Batch (VINES-OPS-002's own living-population authority,
+         *     never recomputed). A Gutter with zero living plants for this Batch never
+         *     appears here. A quality-held Batch DOES still appear here (visibly
+         *     flagged, never hidden) -- the write endpoint remains the sole authority
+         *     that actually blocks a new Harvest while the hold is open.
+         */
+        VinesHarvestableSourceRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /** Crop Common Name */
+            crop_common_name: string;
+            /** Variety Name */
+            variety_name: string | null;
+            /**
+             * Greenhouse Id
+             * Format: uuid
+             */
+            greenhouse_id: string;
+            /** Greenhouse Code */
+            greenhouse_code: string;
+            /**
+             * Gutter Id
+             * Format: uuid
+             */
+            gutter_id: string;
+            /** Gutter Code */
+            gutter_code: string;
+            /** Living Plant Count */
+            living_plant_count: number;
+            /** Last Harvest Effective Time */
+            last_harvest_effective_time: string | null;
+            /** Quality Hold Open */
+            quality_hold_open: boolean;
+        };
+        /** VinesLocationSlotRead */
+        VinesLocationSlotRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
         };
         /**
          * VinesProductionDispositionHistoryRead
@@ -22488,6 +22812,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LeafyHarvestEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vines_harvestable_sources_farms__farm_id__vines_production_harvestable_sources_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesHarvestableSourceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vines_harvests_farms__farm_id__vines_production_harvests_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesHarvestEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_vines_harvest_farms__farm_id__vines_production_harvests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordVinesHarvestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesHarvestEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vines_harvest_farms__farm_id__vines_production_harvests__harvest_event_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                harvest_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesHarvestEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_vines_harvest_source_line_farms__farm_id__vines_production_harvests__harvest_event_id__source_lines__harvest_source_line_id__correct_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                harvest_event_id: string;
+                harvest_source_line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectVinesHarvestSourceLineCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VinesHarvestEventRead"];
                 };
             };
             /** @description Validation Error */

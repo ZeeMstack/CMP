@@ -140,6 +140,14 @@ export const queryKeys = {
   leafyHarvest: (tenantId: string, farmId: string, harvestEventId: string) =>
     ["tenant", tenantId, "farms", farmId, "leafy-production", "harvests", "detail", harvestEventId] as const,
 
+  // --- VINES-OPS-003 ------------------------------------------------------------
+  vinesHarvestableSources: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "harvestable-sources", batchId] as const,
+  vinesHarvests: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "harvests", batchId] as const,
+  vinesHarvest: (tenantId: string, farmId: string, harvestEventId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "harvests", "detail", harvestEventId] as const,
+
   // --- POSTHARVEST-OPS-001G -------------------------------------------------
   harvestedProduceLots: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "harvested-produce-lots"] as const,

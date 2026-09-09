@@ -153,12 +153,26 @@ class HarvestEventCreate(BaseModel):
 # --- Reads -----------------------------------------------------------------------
 
 
-class HarvestSourceLineRead(BaseModel):
+class HarvestSourceLocationSummary(BaseModel):
     id: uuid.UUID
-    batch_carrier_assignment_id: uuid.UUID
-    carrier: CarrierSummary
-    opening_kind: str
-    opening_id: uuid.UUID
+    code: str
+    name: str
+
+
+class HarvestSourceLineRead(BaseModel):
+    """VINES-OPS-003: a source line now has exactly one of two anchor
+    shapes (see `HarvestSourceLine`'s own model docstring) -- the original
+    `batch_carrier_assignment_id`/`carrier`/`opening_kind`/`opening_id`
+    (a single biological source Carrier) is populated for the original
+    shape and `None` for a Vines/Gutter-anchored line, whose `source_
+    location` is populated instead (and `None` the other way around)."""
+
+    id: uuid.UUID
+    batch_carrier_assignment_id: uuid.UUID | None
+    carrier: CarrierSummary | None
+    opening_kind: str | None
+    opening_id: uuid.UUID | None
+    source_location: HarvestSourceLocationSummary | None
     harvested_weight_kg: Decimal
     whole_unit_count: int | None
     note: str | None
