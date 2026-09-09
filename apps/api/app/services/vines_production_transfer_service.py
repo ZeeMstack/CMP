@@ -92,18 +92,25 @@ from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.movement import Movement
 from app.models.occupancy import Occupancy
+from app.models.production_disposition_command import ProductionDispositionCommand
+from app.models.production_disposition_event import ProductionDispositionEvent
 from app.models.transplant_event import TransplantEvent
 from app.schemas.carrier_specification import CarrierSpecificationSummary
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary
+from app.schemas.vines_production_disposition import (
+    VinesGrowCubeDispositionEventRead,
+    VinesProductionDispositionHistoryRead,
+)
 from app.schemas.vines_production_transfer import (
     AvailableGrowBagPoolRead,
+    VinesGrowCubeDispositionSummary,
     VinesProductionGrowBagPlacementRead,
     VinesProductionPlacementGrowBagRead,
     VinesProductionPlacementGrowCubeRead,
     VinesProductionPlacementRead,
     VinesProductionTransferRead,
 )
-from app.services import carrier_service, movement_service, transplant_service
+from app.services import carrier_service, movement_service, production_disposition_service, transplant_service
 from app.services.errors import (
     CarrierSpecificationNotFoundError,
     CarrierSpecificationTypeMismatchError,
@@ -639,11 +646,19 @@ def list_available_grow_bag_pools(
 def list_vines_production_placements(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID,
 ) -> list[VinesProductionPlacementRead]:
-    """VINES-OPS-001B: the compact Vines Production read view -- one
-    aggregated row per (Batch, Grow Gutter), never one row per plant/Grow
-    Bag. `plant_count` sums each active Grow Bag assignment's own
-    `TransplantDestinationLine.assigned_plant_count` (a Bag may carry more
-    than one plant) -- never a bare `count(*)` of Bags."""
+    """VINES-OPS-001B/VINES-OPS-002: the compact Vines Production read view --
+    one aggregated row per (Batch, Grow Gutter), never one row per plant/Grow
+    Bag. `plant_count` keeps its original opening/assigned meaning (`SUM` of
+    each active Grow Bag's own `TransplantDestinationLine.assigned_plant_
+    count` -- never a bare `count(*)` of Bags); `living_plant_count`/`lost_
+    plant_count` are the new authoritative-population aggregates, one call to
+    the shared, carrier-agnostic `production_disposition_service.get_current_
+    living_population` per Grow Bag root (mirrors `list_active_production_
+    plates`'s own established per-row loop -- Vines rows are Gutter-
+    aggregated, so this stays small in practice). A Grow Bag whose own living
+    population reaches zero is released (same rule as Leafy) and so drops out
+    of this query's `released_effective_time IS NULL` filter on its own; its
+    historical loss remains visible via Vines Loss History, never here."""
     carrier_service._require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -652,12 +667,13 @@ def list_vines_production_placements(
             "variety.id AS variety_id, variety.code AS variety_code, variety.name AS variety_name, "
             "greenhouse.id AS greenhouse_id, greenhouse.code AS greenhouse_code, greenhouse.name AS greenhouse_name, "
             "gutter.id AS gutter_id, gutter.code AS gutter_code, "
-            "sum(tdl.assigned_plant_count) AS plant_count, "
-            "min(bca.assigned_effective_time) AS earliest_assigned_effective_time "
+            "bca.id AS assignment_id, bca.population_root_batch_carrier_assignment_id AS root_id, "
+            "tdl.assigned_plant_count, bca.assigned_effective_time "
             "FROM batch_carrier_assignments bca "
             "JOIN carriers c ON c.id = bca.carrier_id "
             "JOIN carrier_types ct ON ct.id = c.carrier_type_id AND ct.code = :grow_bag_type_code "
-            "JOIN transplant_destination_lines tdl ON tdl.destination_batch_carrier_assignment_id = bca.id "
+            "JOIN transplant_destination_lines tdl "
+            "ON tdl.destination_batch_carrier_assignment_id = bca.population_root_batch_carrier_assignment_id "
             "JOIN crop_batches cb ON cb.id = bca.batch_id "
             "JOIN workflows wf ON wf.id = cb.workflow_id "
             "JOIN crops crop ON crop.id = wf.crop_id "
@@ -669,28 +685,47 @@ def list_vines_production_placements(
             "JOIN locations zone ON zone.id = span.parent_location_id "
             "JOIN locations greenhouse ON greenhouse.id = zone.parent_location_id "
             "WHERE bca.tenant_id = :tid AND bca.farm_id = :fid AND bca.released_effective_time IS NULL "
-            "GROUP BY cb.id, cb.code, crop.id, crop.code, crop.common_name, variety.id, variety.code, variety.name, "
-            "greenhouse.id, greenhouse.code, greenhouse.name, gutter.id, gutter.code "
             "ORDER BY cb.code, gutter.code"
         ),
         {"tid": tenant_id, "fid": farm_id, "grow_bag_type_code": GROW_BAG_CARRIER_TYPE_CODE},
     ).mappings().all()
+
     as_of = datetime.now(timezone.utc)
-    results: list[VinesProductionPlacementRead] = []
+    groups: dict[tuple[uuid.UUID, uuid.UUID], dict] = {}
     for r in rows:
-        earliest = r["earliest_assigned_effective_time"]
+        key = (r["batch_id"], r["gutter_id"])
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "batch_id": r["batch_id"], "batch_code": r["batch_code"],
+                "crop_id": r["crop_id"], "crop_code": r["crop_code"], "crop_common_name": r["crop_common_name"],
+                "variety_id": r["variety_id"], "variety_code": r["variety_code"], "variety_name": r["variety_name"],
+                "greenhouse_id": r["greenhouse_id"], "greenhouse_code": r["greenhouse_code"],
+                "greenhouse_name": r["greenhouse_name"],
+                "gutter_id": r["gutter_id"], "gutter_code": r["gutter_code"],
+                "plant_count": 0, "living_plant_count": 0, "lost_plant_count": 0,
+                "earliest_assigned_effective_time": r["assigned_effective_time"],
+            }
+            groups[key] = group
+        opening = r["assigned_plant_count"]
+        living = production_disposition_service.get_current_living_population(
+            db, root_batch_carrier_assignment_id=r["root_id"]
+        )
+        group["plant_count"] += opening
+        group["living_plant_count"] += living
+        group["lost_plant_count"] += opening - living
+        if r["assigned_effective_time"] < group["earliest_assigned_effective_time"]:
+            group["earliest_assigned_effective_time"] = r["assigned_effective_time"]
+
+    results: list[VinesProductionPlacementRead] = []
+    for group in groups.values():
+        earliest = group.pop("earliest_assigned_effective_time")
         results.append(
             VinesProductionPlacementRead(
-                batch_id=r["batch_id"], batch_code=r["batch_code"],
-                crop_id=r["crop_id"], crop_code=r["crop_code"], crop_common_name=r["crop_common_name"],
-                variety_id=r["variety_id"], variety_code=r["variety_code"], variety_name=r["variety_name"],
-                greenhouse_id=r["greenhouse_id"], greenhouse_code=r["greenhouse_code"],
-                greenhouse_name=r["greenhouse_name"],
-                gutter_id=r["gutter_id"], gutter_code=r["gutter_code"],
-                plant_count=r["plant_count"], earliest_assigned_effective_time=earliest,
-                days_in_production=(as_of - earliest).days,
+                **group, earliest_assigned_effective_time=earliest, days_in_production=(as_of - earliest).days,
             )
         )
+    results.sort(key=lambda p: (p.batch_code, p.gutter_code))
     return results
 
 
@@ -713,11 +748,14 @@ def list_vines_production_placement_grow_bags(
             "ct.id AS carrier_type_id, ct.code AS carrier_type_code, ct.name AS carrier_type_name, "
             "bca.id AS assignment_id, bca.assigned_effective_time, "
             "tdl.id AS destination_line_id, tdl.assigned_plant_count, "
+            "spec.biological_position_count AS capacity, "
             "position.code AS position_code "
             "FROM batch_carrier_assignments bca "
             "JOIN carriers c ON c.id = bca.carrier_id "
             "JOIN carrier_types ct ON ct.id = c.carrier_type_id AND ct.code = :grow_bag_type_code "
-            "JOIN transplant_destination_lines tdl ON tdl.destination_batch_carrier_assignment_id = bca.id "
+            "LEFT JOIN carrier_specifications spec ON spec.id = c.specification_id "
+            "JOIN transplant_destination_lines tdl "
+            "ON tdl.destination_batch_carrier_assignment_id = bca.population_root_batch_carrier_assignment_id "
             "JOIN occupancies occ ON occ.occupant_carrier_id = c.id AND occ.end_time IS NULL "
             "JOIN locations position ON position.id = occ.target_location_id AND position.parent_location_id = :gutter_id "
             "WHERE bca.tenant_id = :tid AND bca.farm_id = :fid AND bca.released_effective_time IS NULL "
@@ -744,6 +782,10 @@ def list_vines_production_placement_grow_bags(
         {"destination_line_ids": destination_line_ids},
     ).mappings().all()
 
+    disposition_status = production_disposition_service.get_grow_cube_disposition_status(
+        db, grow_cube_carrier_ids=[r["grow_cube_id"] for r in cube_rows]
+    )
+
     grow_cube_assignment_ids = [r["grow_cube_assignment_id"] for r in cube_rows]
     seed_tray_by_grow_cube_assignment: dict[uuid.UUID, dict] = {}
     if grow_cube_assignment_ids:
@@ -764,8 +806,14 @@ def list_vines_production_placement_grow_bags(
         seed_tray_by_grow_cube_assignment = {r["grow_cube_assignment_id"]: r for r in lineage_rows}
 
     cubes_by_destination_line: dict[uuid.UUID, list[VinesProductionPlacementGrowCubeRead]] = {}
+    removed_count_by_destination_line: dict[uuid.UUID, int] = {}
     for r in cube_rows:
         lineage = seed_tray_by_grow_cube_assignment.get(r["grow_cube_assignment_id"])
+        disposition = disposition_status.get(r["grow_cube_id"])
+        if disposition is not None:
+            removed_count_by_destination_line[r["destination_line_id"]] = (
+                removed_count_by_destination_line.get(r["destination_line_id"], 0) + 1
+            )
         cubes_by_destination_line.setdefault(r["destination_line_id"], []).append(
             VinesProductionPlacementGrowCubeRead(
                 grow_cube=CarrierSummary(
@@ -785,21 +833,152 @@ def list_vines_production_placement_grow_bags(
                     if lineage is not None
                     else None
                 ),
+                status="removed" if disposition is not None else "living",
+                disposition=(
+                    VinesGrowCubeDispositionSummary(
+                        reason_code=disposition["reason_code"], effective_time=disposition["effective_time"],
+                        note=disposition["note"],
+                    )
+                    if disposition is not None
+                    else None
+                ),
             )
         )
 
-    return [
-        VinesProductionPlacementGrowBagRead(
-            grow_bag=CarrierSummary(
-                id=r["bag_id"], code=r["bag_code"],
-                carrier_type=CarrierTypeSummary(
-                    id=r["carrier_type_id"], code=r["carrier_type_code"], name=r["carrier_type_name"],
+    results: list[VinesProductionPlacementGrowBagRead] = []
+    for r in bag_rows:
+        removed = removed_count_by_destination_line.get(r["destination_line_id"], 0)
+        living = r["assigned_plant_count"] - removed
+        capacity = r["capacity"]
+        results.append(
+            VinesProductionPlacementGrowBagRead(
+                grow_bag=CarrierSummary(
+                    id=r["bag_id"], code=r["bag_code"],
+                    carrier_type=CarrierTypeSummary(
+                        id=r["carrier_type_id"], code=r["carrier_type_code"], name=r["carrier_type_name"],
+                    ),
                 ),
-            ),
-            grow_bag_position_code=r["position_code"],
-            batch_carrier_assignment_id=r["assignment_id"], assigned_plant_count=r["assigned_plant_count"],
-            assigned_effective_time=r["assigned_effective_time"],
-            grow_cubes=cubes_by_destination_line.get(r["destination_line_id"], []),
+                grow_bag_position_code=r["position_code"],
+                batch_carrier_assignment_id=r["assignment_id"], assigned_plant_count=r["assigned_plant_count"],
+                living_plant_count=living, capacity=capacity,
+                free_capacity=(capacity - living) if capacity is not None else None,
+                assigned_effective_time=r["assigned_effective_time"],
+                grow_cubes=cubes_by_destination_line.get(r["destination_line_id"], []),
+            )
         )
-        for r in bag_rows
-    ]
+    return results
+
+
+def get_vines_production_disposition_history(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, batch_id: uuid.UUID | None = None,
+) -> list[VinesProductionDispositionHistoryRead]:
+    """VINES-OPS-002: the Vines-side sibling of `production_disposition_
+    service.get_production_disposition_history` -- same "one row per
+    population lineage, remains accessible after release" shape, narrowed to
+    `grow_bag` lineages and enriched with each REDUCTION event's own named
+    Grow Cube(s) (never present for a REVERSAL, which names no new
+    biological fact of its own -- see `ProductionDispositionEventGrowCube`'s
+    own docstring)."""
+    carrier_service._require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+
+    root_query = (
+        select(BatchCarrierAssignment.population_root_batch_carrier_assignment_id.label("root_id"))
+        .join(Carrier, Carrier.id == BatchCarrierAssignment.carrier_id)
+        .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+        .where(
+            BatchCarrierAssignment.tenant_id == tenant_id,
+            BatchCarrierAssignment.farm_id == farm_id,
+            BatchCarrierAssignment.population_root_batch_carrier_assignment_id.is_not(None),
+            CarrierType.code == GROW_BAG_CARRIER_TYPE_CODE,
+        )
+        .distinct()
+    )
+    if batch_id is not None:
+        root_query = root_query.where(BatchCarrierAssignment.batch_id == batch_id)
+    root_ids = [row[0] for row in db.execute(root_query).all()]
+
+    results: list[VinesProductionDispositionHistoryRead] = []
+    for root_id in root_ids:
+        root_row = db.execute(
+            text(
+                "SELECT bca.id, carrier.code AS bag_code, cb.id AS batch_id, cb.code AS batch_code, "
+                "gutter.code AS gutter_code "
+                "FROM batch_carrier_assignments bca "
+                "JOIN carriers carrier ON carrier.id = bca.carrier_id "
+                "JOIN crop_batches cb ON cb.id = bca.batch_id "
+                "LEFT JOIN occupancies occ ON occ.occupant_carrier_id = carrier.id AND occ.end_time IS NULL "
+                "LEFT JOIN locations position ON position.id = occ.target_location_id "
+                "LEFT JOIN locations gutter ON gutter.id = position.parent_location_id "
+                "WHERE bca.id = :root_id"
+            ),
+            {"root_id": root_id},
+        ).mappings().one()
+
+        opening = production_disposition_service.get_root_opening_population(
+            db, root_batch_carrier_assignment_id=root_id
+        )
+        current_living = production_disposition_service.get_current_living_population(
+            db, root_batch_carrier_assignment_id=root_id
+        )
+        active_id = production_disposition_service.resolve_active_assignment_id_for_root(
+            db, root_batch_carrier_assignment_id=root_id
+        )
+
+        event_rows = db.execute(
+            select(ProductionDispositionEvent, ProductionDispositionCommand.actor_user_id)
+            .join(ProductionDispositionCommand, ProductionDispositionCommand.id == ProductionDispositionEvent.command_id)
+            .where(ProductionDispositionEvent.population_root_batch_carrier_assignment_id == root_id)
+            .order_by(ProductionDispositionEvent.effective_time, ProductionDispositionEvent.recorded_at)
+        ).all()
+        reversed_ids = {
+            event.reverses_event_id for event, _actor in event_rows if event.reverses_event_id is not None
+        }
+
+        event_ids = [event.id for event, _actor in event_rows]
+        grow_cubes_by_event: dict[uuid.UUID, list[CarrierSummary]] = {}
+        if event_ids:
+            gc_rows = db.execute(
+                text(
+                    "SELECT gc.production_disposition_event_id AS event_id, "
+                    "carrier.id AS carrier_id, carrier.code, ct.id AS carrier_type_id, ct.code AS carrier_type_code, "
+                    "ct.name AS carrier_type_name "
+                    "FROM production_disposition_event_grow_cubes gc "
+                    "JOIN carriers carrier ON carrier.id = gc.grow_cube_carrier_id "
+                    "JOIN carrier_types ct ON ct.id = carrier.carrier_type_id "
+                    "WHERE gc.production_disposition_event_id = ANY(:event_ids) "
+                    "ORDER BY carrier.code"
+                ),
+                {"event_ids": event_ids},
+            ).mappings().all()
+            for gc in gc_rows:
+                grow_cubes_by_event.setdefault(gc["event_id"], []).append(
+                    CarrierSummary(
+                        id=gc["carrier_id"], code=gc["code"],
+                        carrier_type=CarrierTypeSummary(
+                            id=gc["carrier_type_id"], code=gc["carrier_type_code"], name=gc["carrier_type_name"],
+                        ),
+                    )
+                )
+
+        events = [
+            VinesGrowCubeDispositionEventRead(
+                id=event.id, command_id=event.command_id, batch_carrier_assignment_id=event.batch_carrier_assignment_id,
+                population_root_batch_carrier_assignment_id=event.population_root_batch_carrier_assignment_id,
+                event_kind=event.event_kind, reason_code=event.reason_code, quantity_delta=event.quantity_delta,
+                plant_loss_quantity=max(0, -event.quantity_delta), effective_time=event.effective_time,
+                recorded_at=event.recorded_at, note=event.note, reverses_event_id=event.reverses_event_id,
+                is_reversed=event.id in reversed_ids, actor_user_id=actor,
+                grow_cubes=grow_cubes_by_event.get(event.id, []),
+            )
+            for event, actor in event_rows
+        ]
+
+        results.append(
+            VinesProductionDispositionHistoryRead(
+                population_root_batch_carrier_assignment_id=root_id,
+                grow_bag_code=root_row["bag_code"], batch_id=root_row["batch_id"], batch_code=root_row["batch_code"],
+                gutter_code=root_row["gutter_code"], opening_population=opening,
+                current_living_population=current_living, is_active=active_id is not None, events=events,
+            )
+        )
+    return results

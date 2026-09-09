@@ -291,4 +291,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "vines-production", "placements"] as const,
   vinesProductionPlacementGrowBags: (tenantId: string, farmId: string, batchId: string, gutterId: string) =>
     ["tenant", tenantId, "farms", farmId, "vines-production", "placements", batchId, gutterId, "grow-bags"] as const,
+
+  // --- VINES-OPS-002 ------------------------------------------------------------
+  vinesProductionDispositionHistory: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "vines-production", "dispositions", batchId] as const,
 };

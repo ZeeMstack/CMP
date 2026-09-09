@@ -141,4 +141,8 @@ def test_downgrade_clean_when_no_disposition_history_exists(test_engine, alembic
             text("SELECT count(*) FROM production_disposition_reasons")
         ).scalar_one()
     assert table_restored is True
-    assert reasons_restored == 6
+    # VINES-OPS-002's own `ecedd713789a` migration seeds one additional
+    # platform-wide reason ("culled", shared with Leafy -- see that
+    # migration's own docstring) on top of LEAFY-OPS-001's original 6, so a
+    # full re-upgrade to head now restores 7, not 6.
+    assert reasons_restored == 7

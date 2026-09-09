@@ -52,6 +52,7 @@ from app.models.recall import (
 )
 from app.models.production_disposition_command import ProductionDispositionCommand
 from app.models.production_disposition_event import ProductionDispositionEvent
+from app.models.production_disposition_event_grow_cube import ProductionDispositionEventGrowCube
 from app.models.production_disposition_reason import ProductionDispositionReason
 from app.models.seed_lot import SeedLot
 from app.models.seedling_disposition_command import SeedlingDispositionCommand
@@ -127,6 +128,7 @@ __all__ = [
     "RecallScopeProduceLot",
     "ProductionDispositionCommand",
     "ProductionDispositionEvent",
+    "ProductionDispositionEventGrowCube",
     "ProductionDispositionReason",
     "SeedLot",
     "SeedlingDispositionCommand",

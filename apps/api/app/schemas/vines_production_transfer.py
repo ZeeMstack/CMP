@@ -128,8 +128,13 @@ class AvailableGrowBagPoolRead(BaseModel):
 class VinesProductionPlacementRead(BaseModel):
     """VINES-OPS-001B: the compact Vines Production read view -- one
     aggregated row per (Batch, Grow Gutter), never one row per plant/Grow
-    Bag (ticket: "Batch | Crop | Variety | Greenhouse | Gutter | Plants |
-    Days in Production")."""
+    Bag (ticket: "Batch | Crop | Variety | Greenhouse | Gutter | Living
+    Plants | Lost | Days in Production"). VINES-OPS-002: `plant_count`
+    keeps its original opening/assigned meaning (backward compatible for the
+    001B Transfer page); `living_plant_count`/`lost_plant_count` are the new
+    authoritative-population fields (via `production_disposition_service.
+    get_current_living_population`, carrier-agnostic, unchanged formula) the
+    Vines Production workspace itself renders."""
 
     batch_id: uuid.UUID
     batch_code: str
@@ -145,29 +150,51 @@ class VinesProductionPlacementRead(BaseModel):
     gutter_id: uuid.UUID
     gutter_code: str
     plant_count: int
+    living_plant_count: int
+    lost_plant_count: int
     earliest_assigned_effective_time: datetime
     days_in_production: int
 
 
+class VinesGrowCubeDispositionSummary(BaseModel):
+    """VINES-OPS-002: the disposing fact for one removed Grow Cube -- present
+    only when `status == "removed"`."""
+
+    reason_code: str
+    effective_time: datetime
+    note: str | None
+
+
 class VinesProductionPlacementGrowCubeRead(BaseModel):
-    """One living plant inside a drilled-down Grow Bag: its own Grow Cube
+    """One plant placement inside a drilled-down Grow Bag: its own Grow Cube
     identity plus, when resolvable, the originating Seed Tray -- the
     ticket's required backward lineage (Grow Bag -> Grow Cube -> Seed Tray)
-    in one compact row."""
+    in one compact row. VINES-OPS-002: `status`/`disposition` distinguish a
+    currently-living plant from one already removed -- a disposed Grow Cube
+    is never dropped from this list (immutable history), only marked."""
 
     grow_cube: CarrierSummary
     source_seed_tray: CarrierSummary | None
+    status: str = "living"
+    disposition: VinesGrowCubeDispositionSummary | None = None
 
 
 class VinesProductionPlacementGrowBagRead(BaseModel):
     """Drill-down detail for one aggregated Vines Production placement row:
     every individual Grow Bag currently carrying living plants there, and
-    every Grow Cube (with its own Seed Tray lineage) inside each Bag."""
+    every Grow Cube (with its own Seed Tray lineage and living/removed
+    status) inside each Bag. VINES-OPS-002: `living_plant_count`/`capacity`/
+    `free_capacity` expose the "Grow Bag capacity after loss" facts the
+    ticket requires -- `assigned_plant_count`/capacity themselves never
+    change; only living/free do."""
 
     grow_bag: CarrierSummary
     grow_bag_position_code: str
     batch_carrier_assignment_id: uuid.UUID
     assigned_plant_count: int
+    living_plant_count: int
+    capacity: int | None
+    free_capacity: int | None
     assigned_effective_time: datetime
     grow_cubes: list[VinesProductionPlacementGrowCubeRead]
 
@@ -178,6 +205,7 @@ __all__ = [
     "VinesProductionTransferRead",
     "AvailableGrowBagPoolRead",
     "VinesProductionPlacementRead",
+    "VinesGrowCubeDispositionSummary",
     "VinesProductionPlacementGrowCubeRead",
     "VinesProductionPlacementGrowBagRead",
 ]
