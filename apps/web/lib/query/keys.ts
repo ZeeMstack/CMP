@@ -40,6 +40,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "farm-setup", "greenhouses", greenhouseId] as const,
   farmSetupReadiness: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "setup-readiness"] as const,
+  locationPath: (tenantId: string, farmId: string, locationId: string) =>
+    ["tenant", tenantId, "farms", farmId, "locations", locationId, "path"] as const,
 
   // --- NURSERY-OPS-001 -----------------------------------------------------
   crops: (tenantId: string) => ["tenant", tenantId, "crops"] as const,

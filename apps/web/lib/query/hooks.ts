@@ -56,6 +56,7 @@ import type {
   LocationDeactivate,
   LocationReactivate,
   LocationUpdate,
+  MovementCreate,
   PackagingUnitCreate,
   PackagingUnitRetire,
   PackingEventCreate,
@@ -1391,6 +1392,40 @@ export function useCorrectProductionDisposition(farmId: string) {
     onError: (error) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
       _invalidateProductionDisposition(queryClient, tenantId, farmId);
+    },
+  });
+}
+
+// --- LEAFY-OPS-002 -----------------------------------------------------------
+// Production relocation: the generic Location ancestor-path read (used to
+// prefill "Move plate"'s destination Greenhouse/Zone/Span from the Plate's
+// current Table) and the generic Movement command. A successful relocation
+// invalidates Active Production Plates exactly like LEAFY-OPS-001's own
+// disposition commands do, so the moved Plate's current placement refreshes
+// automatically -- no separate "move" read of its own.
+
+export function useLocationPath(farmId: string, locationId: string | null) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.locationPath(tenantId ?? "", farmId, locationId ?? "__none__"),
+    queryFn: ({ signal }) => api.getLocationPath(farmId, locationId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(locationId),
+  });
+}
+
+export function useRelocateLeafyProductionPlate(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MovementCreate) => api.createMovement(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.activeProductionPlates(tenantId, farmId, "") });
+    },
+    onError: (error) => {
+      if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.activeProductionPlates(tenantId, farmId, "") });
     },
   });
 }
