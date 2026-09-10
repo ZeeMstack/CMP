@@ -40,10 +40,12 @@ from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.carrier import Carrier
 from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
+from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.location import Location
 from app.models.seed_lot import SeedLot
 from app.models.sowing_event import SowingEvent
+from app.models.variety import Variety
 from app.models.workflow import Workflow
 from app.models.workflow_stage import WorkflowStage
 from app.models.workflow_version import WorkflowVersion
@@ -124,10 +126,20 @@ def _resolve_sowing_workflow(db: Session, *, tenant_id: uuid.UUID, crop_id: uuid
             .distinct()
         ).scalars()
     )
-    if len(workflows) == 0:
-        raise NoSowingWorkflowFoundError(f"{crop_id}:{variety_id}")
-    if len(workflows) > 1:
-        raise AmbiguousSowingWorkflowError(f"{crop_id}:{variety_id}")
+    if len(workflows) != 1:
+        crop = db.get(Crop, crop_id)
+        variety = db.get(Variety, variety_id)
+        crop_label = crop.common_name if crop is not None else str(crop_id)
+        variety_label = variety.name if variety is not None else str(variety_id)
+        if len(workflows) == 0:
+            raise NoSowingWorkflowFoundError(
+                f"No active, published seeding workflow requiring seed trays is configured for "
+                f"{crop_label} / {variety_label}. Configure a matching workflow before sowing."
+            )
+        raise AmbiguousSowingWorkflowError(
+            f"Multiple active, published seeding workflows requiring seed trays match "
+            f"{crop_label} / {variety_label}. Resolve this workflow configuration ambiguity before sowing."
+        )
     return workflows[0]
 
 
