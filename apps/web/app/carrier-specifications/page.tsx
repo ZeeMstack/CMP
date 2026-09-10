@@ -1,6 +1,7 @@
 "use client";
 
 import { PlusCircle } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -101,7 +102,11 @@ export default function CarrierSpecificationsPage() {
       />
       <p className="-mt-3 mb-6 text-xs text-ink-muted">
         Reusable carrier designs shared across every farm in this tenant -- not tied to a single farm. To register
-        individual physical carriers against a specification, open a farm and use its Physical Carriers page.
+        individual physical carriers against a specification, open{" "}
+        <Link href="/farms" className="font-medium text-brand-700 hover:underline">
+          a farm
+        </Link>{" "}
+        and use its Physical Carriers page.
       </p>
 
       {editing !== null && !isLoading && !loadError && (

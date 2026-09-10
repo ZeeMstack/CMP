@@ -151,6 +151,11 @@ function navGroups(farmId: string): NavGroupDef[] {
         // Seed Lots/Locations/Batches above.
         { label: "Store & Inventory Setup", href: `/farms/${farmId}/store-inventory-setup` },
         { label: "Carrier Specifications", href: "/carrier-specifications" },
+        // PILOT-BLOCKER-001: the farm-scoped physical Carrier registry --
+        // deliberately placed right after Carrier Specifications (the
+        // tenant-wide reusable design it registers against) even though its
+        // own href IS farm-scoped, unlike its neighbor.
+        { label: "Physical Carriers", href: `/farms/${farmId}/carriers` },
         { label: "Crops & Varieties", href: "/crops" },
         { label: "Production Systems", href: "/production-systems" },
         { label: "Workflows", href: "/workflows" },
