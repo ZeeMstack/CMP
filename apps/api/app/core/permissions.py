@@ -180,8 +180,14 @@ class Permission(StrEnum):
     # Pure derived/computed read -- no mutation endpoint exists.
     TRACEABILITY_READ = "traceability.read"
 
-    # No GET /memberships endpoint currently exists -- only the mutation
-    # (POST /memberships) is a real, mounted capability today.
+    # AUTHZ-OPS-001: GET /memberships (tenant Users & Roles administration
+    # screen) needed its own `.read` permission -- the read-enforcement
+    # architecture test (test_authz_read_enforcement_architecture.py)
+    # requires every tenant-scoped GET route to be gated by a `.read`
+    # permission, never the sibling `.manage`. Granted only to tenant_admin
+    # (via the automatic frozenset(Permission) grant below) -- membership
+    # administration remains tenant_admin-only, same as TENANT_MEMBERS_MANAGE.
+    TENANT_MEMBERS_READ = "tenant.members.read"
     TENANT_MEMBERS_MANAGE = "tenant.members.manage"
 
     # STORE-INV-001B: the first Store & Inventory master-data permissions --

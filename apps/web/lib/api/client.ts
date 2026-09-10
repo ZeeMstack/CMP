@@ -4,6 +4,13 @@ import type { components } from "@/lib/api/schema.gen";
 
 export type FarmRead = components["schemas"]["FarmRead"];
 export type FarmCreate = components["schemas"]["FarmCreate"];
+// --- AUTHZ-OPS-001: Users & Roles administration -----------------------------
+export type MembershipCreate = components["schemas"]["MembershipCreate"];
+export type MembershipRead = components["schemas"]["MembershipRead"];
+export type MembershipWithUserRead = components["schemas"]["MembershipWithUserRead"];
+export type MembershipRoleChange = components["schemas"]["MembershipRoleChange"];
+export type RoleOption = components["schemas"]["RoleOption"];
+export type UserLookupRead = components["schemas"]["UserLookupRead"];
 export type LocationTreeNode = components["schemas"]["LocationTreeNode"];
 export type LocationRead = components["schemas"]["LocationRead"];
 export type LocationCreate = components["schemas"]["LocationCreate"];
@@ -262,6 +269,40 @@ export function getFarm(farmId: string, signal?: AbortSignal): Promise<FarmRead>
 
 export function createFarm(payload: FarmCreate, signal?: AbortSignal): Promise<FarmRead> {
   return postJson<FarmRead>("/farms", payload, signal);
+}
+
+// --- AUTHZ-OPS-001: Users & Roles administration -----------------------------
+
+export function listMemberships(signal?: AbortSignal): Promise<MembershipWithUserRead[]> {
+  return getJson<MembershipWithUserRead[]>("/memberships", signal);
+}
+
+export function listAssignableRoles(signal?: AbortSignal): Promise<RoleOption[]> {
+  return getJson<RoleOption[]>("/memberships/roles", signal);
+}
+
+export function createMembership(payload: MembershipCreate, signal?: AbortSignal): Promise<MembershipRead> {
+  return postJson<MembershipRead>("/memberships", payload, signal);
+}
+
+export function changeMembershipRole(
+  membershipId: string,
+  payload: MembershipRoleChange,
+  signal?: AbortSignal,
+): Promise<MembershipRead> {
+  return postJson<MembershipRead>(`/memberships/${membershipId}/role`, payload, signal);
+}
+
+export function deactivateMembership(membershipId: string, signal?: AbortSignal): Promise<MembershipRead> {
+  return postJson<MembershipRead>(`/memberships/${membershipId}/deactivate`, {}, signal);
+}
+
+export function reactivateMembership(membershipId: string, signal?: AbortSignal): Promise<MembershipRead> {
+  return postJson<MembershipRead>(`/memberships/${membershipId}/reactivate`, {}, signal);
+}
+
+export function lookupUserByEmail(email: string, signal?: AbortSignal): Promise<UserLookupRead> {
+  return getJson<UserLookupRead>(`/users/lookup?email=${encodeURIComponent(email)}`, signal);
 }
 
 export function getLocationsTree(farmId: string, signal?: AbortSignal): Promise<LocationTreeNode[]> {

@@ -54,7 +54,7 @@ Builds the first `require_platform_admin`-gated HTTP routes on top of the B1 pri
 
 ## Permission catalog
 
-Stable, dotted `<domain>.read` / `<domain>.manage` strings (`app.core.permissions.Permission`), derived from a full endpoint audit — not the ticket's own illustrative example list. `manage` covers every mutation/command in that domain: CMP has no `PUT`/`PATCH`/`DELETE` endpoints anywhere (every mutation is an append-only `POST` — a create or a domain command), so a narrower per-verb split was not justified by current behavior. A handful of domains have only one tier where the endpoint audit gave no reason for the other (no read-only domain has a `.manage` value it doesn't need; `movement` and `tenant.members` currently have no standalone read endpoint; `traceability` has no mutation endpoint at all).
+Stable, dotted `<domain>.read` / `<domain>.manage` strings (`app.core.permissions.Permission`), derived from a full endpoint audit — not the ticket's own illustrative example list. `manage` covers every mutation/command in that domain: CMP has no `PUT`/`PATCH`/`DELETE` endpoints anywhere (every mutation is an append-only `POST` — a create or a domain command), so a narrower per-verb split was not justified by current behavior. A handful of domains have only one tier where the endpoint audit gave no reason for the other (no read-only domain has a `.manage` value it doesn't need; `movement` has no standalone read endpoint; `traceability` has no mutation endpoint at all; `tenant.members` gained its own `.read` tier in AUTHZ-OPS-001 once a Users & Roles administration screen needed one).
 
 Unknown permission values cannot silently succeed: `Permission` is a closed `StrEnum`, and `require_permission` only ever accepts a member of it — there is no free-text permission string anywhere in a route.
 
@@ -103,7 +103,8 @@ Unknown permission values cannot silently succeed: `Permission` is a closed `Str
 | `recall.read` | `GET /farms/{farm_id}/recall-cases*` | **Enforced** (AUTHZ-001B1) |
 | `recall.manage` | `POST /farms/{farm_id}/recall-cases`, `.../recall-cases/{id}/close` | **Enforced** (AUTHZ-001B2) — covers both opening *and* closing a case; see "Future hardening" below |
 | `traceability.read` | `GET /farms/{farm_id}/traceability/*` (finished-goods-lot trace, crop-batch/produce-lot impact) | **Enforced** (AUTHZ-001B1) |
-| `tenant.members.manage` | `POST /memberships` | **Enforced** (AUTHZ-001B2) |
+| `tenant.members.read` | `GET /memberships`, `GET /memberships/roles` | **Enforced** (AUTHZ-OPS-001 -- the User & Role administration MVP; previously no read endpoint existed at all) |
+| `tenant.members.manage` | `POST /memberships`, `POST /memberships/{id}/role`, `POST /memberships/{id}/deactivate`, `POST /memberships/{id}/reactivate` | **Enforced** (AUTHZ-001B2; role-change/deactivate/reactivate added by AUTHZ-OPS-001) |
 
 Not permission-gated by design, unaffected by AUTHZ-001B1 or AUTHZ-001B2:
 

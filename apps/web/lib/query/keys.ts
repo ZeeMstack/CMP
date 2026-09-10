@@ -324,4 +324,8 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "production-requirements", requirementId, "seeding-program-lines"] as const,
   seedingProgramLine: (tenantId: string, farmId: string, lineId: string) =>
     ["tenant", tenantId, "farms", farmId, "seeding-program-lines", lineId] as const,
+
+  // --- AUTHZ-OPS-001: Users & Roles administration ---------------------------
+  memberships: (tenantId: string) => ["tenant", tenantId, "memberships"] as const,
+  assignableRoles: (tenantId: string) => ["tenant", tenantId, "roles"] as const,
 };

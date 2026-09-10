@@ -27,3 +27,17 @@ class UserRead(BaseModel):
     email: str
     display_name: str
     status: str
+
+
+class UserLookupRead(BaseModel):
+    """AUTHZ-OPS-001: the minimal, administrative-only shape returned by
+    `GET /users/lookup` -- just enough for a Tenant Admin to confirm they
+    found the right person before adding them to the tenant. Deliberately
+    excludes `oidc_issuer`/`oidc_subject`/`status` (CLAUDE.md: never expose
+    internal identity provider ids in the UI)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    display_name: str

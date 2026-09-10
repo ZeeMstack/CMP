@@ -45,7 +45,7 @@ interface NavGroupDef {
  * CARRIER-CONFIG-001) -- its href has no farmId segment.
  * "Traceability" points at the future Batch F route; that page does not
  * exist yet on this branch by design (see Batch A ticket). */
-function navGroups(farmId: string): NavGroupDef[] {
+function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
   return [
     // PLANNING-OPS-001: the one addition to the otherwise-frozen UI-OPT-001
     // tree -- crop demand/seeding planning genuinely precedes every
@@ -162,6 +162,11 @@ function navGroups(farmId: string): NavGroupDef[] {
         { label: "Grade Definitions", href: "/grade-definitions" },
         { label: "Packaging Units", href: "/packaging-units" },
         { label: "Pack Specifications", href: "/pack-specifications" },
+        // AUTHZ-OPS-001: tenant-wide (no farmId), same reasoning as every
+        // other entry in this group -- shown only to a tenant_admin caller;
+        // the backend's own TENANT_MEMBERS_READ/MANAGE checks remain
+        // authoritative regardless of whether this link is visible.
+        ...(canManageUsers ? [{ label: "Users & Roles", href: "/users" }] : []),
       ],
     },
   ];
@@ -434,7 +439,10 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
   const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
   const { data: farms } = useFarms();
 
-  const groups = useMemo(() => navGroups(farmId), [farmId]);
+  const selectedTenantId = bootstrap?.selectedTenantId;
+  const canManageUsers =
+    bootstrap?.memberships.find((m) => m.tenantId === selectedTenantId)?.roleCode === "tenant_admin";
+  const groups = useMemo(() => navGroups(farmId, canManageUsers), [farmId, canManageUsers]);
   const { moduleId: activeModuleId, activeHref } = useMemo(
     () => resolveActiveNav(pathname, farmId, groups),
     [pathname, farmId, groups],

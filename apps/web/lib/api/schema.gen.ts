@@ -113,10 +113,127 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Memberships
+         * @description AUTHZ-OPS-001: the Users & Roles administration table -- every
+         *     membership (active and removed) for the caller's own tenant, joined
+         *     with the owning User's display fields. Tenant-scoped by construction
+         *     (`membership_service.list_memberships_for_tenant` filters by
+         *     `ctx.tenant_id`) -- never any other tenant's rows.
+         */
+        get: operations["list_memberships_memberships_get"];
         put?: never;
         /** Create Membership */
         post: operations["create_membership_memberships_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assignable Roles
+         * @description AUTHZ-OPS-001 section 17: one small backend read so the frontend
+         *     role picker never independently duplicates the approved role list or
+         *     invents its own descriptions. `ctx` is required (and otherwise unused)
+         *     purely to enforce the same tenant-membership-administration permission
+         *     as every other endpoint on this router -- this is reference data, not
+         *     tenant-specific, but still gated consistently rather than left open.
+         */
+        get: operations["list_assignable_roles_memberships_roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/{membership_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Membership Role */
+        post: operations["change_membership_role_memberships__membership_id__role_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/{membership_id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate Membership */
+        post: operations["deactivate_membership_memberships__membership_id__deactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/{membership_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate Membership */
+        post: operations["reactivate_membership_memberships__membership_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lookup User By Email
+         * @description AUTHZ-OPS-001 section 8: the "Add Existing User" prerequisite step.
+         *     CMP has no self-service signup and no invitation mechanism -- a User
+         *     row is only ever created by a real Auth0 login binding to an already-
+         *     provisioned identity, or by Platform Admin tenant onboarding (see
+         *     `docs/domain/AUTHORIZATION_MODEL.md`, "Identity binding"). A Tenant
+         *     Admin cannot create a brand-new identity here; this endpoint only
+         *     resolves whether one already exists, so the Add User flow can tell the
+         *     admin to ask the person to sign in first when it does not.
+         *
+         *     Deliberately tenant-unscoped (Users are not tenant-owned records --
+         *     `tenant_id` lives on TenantMembership, not User) -- still gated by
+         *     `TENANT_MEMBERS_READ` so only a caller already trusted to administer
+         *     this tenant's membership can probe whether an email is a known CMP
+         *     identity at all.
+         */
+        get: operations["lookup_user_by_email_users_lookup_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9310,6 +9427,38 @@ export interface components {
             /** Role Code */
             role_code: string | null;
         };
+        /** MembershipRoleChange */
+        MembershipRoleChange: {
+            /** Role Code */
+            role_code: string;
+        };
+        /**
+         * MembershipWithUserRead
+         * @description AUTHZ-OPS-001: one row of the Users & Roles administration table --
+         *     membership fields plus the joined User's display fields, so the
+         *     frontend never needs a second per-row lookup (and never renders a bare
+         *     `user_id` UUID as the row's identity).
+         */
+        MembershipWithUserRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Status */
+            status: string;
+            /** Role Code */
+            role_code: string | null;
+            /** User Email */
+            user_email: string;
+            /** User Display Name */
+            user_display_name: string;
+        };
         /** MovementCreate */
         MovementCreate: {
             /**
@@ -11414,6 +11563,23 @@ export interface components {
             seedling_table: components["schemas"]["SeedlingTableSummary"] | null;
         };
         /**
+         * RoleOption
+         * @description AUTHZ-OPS-001 section 17: a small, explicit, backend-owned read so
+         *     the frontend role dropdown never duplicates the approved role list or
+         *     invents its own descriptions. Descriptions are explanatory copy only --
+         *     never consulted for authorization (the role -> permission policy in
+         *     `app.core.permissions.ROLE_PERMISSIONS` is the sole authorization
+         *     source, entirely independent of this text).
+         */
+        RoleOption: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+        };
+        /**
          * SeedLotBatchSummary
          * @description NURSERY-OPS-001 section 49: the reverse of 'which Seed Lot created
          *     this Batch' -- a simple related-batches read, not a traceability UI.
@@ -13092,6 +13258,25 @@ export interface components {
             name: string;
             /** Quantity Kind */
             quantity_kind: string;
+        };
+        /**
+         * UserLookupRead
+         * @description AUTHZ-OPS-001: the minimal, administrative-only shape returned by
+         *     `GET /users/lookup` -- just enough for a Tenant Admin to confirm they
+         *     found the right person before adding them to the tenant. Deliberately
+         *     excludes `oidc_issuer`/`oidc_subject`/`status` (CLAUDE.md: never expose
+         *     internal identity provider ids in the UI).
+         */
+        UserLookupRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
         };
         /** UserRead */
         UserRead: {
@@ -14991,6 +15176,40 @@ export interface operations {
             };
         };
     };
+    list_memberships_memberships_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipWithUserRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_membership_memberships_post: {
         parameters: {
             query?: never;
@@ -15016,6 +15235,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MembershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assignable_roles_memberships_roles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOption"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_membership_role_memberships__membership_id__role_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRoleChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_membership_memberships__membership_id__deactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_membership_memberships__membership_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_user_by_email_users_lookup_get: {
+        parameters: {
+            query: {
+                email: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserLookupRead"];
                 };
             };
             /** @description Validation Error */

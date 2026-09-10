@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
-import { withQueryClient } from "@/lib/test-utils";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 import { AppShell, findActiveHref } from "./AppShell";
 
@@ -234,6 +234,24 @@ describe("AppShell contextual sidebar", () => {
     expect(within(aside).queryByRole("link", { name: "Inventory Categories" })).not.toBeInTheDocument();
     expect(within(aside).queryByRole("link", { name: "Inventory Items" })).not.toBeInTheDocument();
     expect(within(aside).queryByRole("link", { name: "Units of Measure" })).not.toBeInTheDocument();
+  });
+
+  it("AUTHZ-OPS-001: shows Users & Roles in Farm Setup for a tenant_admin", () => {
+    renderShell("/farms/farm-1/farm-setup");
+    expect(within(sidebar()).getByRole("link", { name: "Users & Roles" })).toHaveAttribute("href", "/users");
+  });
+
+  it("AUTHZ-OPS-001: hides Users & Roles for a non-tenant_admin caller", () => {
+    currentPathname = "/farms/farm-1/farm-setup";
+    render(
+      withQueryClient(<AppShell farmId="farm-1">page content</AppShell>, {
+        ...DEFAULT_TEST_BOOTSTRAP,
+        memberships: [
+          { tenantId: TEST_TENANT_ID, tenantCode: "TEST", tenantName: "Test Tenant", roleCode: "operator" },
+        ],
+      }),
+    );
+    expect(within(sidebar()).queryByRole("link", { name: "Users & Roles" })).not.toBeInTheDocument();
   });
 
   it.each([

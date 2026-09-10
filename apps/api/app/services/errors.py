@@ -2288,3 +2288,47 @@ class SeedingProgramLineCropMismatchError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+# --- AUTHZ-OPS-001: User & Role administration MVP --------------------------
+
+
+class MembershipNotFoundError(DomainError):
+    """Raised when a membership_id does not resolve to a TenantMembership
+    row owned by the caller's own tenant -- mapped to a generic 404, never
+    distinguishing "wrong tenant" from "does not exist at all"."""
+
+    pass
+
+
+class MembershipNotActiveError(DomainError):
+    """Raised when a role-change or deactivate command targets a
+    TenantMembership that is not currently 'active'."""
+
+    pass
+
+
+class MembershipNotInactiveError(DomainError):
+    """Raised when a reactivate command targets a TenantMembership that is
+    not currently 'removed'."""
+
+    pass
+
+
+class MembershipAlreadyActiveForUserError(DomainError):
+    """Raised when reactivating a 'removed' TenantMembership would violate
+    the one-active-membership-per-(tenant,user) constraint -- the same user
+    already has a different active membership row in this tenant (e.g. was
+    re-added via a fresh POST /memberships after being deactivated)."""
+
+    pass
+
+
+class LastActiveTenantAdminError(DomainError):
+    """Raised when a role-change or deactivate command would leave an
+    active Tenant with zero active `tenant_admin` memberships -- checked
+    under a row lock on every currently-active tenant_admin membership for
+    the tenant, so two concurrent requests cannot both slip past the count
+    check (CLAUDE.md rule 11 / AUTHZ-OPS-001 section 11)."""
+
+    pass

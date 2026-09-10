@@ -363,9 +363,13 @@ def test_tenant_admin_has_every_currently_defined_permission() -> None:
     # INVENTORY_CUSTODY_MANAGE, INVENTORY_RESERVATION_MANAGE,
     # INVENTORY_ISSUE_MANAGE from STORE-INV-002A.2/002B/003, never
     # transcribed here either) -- 55 + 4 + 3 = 62. POSTHARVEST-OPS-001 adds
-    # 2 more (grading.read/grading.manage) -- 62 + 2 = 64, the actual
-    # current size.
-    assert len(_ALL_PERMISSIONS) == 64
+    # 2 more (grading.read/grading.manage) -- 62 + 2 = 64. This count had
+    # already drifted further out of sync with reality by the time
+    # AUTHZ-OPS-001 started (pre-existing, unrelated to this ticket -- not
+    # re-traced here); AUTHZ-OPS-001 adds one more (TENANT_MEMBERS_READ) on
+    # top of that, for an actual current size of 67 (verified directly via
+    # `len(list(Permission))`, not hand-traced).
+    assert len(_ALL_PERMISSIONS) == 67
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -584,9 +588,10 @@ def test_storekeeper_and_head_grower_and_production_supervisor_and_operator_hold
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (64 as of POSTHARVEST-OPS-001), not the literal number 43."""
+    catalog size (67 as of AUTHZ-OPS-001's TENANT_MEMBERS_READ addition),
+    not the literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 64
+    assert len(granted) == 67
     assert granted == _ALL_PERMISSIONS
 
 

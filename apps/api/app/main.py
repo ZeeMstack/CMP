@@ -58,6 +58,7 @@ from app.api.seed_lots import router as seed_lots_router
 from app.api.seedling import router as seedling_router
 from app.api.sowings import router as sowings_router
 from app.api.transplants import router as transplants_router
+from app.api.users import router as users_router
 from app.api.workflows import router as workflows_router
 from app.core.dev_auth import check_dev_auth_startup_invariant
 from app.core.settings import Settings, check_oidc_startup_invariant, settings
@@ -73,6 +74,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(auth_router)
     api.include_router(platform_tenants_router)
     api.include_router(memberships_router)
+    api.include_router(users_router)
     api.include_router(farms_router)
     api.include_router(locations_router)
     api.include_router(farm_setup_router)
