@@ -57,6 +57,8 @@ import type {
   LocationReactivate,
   LocationUpdate,
   MovementCreate,
+  MembershipCreate,
+  MembershipRoleChange,
   ObservationEventCreate,
   PackagingUnitCreate,
   PackagingUnitRetire,
@@ -3350,5 +3352,81 @@ export function useCancelSeedingProgramLine(farmId: string, requirementId: strin
   return useMutation({
     mutationFn: (payload: SeedingProgramLineStatusCommand) => api.cancelSeedingProgramLine(farmId, lineId, payload),
     onSuccess: () => invalidateSeedingProgramLine(queryClient, tenantId, farmId, requirementId, lineId),
+  });
+}
+
+// --- AUTHZ-OPS-001: Users & Roles administration -----------------------------
+// Tenant-wide (no farmId) -- membership administration is not farm-scoped
+// (CLAUDE.md/ticket section 14: current roles are tenant-wide, and this
+// ticket does not invent farm-scoped access).
+
+export function useMemberships() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.memberships(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listMemberships(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useAssignableRoles() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.assignableRoles(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listAssignableRoles(signal),
+    staleTime: STALE_REFERENCE_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** One-shot lookup triggered by an explicit "Add User" form action (not a
+ * background query) -- the admin types an email and asks CMP to check it,
+ * rather than every keystroke firing a request. */
+export function useLookupUserByEmail() {
+  return useMutation({
+    mutationFn: (email: string) => api.lookupUserByEmail(email),
+  });
+}
+
+function invalidateMemberships(queryClient: ReturnType<typeof useQueryClient>, tenantId: string | undefined) {
+  if (!tenantId) return;
+  queryClient.invalidateQueries({ queryKey: queryKeys.memberships(tenantId) });
+}
+
+export function useCreateMembership() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MembershipCreate) => api.createMembership(payload),
+    onSuccess: () => invalidateMemberships(queryClient, tenantId),
+  });
+}
+
+export function useChangeMembershipRole() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ membershipId, payload }: { membershipId: string; payload: MembershipRoleChange }) =>
+      api.changeMembershipRole(membershipId, payload),
+    onSuccess: () => invalidateMemberships(queryClient, tenantId),
+  });
+}
+
+export function useDeactivateMembership() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (membershipId: string) => api.deactivateMembership(membershipId),
+    onSuccess: () => invalidateMemberships(queryClient, tenantId),
+  });
+}
+
+export function useReactivateMembership() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (membershipId: string) => api.reactivateMembership(membershipId),
+    onSuccess: () => invalidateMemberships(queryClient, tenantId),
   });
 }

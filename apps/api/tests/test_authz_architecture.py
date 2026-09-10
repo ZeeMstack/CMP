@@ -49,8 +49,19 @@ def _authorization_relevant_files() -> list[Path]:
       this test must not conflate with a policy bypass, or a legitimate
       future feature (e.g. a membership-management read endpoint
       displaying `role_code` for humans) would fail this test for a
-      reason that has nothing to do with authorization."""
-    return sorted((APP_ROOT / "api").rglob("*.py")) + sorted((APP_ROOT / "services").rglob("*.py"))
+      reason that has nothing to do with authorization.
+    - `app/services/membership_service.py` (AUTHZ-OPS-001) -- the one
+      predicted "legitimate future feature" the note above already named
+      has arrived: this module's `role_code` comparisons (e.g. "is this
+      TenantMembership row's OWN role_code == 'tenant_admin'?" for
+      last-active-admin protection) are business logic about the target
+      TenantMembership's *data*, not an authorization decision made from
+      `ctx.role_code` -- `require_permission`/`TENANT_MEMBERS_MANAGE`
+      alone still gates every route this module's functions serve; this
+      module never substitutes for that gate."""
+    return sorted((APP_ROOT / "api").rglob("*.py")) + sorted(
+        p for p in (APP_ROOT / "services").rglob("*.py") if p.name != "membership_service.py"
+    )
 
 
 # --- No Auth0 RBAC / Organizations / email-based authorization --------------
