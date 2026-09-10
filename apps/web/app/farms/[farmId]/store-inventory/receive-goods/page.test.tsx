@@ -55,10 +55,10 @@ afterEach(() => {
 });
 
 describe("ReceiveGoodsPage", () => {
-  it("renders a single starting line with no server Draft call on mount", async () => {
+  it("renders a single compact starting row with no server Draft call on mount", async () => {
     stubFetch();
     render(withQueryClient(<ReceiveGoodsPage />));
-    await waitFor(() => expect(screen.getByText("Line 1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Inventory Item")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Record Receipt" })).toBeInTheDocument();
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock.mock.calls.some((call: unknown[]) => (call[1] as RequestInit | undefined)?.method === "POST")).toBe(false);
@@ -67,7 +67,7 @@ describe("ReceiveGoodsPage", () => {
   it("blocks submission and shows an error when no item is selected on the only line", async () => {
     stubFetch();
     render(withQueryClient(<ReceiveGoodsPage />));
-    await waitFor(() => expect(screen.getByText("Line 1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Inventory Item")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record Receipt" }));
     expect(await screen.findByText("Select an item")).toBeInTheDocument();
   });
@@ -86,7 +86,6 @@ describe("ReceiveGoodsPage", () => {
       return jsonResponse({});
     });
     render(withQueryClient(<ReceiveGoodsPage />));
-    await waitFor(() => expect(screen.getByText("Line 1")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("Hairnets")).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Inventory Item"), { target: { value: "item-direct" } });
@@ -105,30 +104,42 @@ describe("ReceiveGoodsPage", () => {
     expect(line.packaging_id).toBeNull();
   });
 
-  it("shows manufacturer/lot/expiry fields only for a lot-tracked item, and a packaging normalized preview", async () => {
+  it("keeps manufacturer/lot/expiry fields collapsed behind 'Lot details' until expanded, for a lot-tracked item only", async () => {
     stubFetch();
     render(withQueryClient(<ReceiveGoodsPage />));
-    await waitFor(() => expect(screen.getByText("Line 1")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Inventory Item"), { target: { value: "item-lot" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /lot details/i })).toBeInTheDocument());
+    // Collapsed by default -- compact row behavior.
+    expect(screen.queryByLabelText("Manufacturer")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /lot details/i }));
     await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toBeInTheDocument());
     expect(screen.getByLabelText(/Expiry Date \(required\)/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Packaging"));
+    fireEvent.click(screen.getByRole("button", { name: "Packaging" }));
     fireEvent.change(screen.getByLabelText("Packaging Option"), { target: { value: "pkg-1" } });
     fireEvent.change(screen.getByLabelText("Number of packages"), { target: { value: "4" } });
 
     await waitFor(() => expect(screen.getByText(/Normalized quantity: 100.000 kg/)).toBeInTheDocument());
   });
 
-  it("does not show manufacturer/lot fields for a non-lot-tracked item", async () => {
+  it("does not offer Lot details for a non-lot-tracked item", async () => {
     stubFetch();
     render(withQueryClient(<ReceiveGoodsPage />));
-    await waitFor(() => expect(screen.getByText("Line 1")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("Hairnets")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Inventory Item"), { target: { value: "item-direct" } });
     await waitFor(() => expect(screen.getByLabelText("Quantity")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /lot details/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Manufacturer")).not.toBeInTheDocument();
+  });
+
+  it("adds another compact row via Add line, without expanding into a large form", async () => {
+    stubFetch();
+    render(withQueryClient(<ReceiveGoodsPage />));
+    await waitFor(() => expect(screen.getAllByLabelText("Inventory Item")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Add line" }));
+    await waitFor(() => expect(screen.getAllByLabelText("Inventory Item")).toHaveLength(2));
   });
 });

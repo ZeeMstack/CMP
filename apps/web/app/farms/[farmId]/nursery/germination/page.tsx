@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -36,7 +36,14 @@ function errorMessage(error: unknown): string {
 
 export default function GerminationPage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | "outcome" | "seedling" | null>(null);
+  const searchParams = useSearchParams();
+  // PILOT-UX-001: process continuity from Sowing -- "Move to Germination"
+  // hands off here via query params only (reuses this exact route/page,
+  // never a second workflow engine), opening the right action directly.
+  const contextBatchId = searchParams.get("batchId");
+  const [activeAction, setActiveAction] = useState<"trolley" | "tray" | "outcome" | "seedling" | null>(
+    () => (searchParams.get("openAction") === "tray" ? "tray" : null),
+  );
   const [serverError, setServerError] = useState<string | null>(null);
 
   const traysQuery = useGerminationTrays(farmId);
@@ -107,6 +114,8 @@ export default function GerminationPage() {
           farmId={farmId}
           isSubmitting={placeTrayMutation.isPending}
           serverError={serverError}
+          initialBatchId={contextBatchId}
+          onSetUpTrolley={() => setActiveAction("trolley")}
           onCancel={closeAction}
           onSubmit={(payload) => {
             setServerError(null);
@@ -115,6 +124,12 @@ export default function GerminationPage() {
               onError: (error) => setServerError(errorMessage(error)),
             });
           }}
+          // PILOT-UX-001 (CTO correction): fast sequential per-tray moves
+          // for a multi-tray Batch -- each call is its own independent,
+          // idempotent `place_tray` command (backend has no bulk command);
+          // this must NOT closeAction after every tray, unlike onSubmit
+          // above, so the operator stays on the board for the next tray.
+          onSubmitOne={(payload) => placeTrayMutation.mutateAsync(payload)}
         />
       )}
 

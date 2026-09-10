@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import type { GoodsReceiptCreate, GoodsReceiptLineIn, InventoryItemRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
@@ -117,8 +119,22 @@ function SeedLotField({
   );
 }
 
-function LineCard({
-  line, index, items, onChange, onRemove, canRemove, errors,
+/** Whether any optional lot field on this line already has a value -- used
+ * to badge the "Lot details" toggle so a collapsed row never silently hides
+ * data the operator already entered. */
+function hasLotDetails(line: LineState): boolean {
+  return Boolean(
+    line.manufacturerName || line.manufacturerLotReference || line.manufacturingDate || line.expiryDate ||
+      line.seedLotCode,
+  );
+}
+
+/** PILOT-UX-001: one compact row per line -- item, quantity/packaging, and a
+ * Remove action all inline. Optional lot fields (manufacturer, dates, seed
+ * lot) stay collapsed behind "Lot details" so adding a line never grows into
+ * another tall card. */
+function LineRow({
+  line, index, items, onChange, onRemove, canRemove, errors, lotDetailsOpen, onToggleLotDetails,
 }: {
   line: LineState;
   index: number;
@@ -127,6 +143,8 @@ function LineCard({
   onRemove: () => void;
   canRemove: boolean;
   errors: LineErrors;
+  lotDetailsOpen: boolean;
+  onToggleLotDetails: () => void;
 }) {
   const item = items.find((i) => i.id === line.inventoryItemId);
   const packagingQuery = useInventoryItemPackaging({ status: "active" });
@@ -148,163 +166,196 @@ function LineCard({
     onChange({ ...line, ...patch });
   }
 
+  const lotDetailsFilled = hasLotDetails(line);
+
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-serif text-sm font-semibold text-wl-text">Line {index + 1}</h3>
-        {canRemove && (
-          <button type="button" className="text-xs font-medium text-red-700 hover:underline" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
+    <div className="flex flex-col gap-3 rounded-lg border border-wl-border bg-wl-surface-raised p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-8 shrink-0 pb-2.5 text-xs font-medium text-wl-text-tertiary">{index + 1}</div>
 
-      <Field label="Inventory Item" error={errors.inventoryItemId}>
-        <select
-          className={inputClass}
-          value={line.inventoryItemId}
-          onChange={(e) =>
-            update({
-              inventoryItemId: e.target.value, packagingId: "", packageCount: "", enteredQuantity: "",
-              enteredUomId: "", manufacturerName: "", manufacturerLotReference: "", manufacturingDate: "",
-              expiryDate: "", seedLotCode: "",
-            })
-          }
-        >
-          <option value="">Select an item…</option>
-          {items.map((i) => (
-            <option key={i.id} value={i.id}>{i.name}</option>
-          ))}
-        </select>
-      </Field>
+        <div className="min-w-[10rem] flex-1">
+          <Field label="Inventory Item" error={errors.inventoryItemId}>
+            <select
+              className={inputClass}
+              value={line.inventoryItemId}
+              onChange={(e) =>
+                update({
+                  inventoryItemId: e.target.value, packagingId: "", packageCount: "", enteredQuantity: "",
+                  enteredUomId: "", manufacturerName: "", manufacturerLotReference: "", manufacturingDate: "",
+                  expiryDate: "", seedLotCode: "",
+                })
+              }
+            >
+              <option value="">Select an item…</option>
+              {items.map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
 
-      {item && (
-        <>
-          <div className="flex gap-4 text-xs">
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                checked={line.mode === "direct"}
-                onChange={() => update({ mode: "direct", packagingId: "", packageCount: "" })}
-              />
-              Direct quantity
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="radio"
-                checked={line.mode === "packaging"}
-                onChange={() => update({ mode: "packaging", enteredQuantity: "", enteredUomId: "" })}
-              />
-              Packaging
-            </label>
-          </div>
-
-          {line.mode === "direct" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Quantity" error={errors.enteredQuantity}>
-                <input
-                  className={inputClass}
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={line.enteredQuantity}
-                  onChange={(e) => update({ enteredQuantity: e.target.value })}
-                />
-              </Field>
-              <Field label="Unit" error={errors.enteredUomId}>
-                <select
-                  className={inputClass}
-                  value={line.enteredUomId}
-                  onChange={(e) => update({ enteredUomId: e.target.value })}
+        {item && (
+          <>
+            <div className="flex shrink-0 flex-col gap-1">
+              <span className={labelClass}>Mode</span>
+              <div className="flex overflow-hidden rounded-md border border-wl-border">
+                <button
+                  type="button"
+                  onClick={() => update({ mode: "direct", packagingId: "", packageCount: "" })}
+                  className={`min-h-10 px-2.5 text-xs font-medium ${
+                    line.mode === "direct" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface text-wl-text-secondary"
+                  }`}
                 >
-                  <option value="">Select…</option>
-                  {(uomsQuery.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>{u.code}</option>
-                  ))}
-                </select>
-              </Field>
-              {line.enteredUomId && baseUom && enteredUom && (
-                <p className="col-span-2 text-xs text-wl-text-tertiary">
-                  {isSameUom
-                    ? `Recorded as entered (${baseUom.code} is this item's base unit).`
-                    : `Will be converted automatically to this item's base unit (${baseUom.code}).`}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Packaging Option" error={errors.packagingId}>
-                <select
-                  className={inputClass}
-                  value={line.packagingId}
-                  onChange={(e) => update({ packagingId: e.target.value })}
+                  Qty
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update({ mode: "packaging", enteredQuantity: "", enteredUomId: "" })}
+                  className={`min-h-10 px-2.5 text-xs font-medium ${
+                    line.mode === "packaging" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface text-wl-text-secondary"
+                  }`}
                 >
-                  <option value="">Select…</option>
-                  {packagingOptions.map((p) => (
-                    <option key={p.id} value={p.id}>{p.display_name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Number of packages" error={errors.packageCount}>
-                <input
-                  className={inputClass}
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={line.packageCount}
-                  onChange={(e) => update({ packageCount: e.target.value })}
-                />
-              </Field>
-              {previewBaseQuantity && baseUom && (
-                <p className="col-span-2 text-xs text-wl-text-tertiary">
-                  Normalized quantity: {previewBaseQuantity} {baseUom.code}
-                </p>
-              )}
-            </div>
-          )}
-
-          {item.lot_tracking_required && (
-            <div className="grid grid-cols-2 gap-3 border-t border-wl-border pt-3">
-              <Field label="Manufacturer" error={errors.manufacturerName}>
-                <input
-                  className={inputClass}
-                  value={line.manufacturerName}
-                  onChange={(e) => update({ manufacturerName: e.target.value })}
-                />
-              </Field>
-              <Field label="Manufacturer Lot Reference">
-                <input
-                  className={inputClass}
-                  value={line.manufacturerLotReference}
-                  onChange={(e) => update({ manufacturerLotReference: e.target.value })}
-                />
-              </Field>
-              <Field label="Manufacturing Date">
-                <input
-                  className={inputClass}
-                  type="date"
-                  value={line.manufacturingDate}
-                  onChange={(e) => update({ manufacturingDate: e.target.value })}
-                />
-              </Field>
-              <Field label={`Expiry Date${item.expiry_tracking_required ? " (required)" : ""}`} error={errors.expiryDate}>
-                <input
-                  className={inputClass}
-                  type="date"
-                  value={line.expiryDate}
-                  onChange={(e) => update({ expiryDate: e.target.value })}
-                />
-              </Field>
-              <div className="col-span-2">
-                <SeedLotField
-                  itemId={line.inventoryItemId}
-                  value={line.seedLotCode}
-                  onChange={(v) => update({ seedLotCode: v })}
-                />
+                  Packaging
+                </button>
               </div>
             </div>
+
+            {line.mode === "direct" ? (
+              <>
+                <div className="w-28 shrink-0">
+                  <Field label="Quantity" error={errors.enteredQuantity}>
+                    <input
+                      className={inputClass}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={line.enteredQuantity}
+                      onChange={(e) => update({ enteredQuantity: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="w-24 shrink-0">
+                  <Field label="Unit" error={errors.enteredUomId}>
+                    <select
+                      className={inputClass}
+                      value={line.enteredUomId}
+                      onChange={(e) => update({ enteredUomId: e.target.value })}
+                    >
+                      <option value="">Select…</option>
+                      {(uomsQuery.data ?? []).map((u) => (
+                        <option key={u.id} value={u.id}>{u.code}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="min-w-[9rem] flex-1">
+                  <Field label="Packaging Option" error={errors.packagingId}>
+                    <select
+                      className={inputClass}
+                      value={line.packagingId}
+                      onChange={(e) => update({ packagingId: e.target.value })}
+                    >
+                      <option value="">Select…</option>
+                      {packagingOptions.map((p) => (
+                        <option key={p.id} value={p.id}>{p.display_name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <div className="w-28 shrink-0">
+                  <Field label="Number of packages" error={errors.packageCount}>
+                    <input
+                      className={inputClass}
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={line.packageCount}
+                      onChange={(e) => update({ packageCount: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
+
+            {item.lot_tracking_required && (
+              <div className="shrink-0 pb-2.5">
+                <button
+                  type="button"
+                  onClick={onToggleLotDetails}
+                  className="min-h-10 whitespace-nowrap rounded-md border border-wl-border px-2.5 text-xs font-medium text-wl-text-secondary hover:bg-wl-surface-hover"
+                >
+                  Lot details{lotDetailsFilled ? " ✓" : ""} {lotDetailsOpen ? "▲" : "▼"}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="ml-auto shrink-0 pb-2.5">
+          {canRemove && (
+            <button type="button" className="text-xs font-medium text-red-700 hover:underline" onClick={onRemove}>
+              Remove
+            </button>
           )}
-        </>
+        </div>
+      </div>
+
+      {item && line.mode === "direct" && line.enteredUomId && baseUom && enteredUom && (
+        <p className="text-xs text-wl-text-tertiary">
+          {isSameUom
+            ? `Recorded as entered (${baseUom.code} is this item's base unit).`
+            : `Will be converted automatically to this item's base unit (${baseUom.code}).`}
+        </p>
+      )}
+      {item && line.mode === "packaging" && previewBaseQuantity && baseUom && (
+        <p className="text-xs text-wl-text-tertiary">
+          Normalized quantity: {previewBaseQuantity} {baseUom.code}
+        </p>
+      )}
+
+      {item?.lot_tracking_required && lotDetailsOpen && (
+        <div className="grid grid-cols-2 gap-3 border-t border-wl-border pt-3">
+          <Field label="Manufacturer" error={errors.manufacturerName}>
+            <input
+              className={inputClass}
+              value={line.manufacturerName}
+              onChange={(e) => update({ manufacturerName: e.target.value })}
+            />
+          </Field>
+          <Field label="Manufacturer Lot Reference">
+            <input
+              className={inputClass}
+              value={line.manufacturerLotReference}
+              onChange={(e) => update({ manufacturerLotReference: e.target.value })}
+            />
+          </Field>
+          <Field label="Manufacturing Date">
+            <input
+              className={inputClass}
+              type="date"
+              value={line.manufacturingDate}
+              onChange={(e) => update({ manufacturingDate: e.target.value })}
+            />
+          </Field>
+          <Field label={`Expiry Date${item.expiry_tracking_required ? " (required)" : ""}`} error={errors.expiryDate}>
+            <input
+              className={inputClass}
+              type="date"
+              value={line.expiryDate}
+              onChange={(e) => update({ expiryDate: e.target.value })}
+            />
+          </Field>
+          <div className="col-span-2">
+            <SeedLotField
+              itemId={line.inventoryItemId}
+              value={line.seedLotCode}
+              onChange={(v) => update({ seedLotCode: v })}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -331,6 +382,9 @@ export function ReceiveGoodsForm({
   const [attempted, setAttempted] = useState(false);
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
   const lastFingerprintRef = useRef<string | null>(null);
+  // PILOT-UX-001: which lines have their optional Lot details expanded --
+  // collapsed by default per line, matching progressive disclosure.
+  const [openLotDetails, setOpenLotDetails] = useState<Set<string>>(new Set());
 
   const lineErrors = lines.map((line) => validateLine(line, items.find((i) => i.id === line.inventoryItemId)));
   const hasErrors = lineErrors.some((e) => Object.keys(e).length > 0);
@@ -397,22 +451,48 @@ export function ReceiveGoodsForm({
         </div>
       </div>
 
-      {lines.map((line, index) => (
-        <LineCard
-          key={line.key}
-          line={line}
-          index={index}
-          items={items}
-          errors={attempted ? lineErrors[index] : {}}
-          canRemove={lines.length > 1}
-          onChange={(next) => setLines((prev) => prev.map((l) => (l.key === line.key ? next : l)))}
-          onRemove={() => setLines((prev) => prev.filter((l) => l.key !== line.key))}
+      {itemsQuery.isSuccess && items.length === 0 ? (
+        <EmptyState
+          title="No inventory items are set up yet"
+          description="Register at least one inventory item before receiving goods."
+          action={
+            <Link
+              href="/inventory-items"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border bg-wl-surface px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+            >
+              Set up Inventory Items
+            </Link>
+          }
         />
-      ))}
+      ) : (
+        <>
+          {lines.map((line, index) => (
+            <LineRow
+              key={line.key}
+              line={line}
+              index={index}
+              items={items}
+              errors={attempted ? lineErrors[index] : {}}
+              canRemove={lines.length > 1}
+              lotDetailsOpen={openLotDetails.has(line.key)}
+              onToggleLotDetails={() =>
+                setOpenLotDetails((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(line.key)) next.delete(line.key);
+                  else next.add(line.key);
+                  return next;
+                })
+              }
+              onChange={(next) => setLines((prev) => prev.map((l) => (l.key === line.key ? next : l)))}
+              onRemove={() => setLines((prev) => prev.filter((l) => l.key !== line.key))}
+            />
+          ))}
 
-      <Button type="button" variant="secondary" className="self-start" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
-        Add line
-      </Button>
+          <Button type="button" variant="secondary" className="self-start" onClick={() => setLines((prev) => [...prev, emptyLine()])}>
+            Add line
+          </Button>
+        </>
+      )}
 
       {serverError && (
         <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
