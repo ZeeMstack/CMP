@@ -69,6 +69,26 @@ export function SowingForm({
   const [clientCommandId] = useState(() => crypto.randomUUID());
   const [nurseryGreenhouseId, setNurseryGreenhouseId] = useState("");
 
+  // PILOT-UX-001 (CTO correction): fast-path tray auto-allocation -- these
+  // are plan-time helper inputs only, never submitted directly; the real
+  // payload always comes from the `trays` field array below, one entry per
+  // physical tray. Sites and seeds are kept as two separate, explicit
+  // inputs -- sown_site_count is the physical capacity fact tray count is
+  // derived from, seed_count is an independent biological quantity the
+  // backend never assumes equals it (multiple seeds may share one site).
+  // Neither field defaults from the other; the operator states both.
+  const [fastSiteQty, setFastSiteQty] = useState("");
+  const [fastSeedQty, setFastSeedQty] = useState("");
+  const [fastSpecId, setFastSpecId] = useState("");
+  const [manualMode, setManualMode] = useState(false);
+  const [showTrayDetails, setShowTrayDetails] = useState(false);
+  // PILOT-UX-001 (CTO correction): set only when "Distribute proportionally"
+  // was the operator's explicit choice -- must stay visible in both the
+  // compact summary and the Review step, and cleared the moment the
+  // allocation is edited (Customize / Clear all), since it would otherwise
+  // misrepresent hand-edited values as a proportional distribution.
+  const [seedAllocationNote, setSeedAllocationNote] = useState<string | null>(null);
+
   const planCropsQuery = useCrops();
   const planVarietiesQuery = useVarieties(planPrefill?.cropId);
   const planCrop = planCropsQuery.data?.find((c) => c.id === planPrefill?.cropId);
@@ -89,7 +109,7 @@ export function SowingForm({
     defaultValues: { ...DEFAULT_SOWING_FORM_VALUES, effective_date: initial.date, effective_time_of_day: initial.time },
     mode: "onBlur",
   });
-  const { fields, append, remove } = useFieldArray({ control, name: "trays" });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: "trays" });
 
   const overviewQuery = useGreenhouseSetupOverview(farmId);
   const nurseries = useMemo(
@@ -105,6 +125,129 @@ export function SowingForm({
 
   const selectedTrayIds = new Set(watch("trays").map((t) => t.carrier_id));
   const selectableTrays = (availableTraysQuery.data ?? []).filter((t) => !selectedTrayIds.has(t.id));
+
+  // PILOT-UX-001: group unselected trays by CarrierSpecification so an
+  // operator can auto-allocate by quantity instead of picking each tray --
+  // only specs with a known biological_position_count are eligible, since
+  // the required-tray count is derived from that capacity, never invented.
+  const specGroups: { id: string; label: string; capacity: number; available: typeof selectableTrays }[] = [];
+  const specGroupIndex = new Map<string, number>();
+  for (const tray of selectableTrays) {
+    const spec = tray.specification;
+    if (!spec || spec.biological_position_count == null) continue;
+    let index = specGroupIndex.get(spec.id);
+    if (index === undefined) {
+      index = specGroups.length;
+      specGroupIndex.set(spec.id, index);
+      specGroups.push({
+        id: spec.id,
+        label: `${spec.name} · ${spec.biological_position_count.toLocaleString()} sites`,
+        capacity: spec.biological_position_count,
+        available: [],
+      });
+    }
+    specGroups[index].available.push(tray);
+  }
+  const selectedFastGroup = specGroups.find((g) => g.id === fastSpecId) ?? null;
+  const fastSiteQtyNumber = Number(fastSiteQty);
+  const requestedSites =
+    fastSiteQty !== "" && Number.isFinite(fastSiteQtyNumber) && fastSiteQtyNumber > 0 ? fastSiteQtyNumber : 0;
+  const fastSeedQtyNumber = Number(fastSeedQty);
+  const requestedSeeds =
+    fastSeedQty !== "" && Number.isFinite(fastSeedQtyNumber) && fastSeedQtyNumber > 0 ? fastSeedQtyNumber : 0;
+  // Required rule (CTO correction): tray count is derived ONLY from the
+  // physical sown-site requirement against the tray specification's known
+  // capacity -- seed count never participates in this calculation.
+  const requiredTrayCount =
+    selectedFastGroup && requestedSites > 0 ? Math.ceil(requestedSites / selectedFastGroup.capacity) : 0;
+  const seedsBelowSites = requestedSites > 0 && requestedSeeds > 0 && requestedSeeds < requestedSites;
+  const seedsEqualSites = requestedSites > 0 && requestedSeeds > 0 && requestedSeeds === requestedSites;
+  const seedsExceedSites = requestedSites > 0 && requestedSeeds > 0 && requestedSeeds > requestedSites;
+  const enoughTraysAvailable =
+    selectedFastGroup !== null && requiredTrayCount > 0 && selectedFastGroup.available.length >= requiredTrayCount;
+  const canAllocate = enoughTraysAvailable && requestedSeeds > 0 && !seedsBelowSites;
+
+  /** Sites-only allocation -- the physical part, always unambiguous: full
+   * capacity per tray except the last, which absorbs the exact remainder.
+   * Never touches seed_count. */
+  function allocateSitesOnly(): {
+    carrier_id: string;
+    code: string;
+    biological_position_count: number | null;
+    sown_site_count: number;
+  }[] {
+    if (!selectedFastGroup || requiredTrayCount === 0) return [];
+    const traysToUse = selectedFastGroup.available.slice(0, requiredTrayCount);
+    let remainingSites = requestedSites;
+    return traysToUse.map((tray, index) => {
+      const isLast = index === traysToUse.length - 1;
+      const siteCount = isLast ? remainingSites : Math.min(selectedFastGroup.capacity, remainingSites);
+      remainingSites -= siteCount;
+      return {
+        carrier_id: tray.id,
+        code: tray.code,
+        biological_position_count: tray.specification?.biological_position_count ?? null,
+        sown_site_count: siteCount,
+      };
+    });
+  }
+
+  // PILOT-UX-001 (CTO correction): equal totals are unambiguous -- the
+  // operator explicitly entered matching Sites/Seeds numbers, so each
+  // tray's seed_count may equal its own sown_site_count directly. No
+  // choice prompt needed.
+  function autoAllocateEqual() {
+    if (!canAllocate || !seedsEqualSites) return;
+    const newTrays = allocateSitesOnly().map((t) => ({ ...t, seeds_sown: t.sown_site_count }));
+    replace(newTrays);
+    setSeedAllocationNote(null);
+    setManualMode(false);
+    setShowTrayDetails(false);
+  }
+
+  // PILOT-UX-001 (CTO correction): a larger seed total is ambiguous -- how
+  // it splits across physical trays is not derivable from sites alone, so
+  // this is only ever applied on the operator's explicit "Distribute
+  // proportionally" action (never silently). Distribution uses the
+  // largest-remainder method against each tray's own sown_site_count share
+  // of the total, which is deterministic tray-level bookkeeping only --
+  // never a claim about seeds per individual cell/site.
+  function autoAllocateProportional() {
+    if (!canAllocate || !seedsExceedSites) return;
+    const sitesOnly = allocateSitesOnly();
+    const totalSites = sitesOnly.reduce((sum, t) => sum + t.sown_site_count, 0);
+    if (totalSites <= 0) return;
+    const raw = sitesOnly.map((t) => (requestedSeeds * t.sown_site_count) / totalSites);
+    const floors = raw.map((r) => Math.floor(r));
+    let remainder = requestedSeeds - floors.reduce((sum, f) => sum + f, 0);
+    const byFractionDesc = raw
+      .map((r, index) => ({ index, fraction: r - Math.floor(r) }))
+      .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+    const seedCounts = [...floors];
+    for (let k = 0; k < byFractionDesc.length && remainder > 0; k += 1) {
+      seedCounts[byFractionDesc[k].index] += 1;
+      remainder -= 1;
+    }
+    const newTrays = sitesOnly.map((t, index) => ({ ...t, seeds_sown: seedCounts[index] }));
+    replace(newTrays);
+    setSeedAllocationNote(
+      "Seeds distributed proportionally to sown sites (tray-level allocation only, not a per-site/cell count).",
+    );
+    setManualMode(false);
+    setShowTrayDetails(false);
+  }
+
+  // PILOT-UX-001 (CTO correction): the explicit alternative to proportional
+  // distribution -- sites are allocated, seeds are left for the operator to
+  // enter per tray via the existing editable table. Never guessed.
+  function startCustomizeSeeds() {
+    if (!enoughTraysAvailable) return;
+    const newTrays = allocateSitesOnly().map((t) => ({ ...t, seeds_sown: 0 }));
+    replace(newTrays);
+    setSeedAllocationNote(null);
+    setManualMode(true);
+    setShowTrayDetails(true);
+  }
 
   async function goToReview() {
     const valid = await trigger();
@@ -177,17 +320,32 @@ export function SowingForm({
               <dt className="text-ink-muted">Total seeds sown</dt>
               <dd className="font-medium text-ink">{total.toLocaleString()}</dd>
             </div>
+            {seedAllocationNote && (
+              <div className="col-span-2 sm:col-span-3">
+                <dt className="text-ink-muted">Seed distribution</dt>
+                <dd className="font-medium text-ink">{seedAllocationNote}</dd>
+              </div>
+            )}
           </dl>
-          <ul className="divide-y divide-border-subtle text-sm">
-            {values.trays.map((tray) => (
-              <li key={tray.carrier_id} className="flex items-center justify-between py-1.5">
-                <span className="text-ink">{tray.code}</span>
-                <span className="text-ink-muted">
-                  {tray.sown_site_count} sites · {tray.seeds_sown} seeds
-                </span>
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            className="self-start text-xs font-medium text-brand-700 hover:underline"
+            onClick={() => setShowTrayDetails((v) => !v)}
+          >
+            {showTrayDetails ? "Hide trays" : "Show trays"}
+          </button>
+          {showTrayDetails && (
+            <ul className="divide-y divide-border-subtle text-sm">
+              {values.trays.map((tray) => (
+                <li key={tray.carrier_id} className="flex items-center justify-between py-1.5">
+                  <span className="text-ink">{tray.code}</span>
+                  <span className="text-ink-muted">
+                    {tray.sown_site_count} sites · {tray.seeds_sown} seeds
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
         <div className="flex gap-3">
@@ -370,83 +528,254 @@ export function SowingForm({
         ) : (
           <>
             {errors.trays?.message && <p className={errorClass}>{errors.trays.message}</p>}
-            <Field label="Add a Seed Tray">
-              <select
-                className={inputClass}
-                value=""
-                onChange={(e) => {
-                  const tray = selectableTrays.find((t) => t.id === e.target.value);
-                  if (tray) {
-                    append({
-                      carrier_id: tray.id,
-                      code: tray.code,
-                      biological_position_count: tray.specification?.biological_position_count ?? null,
-                      sown_site_count: 0,
-                      seeds_sown: 0,
-                    });
-                  }
-                }}
-              >
-                <option value="">Select an available Seed Tray…</option>
-                {selectableTrays.map((tray) => (
-                  <option key={tray.id} value={tray.id}>
-                    {tray.code}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </>
-        )}
-        {fields.length > 0 && (
-          <ul className="divide-y divide-border-subtle">
-            {fields.map((field, index) => (
-              <li key={field.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start sm:gap-3">
-                <div className="min-w-24">
-                  <span className="text-sm font-medium text-ink">{field.code}</span>
+
+            {fields.length === 0 && !manualMode && (
+              // PILOT-UX-001 (CTO correction): fast path -- Sites to sow and
+              // Seeds to sow are two distinct, explicit inputs. Tray count
+              // and each tray's sown_site_count are derived only from Sites
+              // to sow against the tray specification's known capacity;
+              // Seeds to sow never influences tray count and is never
+              // assumed equal to sites -- the operator states both.
+              <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-subtle p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label="Sites to sow">
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={fastSiteQty}
+                      onChange={(e) => setFastSiteQty(e.target.value)}
+                      placeholder="e.g. 4000"
+                    />
+                  </Field>
+                  <Field label="Seeds to sow" error={seedsBelowSites ? "Must be at least the number of sites" : undefined}>
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={fastSeedQty}
+                      onChange={(e) => setFastSeedQty(e.target.value)}
+                      placeholder="e.g. 4000"
+                    />
+                  </Field>
+                  <Field label="Tray specification">
+                    <select className={inputClass} value={fastSpecId} onChange={(e) => setFastSpecId(e.target.value)}>
+                      <option value="">Select a tray specification…</option>
+                      {specGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <p className="text-xs text-ink-muted">
+                  A Seed Tray&apos;s capacity is a physical site count, not a seed count -- multiple seeds may share
+                  one site. Required trays are computed from Sites to sow only.
+                </p>
+                {selectedFastGroup && requestedSites > 0 && (
+                  <div className="flex flex-col gap-1 text-sm text-ink">
+                    <p>
+                      Required trays: <span className="font-medium">{requiredTrayCount.toLocaleString()}</span>
+                    </p>
+                    <p>
+                      Available trays: <span className="font-medium">{selectedFastGroup.available.length.toLocaleString()}</span>
+                    </p>
+                    {selectedFastGroup.available.length < requiredTrayCount && (
+                      <p className="text-xs text-red-700">
+                        Only {selectedFastGroup.available.length} of the {requiredTrayCount} needed Seed Trays are
+                        registered.{" "}
+                        <Link href={`/farms/${farmId}/carriers`} className="font-medium underline">
+                          Register more Seed Trays
+                        </Link>{" "}
+                        or reduce the quantity.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {seedsExceedSites && (
                   <p className="text-xs text-ink-muted">
-                    {field.biological_position_count != null
-                      ? `Capacity: ${field.biological_position_count.toLocaleString()}`
-                      : "Capacity unknown"}
+                    Seeds to sow ({requestedSeeds.toLocaleString()}) is more than Sites to sow (
+                    {requestedSites.toLocaleString()}) -- choose how to record seed counts per tray.
                   </p>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  {seedsExceedSites ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        disabled={!canAllocate}
+                        onClick={autoAllocateProportional}
+                      >
+                        Distribute proportionally
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!enoughTraysAvailable}
+                        onClick={startCustomizeSeeds}
+                      >
+                        Customize
+                      </Button>
+                    </>
+                  ) : (
+                    <Button type="button" variant="primary" disabled={!canAllocate} onClick={autoAllocateEqual}>
+                      {requiredTrayCount > 0
+                        ? `Auto-allocate ${requiredTrayCount.toLocaleString()} tray${requiredTrayCount === 1 ? "" : "s"}`
+                        : "Auto-allocate trays"}
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                    onClick={() => setManualMode(true)}
+                  >
+                    Select trays manually instead
+                  </button>
                 </div>
-                <div className="flex flex-1 gap-3">
-                  <div className="flex-1">
-                    <input
-                      type="number"
-                      {...register(`trays.${index}.sown_site_count`, { valueAsNumber: true })}
-                      className={inputClass}
-                      placeholder="Sown sites"
-                      aria-label={`Sown sites for ${field.code}`}
-                    />
-                    {errors.trays?.[index]?.sown_site_count && (
-                      <span className={errorClass}>{errors.trays[index]?.sown_site_count?.message}</span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <input
-                      type="number"
-                      {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
-                      className={inputClass}
-                      placeholder="Seeds sown"
-                      aria-label={`Seeds sown for ${field.code}`}
-                    />
-                    {errors.trays?.[index]?.seeds_sown && (
-                      <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
-                    )}
-                  </div>
+              </div>
+            )}
+
+            {fields.length > 0 && !manualMode && (
+              // PILOT-UX-001: compact review -- individual tray rows stay
+              // collapsed by default; traceability data already lives in
+              // `fields`, it's just not rendered until asked for.
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-subtle p-3">
+                <div>
+                  <p className="text-sm font-medium text-ink">
+                    {fields.length} Seed Tray{fields.length === 1 ? "" : "s"}
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {totalSownSiteCount(watch("trays")).toLocaleString()} sown sites ·{" "}
+                    {totalSeedsSown(watch("trays")).toLocaleString()} seeds
+                  </p>
+                  {seedAllocationNote && <p className="text-xs text-ink-muted">{seedAllocationNote}</p>}
                 </div>
-                <Button type="button" variant="secondary" onClick={() => remove(index)}>
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {fields.length > 0 && (
-          <p className="text-sm text-ink-muted">
-            {fields.length} {fields.length === 1 ? "tray" : "trays"} selected · {totalSeedsSown(watch("trays"))} total
-            seeds sown
-          </p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setShowTrayDetails((v) => !v)}>
+                    {showTrayDetails ? "Hide trays" : "Show trays"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setManualMode(true);
+                      setShowTrayDetails(true);
+                      setSeedAllocationNote(null);
+                    }}
+                  >
+                    Customize allocation
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {fields.length > 0 && !manualMode && showTrayDetails && (
+              <ul className="divide-y divide-border-subtle text-sm">
+                {fields.map((field) => (
+                  <li key={field.id} className="flex items-center justify-between py-1.5">
+                    <span className="text-ink">{field.code}</span>
+                    <span className="text-ink-muted">
+                      {field.sown_site_count.toLocaleString()} sites · {field.seeds_sown.toLocaleString()} seeds
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {manualMode && (
+              <>
+                <Field label="Add a Seed Tray">
+                  <select
+                    className={inputClass}
+                    value=""
+                    onChange={(e) => {
+                      const tray = selectableTrays.find((t) => t.id === e.target.value);
+                      if (tray) {
+                        append({
+                          carrier_id: tray.id,
+                          code: tray.code,
+                          biological_position_count: tray.specification?.biological_position_count ?? null,
+                          sown_site_count: 0,
+                          seeds_sown: 0,
+                        });
+                      }
+                    }}
+                  >
+                    <option value="">Select an available Seed Tray…</option>
+                    {selectableTrays.map((tray) => (
+                      <option key={tray.id} value={tray.id}>
+                        {tray.code}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {fields.length > 0 && (
+                  <ul className="divide-y divide-border-subtle">
+                    {fields.map((field, index) => (
+                      <li key={field.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start sm:gap-3">
+                        <div className="min-w-24">
+                          <span className="text-sm font-medium text-ink">{field.code}</span>
+                          <p className="text-xs text-ink-muted">
+                            {field.biological_position_count != null
+                              ? `Capacity: ${field.biological_position_count.toLocaleString()}`
+                              : "Capacity unknown"}
+                          </p>
+                        </div>
+                        <div className="flex flex-1 gap-3">
+                          <div className="flex-1">
+                            <input
+                              type="number"
+                              {...register(`trays.${index}.sown_site_count`, { valueAsNumber: true })}
+                              className={inputClass}
+                              placeholder="Sown sites"
+                              aria-label={`Sown sites for ${field.code}`}
+                            />
+                            {errors.trays?.[index]?.sown_site_count && (
+                              <span className={errorClass}>{errors.trays[index]?.sown_site_count?.message}</span>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <input
+                              type="number"
+                              {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
+                              className={inputClass}
+                              placeholder="Seeds sown"
+                              aria-label={`Seeds sown for ${field.code}`}
+                            />
+                            {errors.trays?.[index]?.seeds_sown && (
+                              <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
+                            )}
+                          </div>
+                        </div>
+                        <Button type="button" variant="secondary" onClick={() => remove(index)}>
+                          Remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {fields.length > 0 && (
+                  <p className="text-sm text-ink-muted">
+                    {fields.length} {fields.length === 1 ? "tray" : "trays"} selected · {totalSeedsSown(watch("trays"))}{" "}
+                    total seeds sown
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="self-start text-xs font-medium text-ink-muted hover:underline"
+                  onClick={() => {
+                    replace([]);
+                    setManualMode(false);
+                    setSeedAllocationNote(null);
+                  }}
+                >
+                  Clear all and start over
+                </button>
+              </>
+            )}
+          </>
         )}
       </fieldset>
 

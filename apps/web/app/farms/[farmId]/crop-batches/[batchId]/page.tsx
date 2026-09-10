@@ -252,6 +252,19 @@ export default function CropBatchDetailPage() {
           {sowingsQuery.data && sowingsQuery.data.length === 0 && (
             <EmptyState title="No Sowing record" description="This batch was not created via the Sowing command." />
           )}
+          {sowingsQuery.data && sowingsQuery.data.length > 0 && (
+            // PILOT-UX-001: process continuity -- reuses the existing
+            // Germination route/page, just hands off the Batch context and
+            // opens its "Move Tray to Germination" action directly.
+            <div className="mb-4">
+              <Link
+                href={`/farms/${farmId}/nursery/germination?batchId=${batchId}&openAction=tray`}
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-brand-200 bg-brand-50 px-3 text-sm font-medium text-brand-800 hover:bg-brand-100"
+              >
+                Move to Germination →
+              </Link>
+            </div>
+          )}
           {sowingsQuery.data?.map((event) => (
             <div key={event.id} className="flex flex-col gap-4">
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">

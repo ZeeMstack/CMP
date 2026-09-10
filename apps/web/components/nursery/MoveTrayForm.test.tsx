@@ -29,6 +29,15 @@ const TRAYS = [
     },
   },
 ];
+const MULTI_BATCH_TRAYS = [
+  TRAYS[0],
+  {
+    batch_id: "batch-1", batch_code: "CB-0001",
+    seed_lot: { id: "lot-1", code: "LOT-01", supplier_lot_reference: null, crop: { id: "c1", code: "ICE", common_name: "Iceberg" }, variety: { id: "v1", code: "MAM", name: "Mamutik" } },
+    tray: { id: "tray-1b", code: "ST-0003", carrier_type: CARRIER_TYPE },
+    batch_carrier_assignment_id: "bca-3", seeds_sown: 200, state: "awaiting_placement", placement: null,
+  },
+];
 const TROLLEYS = [
   {
     id: "trolley-1", code: "GT-01", name: "Trolley 1", chamber: { id: "chamber-1", code: "GC-01", name: "Chamber 1" },
@@ -207,6 +216,154 @@ describe("MoveTrayForm", () => {
     fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/not placed in a germination chamber/i));
+  });
+
+  it("PILOT-UX-001: auto-selects the incoming Batch's Seed Tray when exactly one is eligible", async () => {
+    stubFetch();
+    render(
+      withQueryClient(
+        <MoveTrayForm farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} initialBatchId="batch-1" />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/continuing from sowing/i)).toBeInTheDocument());
+    const traySelect = screen.getByLabelText(/seed tray/i) as HTMLSelectElement;
+    await waitFor(() => expect(traySelect.value).toBe("tray-1"));
+  });
+
+  it("PILOT-UX-001: offers a Place Trolley action from the empty Trolley state instead of a dead end", async () => {
+    stubFetch({ trolleys: [] });
+    const onSetUpTrolley = vi.fn();
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} onSetUpTrolley={onSetUpTrolley}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("No Germination Trolley placed")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Place Trolley" }));
+    expect(onSetUpTrolley).toHaveBeenCalledTimes(1);
+  });
+
+  it("PILOT-UX-001: shows a compact bulk board (trays collapsed by default) and completes one row move via 'Show trays', without a separate review step", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    const onSubmitOne = vi.fn().mockResolvedValue({});
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+        />,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/continuing from sowing — batch cb-0001, 2 eligible seed trays/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText("2 trays ready")).toBeInTheDocument();
+    // Individual tray rows stay collapsed by default.
+    expect(screen.queryByText("ST-0001")).not.toBeInTheDocument();
+    // No per-tray picker, no Batch re-selection -- destination is chosen once.
+    expect(screen.queryByLabelText(/^seed tray$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show trays" }));
+    expect(screen.getByText("ST-0001")).toBeInTheDocument();
+    expect(screen.getByText("ST-0003")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Move" })[0]);
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(1));
+    const payload = onSubmitOne.mock.calls[0][0];
+    expect(payload.tray_id).toBe("tray-1");
+    expect(payload.trolley_id).toBe("trolley-1");
+    expect(payload.asset_position_id).toBe("level-1");
+    // The destination stays selected -- ready to move the next tray immediately.
+    expect((screen.getByLabelText(/^trolley$/i) as HTMLSelectElement).value).toBe("trolley-1");
+    expect(screen.queryByText("Review before moving")).not.toBeInTheDocument();
+  });
+
+  it("PILOT-UX-001: Move All invokes the existing single-tray operation for every eligible tray and reports success", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    const onSubmitOne = vi.fn().mockResolvedValue({});
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("2 trays ready")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move All 2 Trays" }));
+
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
+    expect(onSubmitOne.mock.calls[0][0]).toMatchObject({ tray_id: "tray-1", trolley_id: "trolley-1", asset_position_id: "level-1" });
+    expect(onSubmitOne.mock.calls[1][0]).toMatchObject({ tray_id: "tray-1b", trolley_id: "trolley-1", asset_position_id: "level-1" });
+    // Each call is independently idempotent.
+    expect(onSubmitOne.mock.calls[0][0].client_command_id).not.toBe(onSubmitOne.mock.calls[1][0].client_command_id);
+    await waitFor(() => expect(screen.getByText(/2 trays moved to Trolley GT-01 \/ Level GT-01-L01/i)).toBeInTheDocument());
+  });
+
+  it("PILOT-UX-001: Move All stops at the first failure and reports truthful partial completion, never pretending a rollback", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    const onSubmitOne = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("Level is full"));
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("2 trays ready")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move All 2 Trays" }));
+
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument();
+    expect(screen.getByText("1 tray remains")).toBeInTheDocument();
+    expect(screen.getByText(/tray st-0003 could not be moved/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue Remaining" })).toBeInTheDocument();
+  });
+
+  it("PILOT-UX-001: excludes slot-based legacy Levels from the Move All destination", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={vi.fn()}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("2 trays ready")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L03/)).toBeInTheDocument());
+
+    const levelSelect = screen.getByLabelText(/^level$/i) as HTMLSelectElement;
+    const legacyOption = Array.from(levelSelect.options).find((o) => o.value === "level-3")!;
+    expect(legacyOption.disabled).toBe(true);
+    expect(legacyOption.textContent).toMatch(/needs individual placement/i);
+  });
+
+  it("PILOT-UX-001: falls back to the single-tray flow for a multi-tray Batch when no bulk submit handler is supplied", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    render(
+      withQueryClient(
+        <MoveTrayForm farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} initialBatchId="batch-1" />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByLabelText(/^seed tray$/i)).toBeInTheDocument());
+    expect(screen.queryByText(/eligible seed trays/i)).not.toBeInTheDocument();
   });
 
   it("calls onCancel without submitting", async () => {
