@@ -376,4 +376,88 @@ describe("SowingForm", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/exceeds its specification/i));
   });
+
+  // PLANNING-OPS-001: "Sow Now" from a Seeding Program plan line hands off
+  // to THIS exact form (never a second one) via an optional planPrefill
+  // prop -- prefill/context only, the operator still confirms every real
+  // operational input themselves.
+  describe("planPrefill (PLANNING-OPS-001)", () => {
+    function stubFetchWithCrop() {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/farm-setup/greenhouses/gh-1")) return jsonResponse(NURSERY_STRUCTURE);
+          if (url.includes("/farm-setup/greenhouses")) return jsonResponse(NURSERY_OVERVIEW);
+          if (url.includes("/crops/crop-1/varieties")) return jsonResponse([{ id: "var-1", code: "PANG", name: "Pangkor" }]);
+          if (url.includes("/crops")) return jsonResponse([{ id: "crop-1", code: "ICE", common_name: "Iceberg Lettuce" }]);
+          if (url.includes("/seed-lots")) return jsonResponse(SEED_LOTS);
+          if (url.includes("/nursery/seed-trays/available")) return jsonResponse(AVAILABLE_TRAYS);
+          if (url.includes("/assets")) return jsonResponse([]);
+          return jsonResponse([]);
+        }),
+      );
+    }
+
+    it("shows a plan-context banner naming the crop/variety, never a second Sowing form", async () => {
+      stubFetchWithCrop();
+      render(
+        withQueryClient(
+          <SowingForm
+            farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false}
+            planPrefill={{ seedingProgramLineId: "line-1", cropId: "crop-1", varietyId: "var-1" }}
+          />,
+        ),
+      );
+
+      await waitFor(() => expect(screen.getByText(/fulfilling a seeding program plan line/i)).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText(/for iceberg lettuce/i)).toBeInTheDocument(), { timeout: 3000 });
+      expect(screen.getByText(/— pangkor/i)).toBeInTheDocument();
+      // Still exactly one Sowing form -- the operator still selects the
+      // real Seed Lot themselves, the plan never picks it for them.
+      expect(screen.getAllByLabelText(/^seed lot$/i)).toHaveLength(1);
+    });
+
+    it("carries seeding_program_line_id through to the submitted Sowing payload", async () => {
+      stubFetchWithCrop();
+      const onSubmit = vi.fn();
+      render(
+        withQueryClient(
+          <SowingForm
+            farmId="farm-1" onSubmit={onSubmit} isSubmitting={false}
+            planPrefill={{ seedingProgramLineId: "line-1", cropId: "crop-1", varietyId: "var-1" }}
+          />,
+        ),
+      );
+      await selectNurseryAndSeedLot();
+      fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+      await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+      fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
+      fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "150" } });
+      fireEvent.click(screen.getByRole("button", { name: "Review" }));
+      await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      expect(onSubmit.mock.calls[0][0].seeding_program_line_id).toBe("line-1");
+    });
+
+    it("omits seeding_program_line_id entirely for an ordinary ad-hoc Sowing", async () => {
+      stubFetch();
+      const onSubmit = vi.fn();
+      render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+      await selectNurseryAndSeedLot();
+      fireEvent.change(screen.getByLabelText(/add a seed tray/i), { target: { value: "tray-1" } });
+      await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+      fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
+      fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "150" } });
+      fireEvent.click(screen.getByRole("button", { name: "Review" }));
+      await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      expect(onSubmit.mock.calls[0][0].seeding_program_line_id).toBeNull();
+      expect(screen.queryByText(/fulfilling a seeding program plan line/i)).not.toBeInTheDocument();
+    });
+  });
 });

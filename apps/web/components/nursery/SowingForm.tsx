@@ -7,7 +7,15 @@ import { Controller, useFieldArray, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
 import type { SowNewBatchCreate } from "@/lib/api/client";
-import { useAssets, useAvailableSeedTrays, useGreenhouseSetupOverview, useGreenhouseStructure, useSeedLots } from "@/lib/query/hooks";
+import {
+  useAssets,
+  useAvailableSeedTrays,
+  useCrops,
+  useGreenhouseSetupOverview,
+  useGreenhouseStructure,
+  useSeedLots,
+  useVarieties,
+} from "@/lib/query/hooks";
 import {
   DEFAULT_SOWING_FORM_VALUES,
   buildSowingPayload,
@@ -41,17 +49,36 @@ function nowDateAndTime() {
   };
 }
 
+export interface SowingPlanPrefill {
+  seedingProgramLineId: string;
+  cropId: string;
+  varietyId?: string | null;
+}
+
 export function SowingForm({
-  farmId, onSubmit, isSubmitting, serverError,
+  farmId, onSubmit, isSubmitting, serverError, planPrefill,
 }: {
   farmId: string;
   onSubmit: (payload: SowNewBatchCreate) => void;
   isSubmitting: boolean;
   serverError?: string | null;
+  planPrefill?: SowingPlanPrefill | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId] = useState(() => crypto.randomUUID());
   const [nurseryGreenhouseId, setNurseryGreenhouseId] = useState("");
+
+  const planCropsQuery = useCrops();
+  const planVarietiesQuery = useVarieties(planPrefill?.cropId);
+  const planCrop = planCropsQuery.data?.find((c) => c.id === planPrefill?.cropId);
+  const planVariety = planVarietiesQuery.data?.find((v) => v.id === planPrefill?.varietyId);
+  const planBanner = planPrefill && (
+    <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+      Fulfilling a Seeding Program plan line{planCrop ? ` for ${planCrop.common_name}` : ""}
+      {planVariety ? ` — ${planVariety.name}` : ""}. Confirm the real Seed Lot, Seed Tray configuration, and
+      quantity below — the plan does not override what actually gets sown.
+    </p>
+  );
 
   const initial = nowDateAndTime();
   const {
@@ -84,7 +111,7 @@ export function SowingForm({
   }
 
   function submitReview() {
-    onSubmit(buildSowingPayload(getValues(), clientCommandId));
+    onSubmit(buildSowingPayload(getValues(), clientCommandId, planPrefill?.seedingProgramLineId));
   }
 
   if (step === "review") {
@@ -97,6 +124,7 @@ export function SowingForm({
     return (
       <div className="flex flex-col gap-4">
         <StepIndicator step="review" />
+        {planBanner}
         <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
           <h2 className="font-serif text-base font-semibold text-ink">Review before sowing</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
@@ -185,6 +213,7 @@ export function SowingForm({
       className="flex flex-col gap-6"
     >
       <StepIndicator step="configure" />
+      {planBanner}
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Nursery / Seeding Station</legend>

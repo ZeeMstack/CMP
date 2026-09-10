@@ -251,6 +251,15 @@ class Permission(StrEnum):
     INVENTORY_RETURN_MANAGE = "inventory_return.manage"
     INVENTORY_SCRAP_MANAGE = "inventory_scrap.manage"
 
+    # PLANNING-OPS-001: the first Planning module permissions -- Production
+    # Requirements and the Seeding Program are planning intent, deliberately
+    # a single pair (never split per-entity) since both are edited by the
+    # same planner role and neither has a materially different authority
+    # tier from the other. Never confused with SOWING_MANAGE, which governs
+    # the real, physical sowing command this planning module only links to.
+    PLANNING_READ = "planning.read"
+    PLANNING_MANAGE = "planning.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -344,6 +353,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ, Permission.RECALL_MANAGE,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001: farm_manager has full planning authority
+        # alongside its existing infrastructure/master-data ownership.
+        Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
     }),
     # Agronomic planning/master-data authority (25): crop/production-system
     # /workflow catalog, observation definitions, crop-batch lifecycle
@@ -374,6 +386,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001: head_grower owns crop demand planning and the
+        # Seeding Program, the same agronomic-planning tier as its existing
+        # crop/workflow/batch-lifecycle authority above.
+        Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
     }),
     # Production-floor execution oversight (24): the same transactional
     # commands operators perform, plus supervisory-level authority
@@ -404,6 +420,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001: read-only visibility into the Seeding Program
+        # (which plan line an execution-floor Sowing is meant to fulfill)
+        # -- no planning.manage, matching this role's "no master-data
+        # configuration" ceiling above.
+        Permission.PLANNING_READ,
     }),
     # Restricted transactional execution (16): routine, single-purpose
     # floor commands only -- sowing, transplant, movement, harvest
@@ -607,6 +628,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001: broad read visibility extends to the Planning
+        # module too, matching this role's "every `.read` permission"
+        # character -- zero `.manage`.
+        Permission.PLANNING_READ,
     }),
     # Broad operational visibility (20), zero mutations -- identical set
     # to `auditor` today, by design (see that role's comment above).
@@ -636,6 +661,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001: identical to `auditor`'s own addition above, by
+        # the same "zero mutations" design.
+        Permission.PLANNING_READ,
     }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)

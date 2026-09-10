@@ -53,6 +53,14 @@ class SowingEvent(Base):
     # `enforce_sowing_event_line_insert_integrity` trigger rejects any
     # line whose `seed_lot_id` disagrees with it (see SEED_SOWING_MODEL.md).
     seed_lot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("seed_lots.id"), nullable=False)
+    # PLANNING-OPS-001: optional provenance-only link to the Seeding Program
+    # Line this actual Sowing fulfills. NULL for every unplanned/ad-hoc
+    # Sowing (planning is never mandatory for execution) and for every event
+    # predating this ticket. Never used to gate or constrain sowing itself --
+    # a planning fact, not a physical one.
+    seeding_program_line_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("seeding_program_lines.id"), nullable=True
+    )
 
     __table_args__ = (
         Index(
@@ -88,5 +96,14 @@ class SowingEvent(Base):
             ["tenant_id", "farm_id", "seed_lot_id"],
             ["seed_lots.tenant_id", "seed_lots.farm_id", "seed_lots.id"],
             name="fk_sowing_events_tenant_farm_seed_lot",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "seeding_program_line_id"],
+            [
+                "seeding_program_lines.tenant_id",
+                "seeding_program_lines.farm_id",
+                "seeding_program_lines.id",
+            ],
+            name="fk_sowing_events_tenant_farm_seeding_program_line",
         ),
     )

@@ -2225,3 +2225,66 @@ class ProductionDispositionGrowCubeAlreadyDisposedError(DomainError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+# --- PLANNING-OPS-001 ---------------------------------------------------------------
+
+
+class ProductionRequirementNotFoundError(DomainError):
+    pass
+
+
+class ProductionRequirementValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ProductionRequirementCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class ProductionRequirementNotEditableError(DomainError):
+    """Raised when an edit targets a Production Requirement whose status is
+    no longer 'open' -- identity/quantity/date fields are locked once a
+    requirement is closed or cancelled (status itself may still be
+    transitioned; see `planning_service.close_production_requirement`/
+    `cancel_production_requirement`)."""
+
+    pass
+
+
+class SeedingProgramLineNotFoundError(DomainError):
+    pass
+
+
+class SeedingProgramLineValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class SeedingProgramLineCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class SeedingProgramLineNotEditableError(DomainError):
+    """Raised when an edit targets a Seeding Program Line that is either
+    cancelled, or already referenced by at least one actual Sowing Event --
+    "once a Sowing references a plan line, do not allow edits that would
+    make historical linkage nonsensical" (PLANNING-OPS-001)."""
+
+    pass
+
+
+class SeedingProgramLineCancelledError(DomainError):
+    """Raised when an actual Sowing attempts to link to a Seeding Program
+    Line whose status is 'cancelled'."""
+
+    pass
+
+
+class SeedingProgramLineCropMismatchError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

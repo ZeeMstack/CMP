@@ -18,6 +18,9 @@ from app.services.errors import (
     InvalidSowingEffectiveTimeError,
     MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
+    SeedingProgramLineCancelledError,
+    SeedingProgramLineCropMismatchError,
+    SeedingProgramLineNotFoundError,
     SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingEventNotFoundError,
@@ -61,14 +64,22 @@ def sow_batch(
             effective_time=payload.effective_time,
             note=payload.note,
             lines=lines,
+            seeding_program_line_id=payload.seeding_program_line_id,
         )
-    except (FarmNotFoundError, CropBatchNotFoundError, CarrierNotFoundError, SeedLotNotFoundError) as exc:
+    except (
+        FarmNotFoundError,
+        CropBatchNotFoundError,
+        CarrierNotFoundError,
+        SeedLotNotFoundError,
+        SeedingProgramLineNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except (
         CropBatchClosedError,
         CarrierAlreadyAssignedError,
         SowingCommandReusedWithDifferentPayloadError,
         BatchAlreadySownError,
+        SeedingProgramLineCancelledError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (
@@ -77,6 +88,7 @@ def sow_batch(
         InvalidSowingEffectiveTimeError,
         TooManySowingLinesError,
         MixedSeedLotInSowingCommandError,
+        SeedingProgramLineCropMismatchError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return sowing_service.get_sowing_event(

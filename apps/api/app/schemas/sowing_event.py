@@ -49,6 +49,10 @@ class SowingEventCreate(BaseModel):
     effective_time: datetime
     note: str | None = None
     lines: list[SowingEventLineIn] = Field(min_length=1, max_length=500)
+    # PLANNING-OPS-001: optional reference to the Seeding Program Line this
+    # actual Sowing fulfills -- never required, an ordinary ad-hoc Sowing
+    # omits it entirely.
+    seeding_program_line_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod
@@ -129,6 +133,9 @@ class SowingEventRead(BaseModel):
     # NURSERY-OPS-001: NULL on every event predating this ticket.
     seeding_station: SeedingStationSummary | None = None
     seeding_machine: SeedingMachineSummary | None = None
+    # PLANNING-OPS-001: NULL for every unplanned/ad-hoc Sowing and for every
+    # event predating this ticket.
+    seeding_program_line_id: uuid.UUID | None = None
     lines: list[SowingEventLineRead]
     total_seeds_sown: int = 0
 

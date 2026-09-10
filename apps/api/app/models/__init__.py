@@ -54,7 +54,9 @@ from app.models.production_disposition_command import ProductionDispositionComma
 from app.models.production_disposition_event import ProductionDispositionEvent
 from app.models.production_disposition_event_grow_cube import ProductionDispositionEventGrowCube
 from app.models.production_disposition_reason import ProductionDispositionReason
+from app.models.production_requirement import ProductionRequirement
 from app.models.seed_lot import SeedLot
+from app.models.seeding_program_line import SeedingProgramLine
 from app.models.seedling_disposition_command import SeedlingDispositionCommand
 from app.models.seedling_disposition_event import SeedlingDispositionEvent
 from app.models.seedling_disposition_reason import SeedlingDispositionReason

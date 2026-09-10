@@ -4,7 +4,8 @@ FARM-SETUP-001's Nursery topology verbatim -- this file tests only the new
 orchestration layer, not domain logic already covered by test_sowing.py/
 test_crop_batch.py/test_farm_setup.py."""
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select, text
@@ -19,8 +20,10 @@ from app.services import (
     crop_service,
     farm_setup_service,
     nursery_service,
+    planning_service,
     production_system_service,
     sowing_service,
+    unit_of_measure_service,
     workflow_service,
 )
 from app.services.errors import (
@@ -28,6 +31,7 @@ from app.services.errors import (
     CarrierAlreadyAssignedError,
     NoSowingWorkflowFoundError,
     SeedingMachineInvalidError,
+    SeedingProgramLineCropMismatchError,
     SeedingStationInvalidError,
     SeedLotNotFoundError,
     SowingCapacityExceededError,
@@ -1208,3 +1212,83 @@ def test_seed_lot_reverse_lookup_lists_batches_sown_from_it(db_session, active_c
         db_session, tenant_id=tenant.id, farm_id=farm.id, seed_lot_id=other_seed_lot.id
     )
     assert unused == []
+
+
+# =====================================================================
+# PLANNING-OPS-001: the "Sow Now" hand-off from a Seeding Program Line to
+# THIS command (the real, operator-facing Sowing flow -- not the plain
+# /crop-batches/{id}/sowings route the rest of this ticket's other tests
+# exercise directly). The smallest additive integration: an optional
+# seeding_program_line_id, validated and persisted by the same shared
+# `sowing_service._sow_batch_core` this command already calls.
+# =====================================================================
+
+
+def _make_requirement_and_line(db_session, tenant, user, farm, *, crop, variety, uom_code="kg"):
+    uom = next(u for u in unit_of_measure_service.list_uoms(db_session) if u.code == uom_code)
+    seed_uom = next(u for u in unit_of_measure_service.list_uoms(db_session) if u.code == "SEED")
+    requirement = planning_service.create_production_requirement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        crop_id=crop.id, variety_id=variety.id, required_by_date=date(2026, 10, 15),
+        required_quantity=Decimal("30000"), quantity_uom_id=uom.id, reference=None, notes=None,
+    )
+    line = planning_service.create_seeding_program_line(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        production_requirement_id=requirement.id, client_command_id=uuid.uuid4(), planned_sow_date=date(2026, 9, 1),
+        crop_id=crop.id, variety_id=variety.id, planned_quantity=Decimal("20000"),
+        planned_quantity_uom_id=seed_uom.id, expected_coverage_quantity=Decimal("10000"),
+        expected_coverage_uom_id=uom.id, notes=None,
+    )
+    return requirement, line
+
+
+@pytest.mark.integration
+def test_sow_now_links_the_new_batch_sowing_to_its_plan_line(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    _requirement, line = _make_requirement_and_line(db_session, tenant, user, farm, crop=s["crop"], variety=s["variety"])
+
+    event = _sow(db_session, tenant, user, farm, s, seeding_program_line_id=line.id)
+    assert event.seeding_program_line_id == line.id
+
+    full = sowing_service.get_sowing_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=event.batch_id, sowing_event_id=event.id
+    )
+    assert full.seeding_program_line_id == line.id
+
+    line_detail = planning_service.get_seeding_program_line(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, line_id=line.id
+    )
+    assert line_detail.linked_sowing_count == 1
+    assert line_detail.linked_sowings[0].batch_id == event.batch_id
+
+
+@pytest.mark.integration
+def test_sow_now_ad_hoc_without_plan_line_still_succeeds(db_session, active_context_with_farm) -> None:
+    """Planning must never become mandatory for crop execution."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+
+    event = _sow(db_session, tenant, user, farm, s)
+    assert event.seeding_program_line_id is None
+
+
+@pytest.mark.integration
+def test_sow_now_rejects_plan_line_of_a_different_crop(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+
+    other_crop = crop_service.register_crop(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"tom-{uuid.uuid4().hex[:8]}",
+        common_name="Tomato", scientific_name=None, crop_category="vine",
+    )
+    other_variety = crop_service.register_variety(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=other_crop.id,
+        code=f"var-{uuid.uuid4().hex[:8]}", name="Beefsteak", supplier_reference=None,
+    )
+    _requirement, other_line = _make_requirement_and_line(
+        db_session, tenant, user, farm, crop=other_crop, variety=other_variety
+    )
+
+    with pytest.raises(SeedingProgramLineCropMismatchError):
+        _sow(db_session, tenant, user, farm, s, seeding_program_line_id=other_line.id)
