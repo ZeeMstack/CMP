@@ -750,8 +750,15 @@ def test_no_matching_sowing_workflow_configured_rejected(db_session, active_cont
         variety_id=orphan_variety.id, code=f"LOT-ORPHAN-{uuid.uuid4().hex[:8]}", supplier_name=None,
         supplier_lot_reference=None, received_date=None, expiry_date=None,
     )
-    with pytest.raises(NoSowingWorkflowFoundError):
+    with pytest.raises(NoSowingWorkflowFoundError) as exc_info:
         _sow(db_session, tenant, user, farm, s, seed_lot_id=orphan_seed_lot.id)
+    # PILOT-BLOCKER-002: the message must name the crop/variety in
+    # operator-readable terms, never leak raw "crop_id:variety_id" UUIDs.
+    message = str(exc_info.value)
+    assert "No Workflow Crop" in message
+    assert "No Workflow Variety" in message
+    assert str(orphan_crop.id) not in message
+    assert str(orphan_variety.id) not in message
 
 
 @pytest.mark.integration
