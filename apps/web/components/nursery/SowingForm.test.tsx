@@ -72,13 +72,17 @@ async function selectNurseryAndSeedLot() {
 }
 
 describe("SowingForm", () => {
-  it("shows an empty state for available trays when none exist", async () => {
+  it("PILOT-BLOCKER-001: shows an actionable empty state linking to Physical Carriers when no trays exist", async () => {
     stubFetch({ trays: [] });
     render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByText("NUR-01")).toBeInTheDocument());
-    const traySelect = screen.getByLabelText(/add a seed tray/i);
-    expect(traySelect).toBeInTheDocument();
+    expect(screen.getByText("No physical Seed Trays are available for this farm.")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/add a seed tray/i)).not.toBeInTheDocument();
     expect(screen.queryByText("ST-0001")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /set up seed trays/i })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/carriers",
+    );
   });
 
   it("resolves the Seeding Station automatically once a Nursery is selected", async () => {

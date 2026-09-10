@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/EmptyState";
 import type { SowNewBatchCreate } from "@/lib/api/client";
 import {
   useAssets,
@@ -349,32 +350,53 @@ export function SowingForm({
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seed Trays</legend>
-        {errors.trays?.message && <p className={errorClass}>{errors.trays.message}</p>}
-        <Field label="Add a Seed Tray">
-          <select
-            className={inputClass}
-            value=""
-            onChange={(e) => {
-              const tray = selectableTrays.find((t) => t.id === e.target.value);
-              if (tray) {
-                append({
-                  carrier_id: tray.id,
-                  code: tray.code,
-                  biological_position_count: tray.specification?.biological_position_count ?? null,
-                  sown_site_count: 0,
-                  seeds_sown: 0,
-                });
-              }
-            }}
-          >
-            <option value="">Select an available Seed Tray…</option>
-            {selectableTrays.map((tray) => (
-              <option key={tray.id} value={tray.id}>
-                {tray.code}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {!availableTraysQuery.isLoading && (availableTraysQuery.data ?? []).length === 0 ? (
+          // PILOT-BLOCKER-001: distinguishes "nothing to select" from the
+          // generic zod "Select at least one Seed Tray" validation message
+          // -- the operator needs to know WHY the picker is empty and where
+          // to go, not just that the form won't submit yet.
+          <EmptyState
+            title="No physical Seed Trays are available for this farm."
+            description="Register physical Seed Tray carriers before sowing."
+            action={
+              <Link
+                href={`/farms/${farmId}/carriers`}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              >
+                Set up Seed Trays
+              </Link>
+            }
+          />
+        ) : (
+          <>
+            {errors.trays?.message && <p className={errorClass}>{errors.trays.message}</p>}
+            <Field label="Add a Seed Tray">
+              <select
+                className={inputClass}
+                value=""
+                onChange={(e) => {
+                  const tray = selectableTrays.find((t) => t.id === e.target.value);
+                  if (tray) {
+                    append({
+                      carrier_id: tray.id,
+                      code: tray.code,
+                      biological_position_count: tray.specification?.biological_position_count ?? null,
+                      sown_site_count: 0,
+                      seeds_sown: 0,
+                    });
+                  }
+                }}
+              >
+                <option value="">Select an available Seed Tray…</option>
+                {selectableTrays.map((tray) => (
+                  <option key={tray.id} value={tray.id}>
+                    {tray.code}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </>
+        )}
         {fields.length > 0 && (
           <ul className="divide-y divide-border-subtle">
             {fields.map((field, index) => (
