@@ -60,6 +60,10 @@ class SowNewBatchCreate(BaseModel):
     effective_time: datetime
     note: str | None = None
     trays: list[SowNewBatchTrayIn] = Field(min_length=1, max_length=500)
+    # PLANNING-OPS-001: optional reference to the Seeding Program Line this
+    # actual Sowing fulfills -- never required, an ordinary ad-hoc Sowing
+    # omits it entirely.
+    seeding_program_line_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod

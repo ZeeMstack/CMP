@@ -47,6 +47,17 @@ interface NavGroupDef {
  * exist yet on this branch by design (see Batch A ticket). */
 function navGroups(farmId: string): NavGroupDef[] {
   return [
+    // PLANNING-OPS-001: the one addition to the otherwise-frozen UI-OPT-001
+    // tree -- crop demand/seeding planning genuinely precedes every
+    // execution group below it (Requirement -> Seeding Program -> the
+    // existing Sowing workflow -> Crop Batch), so it leads the nav rather
+    // than being folded into Nursery Operations. One page, two tabs
+    // (Requirements / Seeding Program) -- no nested navigation.
+    {
+      id: "planning",
+      label: "Planning",
+      items: [{ label: "Planning", href: `/farms/${farmId}/planning` }],
+    },
     {
       id: "nursery",
       label: "Nursery Operations",

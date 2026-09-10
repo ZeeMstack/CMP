@@ -2188,3 +2188,134 @@ export function listBatchObservationTargets(
     `/farms/${farmId}/crop-batches/${batchId}/observation-targets`, signal,
   );
 }
+
+// --- PLANNING-OPS-001 --------------------------------------------------------------
+// Production Requirements (crop demand) and the Seeding Program (planned
+// sowings intended to cover that demand). Planning intent only -- a Crop
+// Batch is never created here; "Sow Now" hands off to the existing Sowing
+// command (`sowNewBatch`/the crop-batch sowings route), optionally carrying
+// `seeding_program_line_id` back.
+
+export type ProductionRequirementCreate = components["schemas"]["ProductionRequirementCreate"];
+export type ProductionRequirementRead = components["schemas"]["ProductionRequirementRead"];
+export type ProductionRequirementUpdate = components["schemas"]["ProductionRequirementUpdate"];
+export type ProductionRequirementStatusCommand = components["schemas"]["ProductionRequirementStatusCommand"];
+export type RequirementFulfillment = components["schemas"]["RequirementFulfillment"];
+export type SeedingProgramLineCreate = components["schemas"]["SeedingProgramLineCreate"];
+export type SeedingProgramLineRead = components["schemas"]["SeedingProgramLineRead"];
+export type SeedingProgramLineDetailRead = components["schemas"]["SeedingProgramLineDetailRead"];
+export type SeedingProgramLineUpdate = components["schemas"]["SeedingProgramLineUpdate"];
+export type SeedingProgramLineStatusCommand = components["schemas"]["SeedingProgramLineStatusCommand"];
+export type LinkedSowingSummary = components["schemas"]["LinkedSowingSummary"];
+export type UomSummary = components["schemas"]["UomSummary"];
+
+export function listProductionRequirements(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead[]> {
+  return getJson<ProductionRequirementRead[]>(`/farms/${farmId}/production-requirements`, signal);
+}
+
+export function getProductionRequirement(
+  farmId: string,
+  requirementId: string,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead> {
+  return getJson<ProductionRequirementRead>(`/farms/${farmId}/production-requirements/${requirementId}`, signal);
+}
+
+export function createProductionRequirement(
+  farmId: string,
+  payload: ProductionRequirementCreate,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead> {
+  return postJson<ProductionRequirementRead>(`/farms/${farmId}/production-requirements`, payload, signal);
+}
+
+export function updateProductionRequirement(
+  farmId: string,
+  requirementId: string,
+  payload: ProductionRequirementUpdate,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead> {
+  return postJson<ProductionRequirementRead>(
+    `/farms/${farmId}/production-requirements/${requirementId}/update`, payload, signal,
+  );
+}
+
+export function closeProductionRequirement(
+  farmId: string,
+  requirementId: string,
+  payload: ProductionRequirementStatusCommand,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead> {
+  return postJson<ProductionRequirementRead>(
+    `/farms/${farmId}/production-requirements/${requirementId}/close`, payload, signal,
+  );
+}
+
+export function cancelProductionRequirement(
+  farmId: string,
+  requirementId: string,
+  payload: ProductionRequirementStatusCommand,
+  signal?: AbortSignal,
+): Promise<ProductionRequirementRead> {
+  return postJson<ProductionRequirementRead>(
+    `/farms/${farmId}/production-requirements/${requirementId}/cancel`, payload, signal,
+  );
+}
+
+export function listSeedingProgramLines(farmId: string, signal?: AbortSignal): Promise<SeedingProgramLineRead[]> {
+  return getJson<SeedingProgramLineRead[]>(`/farms/${farmId}/seeding-program-lines`, signal);
+}
+
+export function listSeedingProgramLinesForRequirement(
+  farmId: string,
+  requirementId: string,
+  signal?: AbortSignal,
+): Promise<SeedingProgramLineRead[]> {
+  return getJson<SeedingProgramLineRead[]>(
+    `/farms/${farmId}/production-requirements/${requirementId}/seeding-program-lines`, signal,
+  );
+}
+
+export function getSeedingProgramLine(
+  farmId: string,
+  lineId: string,
+  signal?: AbortSignal,
+): Promise<SeedingProgramLineDetailRead> {
+  return getJson<SeedingProgramLineDetailRead>(`/farms/${farmId}/seeding-program-lines/${lineId}`, signal);
+}
+
+export function createSeedingProgramLine(
+  farmId: string,
+  requirementId: string,
+  payload: SeedingProgramLineCreate,
+  signal?: AbortSignal,
+): Promise<SeedingProgramLineDetailRead> {
+  return postJson<SeedingProgramLineDetailRead>(
+    `/farms/${farmId}/production-requirements/${requirementId}/seeding-program-lines`, payload, signal,
+  );
+}
+
+export function updateSeedingProgramLine(
+  farmId: string,
+  lineId: string,
+  payload: SeedingProgramLineUpdate,
+  signal?: AbortSignal,
+): Promise<SeedingProgramLineDetailRead> {
+  return postJson<SeedingProgramLineDetailRead>(
+    `/farms/${farmId}/seeding-program-lines/${lineId}/update`, payload, signal,
+  );
+}
+
+export function cancelSeedingProgramLine(
+  farmId: string,
+  lineId: string,
+  payload: SeedingProgramLineStatusCommand,
+  signal?: AbortSignal,
+): Promise<SeedingProgramLineDetailRead> {
+  return postJson<SeedingProgramLineDetailRead>(
+    `/farms/${farmId}/seeding-program-lines/${lineId}/cancel`, payload, signal,
+  );
+}

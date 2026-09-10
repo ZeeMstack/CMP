@@ -312,4 +312,16 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "observations"] as const,
   observationTargets: (tenantId: string, farmId: string, batchId: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "observation-targets"] as const,
+
+  // --- PLANNING-OPS-001 --------------------------------------------------------
+  productionRequirements: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "production-requirements"] as const,
+  productionRequirement: (tenantId: string, farmId: string, requirementId: string) =>
+    ["tenant", tenantId, "farms", farmId, "production-requirements", requirementId] as const,
+  seedingProgramLines: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "seeding-program-lines"] as const,
+  seedingProgramLinesForRequirement: (tenantId: string, farmId: string, requirementId: string) =>
+    ["tenant", tenantId, "farms", farmId, "production-requirements", requirementId, "seeding-program-lines"] as const,
+  seedingProgramLine: (tenantId: string, farmId: string, lineId: string) =>
+    ["tenant", tenantId, "farms", farmId, "seeding-program-lines", lineId] as const,
 };

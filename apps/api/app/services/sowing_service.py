@@ -17,6 +17,7 @@ from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.location import Location
 from app.models.seed_lot import SeedLot
+from app.models.seeding_program_line import SeedingProgramLine
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
 from app.models.variety import Variety
@@ -51,6 +52,9 @@ from app.services.errors import (
     MixedSeedLotInSowingCommandError,
     SeedLotNotFoundError,
     SeedLotValidationError,
+    SeedingProgramLineCancelledError,
+    SeedingProgramLineCropMismatchError,
+    SeedingProgramLineNotFoundError,
     SowingCapacityExceededError,
     SowingCommandReusedWithDifferentPayloadError,
     SowingEventNotFoundError,
@@ -263,11 +267,13 @@ def list_batches_for_seed_lot(
 def _compute_sowing_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, batch_id: uuid.UUID,
     effective_time: datetime, note: str | None, lines: list[dict],
+    seeding_program_line_id: uuid.UUID | None = None,
 ) -> str:
     sorted_lines = sorted(lines, key=lambda line: str(line["carrier_id"]))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(batch_id),
         effective_time.astimezone(timezone.utc).isoformat(), note or "",
+        str(seeding_program_line_id) if seeding_program_line_id else "",
     ]
     for line in sorted_lines:
         parts.extend(
@@ -317,6 +323,7 @@ def _sow_batch_core(
     request_fingerprint: str,
     seeding_station_id: uuid.UUID | None = None,
     seeding_machine_id: uuid.UUID | None = None,
+    seeding_program_line_id: uuid.UUID | None = None,
 ) -> SowingEvent:
     """Validate + insert + flush only -- no idempotency check, no row
     locking for serialization, no audit event, no commit. Callers own all
@@ -328,7 +335,12 @@ def _sow_batch_core(
     change to the public `sow_batch` below, reverified against the full
     existing sowing test suite. `seeding_station_id`/`seeding_machine_id`
     are NURSERY-OPS-001 additions (provenance only, already validated by
-    the caller before this point -- this function only persists them)."""
+    the caller before this point -- this function only persists them).
+    `seeding_program_line_id` is a PLANNING-OPS-001 addition -- optional,
+    never gates sowing itself; the plan line is not locked (many concurrent
+    Sowings may legitimately link to the same line, see
+    docs/product/OPEN_QUESTIONS.md's concurrency note) and its own crop/
+    variety must be consistent with this batch's workflow crop/variety."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if effective_time > datetime.now(timezone.utc):
@@ -376,6 +388,31 @@ def _sow_batch_core(
     variety = db.get(Variety, workflow.variety_id)
     if variety is None or variety.status != "active":
         raise SowingValidationError("batch's workflow variety is not active")
+
+    # PLANNING-OPS-001: optional plan-line reference -- not locked (many
+    # Sowings may legitimately link to the same line), never gates sowing
+    # capacity/quantity, only checked for existence/cancellation/crop-
+    # variety consistency.
+    if seeding_program_line_id is not None:
+        plan_line = db.execute(
+            select(SeedingProgramLine).where(
+                SeedingProgramLine.id == seeding_program_line_id,
+                SeedingProgramLine.tenant_id == tenant_id,
+                SeedingProgramLine.farm_id == farm_id,
+            )
+        ).scalar_one_or_none()
+        if plan_line is None:
+            raise SeedingProgramLineNotFoundError(str(seeding_program_line_id))
+        if plan_line.status == "cancelled":
+            raise SeedingProgramLineCancelledError(str(seeding_program_line_id))
+        if plan_line.crop_id != workflow.crop_id:
+            raise SeedingProgramLineCropMismatchError(
+                "seeding program line's crop does not match the batch's workflow crop"
+            )
+        if plan_line.variety_id is not None and plan_line.variety_id != workflow.variety_id:
+            raise SeedingProgramLineCropMismatchError(
+                "seeding program line's variety does not match the batch's workflow variety"
+            )
 
     # Lock carriers, then seed lots, each in deterministic sorted-UUID order.
     sorted_carrier_ids = sorted(set(carrier_ids_in))
@@ -493,7 +530,7 @@ def _sow_batch_core(
         actor_user_id=actor_user_id, client_command_id=client_command_id,
         request_fingerprint=request_fingerprint, note=note,
         seeding_station_id=seeding_station_id, seeding_machine_id=seeding_machine_id,
-        seed_lot_id=canonical_seed_lot_id,
+        seed_lot_id=canonical_seed_lot_id, seeding_program_line_id=seeding_program_line_id,
     )
     db.add(event)
     db.flush()
@@ -535,12 +572,14 @@ def sow_batch(
     effective_time: datetime,
     note: str | None,
     lines: list[dict],
+    seeding_program_line_id: uuid.UUID | None = None,
 ) -> SowingEvent:
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     fingerprint = _compute_sowing_fingerprint(
         tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
         effective_time=effective_time, note=note, lines=lines,
+        seeding_program_line_id=seeding_program_line_id,
     )
 
     existing = _find_existing_sowing_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
@@ -593,7 +632,7 @@ def sow_batch(
         event = _sow_batch_core(
             db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
             client_command_id=client_command_id, effective_time=effective_time, note=note, lines=lines,
-            request_fingerprint=fingerprint,
+            request_fingerprint=fingerprint, seeding_program_line_id=seeding_program_line_id,
         )
     except IntegrityError as exc:
         db.rollback()
@@ -640,6 +679,9 @@ def sow_batch(
                 "total_seed_count": sum(line["seed_count"] for line in lines),
                 "seed_lot_ids": [str(sid) for sid in sorted_seed_lot_ids],
                 "carrier_ids": [str(cid) for cid in sorted_carrier_ids],
+                "seeding_program_line_id": (
+                    str(seeding_program_line_id) if seeding_program_line_id else None
+                ),
             },
         )
         db.commit()
@@ -725,6 +767,7 @@ def _row_to_sowing_event_read(row, lines: list) -> SowingEventRead:
             SeedingMachineSummary(id=seeding_machine.id, code=seeding_machine.code, name=seeding_machine.name)
             if seeding_machine is not None else None
         ),
+        seeding_program_line_id=event.seeding_program_line_id,
         lines=lines,
         total_seeds_sown=sum(line.seed_count for line in lines),
     )

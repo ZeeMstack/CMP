@@ -2562,6 +2562,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/production-requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Production Requirements */
+        get: operations["list_production_requirements_farms__farm_id__production_requirements_get"];
+        put?: never;
+        /** Create Production Requirement */
+        post: operations["create_production_requirement_farms__farm_id__production_requirements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/production-requirements/{requirement_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Production Requirement */
+        get: operations["get_production_requirement_farms__farm_id__production_requirements__requirement_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/production-requirements/{requirement_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Production Requirement */
+        post: operations["update_production_requirement_farms__farm_id__production_requirements__requirement_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/production-requirements/{requirement_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Production Requirement */
+        post: operations["close_production_requirement_farms__farm_id__production_requirements__requirement_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/production-requirements/{requirement_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Production Requirement */
+        post: operations["cancel_production_requirement_farms__farm_id__production_requirements__requirement_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/production-requirements/{requirement_id}/seeding-program-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Seeding Program Lines For Requirement */
+        get: operations["list_seeding_program_lines_for_requirement_farms__farm_id__production_requirements__requirement_id__seeding_program_lines_get"];
+        put?: never;
+        /** Create Seeding Program Line */
+        post: operations["create_seeding_program_line_farms__farm_id__production_requirements__requirement_id__seeding_program_lines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/seeding-program-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Seeding Program Lines */
+        get: operations["list_seeding_program_lines_farms__farm_id__seeding_program_lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/seeding-program-lines/{line_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Seeding Program Line */
+        get: operations["get_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/seeding-program-lines/{line_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Seeding Program Line */
+        post: operations["update_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/seeding-program-lines/{line_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Seeding Program Line */
+        post: operations["cancel_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/nursery/sowings": {
         parameters: {
             query?: never;
@@ -8858,6 +9030,28 @@ export interface components {
             /** Derivation Kind */
             derivation_kind: string;
         };
+        /** LinkedSowingSummary */
+        LinkedSowingSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Total Seeds Sown */
+            total_seeds_sown: number;
+        };
         /** LiveStateRead */
         LiveStateRead: {
             /** Finished Goods Lots */
@@ -10272,6 +10466,121 @@ export interface components {
             /** Assignment Released */
             assignment_released: boolean;
         };
+        /** ProductionRequirementCreate */
+        ProductionRequirementCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Variety Id */
+            variety_id?: string | null;
+            /**
+             * Required By Date
+             * Format: date
+             */
+            required_by_date: string;
+            /** Required Quantity */
+            required_quantity: number | string;
+            /**
+             * Quantity Uom Id
+             * Format: uuid
+             */
+            quantity_uom_id: string;
+            /** Reference */
+            reference?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** ProductionRequirementRead */
+        ProductionRequirementRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /**
+             * Required By Date
+             * Format: date
+             */
+            required_by_date: string;
+            /** Required Quantity */
+            required_quantity: string;
+            uom: components["schemas"]["UomSummary"];
+            /** Reference */
+            reference: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            fulfillment: components["schemas"]["RequirementFulfillment"];
+        };
+        /** ProductionRequirementStatusCommand */
+        ProductionRequirementStatusCommand: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /**
+         * ProductionRequirementUpdate
+         * @description Full-replace command for the requirement's own editable fields --
+         *     only permitted while `status = 'open'`. `crop_id`/`variety_id`/
+         *     `quantity_uom_id` have no update path (identity, never corrected).
+         */
+        ProductionRequirementUpdate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Required By Date
+             * Format: date
+             */
+            required_by_date: string;
+            /** Required Quantity */
+            required_quantity: number | string;
+            /** Reference */
+            reference?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
         /** ProductionSystemCreate */
         ProductionSystemCreate: {
             /** Code */
@@ -11044,6 +11353,32 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /**
+         * RequirementFulfillment
+         * @description PLANNING-OPS-001: kept deliberately separate from `demand_quantity`/
+         *     `planned_coverage_quantity` -- never collapsed into one 'quantity',
+         *     never called 'forecast harvest'. `planned_coverage_quantity` sums only
+         *     non-cancelled Seeding Program Lines' `expected_coverage_quantity`
+         *     (already in the requirement's own UOM -- no conversion). `actual_
+         *     sowings_count` counts real Sowing Events linked to this requirement's
+         *     plan lines -- never equated with harvested quantity.
+         */
+        RequirementFulfillment: {
+            /** Demand Quantity */
+            demand_quantity: string;
+            /** Planned Coverage Quantity */
+            planned_coverage_quantity: string;
+            /** Gap Quantity */
+            gap_quantity: string;
+            /** Is Overplanned */
+            is_overplanned: boolean;
+            /** Overplanned Quantity */
+            overplanned_quantity: string;
+            /** Planned Lines Count */
+            planned_lines_count: number;
+            /** Actual Sowings Count */
+            actual_sowings_count: number;
+        };
         /** ReservationLineCreate */
         ReservationLineCreate: {
             /**
@@ -11229,6 +11564,195 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** SeedingProgramLineCreate */
+        SeedingProgramLineCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Planned Sow Date
+             * Format: date
+             */
+            planned_sow_date: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Variety Id */
+            variety_id?: string | null;
+            /** Planned Quantity */
+            planned_quantity: number | string;
+            /**
+             * Planned Quantity Uom Id
+             * Format: uuid
+             */
+            planned_quantity_uom_id: string;
+            /** Expected Coverage Quantity */
+            expected_coverage_quantity: number | string;
+            /**
+             * Expected Coverage Uom Id
+             * Format: uuid
+             */
+            expected_coverage_uom_id: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** SeedingProgramLineDetailRead */
+        SeedingProgramLineDetailRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Production Requirement Id
+             * Format: uuid
+             */
+            production_requirement_id: string;
+            /** Requirement Code */
+            requirement_code: string;
+            /**
+             * Planned Sow Date
+             * Format: date
+             */
+            planned_sow_date: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /** Planned Quantity */
+            planned_quantity: string;
+            planned_quantity_uom: components["schemas"]["UomSummary"];
+            /** Expected Coverage Quantity */
+            expected_coverage_quantity: string;
+            expected_coverage_uom: components["schemas"]["UomSummary"];
+            /** Notes */
+            notes: string | null;
+            /** Status */
+            status: string;
+            /** Linked Sowing Count */
+            linked_sowing_count: number;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Linked Sowings */
+            linked_sowings: components["schemas"]["LinkedSowingSummary"][];
+        };
+        /** SeedingProgramLineRead */
+        SeedingProgramLineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Production Requirement Id
+             * Format: uuid
+             */
+            production_requirement_id: string;
+            /** Requirement Code */
+            requirement_code: string;
+            /**
+             * Planned Sow Date
+             * Format: date
+             */
+            planned_sow_date: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            /** Planned Quantity */
+            planned_quantity: string;
+            planned_quantity_uom: components["schemas"]["UomSummary"];
+            /** Expected Coverage Quantity */
+            expected_coverage_quantity: string;
+            expected_coverage_uom: components["schemas"]["UomSummary"];
+            /** Notes */
+            notes: string | null;
+            /** Status */
+            status: string;
+            /** Linked Sowing Count */
+            linked_sowing_count: number;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SeedingProgramLineStatusCommand */
+        SeedingProgramLineStatusCommand: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /**
+         * SeedingProgramLineUpdate
+         * @description Full-replace command for the line's own editable fields -- only
+         *     permitted while `status = 'planned'` AND no actual Sowing has linked to
+         *     this line yet. `crop_id`/`variety_id`/both UOM ids have no update path
+         *     (identity, never corrected).
+         */
+        SeedingProgramLineUpdate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Planned Sow Date
+             * Format: date
+             */
+            planned_sow_date: string;
+            /** Planned Quantity */
+            planned_quantity: number | string;
+            /** Expected Coverage Quantity */
+            expected_coverage_quantity: number | string;
+            /** Notes */
+            notes?: string | null;
         };
         /** SeedingStationSummary */
         SeedingStationSummary: {
@@ -11652,6 +12176,8 @@ export interface components {
             note?: string | null;
             /** Trays */
             trays: components["schemas"]["SowNewBatchTrayIn"][];
+            /** Seeding Program Line Id */
+            seeding_program_line_id?: string | null;
         };
         /** SowNewBatchTrayIn */
         SowNewBatchTrayIn: {
@@ -11681,6 +12207,8 @@ export interface components {
             note?: string | null;
             /** Lines */
             lines: components["schemas"]["SowingEventLineIn"][];
+            /** Seeding Program Line Id */
+            seeding_program_line_id?: string | null;
         };
         /** SowingEventLineIn */
         SowingEventLineIn: {
@@ -11776,6 +12304,8 @@ export interface components {
             note: string | null;
             seeding_station?: components["schemas"]["SeedingStationSummary"] | null;
             seeding_machine?: components["schemas"]["SeedingMachineSummary"] | null;
+            /** Seeding Program Line Id */
+            seeding_program_line_id?: string | null;
             /** Lines */
             lines: components["schemas"]["SowingEventLineRead"][];
             /**
@@ -12548,6 +13078,20 @@ export interface components {
             quantity_kind: string;
             /** Conversion Family */
             conversion_family: string | null;
+        };
+        /** UomSummary */
+        UomSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Quantity Kind */
+            quantity_kind: string;
         };
         /** UserRead */
         UserRead: {
@@ -20621,6 +21165,475 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchCarrierAssignmentRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_production_requirements_farms__farm_id__production_requirements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_production_requirement_farms__farm_id__production_requirements_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductionRequirementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_production_requirement_farms__farm_id__production_requirements__requirement_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_production_requirement_farms__farm_id__production_requirements__requirement_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductionRequirementUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_production_requirement_farms__farm_id__production_requirements__requirement_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductionRequirementStatusCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_production_requirement_farms__farm_id__production_requirements__requirement_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductionRequirementStatusCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seeding_program_lines_for_requirement_farms__farm_id__production_requirements__requirement_id__seeding_program_lines_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_seeding_program_line_farms__farm_id__production_requirements__requirement_id__seeding_program_lines_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedingProgramLineCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_seeding_program_lines_farms__farm_id__seeding_program_lines_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedingProgramLineUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedingProgramLineStatusCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeedingProgramLineDetailRead"];
                 };
             };
             /** @description Validation Error */

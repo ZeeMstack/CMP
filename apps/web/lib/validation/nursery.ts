@@ -96,7 +96,11 @@ export const DEFAULT_SOWING_FORM_VALUES: SowingFormValues = {
   trays: [],
 };
 
-export function buildSowingPayload(values: SowingFormValues, clientCommandId: string): SowNewBatchCreate {
+export function buildSowingPayload(
+  values: SowingFormValues,
+  clientCommandId: string,
+  seedingProgramLineId?: string | null,
+): SowNewBatchCreate {
   const effectiveTime = new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString();
   return {
     client_command_id: clientCommandId,
@@ -110,6 +114,9 @@ export function buildSowingPayload(values: SowingFormValues, clientCommandId: st
       sown_site_count: t.sown_site_count,
       seeds_sown: t.seeds_sown,
     })),
+    // PLANNING-OPS-001: optional Seeding Program Line hand-off from
+    // "Sow Now" -- never required, an ordinary ad-hoc Sowing omits it.
+    seeding_program_line_id: seedingProgramLineId || null,
   };
 }
 

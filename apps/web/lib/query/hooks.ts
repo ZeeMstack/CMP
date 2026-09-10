@@ -69,6 +69,9 @@ import type {
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   PlatformTenantOnboardingCreate,
+  ProductionRequirementCreate,
+  ProductionRequirementStatusCommand,
+  ProductionRequirementUpdate,
   ProductionSystemCreate,
   QualityDispositionCorrectionCreate,
   QualityDispositionCreate,
@@ -80,6 +83,9 @@ import type {
   RecordVinesHarvestCreate,
   RecordProductionDispositionCreate,
   RecordSeedlingDispositionCreate,
+  SeedingProgramLineCreate,
+  SeedingProgramLineStatusCommand,
+  SeedingProgramLineUpdate,
   SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
@@ -3184,5 +3190,165 @@ export function useRecordObservation(farmId: string) {
         queryKey: queryKeys.observationHistory(tenantId, farmId, variables.batchId),
       });
     },
+  });
+}
+
+// --- PLANNING-OPS-001 ---------------------------------------------------------------
+// Production Requirements (crop demand) and the Seeding Program (planned
+// sowings intended to cover that demand). A Requirement's own fulfillment
+// summary is derived from its Seeding Program Lines, so any Line mutation
+// also invalidates the parent Requirement's list/detail queries -- never
+// left stale after "Planned coverage"/"Gap" would have changed.
+
+export function useProductionRequirements(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.productionRequirements(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listProductionRequirements(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useProductionRequirement(farmId: string, requirementId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.productionRequirement(tenantId ?? "", farmId, requirementId ?? ""),
+    queryFn: ({ signal }) => api.getProductionRequirement(farmId, requirementId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(requirementId),
+  });
+}
+
+export function useCreateProductionRequirement(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionRequirementCreate) => api.createProductionRequirement(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements(tenantId, farmId) });
+    },
+  });
+}
+
+function invalidateRequirement(
+  queryClient: ReturnType<typeof useQueryClient>,
+  tenantId: string | undefined,
+  farmId: string,
+  requirementId: string,
+) {
+  if (!tenantId) return;
+  queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirement(tenantId, farmId, requirementId) });
+}
+
+export function useUpdateProductionRequirement(farmId: string, requirementId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionRequirementUpdate) =>
+      api.updateProductionRequirement(farmId, requirementId, payload),
+    onSuccess: () => invalidateRequirement(queryClient, tenantId, farmId, requirementId),
+  });
+}
+
+export function useCloseProductionRequirement(farmId: string, requirementId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionRequirementStatusCommand) =>
+      api.closeProductionRequirement(farmId, requirementId, payload),
+    onSuccess: () => invalidateRequirement(queryClient, tenantId, farmId, requirementId),
+  });
+}
+
+export function useCancelProductionRequirement(farmId: string, requirementId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProductionRequirementStatusCommand) =>
+      api.cancelProductionRequirement(farmId, requirementId, payload),
+    onSuccess: () => invalidateRequirement(queryClient, tenantId, farmId, requirementId),
+  });
+}
+
+export function useSeedingProgramLines(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedingProgramLines(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSeedingProgramLines(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useSeedingProgramLinesForRequirement(farmId: string, requirementId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedingProgramLinesForRequirement(tenantId ?? "", farmId, requirementId ?? ""),
+    queryFn: ({ signal }) => api.listSeedingProgramLinesForRequirement(farmId, requirementId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(requirementId),
+  });
+}
+
+export function useSeedingProgramLine(farmId: string, lineId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.seedingProgramLine(tenantId ?? "", farmId, lineId ?? ""),
+    queryFn: ({ signal }) => api.getSeedingProgramLine(farmId, lineId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(lineId),
+  });
+}
+
+function invalidateSeedingProgramLine(
+  queryClient: ReturnType<typeof useQueryClient>,
+  tenantId: string | undefined,
+  farmId: string,
+  requirementId: string,
+  lineId?: string,
+) {
+  if (!tenantId) return;
+  queryClient.invalidateQueries({ queryKey: queryKeys.seedingProgramLines(tenantId, farmId) });
+  queryClient.invalidateQueries({
+    queryKey: queryKeys.seedingProgramLinesForRequirement(tenantId, farmId, requirementId),
+  });
+  if (lineId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.seedingProgramLine(tenantId, farmId, lineId) });
+  }
+  // A Line mutation always changes its parent Requirement's fulfillment
+  // summary (planned coverage / gap / overplanned), so the Requirement
+  // itself must be refreshed too.
+  queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements(tenantId, farmId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirement(tenantId, farmId, requirementId) });
+}
+
+export function useCreateSeedingProgramLine(farmId: string, requirementId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SeedingProgramLineCreate) =>
+      api.createSeedingProgramLine(farmId, requirementId, payload),
+    onSuccess: () => invalidateSeedingProgramLine(queryClient, tenantId, farmId, requirementId),
+  });
+}
+
+export function useUpdateSeedingProgramLine(farmId: string, requirementId: string, lineId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SeedingProgramLineUpdate) => api.updateSeedingProgramLine(farmId, lineId, payload),
+    onSuccess: () => invalidateSeedingProgramLine(queryClient, tenantId, farmId, requirementId, lineId),
+  });
+}
+
+export function useCancelSeedingProgramLine(farmId: string, requirementId: string, lineId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SeedingProgramLineStatusCommand) => api.cancelSeedingProgramLine(farmId, lineId, payload),
+    onSuccess: () => invalidateSeedingProgramLine(queryClient, tenantId, farmId, requirementId, lineId),
   });
 }

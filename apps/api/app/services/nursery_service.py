@@ -88,13 +88,13 @@ def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUI
 def _compute_sow_new_batch_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, seed_lot_id: uuid.UUID,
     seeding_station_id: uuid.UUID, seeding_machine_id: uuid.UUID | None, effective_time: datetime,
-    note: str | None, trays: list[dict],
+    note: str | None, trays: list[dict], seeding_program_line_id: uuid.UUID | None = None,
 ) -> str:
     sorted_trays = sorted(trays, key=lambda t: str(t["carrier_id"]))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(seed_lot_id), str(seeding_station_id),
         str(seeding_machine_id) if seeding_machine_id else "", effective_time.astimezone(timezone.utc).isoformat(),
-        note or "",
+        note or "", str(seeding_program_line_id) if seeding_program_line_id else "",
     ]
     for tray in sorted_trays:
         parts.extend([str(tray["carrier_id"]), str(tray["sown_site_count"]), str(tray["seeds_sown"])])
@@ -261,10 +261,14 @@ def sow_new_batch(
     effective_time: datetime,
     note: str | None,
     trays: list[dict],
+    seeding_program_line_id: uuid.UUID | None = None,
 ) -> SowingEvent:
     """The atomic NURSERY-OPS-001 Sowing command: creates exactly one Crop
     Batch and its one Sowing Event (plus tray allocations) in a single
-    transaction. Trays: `[{"carrier_id": UUID, "seeds_sown": int}, ...]`."""
+    transaction. Trays: `[{"carrier_id": UUID, "seeds_sown": int}, ...]`.
+    `seeding_program_line_id` is a PLANNING-OPS-001 addition -- optional,
+    provenance only (validated the same way as the plain `/crop-batches/
+    {id}/sowings` route, inside `_sow_batch_core`)."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if not trays:
@@ -277,6 +281,7 @@ def sow_new_batch(
         tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, seed_lot_id=seed_lot_id,
         seeding_station_id=seeding_station_id, seeding_machine_id=seeding_machine_id,
         effective_time=effective_time, note=note, trays=trays,
+        seeding_program_line_id=seeding_program_line_id,
     )
 
     # Transaction-scoped advisory lock, keyed on tenant+client_command_id --
@@ -340,6 +345,7 @@ def sow_new_batch(
             client_command_id=client_command_id, effective_time=effective_time, note=note, lines=lines,
             request_fingerprint=fingerprint,
             seeding_station_id=seeding_station_id, seeding_machine_id=seeding_machine_id,
+            seeding_program_line_id=seeding_program_line_id,
         )
     except IntegrityError as exc:
         db.rollback()
@@ -381,6 +387,9 @@ def sow_new_batch(
                 "tray_count": len(sorted_carrier_ids), "carrier_ids": [str(c) for c in sorted_carrier_ids],
                 "total_seeds_sown": sum(t["seeds_sown"] for t in trays),
                 "total_sown_site_count": total_sown_site_count,
+                "seeding_program_line_id": (
+                    str(seeding_program_line_id) if seeding_program_line_id else None
+                ),
             },
         )
         db.commit()
