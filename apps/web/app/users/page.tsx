@@ -203,7 +203,7 @@ export default function UsersRolesPage() {
                   placeholder="Search by name, email, or role…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                  className="min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
                 />
               </div>
               <UsersRolesTable

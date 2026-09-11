@@ -19,7 +19,7 @@ export interface FilterableSelectOption {
 }
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 
 export function FilterableSelect({
   options,
@@ -157,14 +157,14 @@ export function FilterableSelect({
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border-subtle bg-surface shadow-lg"
+          className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-wl-border bg-wl-surface-raised shadow-lg"
         >
-          {loading && <li className="px-3 py-3 text-sm text-ink-muted">Loading…</li>}
+          {loading && <li className="px-3 py-3 text-sm text-wl-text-secondary">Loading…</li>}
           {!loading && options.length === 0 && (
-            <li className="px-3 py-3 text-sm text-ink-muted">{emptyMessage ?? "Nothing available"}</li>
+            <li className="px-3 py-3 text-sm text-wl-text-secondary">{emptyMessage ?? "Nothing available"}</li>
           )}
           {!loading && options.length > 0 && filtered.length === 0 && (
-            <li className="px-3 py-3 text-sm text-ink-muted">{noMatchMessage ?? "No matches"}</li>
+            <li className="px-3 py-3 text-sm text-wl-text-secondary">{noMatchMessage ?? "No matches"}</li>
           )}
           {!loading &&
             filtered.map((option, index) => (
@@ -174,11 +174,11 @@ export function FilterableSelect({
                 onClick={() => choose(option)}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`flex min-h-11 w-full flex-col items-start justify-center gap-0.5 px-3 py-1.5 text-left text-sm ${
-                  index === highlightedIndex ? "bg-surface-subtle" : ""
-                } ${option.value === value ? "font-semibold text-brand-700" : "text-ink"}`}
+                  index === highlightedIndex ? "bg-wl-surface-hover" : ""
+                } ${option.value === value ? "font-semibold text-wl-brand" : "text-wl-text"}`}
               >
                 <span>{option.label}</span>
-                {option.description && <span className="text-xs text-ink-muted">{option.description}</span>}
+                {option.description && <span className="text-xs text-wl-text-secondary">{option.description}</span>}
               </button>
             </li>
           ))}

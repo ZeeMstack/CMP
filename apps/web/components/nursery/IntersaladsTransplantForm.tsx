@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Control, UseFormSetValue, useFieldArray, useForm, useWatch } from "react-hook-form";
 
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -35,10 +36,10 @@ import {
 // ~1028px wide instead of the intended ~112px, starving the sibling
 // source picker down to 0px width in the same flex row.
 const inputClassBase =
-  "min-h-11 rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-11 rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const inputClass = `${inputClassBase} w-full`;
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -141,13 +142,13 @@ function DestinationRow({
   const selectableSources = sourceOptions.filter((s) => !allocatedSourceIds.has(s.value));
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border-subtle p-3">
+    <li className="flex flex-col gap-3 rounded-lg border border-wl-border p-3">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">Destination {index + 1}</span>
+        <span className="text-sm font-semibold text-wl-text">Destination {index + 1}</span>
         <button
           type="button"
           onClick={onRemove}
-          className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
+          className="min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken"
         >
           Remove
         </button>
@@ -220,7 +221,7 @@ function DestinationRow({
                 <button
                   type="button"
                   onClick={() => remove(allocationIndex)}
-                  className="min-h-11 rounded-md border border-border-subtle px-2 text-xs font-medium text-ink hover:bg-surface-subtle"
+                  className="min-h-11 rounded-md border border-wl-border px-2 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken"
                 >
                   Remove
                 </button>
@@ -232,7 +233,7 @@ function DestinationRow({
           type="button"
           disabled={selectableSources.length === 0}
           onClick={() => append({ source_assignment_id: "", quantity: 0 })}
-          className="min-h-11 self-start rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle disabled:opacity-50"
+          className="min-h-11 self-start rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken disabled:opacity-50"
         >
           Add source allocation
         </button>
@@ -240,19 +241,19 @@ function DestinationRow({
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
         <div>
-          <dt className="text-ink-muted">Assigned to Plate</dt>
-          <dd className="font-medium text-ink">{assigned.toLocaleString()}</dd>
+          <dt className="text-wl-text-secondary">Assigned to Plate</dt>
+          <dd className="font-medium text-wl-text">{assigned.toLocaleString()}</dd>
         </div>
         <div>
-          <dt className="text-ink-muted">Plate capacity</dt>
-          <dd className="font-medium text-ink">
+          <dt className="text-wl-text-secondary">Plate capacity</dt>
+          <dd className="font-medium text-wl-text">
             {destination.biological_position_count != null ? destination.biological_position_count.toLocaleString() : "Unknown"}
           </dd>
         </div>
         {destination.destination_location_id && occupantsQuery.isSuccess && (
           <div>
-            <dt className="text-ink-muted">Table occupants (server)</dt>
-            <dd className="font-medium text-ink">{occupantsQuery.data.active_occupancies.length}</dd>
+            <dt className="text-wl-text-secondary">Table occupants (server)</dt>
+            <dd className="font-medium text-wl-text">{occupantsQuery.data.active_occupancies.length}</dd>
           </div>
         )}
       </dl>
@@ -492,50 +493,50 @@ export function IntersaladsTransplantForm({
     const reviewValues = getValues();
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before transplanting</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{reviewValues.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Crop / Variety</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Crop / Variety</dt>
+              <dd className="font-medium text-wl-text">
                 {reviewValues.crop_common_name} / {reviewValues.variety_name}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Occurred at</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Occurred at</dt>
+              <dd className="font-medium text-wl-text">
                 {reviewValues.effective_date} {reviewValues.effective_time_of_day}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Total transplanted</dt>
-              <dd className="font-medium text-ink">{totalTransplantedCount(reviewValues).toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Total transplanted</dt>
+              <dd className="font-medium text-wl-text">{totalTransplantedCount(reviewValues).toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Total losses</dt>
-              <dd className="font-medium text-ink">{totalLossCount(reviewValues).toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Total losses</dt>
+              <dd className="font-medium text-wl-text">{totalLossCount(reviewValues).toLocaleString()}</dd>
             </div>
           </dl>
 
           <div>
-            <h3 className="text-sm font-semibold text-ink">Sources</h3>
-            <ul className="divide-y divide-border-subtle text-sm">
+            <h3 className="text-sm font-semibold text-wl-text">Sources</h3>
+            <ul className="divide-y divide-wl-border text-sm">
               {reviewValues.sources.map((s) => (
                 <li key={s.source_assignment_id} className="flex flex-col gap-1 py-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-ink">{s.tray_code}</span>
-                    <span className="text-ink-muted">
+                    <span className="text-wl-text">{s.tray_code}</span>
+                    <span className="text-wl-text-secondary">
                       Available {s.current_available} · Allocated{" "}
                       {sourceAllocatedTotal(reviewValues, s.source_assignment_id)} · Remaining{" "}
                       {sourceRemaining(reviewValues, s.source_assignment_id)}
                     </span>
                   </div>
                   {s.transplant_damage_count + s.qc_rejection_count + s.sample_count + s.other_loss_count > 0 && (
-                    <span className="text-xs text-ink-muted">
+                    <span className="text-xs text-wl-text-secondary">
                       Losses: damage {s.transplant_damage_count}, rejected {s.qc_rejection_count}, sample{" "}
                       {s.sample_count}, other {s.other_loss_count}
                       {s.other_loss_note ? ` (${s.other_loss_note})` : ""}
@@ -547,17 +548,17 @@ export function IntersaladsTransplantForm({
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-ink">Destinations</h3>
-            <ul className="divide-y divide-border-subtle text-sm">
+            <h3 className="text-sm font-semibold text-wl-text">Destinations</h3>
+            <ul className="divide-y divide-wl-border text-sm">
               {reviewValues.destinations.map((d, i) => (
                 <li key={i} className="flex flex-col gap-1 py-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-ink">
+                    <span className="text-wl-text">
                       {d.plate_code} → {d.table_code}
                     </span>
-                    <span className="text-ink-muted">{destinationAssignedCount(d).toLocaleString()} plants</span>
+                    <span className="text-wl-text-secondary">{destinationAssignedCount(d).toLocaleString()} plants</span>
                   </div>
-                  <span className="text-xs text-ink-muted">
+                  <span className="text-xs text-wl-text-secondary">
                     {d.allocations.map((a) => {
                       const source = reviewValues.sources.find((s) => s.source_assignment_id === a.source_assignment_id);
                       return `${source?.tray_code ?? "?"}: ${a.quantity}`;
@@ -574,22 +575,12 @@ export function IntersaladsTransplantForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Transplanting…" : "Confirm transplant"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -604,8 +595,8 @@ export function IntersaladsTransplantForm({
       className="flex flex-col gap-6"
     >
       {nurseries.length > 1 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Nursery Greenhouse</legend>
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Nursery Greenhouse</legend>
           <Field label="Nursery">
             <select
               value={nurseryGreenhouseId}
@@ -623,18 +614,18 @@ export function IntersaladsTransplantForm({
         </fieldset>
       )}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Source Seedling Tray(s)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Source Seedling Tray(s)</legend>
         {errors.sources?.message && <p className={errorClass}>{errors.sources.message}</p>}
         {establishedBatch && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{establishedBatch.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Crop / Variety</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Crop / Variety</dt>
+              <dd className="font-medium text-wl-text">
                 {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
               </dd>
             </div>
@@ -658,37 +649,37 @@ export function IntersaladsTransplantForm({
         {sourcesArray.fields.length > 0 && (
           <ul className="flex flex-col gap-2">
             {sourcesArray.fields.map((field, index) => (
-              <li key={field.id} className="flex flex-col gap-2 rounded-md border border-border-subtle p-3">
+              <li key={field.id} className="flex flex-col gap-2 rounded-md border border-wl-border p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-ink">{field.tray_code}</span>
+                  <span className="text-sm font-medium text-wl-text">{field.tray_code}</span>
                   <button
                     type="button"
                     onClick={() => sourcesArray.remove(index)}
-                    className="min-h-11 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
+                    className="min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken"
                   >
                     Remove
                   </button>
                 </div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-ink-muted">Available</dt>
-                    <dd className="font-medium text-ink">{field.current_available.toLocaleString()}</dd>
+                    <dt className="text-wl-text-secondary">Available</dt>
+                    <dd className="font-medium text-wl-text">{field.current_available.toLocaleString()}</dd>
                   </div>
                   <div>
-                    <dt className="text-ink-muted">Allocated</dt>
-                    <dd className="font-medium text-ink">
+                    <dt className="text-wl-text-secondary">Allocated</dt>
+                    <dd className="font-medium text-wl-text">
                       {sourceAllocatedTotal(values, field.source_assignment_id).toLocaleString()}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-ink-muted">Remaining</dt>
-                    <dd className="font-medium text-ink">
+                    <dt className="text-wl-text-secondary">Remaining</dt>
+                    <dd className="font-medium text-wl-text">
                       {sourceRemaining(values, field.source_assignment_id).toLocaleString()}
                     </dd>
                   </div>
                 </dl>
                 <details>
-                  <summary className="cursor-pointer text-sm font-medium text-ink">
+                  <summary className="cursor-pointer text-sm font-medium text-wl-text">
                     Losses during transplant (optional)
                   </summary>
                   <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -734,8 +725,8 @@ export function IntersaladsTransplantForm({
       </fieldset>
 
       {sourcesArray.fields.length > 0 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Destination Plate(s)</legend>
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Destination Plate(s)</legend>
           {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
           {tableOverCapacity && (
             <p role="alert" className={errorClass}>
@@ -767,15 +758,15 @@ export function IntersaladsTransplantForm({
           <button
             type="button"
             onClick={addDestination}
-            className="min-h-11 self-start rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
+            className="min-h-11 self-start rounded-md border border-wl-border px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-sunken"
           >
             Add destination Plate
           </button>
         </fieldset>
       )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Transplant date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Transplant date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -784,8 +775,8 @@ export function IntersaladsTransplantForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
@@ -796,13 +787,13 @@ export function IntersaladsTransplantForm({
       )}
 
       <div>
-        <button
+        <Button
           type="submit"
+          variant="primary"
           disabled={sourcesArray.fields.length === 0 || destinationsArray.fields.length === 0}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
         >
           Review
-        </button>
+        </Button>
       </div>
     </form>
   );

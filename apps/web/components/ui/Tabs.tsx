@@ -21,7 +21,7 @@ export function Tabs({
   "aria-label": string;
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className="flex gap-2 border-b border-border-subtle">
+    <div role="tablist" aria-label={ariaLabel} className="flex gap-2 border-b border-wl-border">
       {tabs.map((tab) => {
         const active = tab.id === activeId;
         return (
@@ -34,7 +34,7 @@ export function Tabs({
             aria-controls={`tabpanel-${tab.id}`}
             onClick={() => onChange(tab.id)}
             className={`min-h-11 border-b-2 px-3 py-2 text-sm font-medium ${
-              active ? "border-brand-600 text-brand-700" : "border-transparent text-ink-muted hover:text-ink"
+              active ? "border-wl-brand text-wl-brand" : "border-transparent text-wl-text-secondary hover:text-wl-text"
             }`}
           >
             {tab.label}

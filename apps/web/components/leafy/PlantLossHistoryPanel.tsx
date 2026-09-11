@@ -9,8 +9,8 @@ import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { PRODUCTION_DISPOSITION_REASONS, type CorrectPlantLossFormValues } from "@/lib/validation/productionDisposition";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const errorClass = "text-xs text-danger-700";
 
 function nowDateAndTime() {
   const now = new Date();
@@ -91,7 +91,7 @@ function CorrectionForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-border-subtle bg-surface-subtle p-3">
+    <div className="flex flex-col gap-3 rounded-md border border-wl-border bg-wl-surface-sunken p-3">
       <div className="flex gap-4 text-sm">
         <label className="flex items-center gap-2">
           <input
@@ -192,7 +192,7 @@ export function PlantLossHistoryPanel({
   const [openEventId, setOpenEventId] = useState<string | null>(null);
 
   if (lineages.length === 0) {
-    return <p className="text-sm text-ink-muted">No plant loss history recorded yet.</p>;
+    return <p className="text-sm text-wl-text-secondary">No plant loss history recorded yet.</p>;
   }
 
   return (
@@ -200,10 +200,10 @@ export function PlantLossHistoryPanel({
       {lineages.map((lineage) => (
         <li
           key={lineage.population_root_batch_carrier_assignment_id}
-          className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3"
+          className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-serif text-sm font-semibold text-ink">
+            <span className="font-serif text-sm font-semibold text-wl-text">
               {lineage.plate_code} — {lineage.batch_code}
             </span>
             <div className="flex items-center gap-2">
@@ -212,17 +212,17 @@ export function PlantLossHistoryPanel({
                   historical/reconciliation context only -- both stay in one
                   plain-text readout since they're read together, but Current
                   is never merged into or replaced by Opening. */}
-              <span className="text-xs text-ink-muted">
+              <span className="text-xs text-wl-text-secondary">
                 Opening {lineage.opening_population.toLocaleString()} · Current{" "}
                 {lineage.current_living_population.toLocaleString()}
               </span>
             </div>
           </div>
-          <ul className="divide-y divide-border-subtle text-sm">
+          <ul className="divide-y divide-wl-border text-sm">
             {lineage.events.map((event) => (
               <li key={event.id} className="flex flex-col gap-1 py-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-ink">
+                  <span className="text-wl-text">
                     {/* BROWSER QA CORRECTION 2: `plant_loss_quantity` is a
                      * REDUCTION-only field (deliberately 0 for a REVERSAL,
                      * which restores rather than loses plants) -- the
@@ -234,10 +234,10 @@ export function PlantLossHistoryPanel({
                     {" — "}
                     {PRODUCTION_DISPOSITION_REASONS.find((r) => r.code === event.reason_code)?.label ?? event.reason_code}
                   </span>
-                  <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
+                  <span className="text-xs text-wl-text-secondary">{new Date(event.effective_time).toLocaleString()}</span>
                 </div>
-                {event.note && <p className="text-xs text-ink-muted">{event.note}</p>}
-                {event.is_reversed && <p className="text-xs text-ink-muted">Corrected — see reversal below</p>}
+                {event.note && <p className="text-xs text-wl-text-secondary">{event.note}</p>}
+                {event.is_reversed && <p className="text-xs text-wl-text-secondary">Corrected — see reversal below</p>}
                 {canCorrect && event.event_kind === "REDUCTION" && !event.is_reversed && (
                   <div>
                     {openEventId === event.id ? (

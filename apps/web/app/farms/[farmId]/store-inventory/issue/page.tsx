@@ -28,7 +28,7 @@ import {
 } from "@/lib/query/hooks";
 
 const inputClass =
-  "min-h-9 w-full rounded-md border border-wl-border bg-wl-surface px-2 text-xs text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+  "min-h-9 w-full rounded-md border border-wl-border bg-wl-surface-raised px-2 text-xs text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const labelClass = "block text-[11px] font-medium text-wl-text-secondary";
 
 function asAppError(error: unknown): AppError {
@@ -74,7 +74,7 @@ function SourcePicker({
 
   if (sourcesQuery.isLoading) return <span className="text-[11px] text-wl-text-tertiary">Loading…</span>;
   if (!itemId) return <span className="text-[11px] text-wl-text-tertiary">Pick an item first</span>;
-  if (sources.length === 0) return <span className="text-[11px] text-red-700">No usable stock in a Bin</span>;
+  if (sources.length === 0) return <span className="text-[11px] text-danger-700">No usable stock in a Bin</span>;
 
   if (sources.length === 1) {
     const s = sources[0];
@@ -186,7 +186,7 @@ function IssueNowPanel({ farmId }: { farmId: string }) {
                     {rows.length > 1 && (
                       <button
                         type="button"
-                        className="text-wl-text-tertiary hover:text-red-700"
+                        className="text-wl-text-tertiary hover:text-danger-700"
                         onClick={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
                         aria-label="Remove line"
                       >
@@ -211,9 +211,9 @@ function IssueNowPanel({ farmId }: { farmId: string }) {
         </button>
       </div>
 
-      {error && <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{error.message}</p>}
+      {error && <p className="rounded-md border border-wl-border-strong bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">{error.message}</p>}
       {success && (
-        <p className="rounded-md border border-green-300 bg-green-50 p-2 text-xs text-green-800">{success}</p>
+        <p className="rounded-md border border-wl-border-strong bg-wl-grow-bg p-2 text-xs text-wl-grow-fg">{success}</p>
       )}
 
       <div>
@@ -284,7 +284,7 @@ function CreateReservationForm({ farmId, onDone }: { farmId: string; onDone: () 
     purpose.trim().length > 0 && lines.every((l) => l.itemId && l.quantity && Number(l.quantity) > 0);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-surface p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-surface-raised p-3">
       <label className="flex flex-col gap-1">
         <span className={labelClass}>Purpose</span>
         <input className={inputClass} value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Seeding WO-1" />
@@ -314,7 +314,7 @@ function CreateReservationForm({ farmId, onDone }: { farmId: string; onDone: () 
             {lines.length > 1 ? (
               <button
                 type="button"
-                className="text-wl-text-tertiary hover:text-red-700"
+                className="text-wl-text-tertiary hover:text-danger-700"
                 onClick={() => setLines((prev) => prev.filter((l) => l.key !== line.key))}
               >
                 ✕
@@ -336,7 +336,7 @@ function CreateReservationForm({ farmId, onDone }: { farmId: string; onDone: () 
         </button>
       </div>
 
-      {error && <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{error.message}</p>}
+      {error && <p className="rounded-md border border-wl-border-strong bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">{error.message}</p>}
 
       <div className="flex gap-2">
         <Button
@@ -402,7 +402,7 @@ function ReservationLineDrawerRow({
         )}
       </div>
 
-      {error && <p className="rounded-md border border-red-300 bg-red-50 p-2 text-[11px] text-red-800">{error.message}</p>}
+      {error && <p className="rounded-md border border-wl-border-strong bg-wl-flag-bg p-2 text-[11px] text-wl-flag-fg">{error.message}</p>}
 
       {Number(line.remaining_quantity_base) > 0 && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
@@ -563,7 +563,7 @@ function ConsumeInlinePanel({ farmId, row, onDone }: { farmId: string; row: Outs
   const uomCode = uomsById.get(row.base_uom_id);
 
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface-raised p-2">
       <label className="flex flex-col gap-1">
         <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
         <input
@@ -571,7 +571,7 @@ function ConsumeInlinePanel({ farmId, row, onDone }: { farmId: string; row: Outs
           onChange={(e) => setQuantity(e.target.value)}
         />
       </label>
-      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      {error && <p className="text-[11px] text-danger-700">{error.message}</p>}
       <Button
         type="button" variant="primary"
         disabled={!quantity || Number(quantity) <= 0 || consumeMutation.isPending}
@@ -601,7 +601,7 @@ function ReturnInlinePanel({
   const uomCode = uomsById.get(row.base_uom_id);
 
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface-raised p-2">
       <label className="flex flex-col gap-1">
         <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
         <input
@@ -617,7 +617,7 @@ function ReturnInlinePanel({
           ))}
         </select>
       </label>
-      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      {error && <p className="text-[11px] text-danger-700">{error.message}</p>}
       <Button
         type="button" variant="primary"
         disabled={!quantity || Number(quantity) <= 0 || !binId || returnMutation.isPending}
@@ -651,7 +651,7 @@ function ScrapFromIssuedInlinePanel({ farmId, row, onDone }: { farmId: string; r
   const uomCode = uomsById.get(row.base_uom_id);
 
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface p-2">
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-wl-border bg-wl-surface-raised p-2">
       <label className="flex flex-col gap-1">
         <span className={labelClass}>Qty {uomCode ? `(${uomCode})` : ""}</span>
         <input
@@ -663,7 +663,7 @@ function ScrapFromIssuedInlinePanel({ farmId, row, onDone }: { farmId: string; r
         <span className={labelClass}>Reason</span>
         <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. spill" />
       </label>
-      {error && <p className="text-[11px] text-red-700">{error.message}</p>}
+      {error && <p className="text-[11px] text-danger-700">{error.message}</p>}
       <Button
         type="button" variant="primary"
         disabled={!quantity || Number(quantity) <= 0 || !reason.trim() || scrapMutation.isPending}

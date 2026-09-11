@@ -9,17 +9,19 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   return (
     <div
       role="alert"
-      className="flex flex-col items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-6 py-10 text-center"
+      className="flex flex-col items-center gap-1.5 rounded-lg border border-wl-border-strong bg-wl-flag-bg px-6 py-6 text-center"
     >
-      <AlertTriangle aria-hidden="true" className="h-6 w-6 text-red-600" />
-      <p className="text-base font-medium text-red-900">{copy.title}</p>
-      <p className="max-w-prose text-sm text-red-800">{appError.message}</p>
-      <p className="text-sm text-red-700">{copy.action}</p>
+      <div className="flex items-center gap-2">
+        <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-wl-flag-fg" />
+        <p className="text-sm font-semibold text-wl-flag-fg">{copy.title}</p>
+      </div>
+      <p className="max-w-prose text-sm text-wl-flag-fg">{appError.message}</p>
+      <p className="text-xs text-wl-flag-fg">{copy.action}</p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+          className="mt-1.5 rounded-md border border-wl-border-strong bg-wl-surface-raised px-3 py-1.5 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
         >
           Retry
         </button>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { Button } from "@/components/ui/Button";
 import type { IntervinesTransplantCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
@@ -21,10 +22,10 @@ import {
 } from "@/lib/validation/intervinesTransplant";
 
 const inputClassBase =
-  "min-h-11 rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-11 rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const inputClass = `${inputClassBase} w-full`;
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -207,28 +208,28 @@ export function IntervinesTransplantForm({
     const table = intervinesTables.find((t) => t.id === reviewValues.destination_location_id);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before transplanting</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{reviewValues.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Source Tray</dt>
-              <dd className="font-medium text-ink">{reviewValues.tray_code}</dd>
+              <dt className="text-wl-text-secondary">Source Tray</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.tray_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Plants</dt>
-              <dd className="font-medium text-ink">{reviewValues.plant_count.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Plants</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Grow Cubes</dt>
-              <dd className="font-medium text-ink">{reviewValues.plant_count.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Grow Cubes</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">InterVines Table</dt>
-              <dd className="font-medium text-ink">{table?.code ?? reviewValues.table_code}</dd>
+              <dt className="text-wl-text-secondary">InterVines Table</dt>
+              <dd className="font-medium text-wl-text">{table?.code ?? reviewValues.table_code}</dd>
             </div>
           </dl>
         </div>
@@ -238,22 +239,12 @@ export function IntervinesTransplantForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Transferring…" : `Confirm transfer`}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -268,8 +259,8 @@ export function IntervinesTransplantForm({
       className="flex flex-col gap-6"
     >
       {nurseries.length > 1 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Nursery Greenhouse</legend>
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Nursery Greenhouse</legend>
           <Field label="Nursery">
             <select value={nurseryGreenhouseId} onChange={(e) => setNurseryGreenhouseId(e.target.value)} className={inputClass}>
               <option value="">Select a Nursery…</option>
@@ -283,8 +274,8 @@ export function IntervinesTransplantForm({
         </fieldset>
       )}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Source Seed Tray</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Source Seed Tray</legend>
         <Field label="Source Batch / Tray" error={errors.source_assignment_id?.message}>
           <FilterableSelect
             aria-label="Source Batch / Tray"
@@ -303,26 +294,26 @@ export function IntervinesTransplantForm({
         {values.source_assignment_id && establishedBatch && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{establishedBatch.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Crop / Variety</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Crop / Variety</dt>
+              <dd className="font-medium text-wl-text">
                 {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Available plants</dt>
-              <dd className="font-medium text-ink">{values.current_available.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Available plants</dt>
+              <dd className="font-medium text-wl-text">{values.current_available.toLocaleString()}</dd>
             </div>
           </dl>
         )}
       </fieldset>
 
       {values.source_assignment_id && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Destination</legend>
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
           <Field label="InterVines Table" error={errors.destination_location_id?.message}>
             <FilterableSelect
               aria-label="InterVines Table"
@@ -362,15 +353,15 @@ export function IntervinesTransplantForm({
 
           <dl className="text-sm">
             <div>
-              <dt className="text-ink-muted">Available Grow Cubes</dt>
-              <dd className="font-medium text-ink">{availableGrowCubes.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Available Grow Cubes</dt>
+              <dd className="font-medium text-wl-text">{availableGrowCubes.toLocaleString()}</dd>
             </div>
           </dl>
         </fieldset>
       )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Transfer date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -379,8 +370,8 @@ export function IntervinesTransplantForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
@@ -391,13 +382,13 @@ export function IntervinesTransplantForm({
       )}
 
       <div>
-        <button
+        <Button
           type="submit"
+          variant="primary"
           disabled={!values.source_assignment_id || !values.destination_location_id || !values.plant_count}
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
         >
           {values.plant_count > 0 ? `Transfer ${values.plant_count.toLocaleString()} plants` : "Transfer plants"}
-        </button>
+        </Button>
       </div>
     </form>
   );

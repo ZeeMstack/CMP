@@ -42,7 +42,7 @@ function TabLink({ farmId, batchId, tab, active }: { farmId: string; batchId: st
       href={`/farms/${farmId}/crop-batches/${batchId}?tab=${tab}`}
       aria-current={active ? "page" : undefined}
       className={`min-h-11 border-b-2 px-3 py-2 text-sm font-medium ${
-        active ? "border-brand-600 text-brand-700" : "border-transparent text-ink-muted hover:text-ink"
+        active ? "border-wl-brand text-wl-brand" : "border-transparent text-wl-text-secondary hover:text-wl-text"
       }`}
     >
       {TAB_LABELS[tab]}
@@ -98,7 +98,7 @@ export default function CropBatchDetailPage() {
         }
       />
 
-      <nav aria-label="Batch detail sections" className="mb-6 flex gap-2 border-b border-border-subtle">
+      <nav aria-label="Batch detail sections" className="mb-6 flex gap-2 border-b border-wl-border">
         {TABS.map((tab) => (
           <TabLink key={tab} farmId={farmId} batchId={batchId} tab={tab} active={activeTab === tab} />
         ))}
@@ -108,22 +108,22 @@ export default function CropBatchDetailPage() {
         <div>
           <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Crop</dt>
-              <dd className="text-sm text-ink">
+              <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Crop</dt>
+              <dd className="text-sm text-wl-text">
                 {batch.crop.common_name}
                 {batch.variety ? ` — ${batch.variety.name}` : ""}
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current stage</dt>
-              <dd className="text-sm text-ink">
+              <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Current stage</dt>
+              <dd className="text-sm text-wl-text">
                 <StatusBadge label={batch.current_stage.name} tone="active" />
               </dd>
             </div>
             {batch.state !== "active" && (
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">State</dt>
-                <dd className="text-sm text-ink">
+                <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">State</dt>
+                <dd className="text-sm text-wl-text">
                   <StatusBadge label={batch.state} tone="closed" />
                 </dd>
               </div>
@@ -141,20 +141,20 @@ export default function CropBatchDetailPage() {
 
                 <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Current placement</dt>
-                    <dd className="text-sm text-ink">
+                    <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Current placement</dt>
+                    <dd className="text-sm text-wl-text">
                       <PlacementSummary placement={operational.placement} />
                     </dd>
                   </div>
                   {sowingAge && sowingAge.kind === "known" && (
                     <>
                       <div>
-                        <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
-                        <dd className="text-sm text-ink">{sowingAge.sownDateLabel}</dd>
+                        <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Sown</dt>
+                        <dd className="text-sm text-wl-text">{sowingAge.sownDateLabel}</dd>
                       </div>
                       <div>
-                        <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Age</dt>
-                        <dd className="text-sm text-ink">
+                        <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Age</dt>
+                        <dd className="text-sm text-wl-text">
                           {sowingAge.ageDays} {sowingAge.ageDays === 1 ? "day" : "days"}
                         </dd>
                       </div>
@@ -162,14 +162,14 @@ export default function CropBatchDetailPage() {
                   )}
                   {sowingAge && sowingAge.kind === "multiple_origins" && (
                     <div>
-                      <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
-                      <dd className="text-sm text-ink-muted">Multiple sowing origins</dd>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Sown</dt>
+                      <dd className="text-sm text-wl-text-secondary">Multiple sowing origins</dd>
                     </div>
                   )}
                   {sowingAge && sowingAge.kind === "unknown" && (
                     <div>
-                      <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Sown</dt>
-                      <dd className="text-sm text-ink-muted">Unknown</dd>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Sown</dt>
+                      <dd className="text-sm text-wl-text-secondary">Unknown</dd>
                     </div>
                   )}
                 </dl>
@@ -178,11 +178,11 @@ export default function CropBatchDetailPage() {
           </div>
 
           {hasLineage && (
-            <p className="mt-4 text-sm text-ink-muted">
+            <p className="mt-4 text-sm text-wl-text-secondary">
               This batch has recorded origin/split history —{" "}
               <Link
                 href={`/farms/${farmId}/crop-batches/${batchId}?tab=origin`}
-                className="font-medium text-brand-700 hover:underline"
+                className="font-medium text-wl-brand hover:underline"
               >
                 see Origin & Splits
               </Link>
@@ -190,29 +190,29 @@ export default function CropBatchDetailPage() {
             </p>
           )}
 
-          <div className="mt-8 border-t border-border-subtle pt-4">
-            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">Workflow details</h2>
+          <div className="mt-8 border-t border-wl-border pt-4">
+            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Workflow details</h2>
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <dt className="text-xs text-ink-muted">Workflow</dt>
-                <dd className="text-sm text-ink-muted">
+                <dt className="text-xs text-wl-text-secondary">Workflow</dt>
+                <dd className="text-sm text-wl-text-secondary">
                   {batch.workflow.name} (v{batch.version_number})
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-ink-muted">Batch created</dt>
-                <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.created_effective_time, timezone)}</dd>
+                <dt className="text-xs text-wl-text-secondary">Batch created</dt>
+                <dd className="text-sm text-wl-text-secondary">{formatDateTimeWithZoneLabel(batch.created_effective_time, timezone)}</dd>
               </div>
               {batch.closed_effective_time && (
                 <div>
-                  <dt className="text-xs text-ink-muted">Closed</dt>
-                  <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.closed_effective_time, timezone)}</dd>
+                  <dt className="text-xs text-wl-text-secondary">Closed</dt>
+                  <dd className="text-sm text-wl-text-secondary">{formatDateTimeWithZoneLabel(batch.closed_effective_time, timezone)}</dd>
                 </div>
               )}
               {batch.superseded_effective_time && (
                 <div>
-                  <dt className="text-xs text-ink-muted">Superseded</dt>
-                  <dd className="text-sm text-ink-muted">{formatDateTimeWithZoneLabel(batch.superseded_effective_time, timezone)}</dd>
+                  <dt className="text-xs text-wl-text-secondary">Superseded</dt>
+                  <dd className="text-sm text-wl-text-secondary">{formatDateTimeWithZoneLabel(batch.superseded_effective_time, timezone)}</dd>
                 </div>
               )}
             </dl>
@@ -230,9 +230,9 @@ export default function CropBatchDetailPage() {
           {historyQuery.data && historyQuery.data.length > 0 && (
             <ul className="space-y-2">
               {historyQuery.data.map((run) => (
-                <li key={run.id} className="rounded-md border border-border-subtle p-3 text-sm">
-                  <span className="font-medium text-ink">{run.stage.name}</span>
-                  <p className="mt-0.5 text-ink-muted">
+                <li key={run.id} className="rounded-md border border-wl-border p-3 text-sm">
+                  <span className="font-medium text-wl-text">{run.stage.name}</span>
+                  <p className="mt-0.5 text-wl-text-secondary">
                     Entered {formatDateTimeWithZoneLabel(run.entered_effective_time, timezone)}
                     {run.exited_effective_time
                       ? ` · Exited ${formatDateTimeWithZoneLabel(run.exited_effective_time, timezone)}`
@@ -259,7 +259,7 @@ export default function CropBatchDetailPage() {
             <div className="mb-4">
               <Link
                 href={`/farms/${farmId}/nursery/germination?batchId=${batchId}&openAction=tray`}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-brand-200 bg-brand-50 px-3 text-sm font-medium text-brand-800 hover:bg-brand-100"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 text-sm font-medium text-wl-brand hover:bg-wl-surface-hover"
               >
                 Move to Germination →
               </Link>
@@ -269,39 +269,39 @@ export default function CropBatchDetailPage() {
             <div key={event.id} className="flex flex-col gap-4">
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seed Lot</dt>
-                  <dd className="text-sm text-ink">{event.lines[0]?.seed_lot.code ?? "—"}</dd>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Seed Lot</dt>
+                  <dd className="text-sm text-wl-text">{event.lines[0]?.seed_lot.code ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Occurred at</dt>
-                  <dd className="text-sm text-ink">{formatDateTimeWithZoneLabel(event.effective_time, timezone)}</dd>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Occurred at</dt>
+                  <dd className="text-sm text-wl-text">{formatDateTimeWithZoneLabel(event.effective_time, timezone)}</dd>
                 </div>
                 {event.seeding_station && (
                   <div>
-                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seeding Station</dt>
-                    <dd className="text-sm text-ink">{event.seeding_station.code}</dd>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Seeding Station</dt>
+                    <dd className="text-sm text-wl-text">{event.seeding_station.code}</dd>
                   </div>
                 )}
                 {event.seeding_machine && (
                   <div>
-                    <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Seeding Machine</dt>
-                    <dd className="text-sm text-ink">{event.seeding_machine.code} (farm-level equipment)</dd>
+                    <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Seeding Machine</dt>
+                    <dd className="text-sm text-wl-text">{event.seeding_machine.code} (farm-level equipment)</dd>
                   </div>
                 )}
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-ink-muted">Total seeds sown</dt>
-                  <dd className="text-sm text-ink">{event.total_seeds_sown.toLocaleString()}</dd>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Total seeds sown</dt>
+                  <dd className="text-sm text-wl-text">{event.total_seeds_sown.toLocaleString()}</dd>
                 </div>
               </dl>
               <div>
-                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">
                   Seed Trays ({event.lines.length})
                 </h3>
-                <ul className="divide-y divide-border-subtle">
+                <ul className="divide-y divide-wl-border">
                   {event.lines.map((line) => (
                     <li key={line.id} className="flex items-center justify-between py-1.5 text-sm">
-                      <span className="text-ink">{line.carrier.code}</span>
-                      <span className="text-ink-muted">{line.seed_count} seeds</span>
+                      <span className="text-wl-text">{line.carrier.code}</span>
+                      <span className="text-wl-text-secondary">{line.seed_count} seeds</span>
                     </li>
                   ))}
                 </ul>
@@ -331,13 +331,13 @@ export default function CropBatchDetailPage() {
               {[...qualityQuery.data]
                 .sort((a, b) => Number(b.is_open) - Number(a.is_open))
                 .map((hold) => (
-                  <li key={hold.id} className="rounded-md border border-border-subtle p-3 text-sm">
+                  <li key={hold.id} className="rounded-md border border-wl-border p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-ink">{humanizeEnumCode(hold.reason_code)}</span>
+                      <span className="font-medium text-wl-text">{humanizeEnumCode(hold.reason_code)}</span>
                       <StatusBadge label={hold.is_open ? "Open" : "Released"} tone={hold.is_open ? "attention" : "closed"} />
                     </div>
-                    <p className="mt-0.5 text-ink-muted">{hold.reason_text}</p>
-                    <p className="mt-0.5 text-xs text-ink-muted">
+                    <p className="mt-0.5 text-wl-text-secondary">{hold.reason_text}</p>
+                    <p className="mt-0.5 text-xs text-wl-text-secondary">
                       Stage: {hold.stage.name} · {formatDateTimeWithZoneLabel(hold.effective_time, timezone)}
                     </p>
                   </li>

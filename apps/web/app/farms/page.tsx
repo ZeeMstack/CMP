@@ -43,7 +43,7 @@ export default function FarmsPage() {
           />
           <Link
             href="/select-tenant"
-            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-wl-brand px-4 text-sm font-medium text-wl-text-on-brand hover:bg-wl-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
           >
             Select tenant
           </Link>
@@ -89,7 +89,7 @@ export default function FarmsPage() {
           action={
             <Link
               href="/farms/new"
-              className="mt-2 flex min-h-11 items-center gap-1.5 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="mt-2 flex min-h-11 items-center gap-1.5 rounded-lg bg-wl-brand px-4 text-sm font-medium text-wl-text-on-brand hover:bg-wl-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               <PlusCircle aria-hidden="true" className="h-4 w-4" />
               Create Farm
@@ -109,12 +109,12 @@ export default function FarmsPage() {
     <div className="mx-auto max-w-lg px-4 py-16">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="mb-1 text-xl font-semibold text-ink">CMP</h1>
-          <p className="text-sm text-ink-muted">Choose a farm.</p>
+          <h1 className="mb-1 text-xl font-semibold text-wl-text">CMP</h1>
+          <p className="text-sm text-wl-text-secondary">Choose a farm.</p>
         </div>
         <Link
           href="/farms/new"
-          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
         >
           <PlusCircle aria-hidden="true" className="h-4 w-4" />
           Create Farm
@@ -125,10 +125,10 @@ export default function FarmsPage() {
           <li key={farm.id}>
             <Link
               href={`/farms/${farm.id}`}
-              className="block min-h-11 rounded-lg border border-border-subtle bg-surface px-4 py-3 hover:border-brand-300 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="block min-h-11 rounded-lg border border-wl-border bg-wl-surface-raised px-4 py-3 hover:border-wl-brand hover:bg-wl-brand-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
-              <span className="font-medium text-ink">{farm.name}</span>
-              <span className="ml-2 text-sm text-ink-muted">{farm.code}</span>
+              <span className="font-medium text-wl-text">{farm.name}</span>
+              <span className="ml-2 text-sm text-wl-text-secondary">{farm.code}</span>
             </Link>
           </li>
         ))}

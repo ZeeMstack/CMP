@@ -13,18 +13,18 @@ import { groupBatchesByStage } from "@/lib/format/stageOrder";
 import { useFarm, useOperationalSummary } from "@/lib/query/hooks";
 
 function SummaryCard({ label, value, href, caption }: { label: string; value: string | number; href?: string; caption?: string }) {
-  const cardClass = `h-full rounded-xl border border-border-subtle bg-surface p-4 transition-colors ${href ? "hover:border-brand-300" : ""}`;
+  const cardClass = `h-full rounded-xl border border-wl-border bg-wl-surface-raised p-4 transition-colors ${href ? "hover:border-wl-brand" : ""}`;
   const content = (
     <div className={cardClass}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="mt-1 font-serif text-2xl font-semibold text-ink">{value}</p>
-      {caption && <p className="mt-0.5 text-xs text-ink-muted">{caption}</p>}
+      <p className="text-xs font-semibold uppercase tracking-wide text-wl-text-secondary">{label}</p>
+      <p className="mt-1 font-serif text-2xl font-semibold text-wl-text">{value}</p>
+      {caption && <p className="mt-0.5 text-xs text-wl-text-secondary">{caption}</p>}
     </div>
   );
   return href ? (
     <Link
       href={href}
-      className="block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+      className="block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
     >
       {content}
     </Link>
@@ -85,11 +85,11 @@ export default function FarmHomePage() {
       </div>
 
       <section className="mt-8">
-        <h2 className="mb-3 font-serif text-base font-semibold text-ink">Active production by stage</h2>
+        <h2 className="mb-3 font-serif text-base font-semibold text-wl-text">Active production by stage</h2>
         {stageBreakdown.length === 0 ? (
-          <p className="text-sm text-ink-muted">No active batches yet.</p>
+          <p className="text-sm text-wl-text-secondary">No active batches yet.</p>
         ) : (
-          <ul className="divide-y divide-border-subtle rounded-xl border border-border-subtle bg-surface">
+          <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
             {stageBreakdown.map((stage) => {
               const needsDisambiguation = (nameOccurrences.get(stage.name) ?? 0) > 1;
               return (
@@ -97,13 +97,13 @@ export default function FarmHomePage() {
                   key={`${stage.category}-${stage.name}`}
                   className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
                 >
-                  <span className="text-ink">
+                  <span className="text-wl-text">
                     {stage.name}
                     {needsDisambiguation && (
-                      <span className="text-ink-muted"> · {humanizeEnumCode(stage.category)}</span>
+                      <span className="text-wl-text-secondary"> · {humanizeEnumCode(stage.category)}</span>
                     )}
                   </span>
-                  <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-800">
+                  <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-wl-brand-subtle px-2 py-0.5 text-xs font-semibold text-wl-brand">
                     {stage.count}
                   </span>
                 </li>

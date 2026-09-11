@@ -13,6 +13,14 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { CropRead, GradeDefinitionCreate, GradeDefinitionRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useAllGradeDefinitions, useCreateGradeDefinition, useCrops, useVarieties } from "@/lib/query/hooks";
@@ -65,7 +73,7 @@ export default function GradeDefinitionsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide commercial grade classifications. Configuration only -- actual grading of harvested produce
         happens on the Grading screen inside a Farm.
       </p>
@@ -116,18 +124,18 @@ function GradeDefinitionsTable({
   crops: CropRead[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+    <div className={tableWrapperClass}>
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-          <tr>
-            <th className="px-4 py-2 font-medium">Code</th>
-            <th className="px-4 py-2 font-medium">Name</th>
-            <th className="px-4 py-2 font-medium">Crop</th>
-            <th className="px-4 py-2 font-medium">Variety</th>
-            <th className="px-4 py-2 font-medium" />
+        <thead>
+          <tr className={tableHeadRowClass}>
+            <th className={tableThClass}>Code</th>
+            <th className={tableThClass}>Name</th>
+            <th className={tableThClass}>Crop</th>
+            <th className={tableThClass}>Variety</th>
+            <th className={tableThClass} />
           </tr>
         </thead>
-        <tbody className="divide-y divide-border-subtle">
+        <tbody className={tableBodyDividerClass}>
           {definitions.map((definition) => {
             const crop = crops.find((c) => c.id === definition.crop_id);
             return (
@@ -150,15 +158,15 @@ function GradeDefinitionRow({
   const varietiesQuery = useVarieties(definition.crop_id);
   const variety = varietiesQuery.data?.find((v) => v.id === definition.variety_id);
   return (
-    <tr className="hover:bg-surface-subtle">
-      <td className="px-4 py-2 font-medium text-ink">{definition.code}</td>
-      <td className="px-4 py-2 text-ink">{definition.name}</td>
-      <td className="px-4 py-2 text-ink-muted">{cropLabel}</td>
-      <td className="px-4 py-2 text-ink-muted">
+    <tr className={tableRowHoverClass}>
+      <td className={`${tableTdClass} font-medium text-wl-text`}>{definition.code}</td>
+      <td className={`${tableTdClass} text-wl-text`}>{definition.name}</td>
+      <td className={`${tableTdClass} text-wl-text-secondary`}>{cropLabel}</td>
+      <td className={`${tableTdClass} text-wl-text-secondary`}>
         {definition.variety_id ? (variety ? `${variety.name} (${variety.code})` : "—") : "Any variety"}
       </td>
-      <td className="px-4 py-2">
-        <Link href={`/grade-definitions/${definition.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+      <td className={tableTdClass}>
+        <Link href={`/grade-definitions/${definition.id}`} className="text-sm font-medium text-wl-brand hover:underline">
           View
         </Link>
       </td>

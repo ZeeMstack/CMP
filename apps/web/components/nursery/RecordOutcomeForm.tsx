@@ -16,9 +16,9 @@ import {
 } from "@/lib/validation/germinationOutcome";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -106,52 +106,52 @@ export function RecordOutcomeForm({
     const values = getValues();
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">
             {values.assessment_complete ? "Review before completing" : "Review provisional observation"}
           </h2>
           {!values.assessment_complete && (
-            <p className="text-sm text-ink-muted">
+            <p className="text-sm text-wl-text-secondary">
               Provisional observation. The seed-to-living gap shown below is not a final categorized loss.
             </p>
           )}
           {values.assessment_complete && (
-            <p className="text-sm text-ink-muted">
+            <p className="text-sm text-wl-text-secondary">
               This will establish the current Germination handoff quantity for this Tray.
             </p>
           )}
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{selectedTray.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{selectedTray.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seed Tray</dt>
-              <dd className="font-medium text-ink">{selectedTray.tray.code}</dd>
+              <dt className="text-wl-text-secondary">Seed Tray</dt>
+              <dd className="font-medium text-wl-text">{selectedTray.tray.code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seeds sown</dt>
-              <dd className="font-medium text-ink">{selectedTray.seeds_sown.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Seeds sown</dt>
+              <dd className="font-medium text-wl-text">{selectedTray.seeds_sown.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Normal seedlings</dt>
-              <dd className="font-medium text-ink">{values.normal_seedling_count}</dd>
+              <dt className="text-wl-text-secondary">Normal seedlings</dt>
+              <dd className="font-medium text-wl-text">{values.normal_seedling_count}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Abnormal seedlings</dt>
-              <dd className="font-medium text-ink">{values.abnormal_seedling_count}</dd>
+              <dt className="text-wl-text-secondary">Abnormal seedlings</dt>
+              <dd className="font-medium text-wl-text">{values.abnormal_seedling_count}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Living total</dt>
-              <dd className="font-medium text-ink">{living.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Living total</dt>
+              <dd className="font-medium text-wl-text">{living.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seeds not represented by living seedlings</dt>
-              <dd className="font-medium text-ink">{gap?.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Seeds not represented by living seedlings</dt>
+              <dd className="font-medium text-wl-text">{gap?.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Occurred at</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Occurred at</dt>
+              <dd className="font-medium text-wl-text">
                 {values.effective_date} {values.effective_time_of_day}
               </dd>
             </div>
@@ -178,10 +178,10 @@ export function RecordOutcomeForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Seed Tray</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Seed Tray</legend>
         {traysQuery.isSuccess && trays.length === 0 ? (
-          <p className="text-sm text-ink-muted">No Sown Seed Trays are eligible for a Germination outcome yet.</p>
+          <p className="text-sm text-wl-text-secondary">No Sown Seed Trays are eligible for a Germination outcome yet.</p>
         ) : (
           <Field label="Seed Tray">
             <select
@@ -201,31 +201,31 @@ export function RecordOutcomeForm({
         {selectedTray && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Crop / Variety</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Crop / Variety</dt>
+              <dd className="font-medium text-wl-text">
                 {selectedTray.seed_lot.crop.common_name} / {selectedTray.seed_lot.variety.name}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seed Lot</dt>
-              <dd className="font-medium text-ink">{selectedTray.seed_lot.code}</dd>
+              <dt className="text-wl-text-secondary">Seed Lot</dt>
+              <dd className="font-medium text-wl-text">{selectedTray.seed_lot.code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seeds sown</dt>
-              <dd className="font-medium text-ink">{selectedTray.seeds_sown.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Seeds sown</dt>
+              <dd className="font-medium text-wl-text">{selectedTray.seeds_sown.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Sown Sites</dt>
-              <dd className="font-medium text-ink">{trayContext?.sown_site_count ?? "Not recorded"}</dd>
+              <dt className="text-wl-text-secondary">Sown Sites</dt>
+              <dd className="font-medium text-wl-text">{trayContext?.sown_site_count ?? "Not recorded"}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Current placement</dt>
-              <dd className="font-medium text-ink">{PLACEMENT_LABEL[selectedTray.state] ?? selectedTray.state}</dd>
+              <dt className="text-wl-text-secondary">Current placement</dt>
+              <dd className="font-medium text-wl-text">{PLACEMENT_LABEL[selectedTray.state] ?? selectedTray.state}</dd>
             </div>
             {trayContext?.latest_snapshot && (
               <div>
-                <dt className="text-ink-muted">Previous observation</dt>
-                <dd className="font-medium text-ink">
+                <dt className="text-wl-text-secondary">Previous observation</dt>
+                <dd className="font-medium text-wl-text">
                   {trayContext.latest_snapshot.living_seedling_count.toLocaleString()} living (
                   {trayContext.latest_snapshot.assessment_complete ? "completed" : "provisional"})
                 </dd>
@@ -233,8 +233,8 @@ export function RecordOutcomeForm({
             )}
             {trayContext?.latest_completed_snapshot && (
               <div>
-                <dt className="text-ink-muted">Previous handoff</dt>
-                <dd className="font-medium text-ink">
+                <dt className="text-wl-text-secondary">Previous handoff</dt>
+                <dd className="font-medium text-wl-text">
                   {trayContext.latest_completed_snapshot.living_seedling_count.toLocaleString()} living
                 </dd>
               </div>
@@ -245,9 +245,9 @@ export function RecordOutcomeForm({
 
       {selectedTray && (
         <>
-          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-            <legend className="px-1 text-sm font-semibold text-ink">Seedling counts</legend>
-            <p className="text-xs text-ink-muted sm:col-span-2">
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-semibold text-wl-text">Seedling counts</legend>
+            <p className="text-xs text-wl-text-secondary sm:col-span-2">
               Normal and Abnormal seedlings are both living, emerged seedlings — record the actual counts observed,
               not a loss assessment.
             </p>
@@ -265,26 +265,26 @@ export function RecordOutcomeForm({
                 className={inputClass}
               />
             </Field>
-            <p className="rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800 sm:col-span-2">
+            <p className="rounded-md bg-wl-brand-subtle px-3 py-2 text-sm text-wl-brand sm:col-span-2">
               Normal + Abnormal = <span className="font-semibold">{living.toLocaleString()} living</span> seedlings.
               Living seedlings: {living.toLocaleString()} · Seeds not represented by living seedlings:{" "}
               {gap?.toLocaleString()}
             </p>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
-            <legend className="px-1 text-sm font-semibold text-ink">Assessment status</legend>
-            <label className="flex items-center gap-2 text-sm text-ink">
+          <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+            <legend className="px-1 text-sm font-semibold text-wl-text">Assessment status</legend>
+            <label className="flex items-center gap-2 text-sm text-wl-text">
               <input type="checkbox" {...register("assessment_complete")} className="h-5 w-5" />
               Assessment complete — establish this as the current Germination handoff quantity
             </label>
             {!watched.assessment_complete && (
-              <p className="text-xs text-ink-muted">Provisional observation — additional emergence/change is still expected.</p>
+              <p className="text-xs text-wl-text-secondary">Provisional observation — additional emergence/change is still expected.</p>
             )}
           </fieldset>
 
-          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-            <legend className="px-1 text-sm font-semibold text-ink">Observed date/time</legend>
+          <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-semibold text-wl-text">Observed date/time</legend>
             <Field label="Date" error={errors.effective_date?.message}>
               <input type="date" {...register("effective_date")} className={inputClass} />
             </Field>
@@ -293,8 +293,8 @@ export function RecordOutcomeForm({
             </Field>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-            <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
+          <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+            <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
             <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
           </fieldset>
         </>

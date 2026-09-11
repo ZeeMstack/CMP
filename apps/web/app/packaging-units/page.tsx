@@ -12,6 +12,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { PackagingUnitCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useCreatePackagingUnit, usePackagingUnits, useRetirePackagingUnit } from "@/lib/query/hooks";
@@ -60,7 +68,7 @@ export default function PackagingUnitsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide reusable packaging identities (e.g. carton, clamshell, crate). Pack size (weight or unit count)
         is configured per Pack Specification Version, not here.
       </p>
@@ -93,27 +101,27 @@ export default function PackagingUnitsPage() {
             />
           )}
           {!unitsQuery.isLoading && !unitsQuery.error && units.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Name</th>
+                    <th className={tableThClass}>Status</th>
+                    <th className={tableThClass} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {units.map((unit) => {
                     const tone: StatusTone = unit.status === "active" ? "active" : "closed";
                     return (
-                      <tr key={unit.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{unit.code}</td>
-                        <td className="px-4 py-2 text-ink">{unit.name}</td>
-                        <td className="px-4 py-2">
+                      <tr key={unit.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{unit.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{unit.name}</td>
+                        <td className={tableTdClass}>
                           <StatusBadge label={unit.status === "active" ? "Active" : "Retired"} tone={tone} />
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           {unit.status === "active" && (
                             <Button
                               variant="secondary"

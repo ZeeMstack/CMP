@@ -8,7 +8,7 @@ import type { VinesProductionDispositionHistoryRead } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { VINES_DISPOSITION_REASONS } from "@/lib/validation/vinesProductionDisposition";
 
-const errorClass = "text-xs text-red-700";
+const errorClass = "text-xs text-danger-700";
 
 /** VINES-OPS-002: void-only inline correction -- no mode choice, no
  * corrected-fact fields (unlike Leafy's `CorrectionForm`), since `correct_
@@ -24,8 +24,8 @@ function VoidCorrectionConfirm({
   serverError?: AppError | null;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-subtle p-3 text-sm">
-      <p className="text-ink">Void this loss record? The named plant(s) return to living population.</p>
+    <div className="flex flex-col gap-2 rounded-md border border-wl-border bg-wl-surface-sunken p-3 text-sm">
+      <p className="text-wl-text">Void this loss record? The named plant(s) return to living population.</p>
       {serverError && <p className={errorClass}>{friendlyMutationErrorMessage(serverError)}</p>}
       <div className="flex gap-2">
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
@@ -62,7 +62,7 @@ export function VinesLossHistoryPanel({
   const [openEventId, setOpenEventId] = useState<string | null>(null);
 
   if (lineages.length === 0) {
-    return <p className="text-sm text-ink-muted">No plant loss history recorded yet.</p>;
+    return <p className="text-sm text-wl-text-secondary">No plant loss history recorded yet.</p>;
   }
 
   return (
@@ -70,38 +70,38 @@ export function VinesLossHistoryPanel({
       {lineages.map((lineage) => (
         <li
           key={lineage.population_root_batch_carrier_assignment_id}
-          className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3"
+          className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-serif text-sm font-semibold text-ink">
+            <span className="font-serif text-sm font-semibold text-wl-text">
               {lineage.grow_bag_code} — {lineage.batch_code}
               {lineage.gutter_code ? ` · ${lineage.gutter_code}` : ""}
             </span>
             <div className="flex items-center gap-2">
               <StatusBadge label={lineage.is_active ? "Active" : "Released"} tone={lineage.is_active ? "active" : "closed"} />
-              <span className="text-xs text-ink-muted">
+              <span className="text-xs text-wl-text-secondary">
                 Opening {lineage.opening_population.toLocaleString()} · Current{" "}
                 {lineage.current_living_population.toLocaleString()}
               </span>
             </div>
           </div>
-          <ul className="divide-y divide-border-subtle text-sm">
+          <ul className="divide-y divide-wl-border text-sm">
             {lineage.events.map((event) => (
               <li key={event.id} className="flex flex-col gap-1 py-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-ink">
+                  <span className="text-wl-text">
                     {event.event_kind === "REDUCTION" ? "Loss" : "Restored"}{" "}
                     {Math.abs(event.quantity_delta).toLocaleString()}
                     {" — "}
                     {VINES_DISPOSITION_REASONS.find((r) => r.code === event.reason_code)?.label ?? event.reason_code}
                   </span>
-                  <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
+                  <span className="text-xs text-wl-text-secondary">{new Date(event.effective_time).toLocaleString()}</span>
                 </div>
                 {event.grow_cubes.length > 0 && (
-                  <p className="text-xs text-ink-muted">Plant(s): {event.grow_cubes.map((c) => c.code).join(", ")}</p>
+                  <p className="text-xs text-wl-text-secondary">Plant(s): {event.grow_cubes.map((c) => c.code).join(", ")}</p>
                 )}
-                {event.note && <p className="text-xs text-ink-muted">{event.note}</p>}
-                {event.is_reversed && <p className="text-xs text-ink-muted">Corrected — see reversal below</p>}
+                {event.note && <p className="text-xs text-wl-text-secondary">{event.note}</p>}
+                {event.is_reversed && <p className="text-xs text-wl-text-secondary">Corrected — see reversal below</p>}
                 {canCorrect && event.event_kind === "REDUCTION" && !event.is_reversed && (
                   <div>
                     {openEventId === event.id ? (

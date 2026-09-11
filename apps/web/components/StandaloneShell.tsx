@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { WaterlineWordmark } from "@/components/brand/WaterlineMark";
 import { TenantSelector } from "@/components/TenantSelector";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 
@@ -26,15 +27,10 @@ export function StandaloneShell({ children }: { children: ReactNode }) {
   const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
 
   return (
-    <div className="min-h-screen">
-      <div className="border-b border-border-subtle bg-surface px-4 py-3 md:px-6">
+    <div className="min-h-screen bg-wl-surface">
+      <div className="border-b border-wl-border bg-wl-surface-raised px-4 py-3 md:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div>
-            <div className="font-serif text-base font-semibold leading-tight text-brand-900">GrowCMP</div>
-            <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-              Crop Management Platform
-            </div>
-          </div>
+          <WaterlineWordmark />
           <div className="flex items-center gap-3">
             {bootstrap && (
               <TenantSelector
@@ -46,7 +42,7 @@ export function StandaloneShell({ children }: { children: ReactNode }) {
             )}
             <Link
               href="/farms"
-              className="flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-ink-muted hover:bg-surface-subtle hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              className="flex min-h-11 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Back to Farms

@@ -16,9 +16,9 @@ import {
 } from "@/lib/validation/location";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-ink-muted";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:cursor-not-allowed disabled:bg-wl-surface-sunken disabled:text-wl-text-secondary";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -96,7 +96,7 @@ export function LocationCreateForm({
             <label
               key={m}
               className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors ${
-                mode === m ? "border-brand-600 bg-brand-100 text-brand-800" : "border-border-subtle text-ink hover:border-brand-300"
+                mode === m ? "border-wl-border-strong bg-wl-brand-subtle text-wl-brand" : "border-wl-border text-wl-text hover:border-wl-brand"
               }`}
             >
               <input type="radio" value={m} {...register("mode")} className="sr-only" />
@@ -106,8 +106,8 @@ export function LocationCreateForm({
         </div>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Placement</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Placement</legend>
         <Field label="Location type" error={errors.location_type_code?.message}>
           <select {...register("location_type_code")} className={inputClass}>
             <option value="">Select a location type…</option>
@@ -147,8 +147,8 @@ export function LocationCreateForm({
       </fieldset>
 
       {mode === "single" ? (
-        <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-          <legend className="px-1 text-sm font-semibold text-ink">Identity</legend>
+        <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Identity</legend>
           <Field label="Code" error={errors.code?.message}>
             <input {...register("code")} className={inputClass} placeholder="COLD-01" />
           </Field>
@@ -157,8 +157,8 @@ export function LocationCreateForm({
           </Field>
         </fieldset>
       ) : (
-        <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-          <legend className="px-1 text-sm font-semibold text-ink">Code range</legend>
+        <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Code range</legend>
           <Field label="Code prefix" error={errors.code_prefix?.message}>
             <input {...register("code_prefix")} className={inputClass} placeholder="P" />
           </Field>
@@ -183,11 +183,11 @@ export function LocationCreateForm({
           <div className="sm:col-span-2">
             <span className={labelClass}>Preview ({preview.length} location{preview.length === 1 ? "" : "s"})</span>
             {preview.length > 0 ? (
-              <p className="mt-1 max-h-24 overflow-y-auto rounded-md border border-border-subtle bg-surface-subtle px-3 py-2 text-xs text-ink-muted">
+              <p className="mt-1 max-h-24 overflow-y-auto rounded-md border border-wl-border bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
                 {preview.join(", ")}
               </p>
             ) : (
-              <p className="mt-1 text-xs text-ink-muted">Enter a prefix, start, end, and pad width to preview codes.</p>
+              <p className="mt-1 text-xs text-wl-text-secondary">Enter a prefix, start, end, and pad width to preview codes.</p>
             )}
           </div>
         </fieldset>

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { QualityActionPanel } from "@/components/store-inventory/QualityActionPanel";
+import { Button } from "@/components/ui/Button";
 import type { QualityWorkQueueRowRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
@@ -113,59 +114,67 @@ export default function StoreInventoryQualityPage() {
                       {` · Received at Farm ${row.received_at_farm_id.slice(0, 8)}`}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {actions.map((disposition) => (
-                      <button
-                        key={disposition}
-                        type="button"
-                        className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
-                        onClick={() => {
-                          setError(null);
-                          setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "ORDINARY", disposition });
-                        }}
-                      >
-                        {disposition === "RELEASED" ? "Release"
-                          : disposition === "HELD" ? "Hold"
-                          : disposition === "REJECTED" ? "Reject"
-                          : "Hold Release"}
-                      </button>
-                    ))}
-                    {actions.length > 0 && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
-                        onClick={() => {
-                          setError(null);
-                          setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL" });
-                        }}
-                      >
-                        Apply to part of quantity
-                      </button>
-                    )}
-                    {canCorrect && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
-                        onClick={() => {
-                          setError(null);
-                          setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "CORRECT" });
-                        }}
-                      >
-                        Correct decision
-                      </button>
-                    )}
-                    {canCorrect && (
-                      <button
-                        type="button"
-                        className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
-                        onClick={() => {
-                          setError(null);
-                          setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL_CORRECT" });
-                        }}
-                      >
-                        Correct decision for part of quantity
-                      </button>
-                    )}
+                  <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {actions.map((disposition) => (
+                        <Button
+                          key={disposition}
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setError(null);
+                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "ORDINARY", disposition });
+                          }}
+                        >
+                          {disposition === "RELEASED" ? "Release"
+                            : disposition === "HELD" ? "Hold"
+                            : disposition === "REJECTED" ? "Reject"
+                            : "Hold Release"}
+                        </Button>
+                      ))}
+                    </div>
+                    {/* Exception-path actions (part-of-quantity / decision
+                        corrections) are deliberately lighter-weight than the
+                        ordinary dispositions above -- these are the uncommon
+                        case, not competing equally for attention. */}
+                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                      {actions.length > 0 && (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                          onClick={() => {
+                            setError(null);
+                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL" });
+                          }}
+                        >
+                          Apply to part of quantity
+                        </button>
+                      )}
+                      {canCorrect && (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                          onClick={() => {
+                            setError(null);
+                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "CORRECT" });
+                          }}
+                        >
+                          Correct decision
+                        </button>
+                      )}
+                      {canCorrect && (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                          onClick={() => {
+                            setError(null);
+                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL_CORRECT" });
+                          }}
+                        >
+                          Correct decision for part of quantity
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
