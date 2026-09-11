@@ -117,7 +117,12 @@ def get_cohort_storage_breakdown(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission(Permission.INVENTORY_READ)),
 ) -> CohortStorageBreakdownRead:
-    buckets = inventory_storage_service.get_cohort_bucket_breakdown(db, tenant_id=ctx.tenant_id, cohort_id=cohort_id)
+    try:
+        buckets = inventory_storage_service.get_cohort_bucket_breakdown(
+            db, tenant_id=ctx.tenant_id, cohort_id=cohort_id
+        )
+    except InventoryQuantityCohortNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cohort not found") from exc
     not_put_away = next((b["balance"] for b in buckets if b["location_id"] is None), 0)
     return CohortStorageBreakdownRead(
         inventory_quantity_cohort_id=cohort_id, not_put_away_quantity=not_put_away,
