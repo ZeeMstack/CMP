@@ -43,6 +43,7 @@ from app.services.errors import (
 )
 from app.services.inventory_existence_ledger_service import (
     _lock_cohort,
+    get_cohort,
     get_cohort_balance,
     get_cohort_bin_balance,
     get_cohort_total_custody,
@@ -336,9 +337,16 @@ def get_cohort_bucket_breakdown(db: Session, *, tenant_id: uuid.UUID, cohort_id:
     (if positive) plus one row per Bin with a positive balance. Feeds the
     Quality partial-action "Affected location" selector: auto-selected
     when there is exactly one eligible bucket, shown as a compact dropdown
-    otherwise (docs §11's partial-quality/custody integration seam)."""
+    otherwise (docs §11's partial-quality/custody integration seam).
+
+    Tenant ownership of `cohort_id` is established FIRST via the shared
+    `get_cohort` accessor (read-only -- no lock taken for this GET); every
+    balance/bucket computation below only ever runs against a cohort
+    already proven to belong to `tenant_id`."""
+    cohort = get_cohort(db, tenant_id=tenant_id, cohort_id=cohort_id)
+
     buckets: list[dict] = []
-    not_put_away = get_cohort_not_put_away(db, tenant_id=tenant_id, cohort_id=cohort_id)
+    not_put_away = get_cohort_not_put_away(db, tenant_id=tenant_id, cohort_id=cohort.id)
     if not_put_away > 0:
         buckets.append({"location_id": None, "label": "Not put away", "balance": not_put_away})
 
@@ -346,7 +354,10 @@ def get_cohort_bucket_breakdown(db: Session, *, tenant_id: uuid.UUID, cohort_id:
         select(
             InventoryStorageMovement.source_location_id, InventoryStorageMovement.destination_location_id,
             InventoryStorageMovement.moved_quantity_base,
-        ).where(InventoryStorageMovement.inventory_quantity_cohort_id == cohort_id)
+        ).where(
+            InventoryStorageMovement.tenant_id == tenant_id,
+            InventoryStorageMovement.inventory_quantity_cohort_id == cohort.id,
+        )
     ).all()
     per_bin: dict[uuid.UUID, Decimal] = {}
     for src, dest, qty in rows:
