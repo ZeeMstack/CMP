@@ -49,10 +49,10 @@ export function ManageUserPanel({
   const deactivateBlocked = isLastActiveTenantAdmin;
 
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-5">
+    <div className="mb-6 flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-5">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-ink">
+          <h2 className="text-sm font-semibold text-wl-text">
             {membership.user_display_name}
             {isSelf && <span className="ml-2 text-xs font-normal text-wl-text-tertiary">(You)</span>}
           </h2>
@@ -70,7 +70,7 @@ export function ManageUserPanel({
         </p>
       )}
 
-      {serverError && <p className="text-sm text-red-700">{serverError}</p>}
+      {serverError && <p className="text-sm text-danger-700">{serverError}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -80,8 +80,8 @@ export function ManageUserPanel({
             </Button>
           )}
           {isActive && confirmingDeactivate && (
-            <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface-subtle p-3">
-              <p className="text-sm text-ink">
+            <div className="flex flex-col gap-2 border-t border-wl-border pt-3">
+              <p className="text-sm text-wl-text">
                 Deactivate access for {membership.user_display_name}? They will no longer be able to access this
                 tenant.
               </p>

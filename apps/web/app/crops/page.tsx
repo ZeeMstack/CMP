@@ -13,6 +13,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { CropCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useCreateCrop, useCrops } from "@/lib/query/hooks";
@@ -63,7 +71,7 @@ export default function CropsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide crop catalog. Select a crop to manage its varieties.
       </p>
 
@@ -90,34 +98,34 @@ export default function CropsPage() {
             />
           )}
           {!cropsQuery.isLoading && !cropsQuery.error && crops.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Common name</th>
-                    <th className="px-4 py-2 font-medium">Category</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Common name</th>
+                    <th className={tableThClass}>Category</th>
+                    <th className={tableThClass}>Status</th>
+                    <th className={tableThClass} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {crops.map((crop) => {
                     const tone: StatusTone = crop.status === "active" ? "active" : "closed";
                     return (
-                      <tr key={crop.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{crop.code}</td>
-                        <td className="px-4 py-2 text-ink">{crop.common_name}</td>
-                        <td className="px-4 py-2 text-ink-muted">
+                      <tr key={crop.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{crop.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{crop.common_name}</td>
+                        <td className={`${tableTdClass} text-wl-text-secondary`}>
                           {CROP_CATEGORY_LABELS[crop.crop_category] ?? crop.crop_category}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <StatusBadge label={crop.status === "active" ? "Active" : "Inactive"} tone={tone} />
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <Link
                             href={`/crops/${crop.id}`}
-                            className="text-sm font-medium text-brand-700 hover:underline"
+                            className="text-sm font-medium text-wl-brand hover:underline"
                           >
                             Varieties
                           </Link>

@@ -30,7 +30,7 @@ function BatchLinkList({ farmId, batches }: { farmId: string; batches: LineageEv
         <li key={batch.id}>
           <Link
             href={`/farms/${farmId}/crop-batches/${batch.id}`}
-            className="font-medium text-brand-700 hover:underline"
+            className="font-medium text-wl-brand hover:underline"
           >
             {batch.code}
           </Link>
@@ -63,20 +63,20 @@ export function OriginAndSplitsPanel({ lineage, farmId }: { lineage: BatchLineag
   return (
     <div className="space-y-6">
       {originGroups.map((group, index) => (
-        <div key={index} className="rounded-md border border-border-subtle p-4">
+        <div key={index} className="rounded-md border border-wl-border p-4">
           {group.kind === "merge" ? (
             <>
-              <p className="text-sm text-ink">
+              <p className="text-sm text-wl-text">
                 Created by merging {group.batches.length} batches via {lowerFirst(humanizeEnumCode(group.kind))}:
               </p>
               <BatchLinkList farmId={farmId} batches={group.batches} />
             </>
           ) : (
-            <p className="text-sm text-ink">
+            <p className="text-sm text-wl-text">
               Created from{" "}
               <Link
                 href={`/farms/${farmId}/crop-batches/${group.batches[0].id}`}
-                className="font-medium text-brand-700 hover:underline"
+                className="font-medium text-wl-brand hover:underline"
               >
                 {group.batches[0].code}
               </Link>{" "}
@@ -87,8 +87,8 @@ export function OriginAndSplitsPanel({ lineage, farmId }: { lineage: BatchLineag
       ))}
 
       {outcomeGroups.map((group, index) => (
-        <div key={index} className="rounded-md border border-border-subtle p-4">
-          <p className="text-sm text-ink">
+        <div key={index} className="rounded-md border border-wl-border p-4">
+          <p className="text-sm text-wl-text">
             This batch was {group.kind === "split" ? "split" : lowerFirst(humanizeEnumCode(group.kind))} into:
           </p>
           <BatchLinkList farmId={farmId} batches={group.batches} />

@@ -14,9 +14,9 @@ import {
 } from "@/lib/validation/carrierSpecification";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-ink-muted";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:cursor-not-allowed disabled:bg-wl-surface-sunken disabled:text-wl-text-secondary";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 /** FINAL INTEGRITY CLEANUP: react-hook-form routes an untouched field's
  * own `null` default through this same `setValueAs` transform (not just a
@@ -107,8 +107,8 @@ export function CarrierSpecificationForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-6">
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Identity</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Identity</legend>
         <Field label="Carrier type" error={errors.carrier_type_code?.message}>
           <select {...register("carrier_type_code")} disabled={locked} className={inputClass}>
             <option value="">Select a carrier type…</option>
@@ -127,8 +127,8 @@ export function CarrierSpecificationForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-3">
-        <legend className="px-1 text-sm font-semibold text-ink">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-3">
+        <legend className="px-1 text-sm font-semibold text-wl-text">
           Dimensions {requiresDimensions ? "(required for this carrier type)" : "(optional)"}
         </legend>
         <Field label="Length (mm)" error={errors.length_mm?.message}>
@@ -163,8 +163,8 @@ export function CarrierSpecificationForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-3">
-        <legend className="px-1 text-sm font-semibold text-ink">
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-3">
+        <legend className="px-1 text-sm font-semibold text-wl-text">
           {positionLabel} {requiresDimensions ? "(required for this carrier type)" : "(optional)"}
         </legend>
         <Field label={`${positionLabel} count`} error={errors.biological_position_count?.message}>

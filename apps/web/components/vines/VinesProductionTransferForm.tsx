@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { Button } from "@/components/ui/Button";
 import type { VinesProductionTransferCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { useAvailableGrowBagPools, useGreenhouseSetupOverview, useGreenhouseStructure, useIntervinesPlacements } from "@/lib/query/hooks";
@@ -16,10 +17,10 @@ import {
 } from "@/lib/validation/vinesProductionTransfer";
 
 const inputClassBase =
-  "min-h-11 rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-11 rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const inputClass = `${inputClassBase} w-full`;
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -186,24 +187,24 @@ export function VinesProductionTransferForm({
     const gutter = gutterOptions.find((g) => g.value === reviewValues.destination_grow_gutter_id);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before transferring</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transferring</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{reviewValues.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Plants</dt>
-              <dd className="font-medium text-ink">{reviewValues.plant_count.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Plants</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Grow Cubes retained</dt>
-              <dd className="font-medium text-ink">{reviewValues.plant_count.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Grow Cubes retained</dt>
+              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Grow Gutter</dt>
-              <dd className="font-medium text-ink">{gutter?.label ?? reviewValues.gutter_code}</dd>
+              <dt className="text-wl-text-secondary">Grow Gutter</dt>
+              <dd className="font-medium text-wl-text">{gutter?.label ?? reviewValues.gutter_code}</dd>
             </div>
           </dl>
         </div>
@@ -213,22 +214,12 @@ export function VinesProductionTransferForm({
           </p>
         )}
         <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => setStep("configure")}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md border border-border-subtle px-4 text-sm font-medium text-ink hover:bg-surface-subtle"
-          >
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
             Back
-          </button>
-          <button
-            type="button"
-            onClick={submitReview}
-            disabled={isSubmitting}
-            className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
             {isSubmitting ? "Transferring…" : "Confirm transfer"}
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -242,8 +233,8 @@ export function VinesProductionTransferForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Source</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Source</legend>
         <Field label="Batch / InterVines Table" error={errors.source_intervines_table_id?.message}>
           <FilterableSelect
             aria-label="Batch / InterVines Table"
@@ -258,27 +249,27 @@ export function VinesProductionTransferForm({
         {values.source_intervines_table_id && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{values.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{values.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Crop / Variety</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Crop / Variety</dt>
+              <dd className="font-medium text-wl-text">
                 {values.crop_common_name}
                 {values.variety_name ? ` / ${values.variety_name}` : ""}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Available plants</dt>
-              <dd className="font-medium text-ink">{values.current_available.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Available plants</dt>
+              <dd className="font-medium text-wl-text">{values.current_available.toLocaleString()}</dd>
             </div>
           </dl>
         )}
       </fieldset>
 
       {values.source_intervines_table_id && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <legend className="px-1 text-sm font-semibold text-ink">Destination</legend>
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
           {vinesGreenhouses.length > 1 && (
             <Field label="Destination Greenhouse">
               <select
@@ -346,8 +337,8 @@ export function VinesProductionTransferForm({
 
               <dl className="text-sm">
                 <div>
-                  <dt className="text-ink-muted">Available capacity</dt>
-                  <dd className="font-medium text-ink">{availablePlantCapacity.toLocaleString()} plants</dd>
+                  <dt className="text-wl-text-secondary">Available capacity</dt>
+                  <dd className="font-medium text-wl-text">{availablePlantCapacity.toLocaleString()} plants</dd>
                 </div>
               </dl>
             </>
@@ -355,8 +346,8 @@ export function VinesProductionTransferForm({
         </fieldset>
       )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Transfer date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -365,8 +356,8 @@ export function VinesProductionTransferForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
@@ -377,16 +368,16 @@ export function VinesProductionTransferForm({
       )}
 
       <div>
-        <button
+        <Button
           type="submit"
+          variant="primary"
           disabled={
             !values.source_intervines_table_id || !values.destination_grow_gutter_id ||
             !values.grow_bag_specification_id || !values.plant_count
           }
-          className="min-h-11 rounded-md bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-60"
         >
           {values.plant_count > 0 ? `Transfer ${values.plant_count.toLocaleString()} plants` : "Transfer plants"}
-        </button>
+        </Button>
       </div>
     </form>
   );

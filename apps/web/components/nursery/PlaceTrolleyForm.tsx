@@ -15,9 +15,9 @@ import {
 } from "@/lib/validation/germination";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -82,28 +82,28 @@ export function PlaceTrolleyForm({
     const chamber = chambers.find((c) => c.id === values.chamber_id);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before placing</h2>
-          <p className="text-sm text-ink">
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before placing</h2>
+          <p className="text-sm text-wl-text">
             Place <span className="font-medium">{trolley?.code}</span> in Germination Chamber{" "}
             <span className="font-medium">{chamber?.code}</span>
           </p>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Chamber capacity</dt>
-              <dd className="font-medium text-ink">{chamber?.trolley_capacity ?? "Unlimited"}</dd>
+              <dt className="text-wl-text-secondary">Chamber capacity</dt>
+              <dd className="font-medium text-wl-text">{chamber?.trolley_capacity ?? "Unlimited"}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Currently placed</dt>
-              <dd className="font-medium text-ink">{chamber?.active_trolley_count}</dd>
+              <dt className="text-wl-text-secondary">Currently placed</dt>
+              <dd className="font-medium text-wl-text">{chamber?.active_trolley_count}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Remaining capacity</dt>
-              <dd className="font-medium text-ink">{chamber?.remaining_capacity}</dd>
+              <dt className="text-wl-text-secondary">Remaining capacity</dt>
+              <dd className="font-medium text-wl-text">{chamber?.remaining_capacity}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Occurred at</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Occurred at</dt>
+              <dd className="font-medium text-wl-text">
                 {values.effective_date} {values.effective_time_of_day}
               </dd>
             </div>
@@ -130,8 +130,8 @@ export function PlaceTrolleyForm({
       }}
       className="flex flex-col gap-6"
     >
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Trolley</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Trolley</legend>
         <Field label="Trolley" error={errors.trolley_id?.message}>
           <select {...register("trolley_id")} className={inputClass}>
             <option value="">Select a Trolley…</option>
@@ -144,10 +144,10 @@ export function PlaceTrolleyForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Germination Chamber</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Germination Chamber</legend>
         {chambersQuery.isSuccess && chambers.length === 0 ? (
-          <p className="text-sm text-ink-muted">No Germination Chambers are configured for this farm yet.</p>
+          <p className="text-sm text-wl-text-secondary">No Germination Chambers are configured for this farm yet.</p>
         ) : (
           <Field label="Germination Chamber" error={errors.chamber_id?.message}>
             <select {...register("chamber_id")} className={inputClass}>
@@ -162,8 +162,8 @@ export function PlaceTrolleyForm({
         )}
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Placement date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Placement date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -172,8 +172,8 @@ export function PlaceTrolleyForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Reason (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Reason (optional)</legend>
         <textarea {...register("reason")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 

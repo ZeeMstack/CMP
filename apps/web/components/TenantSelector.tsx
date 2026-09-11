@@ -29,7 +29,7 @@ export function TenantSelector({
   const current = memberships.find((m) => m.tenantId === selectedTenantId);
 
   if (memberships.length <= 1) {
-    return <span className="truncate text-sm font-medium text-ink">{current?.tenantName ?? "…"}</span>;
+    return <span className="truncate text-sm font-medium text-wl-text">{current?.tenantName ?? "…"}</span>;
   }
 
   return (
@@ -40,7 +40,7 @@ export function TenantSelector({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex min-h-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-60"
+        className="flex min-h-11 items-center gap-1 rounded-md px-2 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:opacity-60"
       >
         <span className="truncate">{current?.tenantName ?? "Select tenant"}</span>
         <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
@@ -49,7 +49,7 @@ export function TenantSelector({
         <ul
           role="listbox"
           aria-label="Tenants"
-          className="absolute left-0 z-10 mt-1 min-w-56 rounded-md border border-border-subtle bg-surface py-1 shadow-lg"
+          className="absolute left-0 z-10 mt-1 min-w-56 rounded-md border border-wl-border bg-wl-surface-raised py-1 shadow-lg"
         >
           {memberships.map((membership) => (
             <li key={membership.tenantId} role="option" aria-selected={membership.tenantId === selectedTenantId}>
@@ -59,12 +59,12 @@ export function TenantSelector({
                   setOpen(false);
                   onSelect(membership.tenantId);
                 }}
-                className={`flex w-full min-h-11 flex-col items-start px-3 py-2 text-left text-sm hover:bg-surface-subtle ${
-                  membership.tenantId === selectedTenantId ? "font-medium text-brand-700" : "text-ink"
+                className={`flex w-full min-h-11 flex-col items-start px-3 py-2 text-left text-sm hover:bg-wl-surface-hover ${
+                  membership.tenantId === selectedTenantId ? "font-medium text-wl-brand" : "text-wl-text"
                 }`}
               >
                 <span>{membership.tenantName}</span>
-                <span className="text-xs text-ink-muted">
+                <span className="text-xs text-wl-text-secondary">
                   {membership.tenantCode} · {humanizeEnumCode(membership.roleCode)}
                 </span>
               </button>

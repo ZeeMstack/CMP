@@ -9,7 +9,7 @@ import { AppError } from "@/lib/errors/adapter";
 import { useLookupUserByEmail } from "@/lib/query/hooks";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 
 /** AUTHZ-OPS-001 section 7/8/23: "Add Existing User". CMP has no
  * self-service signup and no invitation mechanism -- a Tenant Admin can
@@ -73,8 +73,8 @@ export function AddUserPanel({
   }
 
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-5">
-      <h2 className="text-sm font-semibold text-ink">Add User</h2>
+    <div className="mb-6 flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-5">
+      <h2 className="text-sm font-semibold text-wl-text">Add User</h2>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="add-user-email" className="text-xs font-medium uppercase tracking-wide text-wl-text-tertiary">
@@ -103,7 +103,7 @@ export function AddUserPanel({
 
       <RoleField roles={roles} value={roleCode} onChange={setRoleCode} disabled={!foundUser} />
 
-      {serverError && <p className="text-sm text-red-700">{serverError}</p>}
+      {serverError && <p className="text-sm text-danger-700">{serverError}</p>}
 
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>

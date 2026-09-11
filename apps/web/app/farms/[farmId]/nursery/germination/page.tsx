@@ -15,6 +15,14 @@ import { RecordOutcomeForm } from "@/components/nursery/RecordOutcomeForm";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useGerminationTrays, usePlaceTray, usePlaceTrolley, useRecordSeedlingEntry } from "@/lib/query/hooks";
@@ -164,27 +172,27 @@ export default function GerminationPage() {
             />
           )}
           {traysQuery.isSuccess && traysQuery.data.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Batch</th>
-                    <th className="px-4 py-2 font-medium">Seed Tray</th>
-                    <th className="px-4 py-2 font-medium">Seeds sown</th>
-                    <th className="px-4 py-2 font-medium">State</th>
-                    <th className="px-4 py-2 font-medium">Placement</th>
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Batch</th>
+                    <th className={tableThClass}>Seed Tray</th>
+                    <th className={tableThClass}>Seeds sown</th>
+                    <th className={tableThClass}>State</th>
+                    <th className={tableThClass}>Placement</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {traysQuery.data.map((row) => (
-                    <tr key={row.tray.id} className="hover:bg-surface-subtle">
-                      <td className="px-4 py-2 font-medium text-ink">{row.batch_code}</td>
-                      <td className="px-4 py-2 text-ink">{row.tray.code}</td>
-                      <td className="px-4 py-2 text-ink">{row.seeds_sown.toLocaleString()}</td>
-                      <td className="px-4 py-2">
+                    <tr key={row.tray.id} className={tableRowHoverClass}>
+                      <td className={`${tableTdClass} font-medium text-wl-text`}>{row.batch_code}</td>
+                      <td className={`${tableTdClass} text-wl-text`}>{row.tray.code}</td>
+                      <td className={`${tableTdClass} text-wl-text`}>{row.seeds_sown.toLocaleString()}</td>
+                      <td className={tableTdClass}>
                         <StatusBadge label={STATE_LABEL[row.state]} tone={STATE_TONE[row.state]} />
                       </td>
-                      <td className="px-4 py-2 text-ink-muted">
+                      <td className={`${tableTdClass} text-wl-text-secondary`}>
                         {row.placement
                           ? `${row.placement.trolley.code} / ${row.placement.chamber.code} / ${row.placement.position.code}`
                           : "—"}

@@ -1,6 +1,15 @@
 "use client";
 
 import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { MembershipWithUserRead, RoleOption } from "@/lib/api/client";
 
 /** AUTHZ-OPS-001 section 6/21: the dense Users & Roles table -- name,
@@ -25,41 +34,37 @@ export function UsersRolesTable({
   const roleName = (code: string | null) => roles.find((r) => r.code === code)?.name ?? code ?? "—";
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+    <div className={tableWrapperClass}>
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-          <tr>
-            <th className="px-4 py-2 font-medium">User</th>
-            <th className="px-4 py-2 font-medium">Email</th>
-            <th className="px-4 py-2 font-medium">Role</th>
-            <th className="px-4 py-2 font-medium">Status</th>
-            {canManage && <th className="px-4 py-2 font-medium" />}
+        <thead>
+          <tr className={tableHeadRowClass}>
+            <th className={tableThClass}>User</th>
+            <th className={tableThClass}>Email</th>
+            <th className={tableThClass}>Role</th>
+            <th className={tableThClass}>Status</th>
+            {canManage && <th className={tableThClass} />}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border-subtle">
+        <tbody className={tableBodyDividerClass}>
           {memberships.map((membership) => {
             const isSelf = currentUserId !== null && membership.user_id === currentUserId;
             const isActive = membership.status === "active";
             return (
-              <tr key={membership.id} className="hover:bg-surface-subtle">
-                <td className="px-4 py-2 font-medium text-ink">
+              <tr key={membership.id} className={tableRowHoverClass}>
+                <td className={`${tableTdClass} font-medium text-wl-text`}>
                   {membership.user_display_name}
                   {isSelf && <span className="ml-2 text-xs font-normal text-wl-text-tertiary">(You)</span>}
                 </td>
-                <td className="px-4 py-2 text-ink-muted">{membership.user_email}</td>
-                <td className="px-4 py-2 text-ink-muted">{roleName(membership.role_code)}</td>
-                <td className="px-4 py-2">
+                <td className={`${tableTdClass} text-wl-text-secondary`}>{membership.user_email}</td>
+                <td className={`${tableTdClass} text-wl-text-secondary`}>{roleName(membership.role_code)}</td>
+                <td className={tableTdClass}>
                   <StatusBadge label={isActive ? "Active" : "Inactive"} tone={isActive ? "active" : "neutral"} />
                 </td>
                 {canManage && (
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onManage(membership)}
-                      className="text-sm font-medium text-brand-700 hover:underline"
-                    >
+                  <td className={`${tableTdClass} py-1.5 text-right`}>
+                    <Button variant="secondary" onClick={() => onManage(membership)}>
                       Manage
-                    </button>
+                    </Button>
                   </td>
                 )}
               </tr>

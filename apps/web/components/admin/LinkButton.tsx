@@ -2,8 +2,8 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 
 const VARIANT_CLASSES = {
-  primary: "border-brand-700 bg-brand-700 text-white hover:bg-brand-800",
-  secondary: "border-border-subtle bg-surface text-ink hover:bg-surface-subtle",
+  primary: "border-transparent bg-wl-brand text-wl-text-on-brand hover:bg-wl-brand-hover",
+  secondary: "border-wl-border-strong bg-wl-surface-raised text-wl-text hover:bg-wl-surface-hover",
 } as const;
 
 export type LinkButtonVariant = keyof typeof VARIANT_CLASSES;
@@ -19,7 +19,7 @@ export function LinkButton({
 }: ComponentProps<typeof Link> & { variant?: LinkButtonVariant }) {
   return (
     <Link
-      className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-4 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus ${VARIANT_CLASSES[variant]} ${className}`}
       {...props}
     />
   );

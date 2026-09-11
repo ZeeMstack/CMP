@@ -12,6 +12,14 @@ import { SeedDetailsPanel } from "@/components/inventory-items/SeedDetailsPanel"
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { InventoryItemCreate, InventoryItemRead, InventoryItemUpdate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
@@ -95,14 +103,14 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-ink-muted">
+        <p className="text-xs text-wl-text-secondary">
           Tenant-wide consumable-material master data, reusable across every Farm. No lot, ledger, or stock balance
           exists yet -- that begins with Goods Receipt.
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href={categoriesHref}
-            className="flex h-9 items-center rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle"
+            className="flex h-9 items-center rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-sunken"
           >
             Manage categories
           </Link>
@@ -175,20 +183,20 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
             />
           )}
           {!itemsQuery.isLoading && !itemsQuery.error && items.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Category</th>
-                    <th className="px-4 py-2 font-medium">Base UOM</th>
-                    <th className="px-4 py-2 font-medium">Tracking</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Name</th>
+                    <th className={tableThClass}>Category</th>
+                    <th className={tableThClass}>Base UOM</th>
+                    <th className={tableThClass}>Tracking</th>
+                    <th className={tableThClass}>Status</th>
+                    <th className={tableThClass} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {items.map((item) => {
                     const tone: StatusTone = item.status === "active" ? "active" : "closed";
                     const isBusy = deactivateMutation.isPending || reactivateMutation.isPending;
@@ -198,16 +206,16 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
                       item.qc_release_required && "QC",
                     ].filter(Boolean);
                     return (
-                      <tr key={item.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{item.code}</td>
-                        <td className="px-4 py-2 text-ink">{item.name}</td>
-                        <td className="px-4 py-2 text-ink">{categoryById.get(item.inventory_category_id)?.name ?? "—"}</td>
-                        <td className="px-4 py-2 text-ink">{uomById.get(item.base_uom_id)?.code ?? "—"}</td>
-                        <td className="px-4 py-2 text-xs text-ink-muted">{flags.length ? flags.join(", ") : "—"}</td>
-                        <td className="px-4 py-2">
+                      <tr key={item.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{item.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{item.name}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{categoryById.get(item.inventory_category_id)?.name ?? "—"}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{uomById.get(item.base_uom_id)?.code ?? "—"}</td>
+                        <td className={`${tableTdClass} text-xs text-wl-text-secondary`}>{flags.length ? flags.join(", ") : "—"}</td>
+                        <td className={tableTdClass}>
                           <StatusBadge label={item.status === "active" ? "Active" : "Inactive"} tone={tone} />
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <div className="flex gap-2">
                             <Button variant="secondary" disabled={isBusy} onClick={() => setEditingId(item.id)}>
                               Edit
@@ -259,7 +267,7 @@ export function InventoryCatalogSection({ categoriesHref }: { categoriesHref: st
                       if (!detailItem) return null;
                       return (
                         <tr key={`${detailsId}-details`}>
-                          <td colSpan={7} className="bg-surface-subtle px-4 py-3">
+                          <td colSpan={7} className="bg-wl-surface-sunken px-4 py-3">
                             <PackagingOptionsPanel
                               itemId={detailItem.id}
                               baseUomCode={uomById.get(detailItem.base_uom_id)?.code ?? ""}

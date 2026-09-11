@@ -10,9 +10,9 @@ import { AppError } from "@/lib/errors/adapter";
 import { useInventoryItemPackaging, useInventoryItems, useSeedProfileForItem, useUoms } from "@/lib/query/hooks";
 
 const inputClass =
-  "min-h-10 w-full rounded-md border border-wl-border bg-wl-surface px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+  "min-h-10 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const labelClass = "block text-xs font-medium text-wl-text-secondary";
-const errorClass = "text-xs text-red-700";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -203,7 +203,7 @@ function LineRow({
                   type="button"
                   onClick={() => update({ mode: "direct", packagingId: "", packageCount: "" })}
                   className={`min-h-10 px-2.5 text-xs font-medium ${
-                    line.mode === "direct" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface text-wl-text-secondary"
+                    line.mode === "direct" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface-raised text-wl-text-secondary"
                   }`}
                 >
                   Qty
@@ -212,7 +212,7 @@ function LineRow({
                   type="button"
                   onClick={() => update({ mode: "packaging", enteredQuantity: "", enteredUomId: "" })}
                   className={`min-h-10 px-2.5 text-xs font-medium ${
-                    line.mode === "packaging" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface text-wl-text-secondary"
+                    line.mode === "packaging" ? "bg-wl-brand text-wl-text-on-brand" : "bg-wl-surface-raised text-wl-text-secondary"
                   }`}
                 >
                   Packaging
@@ -296,7 +296,7 @@ function LineRow({
 
         <div className="ml-auto shrink-0 pb-2.5">
           {canRemove && (
-            <button type="button" className="text-xs font-medium text-red-700 hover:underline" onClick={onRemove}>
+            <button type="button" className="text-xs font-medium text-danger-700 hover:underline" onClick={onRemove}>
               Remove
             </button>
           )}
@@ -458,7 +458,7 @@ export function ReceiveGoodsForm({
           action={
             <Link
               href="/inventory-items"
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border bg-wl-surface px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
             >
               Set up Inventory Items
             </Link>
@@ -495,13 +495,13 @@ export function ReceiveGoodsForm({
       )}
 
       {serverError && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+        <div className="rounded-md border border-wl-border-strong bg-wl-flag-bg p-3 text-sm text-wl-flag-fg">
           {serverError.message}
         </div>
       )}
 
       {attempted && hasErrors && (
-        <p className="text-sm text-red-700">Fix the highlighted fields before recording this receipt.</p>
+        <p className="text-sm text-danger-700">Fix the highlighted fields before recording this receipt.</p>
       )}
 
       <Button type="button" variant="primary" className="self-start" disabled={isSubmitting} onClick={handleSubmit}>

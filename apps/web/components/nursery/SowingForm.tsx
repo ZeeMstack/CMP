@@ -27,9 +27,9 @@ import {
 } from "@/lib/validation/nursery";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -94,7 +94,7 @@ export function SowingForm({
   const planCrop = planCropsQuery.data?.find((c) => c.id === planPrefill?.cropId);
   const planVariety = planVarietiesQuery.data?.find((v) => v.id === planPrefill?.varietyId);
   const planBanner = planPrefill && (
-    <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+    <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
       Fulfilling a Seeding Program plan line{planCrop ? ` for ${planCrop.common_name}` : ""}
       {planVariety ? ` — ${planVariety.name}` : ""}. Confirm the real Seed Lot, Seed Tray configuration, and
       quantity below — the plan does not override what actually gets sown.
@@ -269,77 +269,77 @@ export function SowingForm({
       <div className="flex flex-col gap-4">
         <StepIndicator step="review" />
         {planBanner}
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before sowing</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before sowing</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch code</dt>
-              <dd className="font-medium text-ink">generated on save</dd>
+              <dt className="text-wl-text-secondary">Batch code</dt>
+              <dd className="font-medium text-wl-text">generated on save</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seeding Station</dt>
-              <dd className="font-medium text-ink">{selectedSeedingStation?.code ?? "—"}</dd>
+              <dt className="text-wl-text-secondary">Seeding Station</dt>
+              <dd className="font-medium text-wl-text">{selectedSeedingStation?.code ?? "—"}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seed Lot</dt>
-              <dd className="font-medium text-ink">{seedLot?.code ?? "—"}</dd>
+              <dt className="text-wl-text-secondary">Seed Lot</dt>
+              <dd className="font-medium text-wl-text">{seedLot?.code ?? "—"}</dd>
             </div>
             {seedLot && (
               <>
                 <div>
-                  <dt className="text-ink-muted">Crop</dt>
-                  <dd className="font-medium text-ink">{seedLot.crop.common_name}</dd>
+                  <dt className="text-wl-text-secondary">Crop</dt>
+                  <dd className="font-medium text-wl-text">{seedLot.crop.common_name}</dd>
                 </div>
                 <div>
-                  <dt className="text-ink-muted">Variety</dt>
-                  <dd className="font-medium text-ink">{seedLot.variety.name}</dd>
+                  <dt className="text-wl-text-secondary">Variety</dt>
+                  <dd className="font-medium text-wl-text">{seedLot.variety.name}</dd>
                 </div>
               </>
             )}
             {machine && (
               <div>
-                <dt className="text-ink-muted">Seeding Machine</dt>
-                <dd className="font-medium text-ink">{machine.code} (farm-level equipment)</dd>
+                <dt className="text-wl-text-secondary">Seeding Machine</dt>
+                <dd className="font-medium text-wl-text">{machine.code} (farm-level equipment)</dd>
               </div>
             )}
             <div>
-              <dt className="text-ink-muted">Occurred at</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Occurred at</dt>
+              <dd className="font-medium text-wl-text">
                 {values.effective_date} {values.effective_time_of_day}
               </dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Trays</dt>
-              <dd className="font-medium text-ink">{values.trays.length}</dd>
+              <dt className="text-wl-text-secondary">Trays</dt>
+              <dd className="font-medium text-wl-text">{values.trays.length}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Total sown sites</dt>
-              <dd className="font-medium text-ink">{totalSites.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Total sown sites</dt>
+              <dd className="font-medium text-wl-text">{totalSites.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Total seeds sown</dt>
-              <dd className="font-medium text-ink">{total.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Total seeds sown</dt>
+              <dd className="font-medium text-wl-text">{total.toLocaleString()}</dd>
             </div>
             {seedAllocationNote && (
               <div className="col-span-2 sm:col-span-3">
-                <dt className="text-ink-muted">Seed distribution</dt>
-                <dd className="font-medium text-ink">{seedAllocationNote}</dd>
+                <dt className="text-wl-text-secondary">Seed distribution</dt>
+                <dd className="font-medium text-wl-text">{seedAllocationNote}</dd>
               </div>
             )}
           </dl>
           <button
             type="button"
-            className="self-start text-xs font-medium text-brand-700 hover:underline"
+            className="self-start text-xs font-medium text-wl-brand hover:underline"
             onClick={() => setShowTrayDetails((v) => !v)}
           >
             {showTrayDetails ? "Hide trays" : "Show trays"}
           </button>
           {showTrayDetails && (
-            <ul className="divide-y divide-border-subtle text-sm">
+            <ul className="divide-y divide-wl-border text-sm">
               {values.trays.map((tray) => (
                 <li key={tray.carrier_id} className="flex items-center justify-between py-1.5">
-                  <span className="text-ink">{tray.code}</span>
-                  <span className="text-ink-muted">
+                  <span className="text-wl-text">{tray.code}</span>
+                  <span className="text-wl-text-secondary">
                     {tray.sown_site_count} sites · {tray.seeds_sown} seeds
                   </span>
                 </li>
@@ -374,8 +374,8 @@ export function SowingForm({
       <StepIndicator step="configure" />
       {planBanner}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Nursery / Seeding Station</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Nursery / Seeding Station</legend>
         <Field label="Nursery">
           <select
             value={nurseryGreenhouseId}
@@ -444,10 +444,10 @@ export function SowingForm({
         />
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <div className="flex items-center justify-between gap-2">
-          <legend className="px-1 text-sm font-semibold text-ink">Seed Lot</legend>
-          <Link href={`/farms/${farmId}/seed-lots/new`} className="text-xs font-medium text-brand-700 hover:underline">
+          <legend className="px-1 text-sm font-semibold text-wl-text">Seed Lot</legend>
+          <Link href={`/farms/${farmId}/seed-lots/new`} className="text-xs font-medium text-wl-brand hover:underline">
             + Add Seed Lot
           </Link>
         </div>
@@ -464,26 +464,26 @@ export function SowingForm({
         {selectedSeedLot && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Crop</dt>
-              <dd className="font-medium text-ink">{selectedSeedLot.crop.common_name}</dd>
+              <dt className="text-wl-text-secondary">Crop</dt>
+              <dd className="font-medium text-wl-text">{selectedSeedLot.crop.common_name}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Variety</dt>
-              <dd className="font-medium text-ink">{selectedSeedLot.variety.name}</dd>
+              <dt className="text-wl-text-secondary">Variety</dt>
+              <dd className="font-medium text-wl-text">{selectedSeedLot.variety.name}</dd>
             </div>
             {selectedSeedLot.supplier_name && (
               <div>
-                <dt className="text-ink-muted">Supplier</dt>
-                <dd className="font-medium text-ink">{selectedSeedLot.supplier_name}</dd>
+                <dt className="text-wl-text-secondary">Supplier</dt>
+                <dd className="font-medium text-wl-text">{selectedSeedLot.supplier_name}</dd>
               </div>
             )}
           </dl>
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Seeding Machine (optional)</legend>
-        <p className="text-xs text-ink-muted">Farm-level equipment — recorded as provenance only.</p>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Seeding Machine (optional)</legend>
+        <p className="text-xs text-wl-text-secondary">Farm-level equipment — recorded as provenance only.</p>
         <Field label="Seeding Machine">
           <select {...register("seeding_machine_id")} className={inputClass}>
             <option value="">None</option>
@@ -496,8 +496,8 @@ export function SowingForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Sowing date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Sowing date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -506,8 +506,8 @@ export function SowingForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Seed Trays</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Seed Trays</legend>
         {!availableTraysQuery.isLoading && (availableTraysQuery.data ?? []).length === 0 ? (
           // PILOT-BLOCKER-001: distinguishes "nothing to select" from the
           // generic zod "Select at least one Seed Tray" validation message
@@ -519,7 +519,7 @@ export function SowingForm({
             action={
               <Link
                 href={`/farms/${farmId}/carriers`}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
               >
                 Set up Seed Trays
               </Link>
@@ -536,7 +536,7 @@ export function SowingForm({
               // to sow against the tray specification's known capacity;
               // Seeds to sow never influences tray count and is never
               // assumed equal to sites -- the operator states both.
-              <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-subtle p-3">
+              <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Field label="Sites to sow">
                     <input
@@ -569,12 +569,12 @@ export function SowingForm({
                     </select>
                   </Field>
                 </div>
-                <p className="text-xs text-ink-muted">
+                <p className="text-xs text-wl-text-secondary">
                   A Seed Tray&apos;s capacity is a physical site count, not a seed count -- multiple seeds may share
                   one site. Required trays are computed from Sites to sow only.
                 </p>
                 {selectedFastGroup && requestedSites > 0 && (
-                  <div className="flex flex-col gap-1 text-sm text-ink">
+                  <div className="flex flex-col gap-1 text-sm text-wl-text">
                     <p>
                       Required trays: <span className="font-medium">{requiredTrayCount.toLocaleString()}</span>
                     </p>
@@ -582,7 +582,7 @@ export function SowingForm({
                       Available trays: <span className="font-medium">{selectedFastGroup.available.length.toLocaleString()}</span>
                     </p>
                     {selectedFastGroup.available.length < requiredTrayCount && (
-                      <p className="text-xs text-red-700">
+                      <p className="text-xs text-danger-700">
                         Only {selectedFastGroup.available.length} of the {requiredTrayCount} needed Seed Trays are
                         registered.{" "}
                         <Link href={`/farms/${farmId}/carriers`} className="font-medium underline">
@@ -594,7 +594,7 @@ export function SowingForm({
                   </div>
                 )}
                 {seedsExceedSites && (
-                  <p className="text-xs text-ink-muted">
+                  <p className="text-xs text-wl-text-secondary">
                     Seeds to sow ({requestedSeeds.toLocaleString()}) is more than Sites to sow (
                     {requestedSites.toLocaleString()}) -- choose how to record seed counts per tray.
                   </p>
@@ -628,7 +628,7 @@ export function SowingForm({
                   )}
                   <button
                     type="button"
-                    className="text-xs font-medium text-brand-700 hover:underline"
+                    className="text-xs font-medium text-wl-brand hover:underline"
                     onClick={() => setManualMode(true)}
                   >
                     Select trays manually instead
@@ -641,16 +641,16 @@ export function SowingForm({
               // PILOT-UX-001: compact review -- individual tray rows stay
               // collapsed by default; traceability data already lives in
               // `fields`, it's just not rendered until asked for.
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface-subtle p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-wl-border pt-3">
                 <div>
-                  <p className="text-sm font-medium text-ink">
+                  <p className="text-sm font-medium text-wl-text">
                     {fields.length} Seed Tray{fields.length === 1 ? "" : "s"}
                   </p>
-                  <p className="text-xs text-ink-muted">
+                  <p className="text-xs text-wl-text-secondary">
                     {totalSownSiteCount(watch("trays")).toLocaleString()} sown sites ·{" "}
                     {totalSeedsSown(watch("trays")).toLocaleString()} seeds
                   </p>
-                  {seedAllocationNote && <p className="text-xs text-ink-muted">{seedAllocationNote}</p>}
+                  {seedAllocationNote && <p className="text-xs text-wl-text-secondary">{seedAllocationNote}</p>}
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="secondary" onClick={() => setShowTrayDetails((v) => !v)}>
@@ -672,11 +672,11 @@ export function SowingForm({
             )}
 
             {fields.length > 0 && !manualMode && showTrayDetails && (
-              <ul className="divide-y divide-border-subtle text-sm">
+              <ul className="divide-y divide-wl-border text-sm">
                 {fields.map((field) => (
                   <li key={field.id} className="flex items-center justify-between py-1.5">
-                    <span className="text-ink">{field.code}</span>
-                    <span className="text-ink-muted">
+                    <span className="text-wl-text">{field.code}</span>
+                    <span className="text-wl-text-secondary">
                       {field.sown_site_count.toLocaleString()} sites · {field.seeds_sown.toLocaleString()} seeds
                     </span>
                   </li>
@@ -712,12 +712,12 @@ export function SowingForm({
                   </select>
                 </Field>
                 {fields.length > 0 && (
-                  <ul className="divide-y divide-border-subtle">
+                  <ul className="divide-y divide-wl-border">
                     {fields.map((field, index) => (
                       <li key={field.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start sm:gap-3">
                         <div className="min-w-24">
-                          <span className="text-sm font-medium text-ink">{field.code}</span>
-                          <p className="text-xs text-ink-muted">
+                          <span className="text-sm font-medium text-wl-text">{field.code}</span>
+                          <p className="text-xs text-wl-text-secondary">
                             {field.biological_position_count != null
                               ? `Capacity: ${field.biological_position_count.toLocaleString()}`
                               : "Capacity unknown"}
@@ -757,14 +757,14 @@ export function SowingForm({
                   </ul>
                 )}
                 {fields.length > 0 && (
-                  <p className="text-sm text-ink-muted">
+                  <p className="text-sm text-wl-text-secondary">
                     {fields.length} {fields.length === 1 ? "tray" : "trays"} selected · {totalSeedsSown(watch("trays"))}{" "}
                     total seeds sown
                   </p>
                 )}
                 <button
                   type="button"
-                  className="self-start text-xs font-medium text-ink-muted hover:underline"
+                  className="self-start text-xs font-medium text-wl-text-secondary hover:underline"
                   onClick={() => {
                     replace([]);
                     setManualMode(false);
@@ -779,8 +779,8 @@ export function SowingForm({
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Note (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
         <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
@@ -798,7 +798,7 @@ export function SowingForm({
  * flow visible to the operator. */
 function StepIndicator({ step }: { step: "configure" | "review" }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">
+    <p className="text-xs font-semibold uppercase tracking-wide text-wl-brand">
       Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
     </p>
   );

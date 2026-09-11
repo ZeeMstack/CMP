@@ -16,9 +16,9 @@ import {
 } from "@/lib/validation/inventoryItem";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-ink-muted";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:cursor-not-allowed disabled:bg-wl-surface-sunken disabled:text-wl-text-secondary";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -65,9 +65,9 @@ function TrackingPolicyFields<T extends TrackingFields>({
   }, [lotTrackingForced]);
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
-      <legend className="px-1 text-sm font-semibold text-ink">Tracking policy</legend>
-      <label className="flex items-center gap-2 text-sm text-ink">
+    <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+      <legend className="px-1 text-sm font-semibold text-wl-text">Tracking policy</legend>
+      <label className="flex items-center gap-2 text-sm text-wl-text">
         <input
           type="checkbox"
           {...register("lotTrackingRequired" as Path<T>)}
@@ -76,14 +76,14 @@ function TrackingPolicyFields<T extends TrackingFields>({
         />
         Lot tracking required
         {lotTrackingForced && (
-          <span className="text-xs text-ink-muted">(required by Expiry Tracking / QC Release)</span>
+          <span className="text-xs text-wl-text-secondary">(required by Expiry Tracking / QC Release)</span>
         )}
       </label>
-      <label className="flex items-center gap-2 text-sm text-ink">
+      <label className="flex items-center gap-2 text-sm text-wl-text">
         <input type="checkbox" {...register("expiryTrackingRequired" as Path<T>)} />
         Expiry tracking required
       </label>
-      <label className="flex items-center gap-2 text-sm text-ink">
+      <label className="flex items-center gap-2 text-sm text-wl-text">
         <input type="checkbox" {...register("qcReleaseRequired" as Path<T>)} />
         QC release required
       </label>
@@ -132,8 +132,8 @@ export function InventoryItemForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-6">
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Item identity</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Item identity</legend>
         <Field label="Code" error={errors.code?.message}>
           <input {...register("code")} className={inputClass} placeholder="MAMUTIK-SEED" />
         </Field>
@@ -231,9 +231,9 @@ export function InventoryItemEditForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-6">
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">
-          Editing {item.code} <span className="text-xs text-ink-muted">(code is never editable)</span>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">
+          Editing {item.code} <span className="text-xs text-wl-text-secondary">(code is never editable)</span>
         </legend>
         <Field label="Name" error={errors.name?.message}>
           <input {...register("name")} className={inputClass} />

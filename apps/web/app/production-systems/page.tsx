@@ -12,6 +12,14 @@ import { ProductionSystemForm } from "@/components/production-systems/Production
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { ProductionSystemCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useCreateProductionSystem, useProductionSystems } from "@/lib/query/hooks";
@@ -56,7 +64,7 @@ export default function ProductionSystemsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide growing-system catalog a Workflow configures against (e.g. NFT, DWC, media bags).
       </p>
 
@@ -83,25 +91,25 @@ export default function ProductionSystemsPage() {
             />
           )}
           {!query.isLoading && !query.error && systems.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Description</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Name</th>
+                    <th className={tableThClass}>Description</th>
+                    <th className={tableThClass}>Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {systems.map((system) => {
                     const tone: StatusTone = system.status === "active" ? "active" : "closed";
                     return (
-                      <tr key={system.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{system.code}</td>
-                        <td className="px-4 py-2 text-ink">{system.name}</td>
-                        <td className="px-4 py-2 text-ink-muted">{system.description ?? "—"}</td>
-                        <td className="px-4 py-2">
+                      <tr key={system.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{system.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{system.name}</td>
+                        <td className={`${tableTdClass} text-wl-text-secondary`}>{system.description ?? "—"}</td>
+                        <td className={tableTdClass}>
                           <StatusBadge label={system.status === "active" ? "Active" : "Inactive"} tone={tone} />
                         </td>
                       </tr>

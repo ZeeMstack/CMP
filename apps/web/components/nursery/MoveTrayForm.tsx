@@ -17,9 +17,9 @@ import {
 } from "@/lib/validation/germination";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -163,15 +163,15 @@ function BulkMoveBoard({
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+      <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
         Continuing from Sowing — Batch {batchCode}, {trays.length} eligible Seed Tray{trays.length === 1 ? "" : "s"}.{" "}
         <button type="button" className="font-medium underline" onClick={onSwitchToSingle} disabled={isRunning}>
           Move a single Seed Tray instead
         </button>
       </p>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Destination (applies to every move below)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Destination (applies to every move below)</legend>
         {trolleysQuery.isSuccess && trolleys.length === 0 ? (
           <EmptyState
             title="No Germination Trolley placed"
@@ -244,8 +244,8 @@ function BulkMoveBoard({
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Reason (optional, applies to every move below)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Reason (optional, applies to every move below)</legend>
         <textarea
           className={`${inputClass} min-h-16`}
           rows={2}
@@ -255,14 +255,14 @@ function BulkMoveBoard({
         />
       </fieldset>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface-subtle p-3">
+      <div className="flex flex-col gap-3 border-t border-wl-border pt-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-ink">
+            <p className="text-sm font-medium text-wl-text">
               {trays.length} tray{trays.length === 1 ? "" : "s"} ready
             </p>
             {!destinationReady && (
-              <p className="text-xs text-ink-muted">Choose a Trolley and Level to enable Move All.</p>
+              <p className="text-xs text-wl-text-secondary">Choose a Trolley and Level to enable Move All.</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -282,7 +282,7 @@ function BulkMoveBoard({
           </div>
         </div>
         {capacityInsufficient && selectedLevel && (
-          <p className="text-xs text-red-700">
+          <p className="text-xs text-danger-700">
             This Level only has {selectedLevel.available_capacity} of the {trays.length} needed free positions.
             Choose a Level with more capacity, or move trays individually below.
           </p>
@@ -290,7 +290,7 @@ function BulkMoveBoard({
       </div>
 
       {bulkRun.phase === "done" && (
-        <div className="flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+        <div className="flex flex-col gap-2 rounded-lg border border-wl-border-strong bg-wl-grow-bg p-3 text-sm text-wl-grow-fg">
           <p>
             {bulkRun.succeeded} tray{bulkRun.succeeded === 1 ? "" : "s"} moved to Trolley {bulkRun.trolleyCode} /
             Level {bulkRun.levelCode}
@@ -302,7 +302,7 @@ function BulkMoveBoard({
       )}
 
       {bulkRun.phase === "partial" && (
-        <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        <div className="flex flex-col gap-2 rounded-lg border border-wl-border-strong bg-wl-flag-bg p-3 text-sm text-wl-flag-fg">
           <p>
             {bulkRun.succeeded} tray{bulkRun.succeeded === 1 ? "" : "s"} moved successfully
           </p>
@@ -324,24 +324,24 @@ function BulkMoveBoard({
       )}
 
       {showRowTable && (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+        <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
+            <thead className="border-b border-wl-border bg-wl-surface-sunken text-xs uppercase text-wl-text-secondary">
               <tr>
                 <th className="px-4 py-2 font-medium">Seed Tray</th>
                 <th className="px-4 py-2 font-medium">Seeds sown</th>
                 <th className="px-4 py-2 font-medium" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-subtle">
+            <tbody className="divide-y divide-wl-border">
               {trays.map((t) => {
                 const status = rowStatus[t.tray.id];
                 return (
                   <tr key={t.tray.id}>
-                    <td className="px-4 py-2 font-medium text-ink">{t.tray.code}</td>
-                    <td className="px-4 py-2 text-ink-muted">{t.seeds_sown.toLocaleString()}</td>
+                    <td className="px-4 py-2 font-medium text-wl-text">{t.tray.code}</td>
+                    <td className="px-4 py-2 text-wl-text-secondary">{t.seeds_sown.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right">
-                      {rowError[t.tray.id] && <p className="mb-1 text-xs text-red-700">{rowError[t.tray.id]}</p>}
+                      {rowError[t.tray.id] && <p className="mb-1 text-xs text-danger-700">{rowError[t.tray.id]}</p>}
                       <Button
                         type="button"
                         variant={status === "error" ? "secondary" : "primary"}
@@ -490,42 +490,42 @@ export function MoveTrayForm({
     const slot = selectedLevel?.mode === "legacy" ? openSlots.find((s) => s.id === values.asset_position_id) : null;
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-          <h2 className="font-serif text-base font-semibold text-ink">Review before moving</h2>
+        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+          <h2 className="font-serif text-base font-semibold text-wl-text">Review before moving</h2>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-ink-muted">Batch</dt>
-              <dd className="font-medium text-ink">{tray?.batch_code}</dd>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{tray?.batch_code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seed Tray</dt>
-              <dd className="font-medium text-ink">{tray?.tray.code}</dd>
+              <dt className="text-wl-text-secondary">Seed Tray</dt>
+              <dd className="font-medium text-wl-text">{tray?.tray.code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Seeds sown</dt>
-              <dd className="font-medium text-ink">{tray?.seeds_sown.toLocaleString()}</dd>
+              <dt className="text-wl-text-secondary">Seeds sown</dt>
+              <dd className="font-medium text-wl-text">{tray?.seeds_sown.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Trolley</dt>
-              <dd className="font-medium text-ink">{trolley?.code}</dd>
+              <dt className="text-wl-text-secondary">Trolley</dt>
+              <dd className="font-medium text-wl-text">{trolley?.code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Germination Chamber</dt>
-              <dd className="font-medium text-ink">{trolley?.chamber.code}</dd>
+              <dt className="text-wl-text-secondary">Germination Chamber</dt>
+              <dd className="font-medium text-wl-text">{trolley?.chamber.code}</dd>
             </div>
             <div>
-              <dt className="text-ink-muted">Level</dt>
-              <dd className="font-medium text-ink">{selectedLevel?.code}</dd>
+              <dt className="text-wl-text-secondary">Level</dt>
+              <dd className="font-medium text-wl-text">{selectedLevel?.code}</dd>
             </div>
             {selectedLevel?.mode === "legacy" && (
               <div>
-                <dt className="text-ink-muted">Slot</dt>
-                <dd className="font-medium text-ink">{slot?.code}</dd>
+                <dt className="text-wl-text-secondary">Slot</dt>
+                <dd className="font-medium text-wl-text">{slot?.code}</dd>
               </div>
             )}
             <div>
-              <dt className="text-ink-muted">Occurred at</dt>
-              <dd className="font-medium text-ink">
+              <dt className="text-wl-text-secondary">Occurred at</dt>
+              <dd className="font-medium text-wl-text">
                 {values.effective_date} {values.effective_time_of_day}
               </dd>
             </div>
@@ -553,14 +553,14 @@ export function MoveTrayForm({
       className="flex flex-col gap-6"
     >
       {initialBatchId && matchingBatchTrays.length > 0 && (
-        <p className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+        <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
           Continuing from Sowing — {matchingBatchTrays.length === 1 ? "this Batch's Seed Tray is preselected" : "this Batch's Seed Trays are listed first"} below.
         </p>
       )}
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Seed Tray</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Seed Tray</legend>
         {traysQuery.isSuccess && eligibleTrays.length === 0 ? (
-          <p className="text-sm text-ink-muted">No Seed Trays are awaiting Germination placement.</p>
+          <p className="text-sm text-wl-text-secondary">No Seed Trays are awaiting Germination placement.</p>
         ) : (
           <Field label="Seed Tray" error={errors.tray_id?.message}>
             <select {...register("tray_id")} className={inputClass}>
@@ -575,8 +575,8 @@ export function MoveTrayForm({
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Trolley / Level</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Trolley / Level</legend>
         {trolleysQuery.isSuccess && trolleys.length === 0 ? (
           <EmptyState
             title="No Germination Trolley placed"
@@ -656,8 +656,8 @@ export function MoveTrayForm({
         )}
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Placement date/time</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Placement date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
           <input type="date" {...register("effective_date")} className={inputClass} />
         </Field>
@@ -666,8 +666,8 @@ export function MoveTrayForm({
         </Field>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
-        <legend className="px-1 text-sm font-semibold text-ink">Reason (optional)</legend>
+      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Reason (optional)</legend>
         <textarea {...register("reason")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 

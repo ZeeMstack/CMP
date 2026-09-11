@@ -9,6 +9,14 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { InventoryCategoryCreate, InventoryCategoryRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
@@ -24,7 +32,7 @@ function errorMessage(error: unknown): string {
 }
 
 const inputClass =
-  "min-h-9 rounded-md border border-border-subtle bg-surface px-2 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
+  "min-h-9 rounded-md border border-wl-border bg-wl-surface-raised px-2 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 
 /** Inline rename -- the only mutable field besides status; code is never
  * editable anywhere (docs/domain/STORE_INVENTORY_MODEL.md §5). */
@@ -87,7 +95,7 @@ export function InventoryCategoriesSection() {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-ink-muted">
+        <p className="text-xs text-wl-text-secondary">
           Tenant-wide classification/reporting metadata for Inventory Items -- never a rule that drives system
           behavior.
         </p>
@@ -127,25 +135,25 @@ export function InventoryCategoriesSection() {
             />
           )}
           {!categoriesQuery.isLoading && !categoriesQuery.error && categories.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Name</th>
+                    <th className={tableThClass}>Status</th>
+                    <th className={tableThClass} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {categories.map((category) => {
                     const tone: StatusTone = category.status === "active" ? "active" : "closed";
                     const isBusy =
                       updateMutation.isPending || deactivateMutation.isPending || reactivateMutation.isPending;
                     return (
-                      <tr key={category.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{category.code}</td>
-                        <td className="px-4 py-2 text-ink">
+                      <tr key={category.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{category.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>
                           {renamingId === category.id ? (
                             <RenameRow
                               category={category}
@@ -169,10 +177,10 @@ export function InventoryCategoriesSection() {
                             category.name
                           )}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <StatusBadge label={category.status === "active" ? "Active" : "Inactive"} tone={tone} />
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           {renamingId !== category.id && (
                             <div className="flex gap-2">
                               <Button variant="secondary" disabled={isBusy} onClick={() => setRenamingId(category.id)}>

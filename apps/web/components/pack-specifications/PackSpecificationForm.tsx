@@ -15,9 +15,9 @@ import {
 } from "@/lib/validation/packSpecification";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:bg-surface-subtle disabled:text-ink-muted";
-const labelClass = "block text-sm font-medium text-ink";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:cursor-not-allowed disabled:bg-wl-surface-sunken disabled:text-wl-text-secondary";
+const labelClass = "block text-sm font-medium text-wl-text";
+const errorClass = "text-xs text-danger-700";
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -74,8 +74,8 @@ export function PackSpecificationForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-6">
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Pack specification identity</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Pack specification identity</legend>
         <Field label="Code" error={errors.code?.message}>
           <input {...register("code")} className={inputClass} placeholder="ICE-5KG-CARTON" />
         </Field>
@@ -87,8 +87,8 @@ export function PackSpecificationForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border-subtle bg-surface p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-ink">Configuration scope</legend>
+      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold text-wl-text">Configuration scope</legend>
         <Field label="Crop" error={errors.crop_id?.message}>
           <select {...register("crop_id")} className={inputClass}>
             <option value="">Select a crop…</option>

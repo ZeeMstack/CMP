@@ -13,6 +13,14 @@ import { PackSpecificationForm } from "@/components/pack-specifications/PackSpec
 import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { CropRead, PackSpecificationCreate, PackSpecificationRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useAllPackSpecifications, useCreatePackSpecification, useCrops, useVarieties } from "@/lib/query/hooks";
@@ -61,7 +69,7 @@ export default function PackSpecificationsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide commercial pack/product identities. Configuration only -- actual packing of graded produce
         happens on the Packing screen inside a Farm.
       </p>
@@ -106,19 +114,19 @@ export default function PackSpecificationsPage() {
 
 function PackSpecificationsTable({ specs, crops }: { specs: PackSpecificationRead[]; crops: CropRead[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+    <div className={tableWrapperClass}>
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-          <tr>
-            <th className="px-4 py-2 font-medium">Code</th>
-            <th className="px-4 py-2 font-medium">Name</th>
-            <th className="px-4 py-2 font-medium">Crop</th>
-            <th className="px-4 py-2 font-medium">Variety</th>
-            <th className="px-4 py-2 font-medium">Customer reference</th>
-            <th className="px-4 py-2 font-medium" />
+        <thead>
+          <tr className={tableHeadRowClass}>
+            <th className={tableThClass}>Code</th>
+            <th className={tableThClass}>Name</th>
+            <th className={tableThClass}>Crop</th>
+            <th className={tableThClass}>Variety</th>
+            <th className={tableThClass}>Customer reference</th>
+            <th className={tableThClass} />
           </tr>
         </thead>
-        <tbody className="divide-y divide-border-subtle">
+        <tbody className={tableBodyDividerClass}>
           {specs.map((spec) => {
             const crop = crops.find((c) => c.id === spec.crop_id);
             return (
@@ -135,16 +143,16 @@ function PackSpecificationRow({ spec, cropLabel }: { spec: PackSpecificationRead
   const varietiesQuery = useVarieties(spec.crop_id);
   const variety = varietiesQuery.data?.find((v) => v.id === spec.variety_id);
   return (
-    <tr className="hover:bg-surface-subtle">
-      <td className="px-4 py-2 font-medium text-ink">{spec.code}</td>
-      <td className="px-4 py-2 text-ink">{spec.name}</td>
-      <td className="px-4 py-2 text-ink-muted">{cropLabel}</td>
-      <td className="px-4 py-2 text-ink-muted">
+    <tr className={tableRowHoverClass}>
+      <td className={`${tableTdClass} font-medium text-wl-text`}>{spec.code}</td>
+      <td className={`${tableTdClass} text-wl-text`}>{spec.name}</td>
+      <td className={`${tableTdClass} text-wl-text-secondary`}>{cropLabel}</td>
+      <td className={`${tableTdClass} text-wl-text-secondary`}>
         {spec.variety_id ? (variety ? `${variety.name} (${variety.code})` : "—") : "Any variety"}
       </td>
-      <td className="px-4 py-2 text-ink-muted">{spec.customer_reference ?? "—"}</td>
-      <td className="px-4 py-2">
-        <Link href={`/pack-specifications/${spec.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+      <td className={`${tableTdClass} text-wl-text-secondary`}>{spec.customer_reference ?? "—"}</td>
+      <td className={tableTdClass}>
+        <Link href={`/pack-specifications/${spec.id}`} className="text-sm font-medium text-wl-brand hover:underline">
           View
         </Link>
       </td>

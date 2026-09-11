@@ -13,6 +13,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import type { CarrierSpecificationCreate, CarrierSpecificationRead, CarrierSpecificationUpdate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
@@ -100,10 +108,10 @@ export default function CarrierSpecificationsPage() {
           )
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Reusable carrier designs shared across every farm in this tenant -- not tied to a single farm. To register
         individual physical carriers against a specification, open{" "}
-        <Link href="/farms" className="font-medium text-brand-700 hover:underline">
+        <Link href="/farms" className="font-medium text-wl-brand hover:underline">
           a farm
         </Link>{" "}
         and use its Physical Carriers page.
@@ -136,40 +144,40 @@ export default function CarrierSpecificationsPage() {
             />
           )}
           {!isLoading && !loadError && specifications.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+            <div className={tableWrapperClass}>
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Code</th>
-                    <th className="px-4 py-2 font-medium">Name</th>
-                    <th className="px-4 py-2 font-medium">Carrier Type</th>
-                    <th className="px-4 py-2 font-medium">Dimensions (mm)</th>
-                    <th className="px-4 py-2 font-medium">Positions</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
+                <thead>
+                  <tr className={tableHeadRowClass}>
+                    <th className={tableThClass}>Code</th>
+                    <th className={tableThClass}>Name</th>
+                    <th className={tableThClass}>Carrier Type</th>
+                    <th className={tableThClass}>Dimensions (mm)</th>
+                    <th className={tableThClass}>Positions</th>
+                    <th className={tableThClass}>Status</th>
+                    <th className={tableThClass} />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-subtle">
+                <tbody className={tableBodyDividerClass}>
                   {specifications.map((spec) => {
                     const tone: StatusTone = spec.status === "active" ? "active" : "closed";
                     const dims = [spec.length_mm, spec.width_mm, spec.height_mm].every((v) => v === null)
                       ? "—"
                       : [spec.length_mm, spec.width_mm, spec.height_mm].map((v) => v ?? "–").join(" × ");
                     return (
-                      <tr key={spec.id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{spec.code}</td>
-                        <td className="px-4 py-2 text-ink">{spec.name}</td>
-                        <td className="px-4 py-2 text-ink-muted">{spec.carrier_type_code}</td>
-                        <td className="px-4 py-2 text-ink-muted">{dims}</td>
-                        <td className="px-4 py-2 text-ink-muted">
+                      <tr key={spec.id} className={tableRowHoverClass}>
+                        <td className={`${tableTdClass} font-medium text-wl-text`}>{spec.code}</td>
+                        <td className={`${tableTdClass} text-wl-text`}>{spec.name}</td>
+                        <td className={`${tableTdClass} text-wl-text-secondary`}>{spec.carrier_type_code}</td>
+                        <td className={`${tableTdClass} text-wl-text-secondary`}>{dims}</td>
+                        <td className={`${tableTdClass} text-wl-text-secondary`}>
                           {spec.biological_position_count === null
                             ? "—"
                             : `${spec.biological_position_count} ${(spec.biological_position_label ?? "positions").toLowerCase()}`}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <StatusBadge label={spec.status === "active" ? "Active" : "Inactive"} tone={tone} />
                         </td>
-                        <td className="px-4 py-2">
+                        <td className={tableTdClass}>
                           <div className="flex gap-2">
                             <Button variant="secondary" onClick={() => setEditing(spec)}>
                               Edit

@@ -40,8 +40,8 @@ export function NurseryJourney({ farmId, current }: { farmId: string; current: N
                 aria-current={isCurrent ? "step" : undefined}
                 className={`flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors sm:text-sm ${
                   isCurrent
-                    ? "border-brand-700 bg-brand-700 text-white"
-                    : "border-border-subtle bg-surface text-ink-muted hover:border-brand-300 hover:text-ink"
+                    ? "border-wl-brand bg-wl-brand text-wl-text-on-brand"
+                    : "border-wl-border bg-wl-surface-raised text-wl-text-secondary hover:border-wl-brand hover:text-wl-text"
                 }`}
               >
                 {/* Current stage is never conveyed by color alone. */}
@@ -49,7 +49,7 @@ export function NurseryJourney({ farmId, current }: { farmId: string; current: N
                 {stage.label}
               </Link>
               {index < STAGES.length - 1 && (
-                <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
+                <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-wl-text-secondary" />
               )}
             </li>
           );

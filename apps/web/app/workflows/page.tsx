@@ -11,6 +11,14 @@ import { PageHeader } from "@/components/PageHeader";
 import { StandaloneShell } from "@/components/StandaloneShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import { useCrops, useProductionSystems, useWorkflows } from "@/lib/query/hooks";
 
 /** PILOT-SETUP-001B6 / B6A: this list intentionally stays a simple Workflow
@@ -46,7 +54,7 @@ export default function WorkflowsPage() {
           </Link>
         }
       />
-      <p className="-mt-3 mb-6 text-xs text-ink-muted">
+      <p className="-mt-3 mb-6 text-xs text-wl-text-secondary">
         Tenant-wide crop workflow catalog: stage/transition configuration a Crop Batch runs against once published.
       </p>
 
@@ -70,34 +78,34 @@ export default function WorkflowsPage() {
       )}
 
       {!isLoading && !loadError && workflows.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+        <div className={tableWrapperClass}>
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-              <tr>
-                <th className="px-4 py-2 font-medium">Code</th>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Crop</th>
-                <th className="px-4 py-2 font-medium">Production system</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium" />
+            <thead>
+              <tr className={tableHeadRowClass}>
+                <th className={tableThClass}>Code</th>
+                <th className={tableThClass}>Name</th>
+                <th className={tableThClass}>Crop</th>
+                <th className={tableThClass}>Production system</th>
+                <th className={tableThClass}>Status</th>
+                <th className={tableThClass} />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-subtle">
+            <tbody className={tableBodyDividerClass}>
               {workflows.map((workflow) => {
                 const crop = crops.find((c) => c.id === workflow.crop_id);
                 const productionSystem = productionSystems.find((p) => p.id === workflow.production_system_id);
                 const tone: StatusTone = workflow.status === "active" ? "active" : "closed";
                 return (
-                  <tr key={workflow.id} className="hover:bg-surface-subtle">
-                    <td className="px-4 py-2 font-medium text-ink">{workflow.code}</td>
-                    <td className="px-4 py-2 text-ink">{workflow.name}</td>
-                    <td className="px-4 py-2 text-ink-muted">{crop ? crop.common_name : "—"}</td>
-                    <td className="px-4 py-2 text-ink-muted">{productionSystem ? productionSystem.name : "—"}</td>
-                    <td className="px-4 py-2">
+                  <tr key={workflow.id} className={tableRowHoverClass}>
+                    <td className={`${tableTdClass} font-medium text-wl-text`}>{workflow.code}</td>
+                    <td className={`${tableTdClass} text-wl-text`}>{workflow.name}</td>
+                    <td className={`${tableTdClass} text-wl-text-secondary`}>{crop ? crop.common_name : "—"}</td>
+                    <td className={`${tableTdClass} text-wl-text-secondary`}>{productionSystem ? productionSystem.name : "—"}</td>
+                    <td className={tableTdClass}>
                       <StatusBadge label={workflow.status === "active" ? "Active" : "Inactive"} tone={tone} />
                     </td>
-                    <td className="px-4 py-2">
-                      <Link href={`/workflows/${workflow.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                    <td className={tableTdClass}>
+                      <Link href={`/workflows/${workflow.id}`} className="text-sm font-medium text-wl-brand hover:underline">
                         View
                       </Link>
                     </td>

@@ -2,6 +2,14 @@
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import {
+  tableBodyDividerClass,
+  tableHeadRowClass,
+  tableRowHoverClass,
+  tableTdClass,
+  tableThClass,
+  tableWrapperClass,
+} from "@/components/ui/table";
 import { useUoms } from "@/lib/query/hooks";
 
 /** docs/domain/STORE_INVENTORY_MODEL.md §6: permanently read-only system
@@ -17,28 +25,28 @@ export function UomReferenceTable() {
 
   return (
     <div>
-      <p className="mb-4 text-xs text-ink-muted">
+      <p className="mb-4 text-xs text-wl-text-secondary">
         System-controlled reference units. This list is not tenant-configurable.
       </p>
 
       {uomsQuery.isLoading && <LoadingSkeleton rows={4} label="Loading units of measure" />}
       {uomsQuery.error && <ErrorState error={uomsQuery.error} onRetry={() => uomsQuery.refetch()} />}
       {!uomsQuery.isLoading && !uomsQuery.error && (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+        <div className={tableWrapperClass}>
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-              <tr>
-                <th className="px-4 py-2 font-medium">Code</th>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Quantity kind</th>
+            <thead>
+              <tr className={tableHeadRowClass}>
+                <th className={tableThClass}>Code</th>
+                <th className={tableThClass}>Name</th>
+                <th className={tableThClass}>Quantity kind</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-subtle">
+            <tbody className={tableBodyDividerClass}>
               {uoms.map((uom) => (
-                <tr key={uom.id} className="hover:bg-surface-subtle">
-                  <td className="px-4 py-2 font-medium text-ink">{uom.code}</td>
-                  <td className="px-4 py-2 text-ink">{uom.name}</td>
-                  <td className="px-4 py-2 capitalize text-ink">{uom.quantity_kind}</td>
+                <tr key={uom.id} className={tableRowHoverClass}>
+                  <td className={`${tableTdClass} font-medium text-wl-text`}>{uom.code}</td>
+                  <td className={`${tableTdClass} text-wl-text`}>{uom.name}</td>
+                  <td className={`${tableTdClass} capitalize text-wl-text`}>{uom.quantity_kind}</td>
                 </tr>
               ))}
             </tbody>
