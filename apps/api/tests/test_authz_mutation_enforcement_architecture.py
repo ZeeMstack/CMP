@@ -164,6 +164,12 @@ def test_every_tenant_scoped_mutation_route_is_gated_by_require_permission() -> 
 # "biological_disposition.correct"` -- for the same reason (correcting a
 # historical Disposition fact is more consequential than ordinary
 # recording, which `biological_disposition.manage` alone does not cover).
+# The identical split was later reused, unmodified, for the equivalent
+# Leafy and Vines production-disposition correction commands
+# (PILOT-BLOCKER-006/F29 reconciliation: these two routes existed and were
+# already correctly gated in app/api/leafy_production_disposition.py and
+# app/api/vines_production_disposition.py -- this whitelist had simply
+# never been updated to list them, a test-drift gap, not a policy change).
 # Each `.correct` exemption is added explicitly, one named path at a time,
 # never as a blanket "every .correct permission is exempt" rule -- this
 # architecture test's whole point is to catch an accidentally-wrong
@@ -173,6 +179,8 @@ def test_every_tenant_scoped_mutation_route_is_gated_by_require_permission() -> 
 _NON_MANAGE_SUFFIX_EXEMPT_PATHS = {
     "/farms/{farm_id}/crop-batches/{batch_id}/transplants/{event_id}/correct",
     "/farms/{farm_id}/nursery/seedling/dispositions/{event_id}/correct",
+    "/farms/{farm_id}/leafy-production/dispositions/{event_id}/correct",
+    "/farms/{farm_id}/vines-production/dispositions/{event_id}/correct",
 }
 
 

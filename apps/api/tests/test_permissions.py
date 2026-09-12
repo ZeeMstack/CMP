@@ -31,7 +31,25 @@ every role's existing `packing.*` grant -- `farm_manager` gets
 `grading.read` only, never `grading.manage` (same pattern as its existing
 `packing.read`-without-`packing.manage` grant; see
 app/core/permissions.py's `GRADING_MANAGE` comment for the full
-rationale). Catalog size 62 -> 64."""
+rationale). Catalog size 62 -> 64.
+
+PILOT-BLOCKER-006 (F29 policy-test reconciliation): PLANNING-OPS-001
+activated `planning.read`/`planning.manage` in app/core/permissions.py
+(the real Production Requirements/Seeding Program routes in
+app/api/planning.py have gated on them since that ticket -- confirmed via
+`require_permission(Permission.PLANNING_READ/MANAGE)` on every GET/POST
+route there) but this pin was never updated to match, leaving 5 exact-set
+assertions and 5 count assertions failing on stale expectations. Reconciled
+here to the actual, already-shipped policy -- CODE was correct; TESTS were
+stale. Granted: `planning.read` to farm_manager, head_grower,
+production_supervisor, auditor, and read_only (the same five roles that
+already carry broad agronomic/oversight/compliance read visibility);
+`planning.manage`
+additionally to farm_manager and head_grower only (the two roles that
+already own agronomic master-data/infrastructure authority) -- mirrors
+this catalog's own established "read broadly, manage narrowly" pattern
+used throughout. No role was broadened beyond what app/core/permissions.py
+already granted; no permission was added or removed."""
 
 import uuid
 
@@ -107,6 +125,10 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ, Permission.RECALL_MANAGE,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): farm_manager
+        # has full planning authority alongside its existing infrastructure/
+        # master-data ownership.
+        Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
     }),
     "head_grower": frozenset({
         Permission.FARM_READ,
@@ -132,6 +154,11 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): head_grower
+        # owns crop demand planning and the Seeding Program, the same
+        # agronomic-planning tier as its existing crop/workflow/batch-
+        # lifecycle authority above.
+        Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
     }),
     "production_supervisor": frozenset({
         Permission.FARM_READ,
@@ -157,6 +184,12 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): read-only
+        # visibility into the Seeding Program (which plan line an
+        # execution-floor Sowing is meant to fulfill) -- no
+        # planning.manage, matching this role's "no master-data
+        # configuration" ceiling.
+        Permission.PLANNING_READ,
     }),
     "operator": frozenset({
         Permission.FARM_READ,
@@ -313,6 +346,10 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): broad read
+        # visibility extends to the Planning module too, matching this
+        # role's "every `.read` permission" character -- zero `.manage`.
+        Permission.PLANNING_READ,
     }),
     "read_only": frozenset({
         Permission.FARM_READ,
@@ -340,6 +377,10 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): identical to
+        # `auditor`'s own addition above, by the same "zero mutations"
+        # design.
+        Permission.PLANNING_READ,
     }),
 }
 
@@ -349,9 +390,12 @@ _EXPECTED_COUNTS = {
     # (see the "previously untranscribed" comments above).
     # POSTHARVEST-OPS-001: +1 grading.read for every role that already held
     # packing.read; packing_supervisor gets +2 (also grading.manage).
-    "farm_manager": 43, "head_grower": 31, "production_supervisor": 31, "operator": 21,
+    # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): +2
+    # (planning.read + planning.manage) for farm_manager/head_grower, +1
+    # (planning.read only) for production_supervisor/auditor/read_only.
+    "farm_manager": 45, "head_grower": 33, "production_supervisor": 32, "operator": 21,
     "storekeeper": 20, "qc_officer": 26, "packing_supervisor": 18, "cold_store_supervisor": 16,
-    "dispatch_officer": 16, "auditor": 25, "read_only": 25,
+    "dispatch_officer": 16, "auditor": 26, "read_only": 26,
 }
 
 

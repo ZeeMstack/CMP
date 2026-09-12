@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("CropBatchDetailPage Sowing tab", () => {
-  it("shows Seed Lot, Seeding Station, total seeds, and tray codes -- with no Germination claims", async () => {
+  it("shows Seed Lot, Seeding Station, total seeds, and tray codes -- with only the PILOT-UX-001 Germination handoff link, no Germination outcome claims", async () => {
     stubFetch();
     render(withQueryClient(<CropBatchDetailPage />));
 
@@ -95,7 +95,14 @@ describe("CropBatchDetailPage Sowing tab", () => {
     expect(screen.getByText("400")).toBeInTheDocument();
     expect(screen.getByText("ST-0001")).toBeInTheDocument();
     expect(screen.getByText("ST-0002")).toBeInTheDocument();
-    expect(screen.queryByText(/germinat/i)).not.toBeInTheDocument();
+    // PILOT-UX-001 intentionally added a process-continuity handoff into the
+    // Germination page -- the only "germinat" text allowed here is that
+    // navigational link, never a biological Germination outcome claim.
+    expect(screen.getAllByText(/germinat/i)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /move to germination/i })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/nursery/germination?batchId=batch-1&openAction=tray",
+    );
   });
 
   it("shows an honest empty state when the batch has no Sowing record", async () => {

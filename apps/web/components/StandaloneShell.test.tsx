@@ -6,10 +6,16 @@ import { withQueryClient } from "@/lib/test-utils";
 import { StandaloneShell } from "./StandaloneShell";
 
 describe("StandaloneShell", () => {
-  it("shows the GrowCMP product brand and tagline, not a fabricated tenant/farm name", async () => {
+  it("shows the growCMP Waterline wordmark, not a fabricated tenant/farm name", async () => {
     render(withQueryClient(<StandaloneShell>content</StandaloneShell>));
-    await waitFor(() => expect(screen.getByText("GrowCMP")).toBeInTheDocument());
-    expect(screen.getByText("Crop Management Platform")).toBeInTheDocument();
+    // PILOT-UX-001A2-R2 (WaterlineWordmark): the wordmark is two styled
+    // spans, "grow" (Canopy) + "CMP" (Deepwater), with no separate tagline
+    // element -- the old "GrowCMP" single-text-node + "Crop Management
+    // Platform" tagline this test originally asserted predates that
+    // rebrand.
+    await waitFor(() => expect(screen.getByText("grow")).toBeInTheDocument());
+    expect(screen.getByText("CMP")).toBeInTheDocument();
+    expect(screen.queryByText("Crop Management Platform")).not.toBeInTheDocument();
     expect(screen.queryByText("ImperialFarms CMP")).not.toBeInTheDocument();
   });
 

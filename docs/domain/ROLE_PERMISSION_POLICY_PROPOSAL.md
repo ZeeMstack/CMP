@@ -562,4 +562,21 @@ Grants activated directly by this ticket (not merely proposed):
 Updated grant totals (on top of the CARRIER-CONFIG-001 addendum totals above): TA **+2**, FM **+1** (`grading.read`), QC **+1**, PK **+2** (`grading.read` + `grading.manage`), CS **+1**, DO **+1**, AU **+1**, RO **+1** — HG/PS/OP/SK unchanged. `tests/test_permissions.py`'s `EXPECTED_ROLE_GRANTS`/`_EXPECTED_COUNTS` pin was updated to match in the same change.
 
 This addendum does not otherwise alter Matrix A/B, does not reopen any §13 gap, and does not change any `packing.*` grant.
+
+## 16. PLANNING-OPS-001 addendum — `planning.read` / `planning.manage` (documented by PILOT-BLOCKER-006/F29 reconciliation)
+
+PLANNING-OPS-001 (implementation ticket, post-dates AUTHZ-002B2) added the Planning module (Production Requirements and the Seeding Program, `app/api/planning.py`) and, with it, a single new permission pair — deliberately never split per-entity, since both are edited by the same planner role and neither has a materially different authority tier from the other. `planning.manage` is never confused with `sowing.manage`, which governs the real, physical Sowing command this module only links to.
+
+Grants activated directly by that ticket (not merely proposed) — confirmed live in `app/core/permissions.py` and gated correctly on every route in `app/api/planning.py` (every `GET` route depends on `require_permission(Permission.PLANNING_READ)`, every `POST` route on `require_permission(Permission.PLANNING_MANAGE)`):
+
+- **`planning.read`** — `farm_manager`, `head_grower`, `production_supervisor`, `auditor`, `read_only` (5 roles) — the same roles that already carry broad agronomic/oversight/compliance read visibility elsewhere in this matrix.
+- **`planning.manage`** — `farm_manager`, `head_grower` only — the two roles that already own agronomic master-data/infrastructure authority (mirrors this document's own established "read broadly, manage narrowly" pattern, e.g. `crop.manage`/`workflow.manage`).
+
+`tenant_admin` receives both automatically (holds every defined permission). `operator`, `storekeeper`, `qc_officer`, `packing_supervisor`, `cold_store_supervisor`, and `dispatch_officer` receive neither — planning is agronomic/oversight authority, not floor execution.
+
+**PILOT-BLOCKER-006/F29 note**: this grant was already live in `app/core/permissions.py` when this addendum was written — the implementation was never in question. What was stale was `tests/test_permissions.py`'s `EXPECTED_ROLE_GRANTS`/`_EXPECTED_COUNTS` pin, which PLANNING-OPS-001 never updated, leaving 5 exact-set assertions and 5 count assertions failing against this already-shipped policy. That test pin (and this addendum) are the fix — no permission was added, removed, or reassigned to any role.
+
+This document's running per-role "Updated grant totals" absolute counts (§14/§15) are not extended further here: they had already fallen out of sync with `app/core/permissions.py` before this ticket, independently of Planning, because the STORE-INV-001B/002A/002B/003/004 grants were never given their own addendum (see `tests/test_permissions.py`'s "previously untranscribed here" comments) — reconciling that pre-existing drift is outside PILOT-BLOCKER-006's scope. The authoritative current per-role counts are `tests/test_permissions.py::_EXPECTED_COUNTS` (mechanically asserted against `app/core/permissions.py` on every test run) and `test_tenant_admin_has_every_currently_defined_permission` for the full catalog size (67).
+
+This addendum does not otherwise alter Matrix A/B, does not reopen any §13 gap, and does not change any other domain's grant.
 - Is the design/policy record for the now-active Imperial Pilot policy, and remains the proposal artifact for whatever future, explicitly-scoped ticket takes on External Commercial V1 hardening.
