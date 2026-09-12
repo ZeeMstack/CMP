@@ -1,18 +1,22 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { ErrorState } from "@/components/ErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { QualityActionPanel } from "@/components/store-inventory/QualityActionPanel";
 import { Button } from "@/components/ui/Button";
-import type { QualityWorkQueueRowRead } from "@/lib/api/client";
+import type {
+  QualityDispositionCorrectionCreate, QualityDispositionCreate, QualityPartialCorrectionCreate,
+  QualityPartialDispositionCreate, QualityWorkQueueRowRead,
+} from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useApplyQualityDispositionToPartialQuantity, useCohortStorageBreakdown, useCorrectQualityDisposition,
   useCorrectQualityDispositionForPartialQuantity, useQualityWorkQueue, useRecordQualityDisposition,
 } from "@/lib/query/hooks";
+import { useQualityCommandDraft } from "@/lib/store-inventory/qualityCommandDraft";
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
@@ -30,47 +34,46 @@ const ORDINARY_ACTIONS: Record<string, string[]> = {
   REJECTED: [],
 };
 
-type Selection =
-  | { cohortId: string; kind: "ORDINARY"; disposition: string }
-  | { cohortId: string; kind: "PARTIAL" }
-  | { cohortId: string; kind: "CORRECT" }
-  | { cohortId: string; kind: "PARTIAL_CORRECT" };
-
 /** STORE-INV-002A.2: the Quality work queue -- Release / Hold / Reject /
  * Hold-Release, "Apply disposition to part of quantity" (never "Split
  * Cohort"), "Correct decision", and "Correct decision for part of
  * quantity" (CTO closure pass §3 -- e.g. un-rejecting part of a REJECTED
  * cohort; never exposed for the automatic opening RECEIVED_QUARANTINED
- * fact, and never for implicit RELEASED with no human decision yet). Every
- * correction command carries the row's own `current_event_id` as
- * `target_event_id`, sourced from this same work-queue read -- if the
- * decision has changed since the row was fetched, the backend rejects the
- * command as a stale-target conflict rather than silently reinterpreting
- * it (CTO closure pass §2). */
+ * fact, and never for implicit RELEASED with no human decision yet).
+ *
+ * PILOT-BLOCKER-005 F04/F05/F06: an ORDINARY (or PARTIAL) action never
+ * requires the row to already have a `current_event_id` -- implicit
+ * RELEASED material with no prior Quality event can still open its first
+ * Hold/Reject. A CORRECT/PARTIAL_CORRECT action instead captures
+ * `target_event_id` once, the moment it opens (`useQualityCommandDraft`),
+ * and that captured id remains authoritative for the whole life of the
+ * draft -- a later work-queue refetch never silently substitutes a newer
+ * event. If the backend rejects it as stale, the draft shows a conflict
+ * and requires the operator to deliberately close and reopen a fresh
+ * action; it never auto-retargets. */
 export default function StoreInventoryQualityPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const queueQuery = useQualityWorkQueue();
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
+  const draft = useQualityCommandDraft();
 
   const dispositionMutation = useRecordQualityDisposition();
   const partialMutation = useApplyQualityDispositionToPartialQuantity();
   const correctMutation = useCorrectQualityDisposition();
   const partialCorrectMutation = useCorrectQualityDispositionForPartialQuantity();
-  // STORE-INV-002B: eligible physical buckets for the currently-selected
+  // STORE-INV-002B: eligible physical buckets for the currently-open
   // PARTIAL/PARTIAL_CORRECT action only -- undefined (disabled) otherwise.
-  const bucketsQuery = useCohortStorageBreakdown(
-    selection?.kind === "PARTIAL" || selection?.kind === "PARTIAL_CORRECT" ? selection.cohortId : undefined,
-  );
+  const bucketsCohortId =
+    draft.context?.kind === "PARTIAL" || draft.context?.kind === "PARTIAL_CORRECT" ? draft.context.cohortId : undefined;
+  const bucketsQuery = useCohortStorageBreakdown(bucketsCohortId);
 
   const rows = [...(queueQuery.data ?? [])].sort(
     (a, b) => new Date(b.receipt_received_at).getTime() - new Date(a.receipt_received_at).getTime(),
   );
-
-  function close() {
-    setSelection(null);
-    setError(null);
-  }
+  // F08: a background refetch failure must never be presented as "nothing
+  // needs attention" -- `data` (react-query) is retained across a failed
+  // refetch, so an error alongside existing rows means "stale, refresh
+  // failed", never "empty".
+  const hasQueueData = queueQuery.data !== undefined;
 
   return (
     <div>
@@ -90,182 +93,228 @@ export default function StoreInventoryQualityPage() {
 
       {queueQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>
+      ) : queueQuery.isError && !hasQueueData ? (
+        <ErrorState error={queueQuery.error} onRetry={() => queueQuery.refetch()} />
       ) : rows.length === 0 ? (
         <p className="text-sm text-wl-text">Nothing currently needs Quality attention.</p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {rows.map((row: QualityWorkQueueRowRead) => {
-            const actions = ORDINARY_ACTIONS[row.current_state] ?? [];
-            // A human decision to correct only exists once at least one
-            // event has been recorded -- implicit RELEASED (zero events)
-            // has nothing to correct, exactly like RECEIVED_QUARANTINED.
-            const canCorrect = row.current_event_id !== null && row.current_state !== "RECEIVED_QUARANTINED";
-            const isRestrictedNow = selection?.cohortId === row.inventory_quantity_cohort_id;
-            return (
-              <li key={row.inventory_quantity_cohort_id} className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-wl-text">{row.item_name}</p>
-                    <p className="text-xs text-wl-text-tertiary">
-                      {row.balance} · {row.current_state}
-                      {row.manufacturer_lot_reference ? ` · Lot ${row.manufacturer_lot_reference}` : ""}
-                      {row.expiry_date ? ` · Expires ${row.expiry_date}` : ""}
-                      {` · Receipt ${row.receipt_code}`}
-                      {` · Received at Farm ${row.received_at_farm_id.slice(0, 8)}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1.5">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      {actions.map((disposition) => (
-                        <Button
-                          key={disposition}
-                          type="button"
-                          variant="secondary"
-                          onClick={() => {
-                            setError(null);
-                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "ORDINARY", disposition });
-                          }}
-                        >
-                          {disposition === "RELEASED" ? "Release"
-                            : disposition === "HELD" ? "Hold"
-                            : disposition === "REJECTED" ? "Reject"
-                            : "Hold Release"}
-                        </Button>
-                      ))}
+        <>
+          {queueQuery.isError && (
+            <p className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-wl-border-strong bg-wl-flag-bg px-3 py-2 text-xs text-wl-flag-fg">
+              Could not refresh the Quality queue -- showing the last known data.
+              <button type="button" className="font-medium underline" onClick={() => queueQuery.refetch()}>
+                Retry
+              </button>
+            </p>
+          )}
+          <ul className="flex flex-col gap-3">
+            {rows.map((row: QualityWorkQueueRowRead) => {
+              const actions = ORDINARY_ACTIONS[row.current_state] ?? [];
+              // A human decision to correct only exists once at least one
+              // event has been recorded -- implicit RELEASED (zero events)
+              // has nothing to correct, exactly like RECEIVED_QUARANTINED.
+              const canCorrect = row.current_event_id !== null && row.current_state !== "RECEIVED_QUARANTINED";
+              const isOpenForThisRow = draft.context?.cohortId === row.inventory_quantity_cohort_id;
+              return (
+                <li key={row.inventory_quantity_cohort_id} className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-wl-text">{row.item_name}</p>
+                      <p className="text-xs text-wl-text-tertiary">
+                        {row.balance} · {row.current_state}
+                        {row.manufacturer_lot_reference ? ` · Lot ${row.manufacturer_lot_reference}` : ""}
+                        {row.expiry_date ? ` · Expires ${row.expiry_date}` : ""}
+                        {` · Receipt ${row.receipt_code}`}
+                        {` · Received at Farm ${row.received_at_farm_id.slice(0, 8)}`}
+                      </p>
                     </div>
-                    {/* Exception-path actions (part-of-quantity / decision
-                        corrections) are deliberately lighter-weight than the
-                        ordinary dispositions above -- these are the uncommon
-                        case, not competing equally for attention. */}
-                    <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
-                      {actions.length > 0 && (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
-                          onClick={() => {
-                            setError(null);
-                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL" });
-                          }}
-                        >
-                          Apply to part of quantity
-                        </button>
-                      )}
-                      {canCorrect && (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
-                          onClick={() => {
-                            setError(null);
-                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "CORRECT" });
-                          }}
-                        >
-                          Correct decision
-                        </button>
-                      )}
-                      {canCorrect && (
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
-                          onClick={() => {
-                            setError(null);
-                            setSelection({ cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL_CORRECT" });
-                          }}
-                        >
-                          Correct decision for part of quantity
-                        </button>
-                      )}
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {actions.map((disposition) => (
+                          <Button
+                            key={disposition}
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              draft.open({
+                                cohortId: row.inventory_quantity_cohort_id, kind: "ORDINARY", targetEventId: null,
+                                observedState: row.current_state, disposition,
+                              });
+                            }}
+                          >
+                            {disposition === "RELEASED" ? "Release"
+                              : disposition === "HELD" ? "Hold"
+                              : disposition === "REJECTED" ? "Reject"
+                              : "Hold Release"}
+                          </Button>
+                        ))}
+                      </div>
+                      {/* Exception-path actions (part-of-quantity / decision
+                          corrections) are deliberately lighter-weight than the
+                          ordinary dispositions above -- these are the uncommon
+                          case, not competing equally for attention. */}
+                      <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                        {actions.length > 0 && (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            onClick={() => {
+                              draft.open({
+                                cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL", targetEventId: null,
+                                observedState: row.current_state,
+                              });
+                            }}
+                          >
+                            Apply to part of quantity
+                          </button>
+                        )}
+                        {canCorrect && (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            onClick={() => {
+                              // F06: captured once, now, from this row --
+                              // never re-read from a later refetch.
+                              draft.open({
+                                cohortId: row.inventory_quantity_cohort_id, kind: "CORRECT",
+                                targetEventId: row.current_event_id, observedState: row.current_state,
+                              });
+                            }}
+                          >
+                            Correct decision
+                          </button>
+                        )}
+                        {canCorrect && (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            onClick={() => {
+                              draft.open({
+                                cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL_CORRECT",
+                                targetEventId: row.current_event_id, observedState: row.current_state,
+                              });
+                            }}
+                          >
+                            Correct decision for part of quantity
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {isRestrictedNow && selection && row.current_event_id && (
-                  <div className="mt-3">
-                    <QualityActionPanel
-                      row={row}
-                      kind={selection.kind}
-                      disposition={selection.kind === "ORDINARY" ? selection.disposition : undefined}
-                      legalReplacements={
-                        selection.kind === "PARTIAL" ? actions
-                          : selection.kind === "CORRECT" ? ["RELEASED", "HELD", "REJECTED", "HOLD_RELEASED"]
-                          : undefined
-                      }
-                      buckets={
-                        selection.kind === "PARTIAL" || selection.kind === "PARTIAL_CORRECT"
-                          ? bucketsQuery.data?.buckets
-                          : undefined
-                      }
-                      isSubmitting={
-                        dispositionMutation.isPending || partialMutation.isPending || correctMutation.isPending ||
-                        partialCorrectMutation.isPending
-                      }
-                      serverError={error}
-                      onCancel={close}
-                      onSubmitOrdinary={({ reason, effectiveTime }) => {
-                        if (selection.kind !== "ORDINARY") return;
-                        setError(null);
-                        dispositionMutation.mutate(
-                          {
-                            client_command_id: crypto.randomUUID(),
+                  {isOpenForThisRow && draft.context && (
+                    <div className="mt-3">
+                      <QualityActionPanel
+                        row={row}
+                        kind={draft.context.kind}
+                        disposition={draft.context.kind === "ORDINARY" ? draft.context.disposition : undefined}
+                        legalReplacements={
+                          draft.context.kind === "PARTIAL" ? actions
+                            : draft.context.kind === "CORRECT" ? ["RELEASED", "HELD", "REJECTED", "HOLD_RELEASED"]
+                            : undefined
+                        }
+                        buckets={
+                          draft.context.kind === "PARTIAL" || draft.context.kind === "PARTIAL_CORRECT"
+                            ? bucketsQuery.data?.buckets
+                            : undefined
+                        }
+                        bucketsError={
+                          (draft.context.kind === "PARTIAL" || draft.context.kind === "PARTIAL_CORRECT") && bucketsQuery.isError
+                            ? asAppError(bucketsQuery.error)
+                            : null
+                        }
+                        onRetryBuckets={() => bucketsQuery.refetch()}
+                        isSubmitting={
+                          dispositionMutation.isPending || partialMutation.isPending || correctMutation.isPending ||
+                          partialCorrectMutation.isPending
+                        }
+                        serverError={draft.error}
+                        commandOutcome={draft.outcome}
+                        onCancel={draft.close}
+                        onRetry={() => {
+                          const context = draft.context;
+                          if (!context) return;
+                          const frozen = draft.retry();
+                          if (!frozen) return;
+                          const variables = { farmId: row.received_at_farm_id, itemId: row.inventory_item_id };
+                          if (context.kind === "ORDINARY") {
+                            dispositionMutation.mutate(
+                              { payload: frozen as QualityDispositionCreate, ...variables },
+                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            );
+                          } else if (context.kind === "PARTIAL") {
+                            partialMutation.mutate(
+                              { payload: frozen as QualityPartialDispositionCreate, ...variables },
+                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            );
+                          } else if (context.kind === "CORRECT") {
+                            correctMutation.mutate(
+                              { payload: frozen as QualityDispositionCorrectionCreate, ...variables },
+                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            );
+                          } else {
+                            partialCorrectMutation.mutate(
+                              { payload: frozen as QualityPartialCorrectionCreate, ...variables },
+                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            );
+                          }
+                        }}
+                        onSubmitOrdinary={({ reason, effectiveTime }) => {
+                          if (draft.context?.kind !== "ORDINARY") return;
+                          const payload = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
-                            disposition: selection.disposition,
-                            effective_time: effectiveTime,
+                            disposition: draft.context.disposition, effective_time: effectiveTime,
                             reason: reason.trim() || null,
-                          },
-                          { onSuccess: close, onError: (err) => setError(asAppError(err)) },
-                        );
-                      }}
-                      onSubmitPartial={({ quantity, disposition, reason, effectiveTime, custodyLocationId }) => {
-                        setError(null);
-                        partialMutation.mutate(
-                          {
-                            client_command_id: crypto.randomUUID(),
-                            inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
-                            quantity,
-                            disposition,
-                            effective_time: effectiveTime,
-                            reason: reason.trim() || null,
+                          }) as QualityDispositionCreate;
+                          dispositionMutation.mutate(
+                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                          );
+                        }}
+                        onSubmitPartial={({ quantity, disposition, reason, effectiveTime, custodyLocationId }) => {
+                          const payload = draft.submit({
+                            inventory_quantity_cohort_id: row.inventory_quantity_cohort_id, quantity, disposition,
+                            effective_time: effectiveTime, reason: reason.trim() || null,
                             custody_location_id: custodyLocationId,
-                          },
-                          { onSuccess: close, onError: (err) => setError(asAppError(err)) },
-                        );
-                      }}
-                      onSubmitCorrect={({ reason, replacementDisposition, effectiveTime }) => {
-                        setError(null);
-                        correctMutation.mutate(
-                          {
-                            client_command_id: crypto.randomUUID(),
+                          }) as QualityPartialDispositionCreate;
+                          partialMutation.mutate(
+                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                          );
+                        }}
+                        onSubmitCorrect={({ reason, replacementDisposition, effectiveTime }) => {
+                          if (draft.context?.kind !== "CORRECT" || !draft.context.targetEventId) return;
+                          const payload = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
-                            target_event_id: row.current_event_id as string,
-                            reason,
-                            replacement_disposition: replacementDisposition,
-                            effective_time: effectiveTime,
-                          },
-                          { onSuccess: close, onError: (err) => setError(asAppError(err)) },
-                        );
-                      }}
-                      onSubmitPartialCorrect={({ quantity, correctedDisposition, reason, effectiveTime, custodyLocationId }) => {
-                        setError(null);
-                        partialCorrectMutation.mutate(
-                          {
-                            client_command_id: crypto.randomUUID(),
+                            target_event_id: draft.context.targetEventId, reason,
+                            replacement_disposition: replacementDisposition, effective_time: effectiveTime,
+                          }) as QualityDispositionCorrectionCreate;
+                          correctMutation.mutate(
+                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                          );
+                        }}
+                        onSubmitPartialCorrect={({ quantity, correctedDisposition, reason, effectiveTime, custodyLocationId }) => {
+                          if (draft.context?.kind !== "PARTIAL_CORRECT" || !draft.context.targetEventId) return;
+                          const payload = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
-                            target_event_id: row.current_event_id as string,
-                            quantity,
-                            corrected_disposition: correctedDisposition,
-                            reason,
-                            effective_time: effectiveTime,
+                            target_event_id: draft.context.targetEventId, quantity,
+                            corrected_disposition: correctedDisposition, reason, effective_time: effectiveTime,
                             custody_location_id: custodyLocationId,
-                          },
-                          { onSuccess: close, onError: (err) => setError(asAppError(err)) },
-                        );
-                      }}
-                    />
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                          }) as QualityPartialCorrectionCreate;
+                          partialCorrectMutation.mutate(
+                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                          );
+                        }}
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );

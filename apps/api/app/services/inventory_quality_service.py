@@ -30,7 +30,7 @@ inserting."""
 
 import hashlib
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -50,6 +50,7 @@ from app.services.audit import append_audit_event
 from app.services.errors import (
     IneligibleStorageBinError,
     InvalidQualityDispositionTransitionError,
+    InvalidQualityEffectiveTimeError,
     InventoryQuantityCohortSplitAllocationExceedsBalanceError,
     QualityCorrectionCommandReusedWithDifferentPayloadError,
     QualityCorrectionTargetNotCurrentError,
@@ -95,6 +96,52 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
 
 def _legal_next_dispositions(current_state: str) -> frozenset[str]:
     return _TRANSITIONS.get(current_state, frozenset())
+
+
+# --- Chronology integrity (PILOT-BLOCKER-005 F07) ---------------------------
+
+# The Quality UI itself never needs any allowance here: its effective_time
+# field defaults to the operator's local clock truncated DOWN to the minute
+# at the moment the action panel opens (never recomputed at submit), so a
+# submission built from the untouched default is always <= that operator's
+# own "now". The only real source of an apparent future timestamp is
+# ordinary, unavoidable clock disagreement between an operator's device and
+# this server (ONE relevant device may not be NTP-synced) -- this tiny,
+# fixed allowance absorbs exactly that and nothing more. It is deliberately
+# far too small to serve as a "schedule this for later" mechanism: there is
+# no scheduled-future-disposition feature, an operator cannot use this
+# window to pre-arrange a Hold/Release, and any attempt to backdate/postdate
+# beyond it is rejected outright.
+_EFFECTIVE_TIME_FUTURE_TOLERANCE = timedelta(seconds=30)
+
+
+def _require_tz_aware_effective_time(effective_time: datetime) -> None:
+    """Every Quality effective timestamp must be timezone-aware -- a naive
+    datetime is inherently ambiguous chronology (docs/domain/
+    STORE_INVENTORY_MODEL.md §11 / PILOT-BLOCKER-005 F07 rule 1). Applies to
+    ordinary dispositions AND corrections alike."""
+    if effective_time.tzinfo is None or effective_time.utcoffset() is None:
+        raise InvalidQualityEffectiveTimeError("effective_time must be timezone-aware")
+
+
+def _validate_ordinary_effective_time(
+    *, effective_time: datetime, current_event: QualityDispositionEvent | None,
+) -> None:
+    """ORDINARY (non-correction) chronology rules only (F07 rules 2-3):
+    reject a materially future effective time, and reject one that precedes
+    the cohort's currently effective Quality decision -- an equal
+    `effective_time` remains legal (rule 4); existing `(effective_time,
+    recorded_time, id)` ordering already resolves the later command as
+    current. Corrections are explicit target-based operations and never run
+    through this function (rule 5)."""
+    _require_tz_aware_effective_time(effective_time)
+    now = datetime.now(effective_time.tzinfo)
+    if effective_time > now + _EFFECTIVE_TIME_FUTURE_TOLERANCE:
+        raise InvalidQualityEffectiveTimeError("effective_time must not be in the future")
+    if current_event is not None and effective_time < current_event.effective_time:
+        raise InvalidQualityEffectiveTimeError(
+            "effective_time cannot precede the cohort's currently effective Quality decision"
+        )
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -343,11 +390,13 @@ def record_quality_disposition(
     if replay is not None:
         return replay
 
-    current_state = resolve_current_state(db, tenant_id=tenant_id, cohort_id=cohort.id)
+    current_event = resolve_current_event(db, tenant_id=tenant_id, cohort_id=cohort.id)
+    current_state = current_event.event_kind if current_event is not None else "RELEASED"
     if disposition not in _legal_next_dispositions(current_state):
         raise InvalidQualityDispositionTransitionError(
             f"cannot transition this cohort from {current_state} to {disposition}"
         )
+    _validate_ordinary_effective_time(effective_time=effective_time, current_event=current_event)
 
     _enforce_segregation_of_duties(
         db, tenant_id=tenant_id, cohort=cohort, actor_user_id=actor_user_id, resulting_state=disposition
@@ -399,6 +448,10 @@ def correct_quality_disposition(
         raise InvalidQualityDispositionTransitionError(
             f"{replacement_disposition!r} is not a valid replacement disposition"
         )
+    # F07 rule 1 only -- corrections remain explicit target-based operations
+    # and are never subject to the future/ordering checks (see
+    # InvalidQualityEffectiveTimeError's docstring).
+    _require_tz_aware_effective_time(effective_time)
 
     fingerprint = _compute_correction_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, cohort_id=cohort_id, target_event_id=target_event_id,
@@ -559,11 +612,13 @@ def apply_quality_disposition_to_partial_quantity(
     if replay is not None:
         return replay
 
-    current_state = resolve_current_state(db, tenant_id=tenant_id, cohort_id=source.id)
+    source_current_event = resolve_current_event(db, tenant_id=tenant_id, cohort_id=source.id)
+    current_state = source_current_event.event_kind if source_current_event is not None else "RELEASED"
     if disposition not in _legal_next_dispositions(current_state):
         raise InvalidQualityDispositionTransitionError(
             f"cannot transition this cohort from {current_state} to {disposition}"
         )
+    _validate_ordinary_effective_time(effective_time=effective_time, current_event=source_current_event)
 
     _enforce_segregation_of_duties(
         db, tenant_id=tenant_id, cohort=source, actor_user_id=actor_user_id, resulting_state=disposition
@@ -661,6 +716,8 @@ def correct_quality_disposition_for_partial_quantity(
         raise InvalidQualityDispositionTransitionError(f"{corrected_disposition!r} is not a valid disposition")
     if quantity <= 0:
         raise InventoryQuantityCohortSplitAllocationExceedsBalanceError("quantity must be positive")
+    # F07 rule 1 only -- see correct_quality_disposition's own comment.
+    _require_tz_aware_effective_time(effective_time)
 
     fingerprint = _compute_partial_correction_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, source_cohort_id=source_cohort_id,

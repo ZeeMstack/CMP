@@ -12,7 +12,7 @@ that even a hand-crafted SQL statement (or a hypothetical future service
 bug) cannot slip a stale/wrong-cohort/automatic target past the DB
 layer."""
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -174,6 +174,15 @@ def test_direct_sql_partial_correct_targeting_stale_event_rejected(db_session, a
         db_session, oidc_issuer="https://issuer.example", oidc_subject=f"stale-{uuid.uuid4().hex[:8]}",
         email=f"stale-{uuid.uuid4().hex[:8]}@example.com", display_name="Stale Test User",
     )
+    # PILOT-BLOCKER-005 F07: NOT anchored in the past -- the receipt above
+    # already opened RECEIVED_QUARANTINED at real "now", and an ordinary
+    # disposition can never precede the cohort's currently effective
+    # decision, so RELEASED must be at/after that same real "now". Two
+    # freshly-captured, sequential `datetime.now(timezone.utc)` calls (no
+    # artificial offset) are enough for HELD to land later than RELEASED --
+    # the same pattern already relied on elsewhere (e.g.
+    # test_store_inv_003_reservation.py's sequential `_now()` calls); ties
+    # would still resolve correctly via `recorded_time`/`id` (rule 4).
     released = inventory_quality_service.record_quality_disposition(
         db_session, tenant_id=tenant.id, actor_user_id=other.id, client_command_id=uuid.uuid4(),
         cohort_id=cohort_id, disposition="RELEASED", effective_time=datetime.now(timezone.utc),
@@ -181,7 +190,7 @@ def test_direct_sql_partial_correct_targeting_stale_event_rejected(db_session, a
     # A later decision supersedes it -- `released` is now stale.
     inventory_quality_service.record_quality_disposition(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        cohort_id=cohort_id, disposition="HELD", effective_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+        cohort_id=cohort_id, disposition="HELD", effective_time=datetime.now(timezone.utc),
     )
 
     with pytest.raises(DBAPIError, match="not the current disposition event"):
@@ -273,13 +282,16 @@ def test_direct_sql_correct_stale_target_rejected_independently(db_session, acti
         db_session, oidc_issuer="https://issuer.example", oidc_subject=f"correct-stale-{uuid.uuid4().hex[:8]}",
         email=f"correct-stale-{uuid.uuid4().hex[:8]}@example.com", display_name="Correct Stale Test User",
     )
+    # PILOT-BLOCKER-005 F07: see the identical comment on the (A) test above
+    # -- must NOT be anchored in the past (the receipt already opened
+    # RECEIVED_QUARANTINED at real "now").
     released = inventory_quality_service.record_quality_disposition(
         db_session, tenant_id=tenant.id, actor_user_id=other.id, client_command_id=uuid.uuid4(),
         cohort_id=cohort_id, disposition="RELEASED", effective_time=datetime.now(timezone.utc),
     )
     inventory_quality_service.record_quality_disposition(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
-        cohort_id=cohort_id, disposition="HELD", effective_time=datetime.now(timezone.utc) + timedelta(minutes=1),
+        cohort_id=cohort_id, disposition="HELD", effective_time=datetime.now(timezone.utc),
     )
 
     with pytest.raises(DBAPIError, match="not the current disposition event"):

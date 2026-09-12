@@ -1940,6 +1940,21 @@ class InvalidQualityDispositionTransitionError(DomainError):
         self.reason = reason
 
 
+class InvalidQualityEffectiveTimeError(DomainError):
+    """Raised when a Quality command's `effective_time` fails the minimum
+    chronology integrity rules (PILOT-BLOCKER-005 F07): naive (not
+    timezone-aware), materially in the future for an ORDINARY disposition,
+    or earlier than the cohort's currently effective Quality decision for an
+    ORDINARY disposition. Corrections are explicit target-based operations
+    (docs/domain/STORE_INVENTORY_MODEL.md §11) and are only held to the
+    timezone-aware requirement here -- never to the future/ordering checks,
+    which would redefine correction semantics beyond this ticket's scope."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class QualitySegregationOfDutiesError(DomainError):
     """Raised when an action whose net resulting state is usable
     (`RELEASED`/`HOLD_RELEASED`) is attempted by the same user who received
