@@ -58,8 +58,8 @@ export function PackingInputLineRow({
   }, [balanceQuery.data, index, setValue]);
 
   return (
-    <li className="rounded-md border border-border-subtle p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <li className="grid grid-cols-1 items-start gap-2 border-b border-border-subtle py-2 last:border-b-0 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="flex flex-col gap-1">
         <span className="text-sm font-semibold text-ink">{lot.code}</span>
         <span className="text-xs text-ink-muted">
           Available{" "}
@@ -70,36 +70,36 @@ export function PackingInputLineRow({
             : "Loading…"}
         </span>
       </div>
-      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Consumed weight (kg)</span>
+        <input
+          type="number" min={0.001} step={0.001} className={inputClass}
+          {...register(`input_lines.${index}.consumed_weight_kg`, { valueAsNumber: true })}
+        />
+        {rowErrors?.consumed_weight_kg && <span className={errorClass}>{rowErrors.consumed_weight_kg.message}</span>}
+      </label>
+      {countMode && (
         <label className="flex flex-col gap-1">
-          <span className={labelClass}>Consumed weight (kg)</span>
+          <span className={labelClass}>Consumed count</span>
           <input
-            type="number" min={0.001} step={0.001} className={inputClass}
-            {...register(`input_lines.${index}.consumed_weight_kg`, { valueAsNumber: true })}
+            type="number" min={1} step={1} className={inputClass}
+            {...register(`input_lines.${index}.consumed_whole_unit_count`, { valueAsNumber: true })}
           />
-          {rowErrors?.consumed_weight_kg && <span className={errorClass}>{rowErrors.consumed_weight_kg.message}</span>}
+          {rowErrors?.consumed_whole_unit_count && (
+            <span className={errorClass}>{rowErrors.consumed_whole_unit_count.message}</span>
+          )}
         </label>
-        {countMode && (
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>Consumed count</span>
-            <input
-              type="number" min={1} step={1} className={inputClass}
-              {...register(`input_lines.${index}.consumed_whole_unit_count`, { valueAsNumber: true })}
-            />
-            {rowErrors?.consumed_whole_unit_count && (
-              <span className={errorClass}>{rowErrors.consumed_whole_unit_count.message}</span>
-            )}
-          </label>
-        )}
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>Note (optional)</span>
-          <input className={inputClass} {...register(`input_lines.${index}.note`)} />
-        </label>
-      </div>
+      )}
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Note (optional)</span>
+        <input className={inputClass} {...register(`input_lines.${index}.note`)} />
+      </label>
       {removable && (
-        <Button type="button" variant="secondary" className="mt-2" onClick={onRemove}>
-          Remove Lot
-        </Button>
+        <div className="flex items-end">
+          <Button type="button" variant="secondary" onClick={onRemove}>
+            Remove
+          </Button>
+        </div>
       )}
     </li>
   );

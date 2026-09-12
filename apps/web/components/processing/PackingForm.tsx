@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { PackingInputLineRow } from "@/components/processing/PackingInputLineRow";
@@ -42,17 +42,28 @@ function nowDateAndTime() {
  * `LeafyHarvestForm`'s `plates` prop), one Pack Specification Version, one
  * Finished Goods Lot output, reconciliation against process loss/rejection.
  * Mirrors `GradingForm.tsx`'s configure -> review -> confirm shape and
- * idempotency-key discipline exactly. Remounted (via `key`) by the parent
- * whenever the selected input set changes. */
+ * idempotency-key discipline exactly.
+ *
+ * PILOT-UX-002C: no longer remounted when the selected input set changes
+ * (the parent used to pass `key={selectedIds.join(",")}`, which wiped the
+ * Pack Specification/Version, Finished Goods Lot code, package count and
+ * every already-edited consumed quantity on every add/remove). Instead this
+ * form stays mounted for the life of the draft and the effect below
+ * reconciles `input_lines` to the `lots` prop by id -- appending exactly one
+ * new row per newly-added Lot and removing exactly the rows for Lots no
+ * longer selected -- so every unaffected row and every top-level field
+ * survives untouched. */
 export function PackingForm({
   farmId,
   lots,
+  onRemoveLot,
   onSubmit,
   isSubmitting,
   serverError,
 }: {
   farmId: string;
   lots: GradedProduceLotRead[];
+  onRemoveLot: (lotId: string) => void;
   onSubmit: (payload: PackingEventCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
@@ -96,7 +107,44 @@ export function PackingForm({
     },
     mode: "onBlur",
   });
-  const { fields } = useFieldArray({ control, name: "input_lines" });
+  const { fields, append, remove } = useFieldArray({ control, name: "input_lines" });
+  const lotIdsKey = lots.map((l) => l.id).join(",");
+
+  // Reconcile `input_lines` to the current `lots` prop by id, in place --
+  // never a full reset. Removals first (by index, high-to-low would also
+  // work but RHF's `remove` accepts the whole index array at once), then
+  // append exactly the Lots not already represented.
+  useEffect(() => {
+    const propIds = lots.map((l) => l.id);
+    const current = getValues("input_lines");
+    const removeIndices = current.reduce<number[]>((acc, line, idx) => {
+      if (!propIds.includes(line.graded_produce_lot_id)) acc.push(idx);
+      return acc;
+    }, []);
+    if (removeIndices.length > 0) remove(removeIndices);
+    const remainingIds = current
+      .filter((_, idx) => !removeIndices.includes(idx))
+      .map((line) => line.graded_produce_lot_id);
+    for (const lot of lots) {
+      if (remainingIds.includes(lot.id)) continue;
+      append({
+        graded_produce_lot_id: lot.id,
+        graded_produce_lot_code: lot.code,
+        available_weight_kg: 0,
+        available_whole_unit_count: null,
+        consumed_weight_kg: 0,
+        consumed_whole_unit_count: hasCounts ? 0 : undefined,
+        note: "",
+      });
+    }
+    // Keyed on the id set/order, not the `lots` array reference (a new
+    // reference on every parent render) or `hasCounts`/`getValues`/`append`/
+    // `remove` (stable across renders for a given `control`) -- this must
+    // run only when the actual selected Lots change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lotIdsKey]);
+
+  const lotById = useMemo(() => new Map(lots.map((lot) => [lot.id, lot])), [lots]);
 
   const [prevServerError, setPrevServerError] = useState(serverError);
   if (serverError !== prevServerError) {
@@ -228,113 +276,119 @@ export function PackingForm({
       <StepIndicator step="configure" />
       <h2 className="font-serif text-base font-semibold text-ink">Pack {lots.map((l) => l.code).join(", ")}</h2>
 
-      <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>Pack Specification</span>
-          <select
-            className={inputClass}
-            value={packSpecificationId}
-            onChange={(e) => {
-              setPackSpecificationId(e.target.value);
-              setValue("pack_specification_version_id", "");
-              setValue("pack_specification_label", "");
-            }}
-          >
-            <option value="">Select a Pack Specification…</option>
-            {(specsQuery.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {/* The error/hint below are deliberately siblings of the <label>,
-            not nested inside it -- see `GradingOutputRow`'s own identical
-            note (folding them into the select's accessible name is wrong
-            for assistive tech and breaks exact-match label queries). */}
-        <div className="flex flex-col gap-1">
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>Version</span>
-            <select
-              className={inputClass}
-              disabled={!packSpecificationId}
-              {...register("pack_specification_version_id", {
-                onChange: (e) => {
-                  const version = selectableVersions.find((v) => v.id === e.target.value);
-                  const specName = (specsQuery.data ?? []).find((s) => s.id === packSpecificationId)?.name ?? "";
-                  setValue(
-                    "pack_specification_label",
-                    version ? `${specName} v${version.version_number}` : "",
-                  );
-                },
-              })}
-            >
-              <option value="">{packSpecificationId ? "Select a version…" : "Select a specification first"}</option>
-              {selectableVersions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  v{v.version_number}
-                  {v.nominal_net_weight_kg ? ` — nominal ${v.nominal_net_weight_kg} kg` : ""}
-                  {v.whole_units_per_pack ? ` / ${v.whole_units_per_pack} units` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          {errors.pack_specification_version_id?.message && (
-            <span className={errorClass}>{errors.pack_specification_version_id.message}</span>
-          )}
-          {packSpecificationId && selectableVersions.length === 0 && (versionsQuery.data?.length ?? 0) > 0 && (
-            <span className="text-xs text-ink-muted">
-              No version of this Pack Specification is valid at the selected effective time.
-            </span>
-          )}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-ink">Input Graded Produce Lots</h3>
+          <ul className="flex flex-col gap-2">
+            {fields.map((field, index) => {
+              const lot = lotById.get(field.graded_produce_lot_id);
+              if (!lot) return null;
+              return (
+                <PackingInputLineRow
+                  key={field.id}
+                  farmId={farmId}
+                  lot={lot}
+                  index={index}
+                  register={register}
+                  setValue={setValue}
+                  watch={watch}
+                  errors={errors}
+                  onRemove={() => onRemoveLot(lot.id)}
+                  removable
+                />
+              );
+            })}
+          </ul>
+          {typeof errors.input_lines?.message === "string" && <p className={errorClass}>{errors.input_lines.message}</p>}
+          {errors.input_lines?.root && <p className={errorClass}>{errors.input_lines.root.message}</p>}
         </div>
-      </fieldset>
 
-      <div>
-        <h3 className="mb-2 text-sm font-semibold text-ink">Input Graded Produce Lots</h3>
-        <ul className="flex flex-col gap-3">
-          {fields.map((field, index) => (
-            <PackingInputLineRow
-              key={field.id}
-              farmId={farmId}
-              lot={lots[index]}
-              index={index}
-              register={register}
-              setValue={setValue}
-              watch={watch}
-              errors={errors}
-              onRemove={() => {
-                /* removal happens on the parent's picker, not here -- the
-                 * set of input Lots is owned by the parent page. */
-              }}
-              removable={false}
-            />
-          ))}
-        </ul>
-        {typeof errors.input_lines?.message === "string" && <p className={errorClass}>{errors.input_lines.message}</p>}
-        {errors.input_lines?.root && <p className={errorClass}>{errors.input_lines.root.message}</p>}
+        <div className="flex flex-col gap-3">
+          <h3 className="text-sm font-semibold text-ink">Packed Output</h3>
+          <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Pack Specification</span>
+              <select
+                className={inputClass}
+                value={packSpecificationId}
+                onChange={(e) => {
+                  setPackSpecificationId(e.target.value);
+                  setValue("pack_specification_version_id", "");
+                  setValue("pack_specification_label", "");
+                }}
+              >
+                <option value="">Select a Pack Specification…</option>
+                {(specsQuery.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* The error/hint below are deliberately siblings of the <label>,
+                not nested inside it -- see `GradingOutputRow`'s own identical
+                note (folding them into the select's accessible name is wrong
+                for assistive tech and breaks exact-match label queries). */}
+            <div className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
+                <span className={labelClass}>Version</span>
+                <select
+                  className={inputClass}
+                  disabled={!packSpecificationId}
+                  {...register("pack_specification_version_id", {
+                    onChange: (e) => {
+                      const version = selectableVersions.find((v) => v.id === e.target.value);
+                      const specName = (specsQuery.data ?? []).find((s) => s.id === packSpecificationId)?.name ?? "";
+                      setValue(
+                        "pack_specification_label",
+                        version ? `${specName} v${version.version_number}` : "",
+                      );
+                    },
+                  })}
+                >
+                  <option value="">{packSpecificationId ? "Select a version…" : "Select a specification first"}</option>
+                  {selectableVersions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      v{v.version_number}
+                      {v.nominal_net_weight_kg ? ` — nominal ${v.nominal_net_weight_kg} kg` : ""}
+                      {v.whole_units_per_pack ? ` / ${v.whole_units_per_pack} units` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {errors.pack_specification_version_id?.message && (
+                <span className={errorClass}>{errors.pack_specification_version_id.message}</span>
+              )}
+              {packSpecificationId && selectableVersions.length === 0 && (versionsQuery.data?.length ?? 0) > 0 && (
+                <span className="text-xs text-ink-muted">
+                  No version of this Pack Specification is valid at the selected effective time.
+                </span>
+              )}
+            </div>
+          </fieldset>
+
+          <fieldset className="grid grid-cols-2 gap-3">
+            <Field label="Finished Goods Lot code" error={errors.finished_goods_lot_code?.message}>
+              <input className={inputClass} {...register("finished_goods_lot_code")} />
+            </Field>
+            <Field label="Package count" error={errors.package_count?.message}>
+              <input type="number" min={1} step={1} className={inputClass} {...register("package_count", { valueAsNumber: true })} />
+            </Field>
+            <Field label="Packed output weight (kg)" error={errors.packed_output_weight_kg?.message}>
+              <input
+                type="number" min={0.001} step={0.001} className={inputClass}
+                {...register("packed_output_weight_kg", { valueAsNumber: true })}
+              />
+            </Field>
+            <Field label="Process loss (kg)" error={errors.process_loss_weight_kg?.message}>
+              <input type="number" min={0} step={0.001} className={inputClass} {...register("process_loss_weight_kg", { valueAsNumber: true })} />
+            </Field>
+            <Field label="Rejected (kg)" error={errors.rejected_weight_kg?.message}>
+              <input type="number" min={0} step={0.001} className={inputClass} {...register("rejected_weight_kg", { valueAsNumber: true })} />
+            </Field>
+          </fieldset>
+        </div>
       </div>
-
-      <fieldset className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Field label="Finished Goods Lot code" error={errors.finished_goods_lot_code?.message}>
-          <input className={inputClass} {...register("finished_goods_lot_code")} />
-        </Field>
-        <Field label="Package count" error={errors.package_count?.message}>
-          <input type="number" min={1} step={1} className={inputClass} {...register("package_count", { valueAsNumber: true })} />
-        </Field>
-        <Field label="Packed output weight (kg)" error={errors.packed_output_weight_kg?.message}>
-          <input
-            type="number" min={0.001} step={0.001} className={inputClass}
-            {...register("packed_output_weight_kg", { valueAsNumber: true })}
-          />
-        </Field>
-        <Field label="Process loss (kg)" error={errors.process_loss_weight_kg?.message}>
-          <input type="number" min={0} step={0.001} className={inputClass} {...register("process_loss_weight_kg", { valueAsNumber: true })} />
-        </Field>
-        <Field label="Rejected (kg)" error={errors.rejected_weight_kg?.message}>
-          <input type="number" min={0} step={0.001} className={inputClass} {...register("rejected_weight_kg", { valueAsNumber: true })} />
-        </Field>
-      </fieldset>
 
       <ReconciliationSummary
         inputLabel="Total consumed input"

@@ -5,8 +5,10 @@ import { withQueryClient } from "@/lib/test-utils";
 
 import PackingPage from "./page";
 
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => mockSearchParams,
 }));
 
 function jsonResponse(body: unknown, status = 200) {
@@ -134,6 +136,7 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  mockSearchParams = new URLSearchParams();
 });
 
 async function addGplToPacking(code: string) {
@@ -141,10 +144,9 @@ async function addGplToPacking(code: string) {
   const row = screen.getByText(code).closest("li") as HTMLElement;
   await waitFor(() => expect(within(row).getByRole("button", { name: /add to packing/i })).toBeEnabled());
   fireEvent.click(within(row).getByRole("button", { name: /add to packing/i }));
-  // `PackingForm` is remounted (via `key={selectedIds.join(",")}`) whenever
-  // the selected set changes -- wait for that settled form before the
-  // caller interacts with it, or a query against the about-to-be-replaced
-  // instance can race the remount.
+  // PILOT-UX-002C: `PackingForm` no longer remounts on add/remove -- it
+  // reconciles its own `input_lines` in place -- so this just waits for
+  // that reconciliation's render to settle rather than for a remount.
   await waitFor(() => expect(screen.getByText(new RegExp(`Pack .*${code}`))).toBeInTheDocument());
 }
 
@@ -283,5 +285,100 @@ describe("PackingPage effective-time Version selection", () => {
     // Changing package count afterward must not recompute/overwrite it either.
     fireEvent.change(screen.getByLabelText(/package count/i), { target: { value: "7" } });
     expect(screen.getByLabelText(/packed output weight/i)).toHaveValue(37.5);
+  });
+});
+
+describe("PackingPage stable source draft and contextual handoffs", () => {
+  it("7. adding a second source does not wipe the first source's already-edited consumed amount", async () => {
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+    await addGplToPacking("GA-001");
+    // Override the seeded consumed weight (60, from GA-001's own balance)
+    // before a second Lot is ever added.
+    fireEvent.change(screen.getAllByLabelText(/consumed weight/i)[0], { target: { value: "55" } });
+
+    await addGplToPacking("GA-002");
+
+    expect(screen.getAllByLabelText(/consumed weight/i)[0]).toHaveValue(55);
+    await waitFor(() => expect(screen.getAllByLabelText(/consumed weight/i)[1]).toHaveValue(40));
+  });
+
+  it("8. adding a second source preserves the already-selected Pack Specification/Version and Finished Goods Lot code", async () => {
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+    await addGplToPacking("GA-001");
+    await pickPackSpecAndVersion(/^v2/);
+    fireEvent.change(screen.getByLabelText(/finished goods lot code/i), { target: { value: "FG-KEEP" } });
+
+    await addGplToPacking("GA-002");
+
+    expect((screen.getByLabelText(/^version$/i) as HTMLSelectElement).value).toBe("psv-2");
+    expect(screen.getByLabelText(/finished goods lot code/i)).toHaveValue("FG-KEEP");
+  });
+
+  it("9. removing one source preserves the unaffected row and the top-level draft", async () => {
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+    await addGplToPacking("GA-001");
+    await addGplToPacking("GA-002");
+    await pickPackSpecAndVersion(/^v2/);
+    fireEvent.change(screen.getByLabelText(/finished goods lot code/i), { target: { value: "FG-KEEP" } });
+    await waitFor(() => expect(screen.getAllByLabelText(/consumed weight/i)[1]).toHaveValue(40));
+
+    // Remove GA-001 from the working grid itself (not the picker below --
+    // "GA-001" text exists in both by this point, so pick the grid's own
+    // plain-text row, not the picker's `<Link>`).
+    const ga001GridRow = screen
+      .getAllByText("GA-001")
+      .find((el) => el.tagName === "SPAN")
+      ?.closest("li") as HTMLElement;
+    fireEvent.click(within(ga001GridRow).getByRole("button", { name: /^remove$/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Pack .*GA-001/)).not.toBeInTheDocument());
+    expect(screen.getByText(/Pack GA-002/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/consumed weight/i)).toHaveValue(40);
+    expect(screen.getByLabelText(/finished goods lot code/i)).toHaveValue("FG-KEEP");
+    expect((screen.getByLabelText(/^version$/i) as HTMLSelectElement).value).toBe("psv-2");
+  });
+
+  it("12. a contextual ?gradedLotIds= loads and preselects the exact source Lots, validated against this Farm's own scoped read", async () => {
+    mockSearchParams = new URLSearchParams("gradedLotIds=gpl-1,gpl-2");
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+
+    await waitFor(() => expect(screen.getByText(/Pack GA-001, GA-002/)).toBeInTheDocument());
+  });
+
+  it("a contextual Lot from a different Crop is reported, not silently dropped", async () => {
+    mockSearchParams = new URLSearchParams("gradedLotIds=gpl-1,gpl-3");
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+
+    await waitFor(() => expect(screen.getByText(/Pack GA-001/)).toBeInTheDocument());
+    expect(screen.getByText(/one requested graded produce lot could not be added/i)).toBeInTheDocument();
+    // TM-001 still appears in the picker below (every Lot stays visible
+    // there, see `GradedProduceLotSourcePanel`'s own note) -- it just never
+    // joined the Packing draft itself.
+    expect(screen.queryByText(/Pack .*TM-001/)).not.toBeInTheDocument();
+  });
+
+  it("13. the Packing success receipt's cold-storage handoff uses the response's own stable Finished Goods Lot id, never a guess", async () => {
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+    await addGplToPacking("GA-001");
+    await addGplToPacking("GA-002");
+    await pickPackSpecAndVersion(/^v2/);
+    await waitFor(() => expect(screen.getAllByLabelText(/consumed weight/i)[1]).toHaveValue(40));
+    fireEvent.change(screen.getByLabelText(/finished goods lot code/i), { target: { value: "FG-001" } });
+    fireEvent.change(screen.getByLabelText(/package count/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/packed output weight/i), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByText("Packing recorded")).toBeInTheDocument());
+    const handoff = screen.getByRole("link", { name: /place in cold store/i });
+    // "fg-1" is `packingEventResult()`'s own `finished_goods_lot.id`.
+    expect(handoff.getAttribute("href")).toBe("/farms/farm-1/processing/cold-storage?finishedGoodsLotId=fg-1");
   });
 });

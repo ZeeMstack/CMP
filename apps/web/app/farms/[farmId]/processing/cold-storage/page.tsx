@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -32,10 +32,22 @@ function asAppError(error: unknown): AppError {
  * Lot, then record a place/transfer/release movement for it, with that
  * Lot's own movement history shown alongside. Closes a confirmed pilot
  * blocker: the backend has always supported Cold Storage placement, but
- * it was previously only readable (never writable) from the frontend. */
+ * it was previously only readable (never writable) from the frontend.
+ *
+ * PILOT-UX-002C: an optional `?finishedGoodsLotId=` deep link (the handoff
+ * from a successful Packing) preselects that Lot -- resolved against this
+ * page's own scoped `useFinishedGoodsLots` read, never trusted directly.
+ * This only focuses the existing picker; it never places anything itself
+ * (the operator still records the movement explicitly, exactly as before)
+ * and this screen is otherwise unchanged. */
 export default function ColdStoragePage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  const contextLotId = searchParams.get("finishedGoodsLotId");
+
   const [selectedLotId, setSelectedLotId] = useState("");
+  const [contextResolved, setContextResolved] = useState(!contextLotId);
+  const [contextInvalid, setContextInvalid] = useState(false);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState(false);
 
@@ -45,6 +57,17 @@ export default function ColdStoragePage() {
   const recordMutation = useRecordFinishedGoodsStorageMovement(farmId);
 
   const allLots = lotsQuery.data ?? [];
+
+  if (!contextResolved && !lotsQuery.isLoading && !lotsQuery.isError) {
+    const match = allLots.find((l) => l.id === contextLotId);
+    if (match) {
+      setSelectedLotId(match.id);
+    } else {
+      setContextInvalid(true);
+    }
+    setContextResolved(true);
+  }
+
   const selectedLot = allLots.find((l) => l.id === selectedLotId) ?? null;
   const lotOptions = allLots.map((l) => ({
     value: l.id,
@@ -66,6 +89,12 @@ export default function ColdStoragePage() {
           />
         }
       />
+
+      {contextInvalid && (
+        <p role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          The requested Finished Goods Lot could not be found in this Farm. Select a Lot below.
+        </p>
+      )}
 
       {lotsQuery.isLoading && <LoadingSkeleton />}
       {lotsQuery.isError && <ErrorState error={lotsQuery.error} onRetry={() => lotsQuery.refetch()} />}

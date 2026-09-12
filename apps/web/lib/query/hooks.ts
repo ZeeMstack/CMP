@@ -73,6 +73,7 @@ import type {
   PlaceTrayCreate,
   PlaceTrolleyCreate,
   PlatformTenantOnboardingCreate,
+  ProduceLotBalanceRead,
   ProductionRequirementCreate,
   ProductionRequirementStatusCommand,
   ProductionRequirementUpdate,
@@ -1754,6 +1755,33 @@ export function useHarvestedProduceLotBalance(farmId: string, produceLotId: stri
     staleTime: STALE_DETAIL_MS,
     enabled: Boolean(tenantId) && Boolean(produceLotId),
   });
+}
+
+/** PILOT-UX-002C: every listed Harvested Produce Lot's own balance, for the
+ * Grading work queue -- the same on-demand per-Lot balance call as
+ * `useHarvestedProduceLotBalance` above, batched via `useQueries` (mirrors
+ * `useGradeVersionLabelMap`'s own established use of the same technique for
+ * "one read per row, no bulk endpoint exists"). Shares cache entries with
+ * `useHarvestedProduceLotBalance`, so selecting a Lot already visible in the
+ * queue never re-fetches its balance. */
+export function useHarvestedProduceLotBalances(
+  farmId: string,
+  produceLotIds: string[],
+): Record<string, ProduceLotBalanceRead | undefined> {
+  const tenantId = useSelectedTenantId();
+  const queries = useQueries({
+    queries: produceLotIds.map((id) => ({
+      queryKey: queryKeys.harvestedProduceLotBalance(tenantId ?? "", farmId, id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getHarvestedProduceLotBalance(farmId, id, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(id),
+    })),
+  });
+  const balances: Record<string, ProduceLotBalanceRead | undefined> = {};
+  produceLotIds.forEach((id, i) => {
+    balances[id] = queries[i]?.data;
+  });
+  return balances;
 }
 
 /** Unfiltered, tenant-wide -- the "" cache slot of `queryKeys.gradeDefinitions`
