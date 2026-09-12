@@ -1,9 +1,26 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { withQueryClient } from "@/lib/test-utils";
+import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
+import { queryKeys } from "@/lib/query/keys";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 import { RecordOutcomeForm } from "./RecordOutcomeForm";
+
+/** Exposes the QueryClient itself (unlike `withQueryClient`) so a test can
+ * simulate a background refetch resolving with different data via
+ * `setQueryData` -- exactly what `invalidateQueries` + a live refetch does. */
+function renderWithClient(children: React.ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(queryKeys.authBootstrap(), DEFAULT_TEST_BOOTSTRAP);
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AuthBootstrapProvider>{children}</AuthBootstrapProvider>
+    </QueryClientProvider>,
+  );
+  return queryClient;
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -197,6 +214,59 @@ describe("RecordOutcomeForm", () => {
     await selectFirstTray();
     expect(screen.queryByLabelText(/inspected site|sown site count|failed site/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/non.?germination|weak seedling|disease|pest damage|mortality|qc rejection/i)).not.toBeInTheDocument();
+  });
+
+  it("PILOT-UX-002B: opens with the assignment already selected/frozen -- no reselection dropdown, no Batch re-pick", async () => {
+    stubFetch();
+    const onSuccess = vi.fn();
+    render(
+      withQueryClient(
+        <RecordOutcomeForm farmId="farm-1" onSuccess={onSuccess} onCancel={vi.fn()} initialAssignmentId="assignment-1" />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/from the germination worklist/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/^seed tray$/i)).not.toBeInTheDocument();
+    expect(screen.getByText("CB-0001 — ST-0001")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^normal seedlings$/i), { target: { value: "150" } });
+    fireEvent.change(screen.getByLabelText(/^abnormal seedlings$/i), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review provisional observation")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Save Observation" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(onSuccess.mock.calls[0][0]).toMatchObject({
+      assignmentId: "assignment-1", batchCode: "CB-0001", trayCode: "ST-0001", normalCount: 150, abnormalCount: 5,
+    });
+  });
+
+  it("PILOT-UX-002B: a background trays refetch never silently retargets the frozen assignment", async () => {
+    stubFetch();
+    const queryClient = renderWithClient(
+      <RecordOutcomeForm farmId="farm-1" onSuccess={vi.fn()} onCancel={vi.fn()} initialAssignmentId="assignment-1" />,
+    );
+    await waitFor(() => expect(screen.getByText("CB-0001 — ST-0001")).toBeInTheDocument());
+    expect(screen.getByText("200")).toBeInTheDocument();
+
+    // Simulate what an invalidated query's live refetch resolves to: same
+    // Tray, reordered, with updated authoritative data.
+    queryClient.setQueryData(queryKeys.germinationTrays(TEST_TENANT_ID, "farm-1"), [TRAYS[1], { ...TRAYS[0], seeds_sown: 999 }]);
+
+    await waitFor(() => expect(screen.getByText("999")).toBeInTheDocument());
+    // Still the exact same frozen assignment -- a refetch never retargets
+    // the open form onto a different Tray.
+    expect(screen.getByText("CB-0001 — ST-0001")).toBeInTheDocument();
+  });
+
+  it("PILOT-UX-002B: shows a stale message instead of a broken form when the frozen assignment no longer exists", async () => {
+    stubFetch({ trays: [TRAYS[1]] });
+    render(
+      withQueryClient(
+        <RecordOutcomeForm farmId="farm-1" onSuccess={vi.fn()} onCancel={vi.fn()} initialAssignmentId="assignment-1" />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/could not be found/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/^normal seedlings$/i)).not.toBeInTheDocument();
   });
 
   it("calls onCancel without submitting", async () => {

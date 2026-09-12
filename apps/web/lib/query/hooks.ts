@@ -16,7 +16,9 @@ import type {
   DispatchEventCreate,
   FarmCreate,
   FinishedGoodsStorageMovementCreate,
+  GerminationOutcomeBatchAggregateRead,
   GerminationOutcomeCommandCreate,
+  GerminationTrayRead,
   GoodsReceiptCreate,
   GradeDefinitionCreate,
   GradeDefinitionVersionActivate,
@@ -88,6 +90,7 @@ import type {
   SeedingProgramLineCreate,
   SeedingProgramLineStatusCommand,
   SeedingProgramLineUpdate,
+  SeedlingCandidateTrayRead,
   SeedlingEntryCreate,
   SeedLotCreate,
   SowNewBatchCreate,
@@ -724,8 +727,12 @@ export function useCurrentGerminationOutcomes(farmId: string, batchId: string) {
 
 /** Idempotency key (`client_command_id`) lives in the payload itself, same
  * replay-safe pattern as every other command here. Recording an outcome
- * never changes physical placement/occupancy -- only the Batch's own
- * current-outcome read is invalidated. */
+ * never changes physical placement/occupancy, so the placement read is left
+ * alone -- but a completed outcome can change Seedling eligibility (the
+ * `ready_for_seedling` state `listSeedlingCandidateTrays` reports), so that
+ * farm-wide read is invalidated too. PILOT-UX-002B: this is what lets the
+ * worklist's "Move to Seedling" handoff appear from *authoritative*
+ * refetched state right after a final outcome, never an optimistic guess. */
 export function useRecordGerminationOutcomes(farmId: string, batchId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
@@ -734,6 +741,7 @@ export function useRecordGerminationOutcomes(farmId: string, batchId: string) {
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.currentGerminationOutcomes(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.seedlingCandidateTrays(tenantId, farmId) });
     },
   });
 }
@@ -779,6 +787,148 @@ export function useRecordSeedlingEntry(farmId: string) {
       queryClient.invalidateQueries({ queryKey: queryKeys.germinationTrays(tenantId, farmId) });
     },
   });
+}
+
+// --- PILOT-UX-002B -----------------------------------------------------
+// Germination Operator Worklist -- merges the three existing, UNMODIFIED
+// Germination reads above (placement, per-Batch outcomes, Seedling
+// eligibility) into one row per Seed Tray assignment, so the worklist can
+// show a truthful single "next eligible action" without inventing any
+// readiness rule of its own. Frontend-only, read-only composition: no new
+// endpoint, no new command. There is no farm-wide "current outcomes" read
+// (`getCurrentGerminationOutcomes` is Batch-scoped only), so per-Batch
+// outcome reads are fanned out with `useQueries` over the Batches already
+// present in the placement list -- the same dynamic-list `useQueries`
+// pattern `useGradeVersionLabelMap` already uses above, not a hook-in-a-
+// loop (which would break the Rules of Hooks for a list whose length
+// changes across renders).
+
+export type GerminationObservationStatus = "not_observed" | "interim" | "final";
+
+export type GerminationNextAction =
+  | { kind: "place" }
+  | { kind: "record_outcome"; isUpdate: boolean }
+  | { kind: "move_to_seedling" }
+  | { kind: "none" };
+
+export interface GerminationWorklistRow {
+  assignmentId: string;
+  batchId: string;
+  batchCode: string;
+  trayId: string;
+  trayCode: string;
+  seedLotCode: string;
+  cropName: string;
+  varietyName: string;
+  seedsSown: number;
+  sownSiteCount: number | null;
+  placementState: GerminationTrayRead["state"];
+  placementLabel: string | null;
+  observationStatus: GerminationObservationStatus;
+  normalCount: number | null;
+  abnormalCount: number | null;
+  livingCount: number | null;
+  latestObservedAt: string | null;
+  historicalSnapshotCount: number;
+  seedlingState: SeedlingCandidateTrayRead["state"] | null;
+  nextAction: GerminationNextAction;
+}
+
+export function useGerminationWorklist(farmId: string): {
+  rows: GerminationWorklistRow[];
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  isSuccess: boolean;
+  /** True when placement itself loaded fine but one of the two enrichment
+   * reads (per-Batch outcomes / Seedling eligibility) failed -- rows still
+   * render from authoritative placement data, but their observation status
+   * and next action may be incomplete rather than a confident "none". Never
+   * collapsed into the main `isError`, which would hide an otherwise-usable
+   * worklist behind a full error screen. */
+  enrichmentDegraded: boolean;
+  refetch: () => void;
+} {
+  const tenantId = useSelectedTenantId();
+  const traysQuery = useGerminationTrays(farmId);
+  const seedlingQuery = useSeedlingCandidateTrays(farmId);
+  const trays = traysQuery.data ?? [];
+
+  const batchIds = Array.from(new Set(trays.map((t) => t.batch_id)));
+  const outcomeQueries = useQueries({
+    queries: batchIds.map((batchId) => ({
+      queryKey: queryKeys.currentGerminationOutcomes(tenantId ?? "", farmId, batchId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getCurrentGerminationOutcomes(farmId, batchId, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(batchId),
+    })),
+  });
+
+  const outcomeByAssignment = new Map<string, GerminationOutcomeBatchAggregateRead["trays"][number]>();
+  for (const q of outcomeQueries) {
+    for (const tray of q.data?.trays ?? []) outcomeByAssignment.set(tray.batch_carrier_assignment_id, tray);
+  }
+
+  const seedlingByAssignment = new Map<string, SeedlingCandidateTrayRead>();
+  for (const t of seedlingQuery.data ?? []) seedlingByAssignment.set(t.batch_carrier_assignment_id, t);
+
+  const rows: GerminationWorklistRow[] = trays.map((t) => {
+    const outcome = outcomeByAssignment.get(t.batch_carrier_assignment_id) ?? null;
+    const seedling = seedlingByAssignment.get(t.batch_carrier_assignment_id) ?? null;
+
+    const observationStatus: GerminationObservationStatus =
+      !outcome || !outcome.latest_snapshot ? "not_observed" : outcome.assessment_complete ? "final" : "interim";
+
+    let nextAction: GerminationNextAction;
+    if (seedling?.state === "ready_for_seedling") {
+      nextAction = { kind: "move_to_seedling" };
+    } else if (t.state === "awaiting_placement") {
+      nextAction = { kind: "place" };
+    } else if (seedling?.state === "in_seedling" || seedling?.state === "in_seedling_unanchored") {
+      nextAction = { kind: "none" };
+    } else {
+      nextAction = { kind: "record_outcome", isUpdate: observationStatus === "interim" };
+    }
+
+    return {
+      assignmentId: t.batch_carrier_assignment_id,
+      batchId: t.batch_id,
+      batchCode: t.batch_code,
+      trayId: t.tray.id,
+      trayCode: t.tray.code,
+      seedLotCode: t.seed_lot.code,
+      cropName: t.seed_lot.crop.common_name,
+      varietyName: t.seed_lot.variety.name,
+      seedsSown: t.seeds_sown,
+      sownSiteCount: outcome?.sown_site_count ?? null,
+      placementState: t.state,
+      placementLabel: t.placement
+        ? `${t.placement.trolley.code} / ${t.placement.chamber.code} / ${t.placement.position.code}`
+        : null,
+      observationStatus,
+      normalCount: outcome?.current_normal_seedling_count ?? null,
+      abnormalCount: outcome?.current_abnormal_seedling_count ?? null,
+      livingCount: outcome?.current_living_seedling_count ?? null,
+      latestObservedAt: outcome?.latest_effective_time ?? null,
+      historicalSnapshotCount: outcome?.historical_snapshot_count ?? 0,
+      seedlingState: seedling?.state ?? null,
+      nextAction,
+    };
+  });
+
+  return {
+    rows,
+    isLoading: traysQuery.isLoading,
+    isError: traysQuery.isError,
+    error: traysQuery.error,
+    isSuccess: traysQuery.isSuccess,
+    enrichmentDegraded: seedlingQuery.isError || outcomeQueries.some((q) => q.isError),
+    refetch: () => {
+      traysQuery.refetch();
+      seedlingQuery.refetch();
+      outcomeQueries.forEach((q) => q.refetch());
+    },
+  };
 }
 
 export function useSowings(farmId: string, batchId: string) {

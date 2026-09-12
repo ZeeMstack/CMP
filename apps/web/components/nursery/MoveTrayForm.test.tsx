@@ -366,6 +366,48 @@ describe("MoveTrayForm", () => {
     expect(screen.queryByText(/eligible seed trays/i)).not.toBeInTheDocument();
   });
 
+  it("PILOT-UX-002B: freezes the exact Tray when initialTrayId is set -- no dropdown, no bulk board, submits that Tray", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={onSubmit} onCancel={vi.fn()} isSubmitting={false}
+          initialTrayId="tray-1" onSubmitOne={vi.fn()}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/from the germination worklist/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/^seed tray$/i)).not.toBeInTheDocument();
+    expect(screen.getByText("CB-0001")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before moving")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Move to Germination" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].tray_id).toBe("tray-1");
+  });
+
+  it("PILOT-UX-002B: shows a stale message instead of a broken form when the frozen Tray is no longer eligible", async () => {
+    stubFetch({ trays: [{ ...TRAYS[1] }] }); // only the already-in_germination tray-2 remains
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialTrayId="tray-1" onSubmitOne={vi.fn()}
+        />,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/no longer awaiting germination placement/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByLabelText(/^trolley$/i)).not.toBeInTheDocument();
+  });
+
   it("calls onCancel without submitting", async () => {
     stubFetch();
     const onSubmit = vi.fn();
