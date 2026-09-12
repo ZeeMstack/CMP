@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const searchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => searchParams,
 }));
 
 import { withQueryClient } from "@/lib/test-utils";

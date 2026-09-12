@@ -350,7 +350,7 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
     loudly instead."""
     from app.services import (
         crop_service, farm_service, membership_service, production_system_service,
-        sowing_service, tenant_service, user_service, workflow_service, crop_batch_service,
+        tenant_service, user_service, workflow_service, crop_batch_service,
     )
 
     command.downgrade(_cfg(), _PRE_NURSERY_OPS_REVISION)
@@ -439,16 +439,32 @@ def test_migration_upgrade_blocked_by_pre_existing_mixed_seed_lot_lines(test_eng
             text("UPDATE workflow_versions SET state = 'published', published_at = now() WHERE id = :vid"),
             {"vid": version.id},
         )
-        seed_lot_a = sowing_service.register_seed_lot(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-            variety_id=variety.id, code=f"LOT-A-{suffix}", supplier_name=None, supplier_lot_reference=None,
-            received_date=None, expiry_date=None,
-        )
-        seed_lot_b = sowing_service.register_seed_lot(
-            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-            variety_id=variety.id, code=f"LOT-B-{suffix}", supplier_name=None, supplier_lot_reference=None,
-            received_date=None, expiry_date=None,
-        )
+        # PILOT-BLOCKER-006/F40: `sowing_service.register_seed_lot`'s ORM
+        # model (`app.models.seed_lot.SeedLot`) always selects the CURRENT
+        # full column set, including STORE-INV-002A.1's `inventory_lot_id`
+        # -- absent at this deliberately-downgraded (`_PRE_NURSERY_OPS_
+        # REVISION`, well before f1a4c8e7b2d5) schema level. Built directly
+        # via SQL instead, mirroring this file's own established pattern
+        # for a schema-evolved table -- every other column here is
+        # unchanged since `seed_lots` was first created (d17a4e2f9c86).
+        def _register_seed_lot_pre_inventory_lot_id(code: str):
+            lot_id = uuid.uuid4()
+            session.execute(
+                text(
+                    "INSERT INTO seed_lots "
+                    "(id, tenant_id, farm_id, crop_id, variety_id, code, supplier_name, "
+                    "supplier_lot_reference, received_date, expiry_date, status, created_by_user_id) VALUES "
+                    "(:id, :tid, :fid, :cid, :vid, :code, NULL, NULL, NULL, NULL, 'active', :uid)"
+                ),
+                {
+                    "id": lot_id, "tid": tenant.id, "fid": farm.id, "cid": crop.id, "vid": variety.id,
+                    "code": code, "uid": user.id,
+                },
+            )
+            return type("_SeedLot", (), {"id": lot_id})()
+
+        seed_lot_a = _register_seed_lot_pre_inventory_lot_id(f"LOT-A-{suffix}")
+        seed_lot_b = _register_seed_lot_pre_inventory_lot_id(f"LOT-B-{suffix}")
         batch = crop_batch_service.create_batch(
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
             code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),

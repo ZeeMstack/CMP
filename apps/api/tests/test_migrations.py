@@ -924,7 +924,6 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         farm_service,
         membership_service,
         production_system_service,
-        sowing_service,
         tenant_service,
         user_service,
         workflow_service,
@@ -1037,11 +1036,28 @@ def test_migration_backfill_matches_pre_existing_lot_and_survives_downgrade_reup
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         code=f"batch-{suffix}", workflow_id=workflow.id, effective_time=now(),
     )
-    seed_lot = sowing_service.register_seed_lot(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id,
-        variety_id=variety.id, code=f"lot-{suffix}", supplier_name=None, supplier_lot_reference=None,
-        received_date=None, expiry_date=None,
+    # PILOT-BLOCKER-006/F40: `sowing_service.register_seed_lot`'s ORM model
+    # (`app.models.seed_lot.SeedLot`) always selects the CURRENT full column
+    # set, including STORE-INV-002A.1's `inventory_lot_id` -- absent at this
+    # deliberately-downgraded (pre-c7f14b8e29a3, well before
+    # f1a4c8e7b2d5) schema level. Built directly via SQL instead, mirroring
+    # the same established pattern already used elsewhere in this function
+    # for a schema-evolved table -- every other column here is unchanged
+    # since `seed_lots` was first created (d17a4e2f9c86).
+    seed_lot_id = uuid.uuid4()
+    session.execute(
+        text(
+            "INSERT INTO seed_lots "
+            "(id, tenant_id, farm_id, crop_id, variety_id, code, supplier_name, supplier_lot_reference, "
+            "received_date, expiry_date, status, created_by_user_id) VALUES "
+            "(:id, :tid, :fid, :cid, :vid, :code, NULL, NULL, NULL, NULL, 'active', :uid)"
+        ),
+        {
+            "id": seed_lot_id, "tid": tenant.id, "fid": farm.id, "cid": crop.id, "vid": variety.id,
+            "code": f"lot-{suffix}", "uid": user.id,
+        },
     )
+    seed_lot = type("_SeedLot", (), {"id": seed_lot_id})()
     # Same rationale as the SEEDING stage above -- reuses the already-
     # resolved `seeding_carrier_type_id` rather than a second broken ORM query.
     carrier_id = uuid.uuid4()
@@ -2775,7 +2791,7 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
 
     from app.services import (
         crop_batch_service, crop_service, farm_service, membership_service,
-        production_system_service, sowing_service, tenant_service, user_service, workflow_service,
+        production_system_service, tenant_service, user_service, workflow_service,
     )
 
     tenant = tenant_service.create_tenant(session, code=f"go-mig-{suffix}", name="GO Migration Tenant")
@@ -2861,10 +2877,28 @@ def _build_germination_outcome_migration_tenant(session, *, suffix: str, sown_si
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid_module.uuid4(),
         code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=datetime.now(timezone.utc),
     )
-    seed_lot = sowing_service.register_seed_lot(
-        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=crop.id, variety_id=variety.id,
-        code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None, received_date=None, expiry_date=None,
+    # PILOT-BLOCKER-006/F40: `sowing_service.register_seed_lot`'s ORM model
+    # (`app.models.seed_lot.SeedLot`) always selects the CURRENT full column
+    # set, including STORE-INV-002A.1's `inventory_lot_id` -- absent at this
+    # deliberately-downgraded (pre-`PRE_GERMINATION_OUTCOME_REVISION`, well
+    # before f1a4c8e7b2d5) schema level. Built directly via SQL instead,
+    # mirroring this helper's own established pattern for a schema-evolved
+    # table -- every other column here is unchanged since `seed_lots` was
+    # first created (d17a4e2f9c86).
+    seed_lot_id = uuid_module.uuid4()
+    session.execute(
+        _seeding_text(
+            "INSERT INTO seed_lots "
+            "(id, tenant_id, farm_id, crop_id, variety_id, code, supplier_name, supplier_lot_reference, "
+            "received_date, expiry_date, status, created_by_user_id) VALUES "
+            "(:id, :tid, :fid, :cid, :vid, :code, NULL, NULL, NULL, NULL, 'active', :uid)"
+        ),
+        {
+            "id": seed_lot_id, "tid": tenant.id, "fid": farm.id, "cid": crop.id, "vid": variety.id,
+            "code": f"LOT-{suffix}", "uid": user.id,
+        },
     )
+    seed_lot = type("_SeedLot", (), {"id": seed_lot_id})()
     # Same rationale as the SEEDING stage above -- reuses the same already-
     # resolved `seeding_carrier_type_id` rather than a second broken ORM query.
     carrier_id = uuid_module.uuid4()

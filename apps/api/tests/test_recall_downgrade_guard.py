@@ -32,7 +32,7 @@ from tests._recall_scenario import (
     open_case,
     pack_lot,
 )
-from app.services import crop_batch_service, sowing_service
+from app.services import crop_batch_service
 
 
 def _build_workflow_scaffold_at_downgraded_schema(db: Session, tenant, user, farm, *, suffix=None):
@@ -140,11 +140,27 @@ def _sow_batch_at_downgraded_schema(db: Session, tenant, user, farm, *, carrier_
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         code=f"BATCH-{suffix}", workflow_id=scaffold["workflow"].id, effective_time=now(),
     )
-    seed_lot = sowing_service.register_seed_lot(
-        db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, crop_id=scaffold["crop"].id,
-        variety_id=scaffold["variety"].id, code=f"LOT-{suffix}", supplier_name=None, supplier_lot_reference=None,
-        received_date=None, expiry_date=None,
+    # PILOT-BLOCKER-006/F40: `sowing_service.register_seed_lot`'s ORM model
+    # (`app.models.seed_lot.SeedLot`) always selects the CURRENT full column
+    # set, including STORE-INV-002A.1's `inventory_lot_id` -- absent below
+    # `_PRE_CMP020_REVISION` (well before f1a4c8e7b2d5). Built directly via
+    # SQL instead, mirroring this function's own established pattern for
+    # every other schema-evolved table -- every other column here is
+    # unchanged since `seed_lots` was first created (d17a4e2f9c86).
+    seed_lot_id = uuid.uuid4()
+    db.execute(
+        text(
+            "INSERT INTO seed_lots "
+            "(id, tenant_id, farm_id, crop_id, variety_id, code, supplier_name, supplier_lot_reference, "
+            "received_date, expiry_date, status, created_by_user_id) VALUES "
+            "(:id, :tid, :fid, :cid, :vid, :code, NULL, NULL, NULL, NULL, 'active', :uid)"
+        ),
+        {
+            "id": seed_lot_id, "tid": tenant.id, "fid": farm.id, "cid": scaffold["crop"].id,
+            "vid": scaffold["variety"].id, "code": f"LOT-{suffix}", "uid": user.id,
+        },
     )
+    seed_lot = type("_SeedLot", (), {"id": seed_lot_id})()
     seeding_run_id = db.execute(
         text("SELECT id FROM batch_stage_runs WHERE batch_id = :bid AND exited_effective_time IS NULL"),
         {"bid": batch.id},

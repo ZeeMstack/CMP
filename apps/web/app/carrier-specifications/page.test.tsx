@@ -56,7 +56,13 @@ describe("CarrierSpecificationsPage", () => {
     // visual shell does not require a farm context.
     render(withQueryClient(<CarrierSpecificationsPage />));
     await waitFor(() => expect(screen.getByText("PLATE-200")).toBeInTheDocument());
-    expect(screen.getByText("GrowCMP")).toBeInTheDocument();
+    // PILOT-UX-001A2-R2 (WaterlineWordmark): the shared StandaloneShell
+    // header renders the wordmark as two styled spans, "grow" (Canopy) +
+    // "CMP" (Deepwater) -- no single "GrowCMP" text node, and no separate
+    // tagline element.
+    expect(screen.getByText("grow")).toBeInTheDocument();
+    expect(screen.getByText("CMP")).toBeInTheDocument();
+    expect(screen.queryByText("Crop Management Platform")).not.toBeInTheDocument();
     expect(screen.queryByText("ImperialFarms CMP")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to farms/i })).toHaveAttribute("href", "/farms");
   });
