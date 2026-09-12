@@ -23,7 +23,13 @@ from app.services import (
 from app.services.goods_receipt_service import GoodsReceiptLineInput
 from tests._store_inv_scenario import build_category, build_item, uom_id
 
-NOW = datetime.now(timezone.utc)
+# PILOT-BLOCKER-005 F07: anchored an hour in the past -- see the identical
+# comment in test_store_inv_002a2_quality.py. Ordinary Quality dispositions
+# now reject a future effective_time (a tight ~30s clock-skew allowance
+# only), so this fixed "now" plus a forward minute offset must stay
+# comfortably in the past regardless of how long the suite takes to reach
+# this test.
+NOW = datetime.now(timezone.utc) - timedelta(hours=1)
 
 
 @pytest.fixture(autouse=True)
@@ -229,4 +235,7 @@ def test_correction_stale_target_returns_409_via_http(client, db_session) -> Non
         headers=qc_headers,
     )
     assert response.status_code == 409
-    assert "changed since you opened this action" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == "QUALITY_CORRECTION_TARGET_STALE"
+    assert "changed since you opened this action" in detail["message"]

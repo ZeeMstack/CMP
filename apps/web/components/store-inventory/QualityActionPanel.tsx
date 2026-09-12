@@ -45,7 +45,7 @@ const NOT_PUT_AWAY_BUCKET_VALUE = "__not_put_away__";
 
 export function QualityActionPanel({
   row, kind, disposition, legalReplacements, buckets, onCancel, onSubmitOrdinary, onSubmitPartial, onSubmitCorrect,
-  onSubmitPartialCorrect, isSubmitting, serverError,
+  onSubmitPartialCorrect, isSubmitting, serverError, commandOutcome, onRetry, bucketsError, onRetryBuckets,
 }: {
   row: QualityWorkQueueRowRead;
   kind: ActionKind;
@@ -55,7 +55,9 @@ export function QualityActionPanel({
    * PARTIAL_CORRECT action -- "Not put away" (`location_id: null`) plus
    * one row per Bin with a positive balance. Auto-selected when there is
    * exactly one; shown as a dropdown otherwise. Omitted/empty is treated
-   * as "Not put away only" (defensive default, never blocks submission). */
+   * as "Not put away only" (defensive default, never blocks submission)
+   * UNLESS `bucketsError` is set (F08) -- a failed bucket fetch is never
+   * silently presented as "no buckets exist". */
   buckets?: StorageBucketRead[];
   onCancel: () => void;
   onSubmitOrdinary?: (args: { reason: string; effectiveTime: string }) => void;
@@ -71,6 +73,16 @@ export function QualityActionPanel({
   ) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  /** PILOT-BLOCKER-005 F05/F06: which outcome the open command-draft is
+   * currently in -- `"uncertain"` (transport failure/timeout) offers Retry
+   * instead of Confirm and freezes the fields; `"conflict"` (stale target/
+   * superseded Quality state) offers only Close, never a silent retarget. */
+  commandOutcome?: "editing" | "submitting" | "uncertain" | "conflict";
+  onRetry?: () => void;
+  /** F08: the PARTIAL/PARTIAL_CORRECT bucket-breakdown query failed -- an
+   * empty bucket list is never presented as authoritative in this case. */
+  bucketsError?: AppError | null;
+  onRetryBuckets?: () => void;
 }) {
   const [reason, setReason] = useState("");
   const [effectiveTime, setEffectiveTime] = useState(() => nowLocalDateTime());
@@ -90,9 +102,23 @@ export function QualityActionPanel({
     : kind === "PARTIAL_CORRECT" ? "Correct decision for part of quantity"
     : "Correct decision";
 
+  const fieldsDisabled = isSubmitting || commandOutcome === "uncertain" || commandOutcome === "conflict";
+  const showBucketsError = (kind === "PARTIAL" || kind === "PARTIAL_CORRECT") && Boolean(bucketsError);
+
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-wl-border bg-wl-surface p-3">
       <h4 className="text-sm font-semibold text-wl-text">{title}</h4>
+
+      {showBucketsError && (
+        <p className="flex flex-wrap items-center gap-2 rounded-md border border-wl-border-strong bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">
+          Could not load this cohort&apos;s storage locations -- the affected location cannot be confirmed yet.
+          {onRetryBuckets && (
+            <button type="button" className="font-medium underline" onClick={onRetryBuckets}>
+              Retry
+            </button>
+          )}
+        </p>
+      )}
 
       {kind === "PARTIAL" && (
         <>
@@ -105,12 +131,16 @@ export function QualityActionPanel({
               step="any"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
+              disabled={fieldsDisabled}
             />
           </label>
           {bucketOptions.length > 1 && (
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Affected location</span>
-              <select className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}>
+              <select
+                className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}
+                disabled={fieldsDisabled}
+              >
                 {bucketOptions.map((b) => (
                   <option key={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE} value={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE}>
                     {b.label} ({b.balance})
@@ -121,7 +151,10 @@ export function QualityActionPanel({
           )}
           <label className="flex flex-col gap-1">
             <span className={labelClass}>New disposition</span>
-            <select className={inputClass} value={partialDisposition} onChange={(e) => setPartialDisposition(e.target.value)}>
+            <select
+              className={inputClass} value={partialDisposition} onChange={(e) => setPartialDisposition(e.target.value)}
+              disabled={fieldsDisabled}
+            >
               {(legalReplacements ?? []).map((d) => (
                 <option key={d} value={d}>{DISPOSITION_LABELS[d] ?? d}</option>
               ))}
@@ -133,7 +166,10 @@ export function QualityActionPanel({
       {kind === "CORRECT" && (
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Replacement decision (optional)</span>
-          <select className={inputClass} value={replacementDisposition} onChange={(e) => setReplacementDisposition(e.target.value)}>
+          <select
+            className={inputClass} value={replacementDisposition} onChange={(e) => setReplacementDisposition(e.target.value)}
+            disabled={fieldsDisabled}
+          >
             <option value="">No replacement — revert to prior decision</option>
             {(legalReplacements ?? []).map((d) => (
               <option key={d} value={d}>{DISPOSITION_LABELS[d] ?? d}</option>
@@ -157,12 +193,16 @@ export function QualityActionPanel({
               step="any"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
+              disabled={fieldsDisabled}
             />
           </label>
           {bucketOptions.length > 1 && (
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Affected location</span>
-              <select className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}>
+              <select
+                className={inputClass} value={bucketValue} onChange={(e) => setBucketValue(e.target.value)}
+                disabled={fieldsDisabled}
+              >
                 {bucketOptions.map((b) => (
                   <option key={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE} value={b.location_id ?? NOT_PUT_AWAY_BUCKET_VALUE}>
                     {b.label} ({b.balance})
@@ -173,7 +213,10 @@ export function QualityActionPanel({
           )}
           <label className="flex flex-col gap-1">
             <span className={labelClass}>Corrected decision</span>
-            <select className={inputClass} value={correctedDisposition} onChange={(e) => setCorrectedDisposition(e.target.value)}>
+            <select
+              className={inputClass} value={correctedDisposition} onChange={(e) => setCorrectedDisposition(e.target.value)}
+              disabled={fieldsDisabled}
+            >
               {ALL_DISPOSITIONS.map((d) => (
                 <option key={d} value={d}>{DISPOSITION_LABELS[d] ?? d}</option>
               ))}
@@ -184,59 +227,81 @@ export function QualityActionPanel({
 
       <label className="flex flex-col gap-1">
         <span className={labelClass}>Effective time</span>
-        <input className={inputClass} type="datetime-local" value={effectiveTime} onChange={(e) => setEffectiveTime(e.target.value)} />
+        <input
+          className={inputClass} type="datetime-local" value={effectiveTime}
+          onChange={(e) => setEffectiveTime(e.target.value)} disabled={fieldsDisabled}
+        />
       </label>
 
       <label className="flex flex-col gap-1">
         <span className={labelClass}>
           {kind === "CORRECT" || kind === "PARTIAL_CORRECT" ? "Reason (required)" : "Reason (optional)"}
         </span>
-        <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} disabled={fieldsDisabled} />
       </label>
 
       {serverError && (
         <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
           {errorMessage(serverError)}
+          {commandOutcome === "conflict" && " Close this action and open a new one to try again."}
         </p>
       )}
 
       <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="primary"
-          disabled={
-            isSubmitting ||
-            (kind === "PARTIAL" && (!quantity || Number(quantity) <= 0 || !partialDisposition)) ||
-            (kind === "CORRECT" && !reason.trim()) ||
-            (kind === "PARTIAL_CORRECT" && (!quantity || Number(quantity) <= 0 || !reason.trim()))
-          }
-          onClick={() => {
-            const iso = new Date(effectiveTime).toISOString();
-            if (kind === "ORDINARY") onSubmitOrdinary?.({ reason, effectiveTime: iso });
-            if (kind === "PARTIAL") {
-              onSubmitPartial?.({
-                quantity, disposition: partialDisposition, reason, effectiveTime: iso,
-                custodyLocationId: resolvedCustodyLocationId,
-              });
-            }
-            if (kind === "CORRECT") {
-              onSubmitCorrect?.({
-                reason, replacementDisposition: replacementDisposition || null, effectiveTime: iso,
-              });
-            }
-            if (kind === "PARTIAL_CORRECT") {
-              onSubmitPartialCorrect?.({
-                quantity, correctedDisposition, reason, effectiveTime: iso,
-                custodyLocationId: resolvedCustodyLocationId,
-              });
-            }
-          }}
-        >
-          {isSubmitting ? "Submitting…" : "Confirm"}
-        </Button>
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
-          Cancel
-        </Button>
+        {commandOutcome === "conflict" ? (
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Close
+          </Button>
+        ) : commandOutcome === "uncertain" ? (
+          <>
+            <Button type="button" variant="primary" disabled={isSubmitting} onClick={onRetry}>
+              {isSubmitting ? "Retrying…" : "Retry"}
+            </Button>
+            <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={
+                isSubmitting ||
+                showBucketsError ||
+                (kind === "PARTIAL" && (!quantity || Number(quantity) <= 0 || !partialDisposition)) ||
+                (kind === "CORRECT" && !reason.trim()) ||
+                (kind === "PARTIAL_CORRECT" && (!quantity || Number(quantity) <= 0 || !reason.trim()))
+              }
+              onClick={() => {
+                const iso = new Date(effectiveTime).toISOString();
+                if (kind === "ORDINARY") onSubmitOrdinary?.({ reason, effectiveTime: iso });
+                if (kind === "PARTIAL") {
+                  onSubmitPartial?.({
+                    quantity, disposition: partialDisposition, reason, effectiveTime: iso,
+                    custodyLocationId: resolvedCustodyLocationId,
+                  });
+                }
+                if (kind === "CORRECT") {
+                  onSubmitCorrect?.({
+                    reason, replacementDisposition: replacementDisposition || null, effectiveTime: iso,
+                  });
+                }
+                if (kind === "PARTIAL_CORRECT") {
+                  onSubmitPartialCorrect?.({
+                    quantity, correctedDisposition, reason, effectiveTime: iso,
+                    custodyLocationId: resolvedCustodyLocationId,
+                  });
+                }
+              }}
+            >
+              {isSubmitting ? "Submitting…" : "Confirm"}
+            </Button>
+            <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+              Cancel
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

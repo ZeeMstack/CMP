@@ -29,7 +29,16 @@ from app.services.errors import (
 from app.services.goods_receipt_service import GoodsReceiptLineInput
 from tests._store_inv_scenario import build_category, build_item, uom_id
 
-NOW = datetime.now(timezone.utc)
+# PILOT-BLOCKER-005 F07: anchored an hour in the past, not real wall-clock
+# "now" -- ordinary Quality dispositions now reject a future effective_time
+# (a tight ~30s clock-skew allowance only), so a fixed module-level "now"
+# plus forward minute offsets (used throughout this file purely to establish
+# a deterministic event order) must never be able to drift into the future
+# relative to actual wall-clock time by the time a given test runs. Every
+# `NOW + timedelta(minutes=N)` below stays comfortably in the past; only the
+# relative ordering between events (what these tests actually assert on)
+# matters, never the absolute anchor.
+NOW = datetime.now(timezone.utc) - timedelta(hours=1)
 
 
 def _receive_cohort(

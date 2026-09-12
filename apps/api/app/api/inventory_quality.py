@@ -23,6 +23,7 @@ from app.services import inventory_quality_service
 from app.services.errors import (
     IneligibleStorageBinError,
     InvalidQualityDispositionTransitionError,
+    InvalidQualityEffectiveTimeError,
     InventoryQuantityCohortNotFoundError,
     InventoryQuantityCohortSplitAllocationExceedsBalanceError,
     QualityCorrectionCommandReusedWithDifferentPayloadError,
@@ -37,6 +38,23 @@ from app.services.errors import (
 )
 
 router = APIRouter(tags=["inventory-quality"])
+
+# PILOT-BLOCKER-005 F06/F05: a stable, machine-readable discriminator for
+# the two "your captured correction target is no longer actionable" 409s --
+# mirrors the existing `HARVEST_CORRECTION_STALE` convention
+# (app/api/vines_harvest.py). Every OTHER Quality 409 (segregation-of-duty,
+# command-reused-with-different-payload, over-allocation) carries no `code`
+# and must never be treated as a stale-target conflict by the frontend --
+# those are definitive domain rejections of a different kind, not "the
+# state moved since you opened this action".
+_STALE_TARGET_CODES: dict[type[Exception], str] = {
+    QualityCorrectionTargetNotCurrentError: "QUALITY_CORRECTION_TARGET_STALE",
+    QualityDispositionNoCurrentHumanDecisionError: "QUALITY_CORRECTION_NO_CURRENT_DECISION",
+}
+
+
+def _stale_target_conflict_detail(exc: Exception) -> dict[str, str]:
+    return {"message": str(exc), "code": _STALE_TARGET_CODES[type(exc)]}
 
 
 @router.post(
@@ -61,6 +79,8 @@ def record_quality_disposition(
             detail="client_command_id already used with a different payload",
         ) from exc
     except InvalidQualityDispositionTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except InvalidQualityEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except QualitySegregationOfDutiesError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -91,8 +111,12 @@ def correct_quality_disposition(
             detail="client_command_id already used with a different payload",
         ) from exc
     except (QualityDispositionNoCurrentHumanDecisionError, QualityCorrectionTargetNotCurrentError) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_stale_target_conflict_detail(exc)
+        ) from exc
     except InvalidQualityDispositionTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except InvalidQualityEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except QualitySegregationOfDutiesError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -128,6 +152,8 @@ def apply_quality_disposition_to_partial_quantity(
             detail="client_command_id already used with a different payload",
         ) from exc
     except InvalidQualityDispositionTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except InvalidQualityEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except IneligibleStorageBinError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -169,8 +195,12 @@ def correct_quality_disposition_for_partial_quantity(
             detail="client_command_id already used with a different payload",
         ) from exc
     except (QualityDispositionNoCurrentHumanDecisionError, QualityCorrectionTargetNotCurrentError) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_stale_target_conflict_detail(exc)
+        ) from exc
     except InvalidQualityDispositionTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except InvalidQualityEffectiveTimeError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except IneligibleStorageBinError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

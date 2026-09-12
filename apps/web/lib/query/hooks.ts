@@ -2387,7 +2387,10 @@ export function useQualityWorkQueue() {
   });
 }
 
-function _invalidateQuality(queryClient: ReturnType<typeof useQueryClient>, tenantId: string) {
+function _invalidateQuality(
+  queryClient: ReturnType<typeof useQueryClient>, tenantId: string,
+  scope?: { farmId?: string; itemId?: string },
+) {
   queryClient.invalidateQueries({ queryKey: queryKeys.qualityWorkQueue(tenantId) });
   queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-items"] });
   // STORE-INV-002B: a partial Quality action bucketed against a Bin also
@@ -2395,20 +2398,30 @@ function _invalidateQuality(queryClient: ReturnType<typeof useQueryClient>, tena
   // custody read model in sync too.
   queryClient.invalidateQueries({ queryKey: queryKeys.notPutAwayQueue(tenantId) });
   queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "inventory-quantity-cohorts"] });
+  // PILOT-BLOCKER-005: a disposition change affects which lots/cohorts are
+  // usable, which in turn feeds Farm-scoped availability and FEFO issuable-
+  // source selection (docs/domain/STORE_INVENTORY_MODEL.md §9) -- these
+  // live under a different key prefix ("farms", not "inventory-items") so
+  // the broad invalidations above never reach them on their own.
+  if (scope?.farmId && scope?.itemId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.itemFarmAvailability(tenantId, scope.farmId, scope.itemId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.issuableSources(tenantId, scope.farmId, scope.itemId) });
+  }
 }
 
 export function useRecordQualityDisposition() {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: QualityDispositionCreate) => api.recordQualityDisposition(payload),
-    onSuccess: () => {
+    mutationFn: ({ payload }: { payload: QualityDispositionCreate; farmId?: string; itemId?: string }) =>
+      api.recordQualityDisposition(payload),
+    onSuccess: (_data, variables) => {
       if (!tenantId) return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
   });
 }
@@ -2417,14 +2430,15 @@ export function useCorrectQualityDisposition() {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: QualityDispositionCorrectionCreate) => api.correctQualityDisposition(payload),
-    onSuccess: () => {
+    mutationFn: ({ payload }: { payload: QualityDispositionCorrectionCreate; farmId?: string; itemId?: string }) =>
+      api.correctQualityDisposition(payload),
+    onSuccess: (_data, variables) => {
       if (!tenantId) return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
   });
 }
@@ -2433,14 +2447,15 @@ export function useApplyQualityDispositionToPartialQuantity() {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: QualityPartialDispositionCreate) => api.applyQualityDispositionToPartialQuantity(payload),
-    onSuccess: () => {
+    mutationFn: ({ payload }: { payload: QualityPartialDispositionCreate; farmId?: string; itemId?: string }) =>
+      api.applyQualityDispositionToPartialQuantity(payload),
+    onSuccess: (_data, variables) => {
       if (!tenantId) return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
   });
 }
@@ -2449,14 +2464,15 @@ export function useCorrectQualityDispositionForPartialQuantity() {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: QualityPartialCorrectionCreate) => api.correctQualityDispositionForPartialQuantity(payload),
-    onSuccess: () => {
+    mutationFn: ({ payload }: { payload: QualityPartialCorrectionCreate; farmId?: string; itemId?: string }) =>
+      api.correctQualityDispositionForPartialQuantity(payload),
+    onSuccess: (_data, variables) => {
       if (!tenantId) return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (!tenantId || !(error instanceof AppError) || error.kind !== "conflict") return;
-      _invalidateQuality(queryClient, tenantId);
+      _invalidateQuality(queryClient, tenantId, variables);
     },
   });
 }
