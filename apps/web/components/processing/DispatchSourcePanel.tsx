@@ -27,16 +27,16 @@ function SourceRow({
   const hasUnplaced = placementQuery.data ? Number(placementQuery.data.unplaced_weight_kg) > 0 : false;
 
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
-        <Link href={`/farms/${farmId}/processing/finished-goods/${lot.id}`} className="font-serif text-sm font-semibold text-ink hover:underline">
+        <Link href={`/farms/${farmId}/processing/finished-goods/${lot.id}`} className="font-serif text-sm font-semibold text-wl-text hover:underline">
           {lot.code}
         </Link>
-        <span className="text-xs text-ink-muted">
+        <span className="text-xs text-wl-text-secondary">
           {lot.crop.common_name}
           {lot.variety ? ` / ${lot.variety.name}` : ""}
         </span>
-        <span className="text-xs text-ink-muted">
+        <span className="text-xs text-wl-text-secondary">
           {placementQuery.data
             ? `Unplaced ${placementQuery.data.unplaced_weight_kg} kg / ${placementQuery.data.unplaced_package_count} pkg`
             : placementQuery.isLoading
@@ -84,10 +84,10 @@ export function DispatchSourcePanel({
   isLoading: boolean;
 }) {
   if (isLoading) {
-    return <p className="text-sm text-ink-muted">Loading Finished Goods Lots…</p>;
+    return <p className="text-sm text-wl-text-secondary">Loading Finished Goods Lots…</p>;
   }
   if (lots.length === 0) {
-    return <p className="text-sm text-ink-muted">No Finished Goods Lots available in this Farm.</p>;
+    return <p className="text-sm text-wl-text-secondary">No Finished Goods Lots available in this Farm.</p>;
   }
 
   const sorted = [...lots].sort((a, b) => b.effective_time.localeCompare(a.effective_time));

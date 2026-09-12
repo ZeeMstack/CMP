@@ -59,29 +59,43 @@ afterEach(() => {
 });
 
 describe("StoreInventoryInventoryPage", () => {
-  it("shows Exists, Usable, and Available to issue quantities, never labeled just Available", async () => {
+  it("shows Available to issue / In store / Reserved by default (this Farm), never labeled just Available", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryInventoryPage />));
-    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
-    expect(screen.getByText("500.000 kg")).toBeInTheDocument();
-    expect(screen.getByText("450.000 kg")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
     expect(screen.getByText("Available to issue")).toBeInTheDocument();
+    expect(screen.getByText("In store")).toBeInTheDocument();
+    expect(screen.getByText("Reserved")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("330.000 kg")).toBeInTheDocument());
+    expect(screen.getByText("400.000 kg")).toBeInTheDocument();
+    expect(screen.getByText("70.000 kg")).toBeInTheDocument();
     expect(screen.queryByText(/^available$/i)).not.toBeInTheDocument();
   });
 
-  it("shows In Store / Reserved / Issued to operations / Not put away only inside expanded detail", async () => {
+  it("keeps company-wide Exists/Usable in a separate, collapsed-by-default section", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryInventoryPage />));
-    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
+
+    // Not fetched/shown until the operator opens the section.
+    expect(screen.queryByText("500.000 kg")).not.toBeInTheDocument();
+    expect(screen.queryByText("450.000 kg")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Company-wide totals \(all Farms\)/ }));
+    await waitFor(() => expect(screen.getByText("500.000 kg")).toBeInTheDocument());
+    expect(screen.getByText("450.000 kg")).toBeInTheDocument();
+  });
+
+  it("shows Issued to operations / Not put away only inside the selected-stock detail panel", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
 
     expect(screen.queryByText(/not put away/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
 
-    await waitFor(() => expect(screen.getByText(/In Store \(this Farm\)/)).toBeInTheDocument());
-    expect(screen.getByText(/Reserved \(this Farm\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Issued to operations \(this Farm\)/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Issued to operations \(this Farm\)/)).toBeInTheDocument());
     expect(screen.getByText(/Not put away \(company-wide\)/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("120.000 kg")).toBeInTheDocument());
   });
@@ -105,7 +119,7 @@ describe("StoreInventoryInventoryPage", () => {
       },
     });
     render(withQueryClient(<StoreInventoryInventoryPage />));
-    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
     await waitFor(() => expect(screen.getByText(/Bin 01/)).toBeInTheDocument());
@@ -122,5 +136,41 @@ describe("StoreInventoryInventoryPage", () => {
       source_kind: "store_bin", inventory_quantity_cohort_id: "cohort-1", source_location_id: "bin-1",
       quantity: "2", reason: "torn bag",
     });
+  });
+
+  it("PILOT-UX-003: a failed Farm-availability read shows Unavailable, never a fabricated zero", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/inventory-items?") || url.endsWith("/inventory-items")) return jsonResponse([ITEM]);
+        if (url.includes("/availability")) return jsonResponse({ detail: "server_error" }, 500);
+        if (url.endsWith("/uoms")) return jsonResponse([{ id: "uom-1", code: "kg", name: "Kilogram", quantity_kind: "mass", conversion_family: "mass" }]);
+        return jsonResponse([]);
+      }),
+    );
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0));
+    expect(screen.queryByText("0 kg")).not.toBeInTheDocument();
+  });
+
+  it("PILOT-UX-003: cohort/bin detail is only requested for the selected Item, not eagerly for the whole list", async () => {
+    let provenanceCalls = 0;
+    stubFetch();
+    const baseFetch = (global.fetch as unknown) as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/provenance")) provenanceCalls += 1;
+        return baseFetch(input, init);
+      }),
+    );
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
+    expect(provenanceCalls).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
+    await waitFor(() => expect(provenanceCalls).toBeGreaterThan(0));
   });
 });

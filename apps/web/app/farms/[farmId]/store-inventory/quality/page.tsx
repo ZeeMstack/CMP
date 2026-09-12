@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { Fragment } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ErrorState } from "@/components/ErrorState";
@@ -14,13 +15,26 @@ import type {
 import { AppError } from "@/lib/errors/adapter";
 import {
   useApplyQualityDispositionToPartialQuantity, useCohortStorageBreakdown, useCorrectQualityDisposition,
-  useCorrectQualityDispositionForPartialQuantity, useQualityWorkQueue, useRecordQualityDisposition,
+  useCorrectQualityDispositionForPartialQuantity, useFarms, useQualityWorkQueue, useRecordQualityDisposition,
+  useUoms,
 } from "@/lib/query/hooks";
 import { useQualityCommandDraft } from "@/lib/store-inventory/qualityCommandDraft";
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
 }
+
+/** Current restriction badge -- always paired with its own text label
+ * (CLAUDE.md/PILOT-UX-003: never color alone). Purely a display label over
+ * the backend's own `current_state`; never a second source of truth for
+ * which actions are legal (`ORDINARY_ACTIONS` below owns that). */
+const RESTRICTION_BADGES: Record<string, { label: string; className: string }> = {
+  RECEIVED_QUARANTINED: { label: "Quarantined", className: "bg-wl-hold-bg text-wl-hold-fg" },
+  RELEASED: { label: "Released", className: "bg-wl-grow-bg text-wl-grow-fg" },
+  HELD: { label: "Held", className: "bg-wl-hold-bg text-wl-hold-fg" },
+  HOLD_RELEASED: { label: "Hold released", className: "bg-wl-grow-bg text-wl-grow-fg" },
+  REJECTED: { label: "Rejected", className: "bg-wl-flag-bg text-wl-flag-fg" },
+};
 
 /** UX-only mirror of the backend's frozen state machine (docs/domain/
  * STORE_INVENTORY_MODEL.md §11) -- purely which action buttons to offer.
@@ -55,6 +69,10 @@ export default function StoreInventoryQualityPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const queueQuery = useQualityWorkQueue();
   const draft = useQualityCommandDraft();
+  const farmsQuery = useFarms();
+  const farmNameById = new Map((farmsQuery.data ?? []).map((f) => [f.id, f.name]));
+  const uomsQuery = useUoms();
+  const uomCodeById = new Map((uomsQuery.data ?? []).map((u) => [u.id, u.code]));
 
   const dispositionMutation = useRecordQualityDisposition();
   const partialMutation = useApplyQualityDispositionToPartialQuantity();
@@ -107,7 +125,18 @@ export default function StoreInventoryQualityPage() {
               </button>
             </p>
           )}
-          <ul className="flex flex-col gap-3">
+          <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-wl-border bg-wl-surface-sunken text-left text-xs font-medium text-wl-text-secondary">
+                  <th className="p-3">Item / Lot</th>
+                  <th className="p-3">Farm</th>
+                  <th className="p-3 text-right">Quantity</th>
+                  <th className="p-3">Current restriction</th>
+                  <th className="p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
             {rows.map((row: QualityWorkQueueRowRead) => {
               const actions = ORDINARY_ACTIONS[row.current_state] ?? [];
               // A human decision to correct only exists once at least one
@@ -115,21 +144,32 @@ export default function StoreInventoryQualityPage() {
               // has nothing to correct, exactly like RECEIVED_QUARANTINED.
               const canCorrect = row.current_event_id !== null && row.current_state !== "RECEIVED_QUARANTINED";
               const isOpenForThisRow = draft.context?.cohortId === row.inventory_quantity_cohort_id;
+              const badge = RESTRICTION_BADGES[row.current_state] ?? { label: row.current_state, className: "bg-wl-surface-sunken text-wl-text-secondary" };
+              const uomCode = uomCodeById.get(row.base_uom_id);
               return (
-                <li key={row.inventory_quantity_cohort_id} className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-wl-text">{row.item_name}</p>
-                      <p className="text-xs text-wl-text-tertiary">
-                        {row.balance} · {row.current_state}
-                        {row.manufacturer_lot_reference ? ` · Lot ${row.manufacturer_lot_reference}` : ""}
-                        {row.expiry_date ? ` · Expires ${row.expiry_date}` : ""}
-                        {` · Receipt ${row.receipt_code}`}
-                        {` · Received at Farm ${row.received_at_farm_id.slice(0, 8)}`}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5">
-                      <div className="flex flex-wrap justify-end gap-2">
+                <Fragment key={row.inventory_quantity_cohort_id}>
+                <tr className={`border-b border-wl-border last:border-0 hover:bg-wl-surface-hover ${isOpenForThisRow ? "bg-wl-brand-subtle" : ""}`}>
+                  <td className="p-3 align-top">
+                    <p className="font-medium text-wl-text">{row.item_name}</p>
+                    <p className="text-xs text-wl-text-secondary">
+                      {row.manufacturer_lot_reference ? `Lot ${row.manufacturer_lot_reference}` : `Receipt ${row.receipt_code}`}
+                      {row.expiry_date ? ` · Expires ${row.expiry_date}` : ""}
+                    </p>
+                  </td>
+                  <td className="p-3 align-top text-xs text-wl-text-secondary">
+                    {farmNameById.get(row.received_at_farm_id) ?? `Farm ${row.received_at_farm_id.slice(0, 8)}`}
+                  </td>
+                  <td className="p-3 align-top text-right tabular-nums text-wl-text">
+                    {uomCode ? `${row.balance} ${uomCode}` : row.balance}
+                  </td>
+                  <td className="p-3 align-top">
+                    <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+                      {badge.label}
+                    </span>
+                  </td>
+                  <td className="p-3 align-top">
+                    <div className="flex flex-col items-start gap-1.5">
+                      <div className="flex flex-wrap gap-2">
                         {actions.map((disposition) => (
                           <Button
                             key={disposition}
@@ -153,7 +193,7 @@ export default function StoreInventoryQualityPage() {
                           corrections) are deliberately lighter-weight than the
                           ordinary dispositions above -- these are the uncommon
                           case, not competing equally for attention. */}
-                      <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
                         {actions.length > 0 && (
                           <button
                             type="button"
@@ -200,10 +240,12 @@ export default function StoreInventoryQualityPage() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </td>
+                </tr>
 
-                  {isOpenForThisRow && draft.context && (
-                    <div className="mt-3">
+                {isOpenForThisRow && draft.context && (
+                  <tr>
+                    <td colSpan={5} className="border-b border-wl-border bg-wl-surface-sunken p-3 last:border-0">
                       <QualityActionPanel
                         row={row}
                         kind={draft.context.kind}
@@ -308,12 +350,15 @@ export default function StoreInventoryQualityPage() {
                           );
                         }}
                       />
-                    </div>
-                  )}
-                </li>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
-          </ul>
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>

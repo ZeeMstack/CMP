@@ -3,6 +3,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+import { LinkButton } from "@/components/admin/LinkButton";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -91,7 +92,7 @@ export default function ColdStoragePage() {
       />
 
       {contextInvalid && (
-        <p role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <p role="alert" className="mb-4 rounded-md border border-wl-border-strong bg-wl-hold-bg p-3 text-sm text-wl-hold-fg">
           The requested Finished Goods Lot could not be found in this Farm. Select a Lot below.
         </p>
       )}
@@ -108,7 +109,7 @@ export default function ColdStoragePage() {
       {!lotsQuery.isLoading && !lotsQuery.isError && allLots.length > 0 && (
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-ink">Finished Goods Lot</span>
+            <span className="text-sm font-medium text-wl-text">Finished Goods Lot</span>
             <FilterableSelect
               options={lotOptions}
               value={selectedLotId}
@@ -124,9 +125,23 @@ export default function ColdStoragePage() {
 
           {selectedLot && (
             <>
+              {/* PILOT-UX-003: a secondary, de-emphasized handoff -- movement
+                  entry stays the primary action on this screen. Hands off
+                  the actual, stable Finished Goods Lot id; Dispatch
+                  re-resolves it through its own scoped, authorized read
+                  (never trusts this link directly), mirroring the identical
+                  `?finishedGoodsLotId=` pattern Packing already uses here. */}
+              <div className="flex justify-end">
+                <LinkButton
+                  variant="secondary"
+                  href={`/farms/${farmId}/processing/dispatch?finishedGoodsLotId=${selectedLot.id}`}
+                >
+                  Prepare dispatch
+                </LinkButton>
+              </div>
               {recordSuccess ? (
-                <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
-                  <h2 className="font-serif text-base font-semibold text-ink">Movement recorded</h2>
+                <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                  <h2 className="font-serif text-base font-semibold text-wl-text">Movement recorded</h2>
                   <Button type="button" variant="primary" className="self-start" onClick={() => setRecordSuccess(false)}>
                     Record another
                   </Button>
@@ -150,10 +165,10 @@ export default function ColdStoragePage() {
               )}
 
               <div>
-                <h3 className="mb-2 font-serif text-sm font-semibold text-ink">Movement history — {selectedLot.code}</h3>
-                {movementsQuery.isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+                <h3 className="mb-2 font-serif text-sm font-semibold text-wl-text">Movement history — {selectedLot.code}</h3>
+                {movementsQuery.isLoading && <p className="text-sm text-wl-text-secondary">Loading…</p>}
                 {!movementsQuery.isLoading && (movementsQuery.data ?? []).length === 0 && (
-                  <p className="text-sm text-ink-muted">No storage movements recorded yet for this Lot.</p>
+                  <p className="text-sm text-wl-text-secondary">No storage movements recorded yet for this Lot.</p>
                 )}
                 <ul className="flex flex-col gap-2">
                   {(movementsQuery.data ?? [])
@@ -162,10 +177,10 @@ export default function ColdStoragePage() {
                     .map((m) => (
                       <li
                         key={m.id}
-                        className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-3 text-sm"
+                        className="flex flex-wrap items-center gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3 text-sm"
                       >
                         <StatusBadge label={MOVEMENT_KIND_LABEL[m.movement_kind] ?? m.movement_kind} tone={MOVEMENT_KIND_TONE[m.movement_kind] ?? "neutral"} />
-                        <span className="text-ink-muted">
+                        <span className="text-wl-text-secondary">
                           {m.moved_weight_kg} kg / {m.moved_package_count} pkg —{" "}
                           {new Date(m.effective_time).toLocaleString()}
                         </span>

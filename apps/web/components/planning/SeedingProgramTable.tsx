@@ -5,9 +5,14 @@ import type { SeedingProgramLineRead } from "@/lib/api/client";
 import { formatPlanDate } from "@/lib/format/planDate";
 import { formatQuantity } from "@/lib/format/planQuantity";
 
+// PILOT-UX-003: `linked_sowing_count` is a RECORD COUNT (how many separate
+// Sowing events reference this line), never an actual sown quantity and
+// never proof the planned quantity was fully sown -- a line with one small
+// Sowing against a much larger plan must never read as "Complete". "Sowing
+// recorded" is the truthful claim this count actually supports.
 function lineStatusLabel(line: SeedingProgramLineRead): { label: string; tone: "active" | "closed" | "neutral" } {
   if (line.status === "cancelled") return { label: "Cancelled", tone: "neutral" };
-  if (line.linked_sowing_count > 0) return { label: "Complete", tone: "closed" };
+  if (line.linked_sowing_count > 0) return { label: "Sowing recorded", tone: "closed" };
   return { label: "Planned", tone: "active" };
 }
 
@@ -57,7 +62,10 @@ export function SeedingProgramTable({ lines, farmId }: { lines: SeedingProgramLi
                   {formatQuantity(line.expected_coverage_quantity, line.expected_coverage_uom.code)}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-wl-text-secondary">
-                  {line.linked_sowing_count > 0 ? `Sown (${line.linked_sowing_count})` : "—"}
+                  {/* A record count, not a sown quantity -- see `lineStatusLabel`. */}
+                  {line.linked_sowing_count > 0
+                    ? `${line.linked_sowing_count} sowing record${line.linked_sowing_count === 1 ? "" : "s"}`
+                    : "—"}
                 </td>
                 <td className="px-3 py-2">
                   <StatusBadge label={status.label} tone={status.tone} />

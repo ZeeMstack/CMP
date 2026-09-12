@@ -112,13 +112,16 @@ describe("PlanningPage", () => {
     expect(sowNow.getAttribute("href")).toContain("crop_id=crop-1");
   });
 
-  it("reflects an actually-sown plan line as Complete/Sown, distinct from a merely-planned one", async () => {
+  it("PILOT-UX-003: reflects a plan line with linked Sowings as 'Sowing recorded', never a false 'Complete'", async () => {
+    // `linked_sowing_count` is a RECORD COUNT, not a sown quantity -- it
+    // must never be presented as proof the planned quantity was fully sown.
     stubFetch({ lines: [line({ status: "planned", linked_sowing_count: 2 })] });
     render(withQueryClient(<PlanningPage />));
     fireEvent.click(screen.getByRole("tab", { name: "Seeding Program" }));
 
-    await waitFor(() => expect(screen.getByText("Complete")).toBeInTheDocument());
-    expect(screen.getByText("Sown (2)")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Sowing recorded")).toBeInTheDocument());
+    expect(screen.getByText("2 sowing records")).toBeInTheDocument();
+    expect(screen.queryByText("Complete")).not.toBeInTheDocument();
   });
 
   it("shows a cancelled plan line with no Sow Now action, but keeps it visible (never hard-deleted)", async () => {

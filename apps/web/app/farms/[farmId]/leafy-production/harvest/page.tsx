@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { LinkButton } from "@/components/admin/LinkButton";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { HarvestablePlatesPanel } from "@/components/leafy/HarvestablePlatesPanel";
@@ -36,7 +37,7 @@ export default function LeafyHarvestPage() {
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
-    lotCode: string; batchCode: string; totalHeads: number; totalWeight: string; plateCount: number;
+    lotId: string; lotCode: string; batchCode: string; totalHeads: number; totalWeight: string; plateCount: number;
   } | null>(null);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
@@ -79,90 +80,106 @@ export default function LeafyHarvestPage() {
         />
       </div>
 
-      {tab === "harvestable" && (
-        <div className="flex flex-col gap-4">
-          {recordSuccess ? (
-            <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
-              <h2 className="font-serif text-base font-semibold text-ink">Harvest recorded</h2>
-              <dl className="text-sm">
-                <div>
-                  <dt className="text-ink-muted">Harvest Lot code</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.lotCode}</dd>
-                </div>
-                <div>
-                  <dt className="text-ink-muted">Batch</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.batchCode}</dd>
-                </div>
-                <div>
-                  <dt className="text-ink-muted">Total heads</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.totalHeads.toLocaleString()}</dd>
-                </div>
-                <div>
-                  <dt className="text-ink-muted">Total raw weight</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.totalWeight} kg</dd>
-                </div>
-                <div>
-                  <dt className="text-ink-muted">Source Plates</dt>
-                  <dd className="font-medium text-ink">{recordSuccess.plateCount}</dd>
-                </div>
-              </dl>
+      {/* PILOT-UX-003: both tab panels stay mounted (toggled with `hidden`,
+          never a conditional-render unmount) so switching to "Harvest
+          History" and back never wipes an in-progress Harvest draft --
+          mirrors PackingPage/GradingPage's identical `hidden` convention. */}
+      <div hidden={tab !== "harvestable"} className="flex flex-col gap-4">
+        {recordSuccess ? (
+          <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+            <h2 className="font-serif text-base font-semibold text-wl-text">Harvest recorded</h2>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-wl-text-secondary">Harvest Lot code</dt>
+                <dd className="font-medium text-wl-text">{recordSuccess.lotCode}</dd>
+              </div>
+              <div>
+                <dt className="text-wl-text-secondary">Batch</dt>
+                <dd className="font-medium text-wl-text">{recordSuccess.batchCode}</dd>
+              </div>
+              <div>
+                <dt className="text-wl-text-secondary">Total heads</dt>
+                <dd className="tabular-nums font-medium text-wl-text">{recordSuccess.totalHeads.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-wl-text-secondary">Total raw weight</dt>
+                <dd className="tabular-nums font-medium text-wl-text">{recordSuccess.totalWeight} kg</dd>
+              </div>
+              <div>
+                <dt className="text-wl-text-secondary">Source Plates</dt>
+                <dd className="tabular-nums font-medium text-wl-text">{recordSuccess.plateCount}</dd>
+              </div>
+            </dl>
+            <div className="flex flex-wrap gap-3">
               <Button
                 type="button"
-                variant="primary"
-                className="self-start"
+                variant="secondary"
                 onClick={() => {
                   setSelectedAssignmentIds([]);
                   setRecordSuccess(null);
                   setRecordError(null);
                 }}
               >
-                Done
+                Record another Harvest
               </Button>
+              {/* Uses only the actual Harvested Produce Lot id returned by
+                  this command -- never a lookup by display code -- and hands
+                  it to Grading as a hint it re-resolves against its own
+                  scoped read (see GradingPage's `?harvestLotId=` handling). */}
+              <LinkButton
+                variant="primary"
+                href={`/farms/${farmId}/processing/grading?harvestLotId=${recordSuccess.lotId}`}
+              >
+                Grade this lot
+              </LinkButton>
             </div>
-          ) : (
-            <>
-              {selectedPlates.length > 0 && (
-                <LeafyHarvestForm
-                  key={selectedAssignmentIds.join(",")}
-                  plates={selectedPlates}
-                  isSubmitting={recordMutation.isPending}
-                  serverError={recordError}
-                  onSubmit={(payload) => {
-                    setRecordError(null);
-                    recordMutation.mutate(payload, {
-                      onSuccess: (result) => {
-                        setSelectedAssignmentIds([]);
-                        setRecordSuccess({
-                          lotCode: result.produce_lot_code,
-                          batchCode: result.batch_code,
-                          totalHeads: result.current_total_whole_unit_count,
-                          totalWeight: result.current_total_harvested_weight_kg,
-                          plateCount: result.source_lines.length,
-                        });
-                      },
-                      onError: (error) => setRecordError(asAppError(error)),
-                    });
-                  }}
-                />
-              )}
-              <HarvestablePlatesPanel
-                plates={allPlates}
-                selectedAssignmentIds={selectedAssignmentIds}
-                lockedBatchId={lockedBatchId}
-                isLoading={harvestablePlatesQuery.isLoading}
-                onAdd={(plate) =>
-                  setSelectedAssignmentIds((ids) => [...ids, plate.current_batch_carrier_assignment_id])
-                }
-                onRemove={(assignmentId) =>
+          </div>
+        ) : (
+          <>
+            {selectedPlates.length > 0 && (
+              <LeafyHarvestForm
+                plates={selectedPlates}
+                onRemovePlate={(assignmentId) =>
                   setSelectedAssignmentIds((ids) => ids.filter((id) => id !== assignmentId))
                 }
+                isSubmitting={recordMutation.isPending}
+                serverError={recordError}
+                onSubmit={(payload) => {
+                  setRecordError(null);
+                  recordMutation.mutate(payload, {
+                    onSuccess: (result) => {
+                      setSelectedAssignmentIds([]);
+                      setRecordSuccess({
+                        lotId: result.produce_lot_id,
+                        lotCode: result.produce_lot_code,
+                        batchCode: result.batch_code,
+                        totalHeads: result.current_total_whole_unit_count,
+                        totalWeight: result.current_total_harvested_weight_kg,
+                        plateCount: result.source_lines.length,
+                      });
+                    },
+                    onError: (error) => setRecordError(asAppError(error)),
+                  });
+                }}
               />
-            </>
-          )}
-        </div>
-      )}
+            )}
+            <HarvestablePlatesPanel
+              plates={allPlates}
+              selectedAssignmentIds={selectedAssignmentIds}
+              lockedBatchId={lockedBatchId}
+              isLoading={harvestablePlatesQuery.isLoading}
+              onAdd={(plate) =>
+                setSelectedAssignmentIds((ids) => [...ids, plate.current_batch_carrier_assignment_id])
+              }
+              onRemove={(assignmentId) =>
+                setSelectedAssignmentIds((ids) => ids.filter((id) => id !== assignmentId))
+              }
+            />
+          </>
+        )}
+      </div>
 
-      {tab === "history" && (
+      <div hidden={tab !== "history"}>
         <LeafyHarvestHistoryPanel
           events={harvestsQuery.data ?? []}
           correctingLineId={correctingLineId}
@@ -185,7 +202,7 @@ export default function LeafyHarvestPage() {
             }
           }}
         />
-      )}
+      </div>
     </div>
   );
 }

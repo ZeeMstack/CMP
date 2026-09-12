@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
 import {
-  useCohortStorageBreakdown, useInventoryItems, useItemExistenceProvenance, useItemFarmAvailability,
-  useItemsExistenceSummary, useItemStorageBreakdown, useLocationsTree, useRecordInventoryScrap,
-  useRecordInventoryStorageTransfer, useUoms,
+  useCohortStorageBreakdown, useFarms, useInventoryItems, useItemExistenceProvenance, useItemFarmAvailability,
+  useItemsExistenceSummary, useItemStorageBreakdown, useLocationsTree, useQualityWorkQueue,
+  useRecordInventoryScrap, useRecordInventoryStorageTransfer, useUoms,
 } from "@/lib/query/hooks";
 
 const inputClass =
@@ -89,7 +89,7 @@ function MoveStockForm({
       </label>
 
       {error && (
-        <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{error.message}</p>
+        <p className="rounded-md border border-wl-border bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">{error.message}</p>
       )}
 
       <div className="flex gap-2">
@@ -172,7 +172,7 @@ function ScrapForm({
         </label>
       </div>
 
-      {error && <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">{error.message}</p>}
+      {error && <p className="rounded-md border border-wl-border bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">{error.message}</p>}
 
       <div className="flex gap-2">
         <Button
@@ -206,6 +206,10 @@ function ScrapForm({
   );
 }
 
+/** One cohort's own physical custody -- Not put away / per-Bin balances --
+ * plus its Move stock / Scrap actions. Rendered as one flat row inside the
+ * single selected-stock panel (PILOT-UX-003), never as a further nested
+ * `<table>` inside a table row. */
 function CohortCustodyRow({
   cohortId, farmId, activeBins,
 }: {
@@ -219,28 +223,32 @@ function CohortCustodyRow({
   const buckets = breakdownQuery.data?.buckets ?? [];
   const binBuckets = buckets.filter((b) => b.location_id !== null) as { location_id: string; label: string; balance: string }[];
 
-  if (breakdownQuery.isLoading) return null;
-
   return (
-    <div className="flex flex-col gap-1 border-t border-wl-border/60 px-2 py-1.5 text-[11px] text-wl-text-tertiary">
+    <div className="flex flex-col gap-1.5 rounded-lg border border-wl-border bg-wl-surface-raised p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span>
-          {buckets.length === 0
-            ? "Nothing recorded"
-            : buckets.map((b) => `${b.label}: ${b.balance}`).join(" · ")}
+        <span className="text-xs text-wl-text-secondary">
+          {breakdownQuery.isLoading
+            ? "Loading custody…"
+            : breakdownQuery.isError
+              ? "Custody detail unavailable — retry"
+              : buckets.length === 0
+                ? "Nothing recorded"
+                : buckets.map((b) => `${b.label}: ${b.balance}`).join(" · ")}
         </span>
-        <div className="flex gap-2">
-          {binBuckets.length > 0 && !moving && (
-            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setMoving(true)}>
-              Move stock
-            </button>
-          )}
-          {buckets.length > 0 && !scrapping && (
-            <button type="button" className="font-medium text-wl-brand hover:underline" onClick={() => setScrapping(true)}>
-              Scrap
-            </button>
-          )}
-        </div>
+        {!breakdownQuery.isLoading && !breakdownQuery.isError && (
+          <div className="flex gap-2">
+            {binBuckets.length > 0 && !moving && (
+              <button type="button" className="text-xs font-medium text-wl-brand hover:underline" onClick={() => setMoving(true)}>
+                Move stock
+              </button>
+            )}
+            {buckets.length > 0 && !scrapping && (
+              <button type="button" className="text-xs font-medium text-wl-brand hover:underline" onClick={() => setScrapping(true)}>
+                Scrap
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {moving && binBuckets.length > 0 && (
         <MoveStockForm
@@ -258,83 +266,155 @@ function CohortCustodyRow({
   );
 }
 
-function FarmAvailabilitySummary({ itemId, farmId, uomCode }: { itemId: string; farmId: string; uomCode: string | undefined }) {
+/** The ONE selected-stock panel (PILOT-UX-003): everything about the item
+ * currently selected in the Farm table -- Farm-scoped detail not already on
+ * the row (Issued to operations, Not put away company-wide), then each
+ * contributing cohort's own custody -- replacing the previous nested
+ * table-inside-a-table-row structure with one flat panel. Cohort/bin detail
+ * is fetched only for the selected item (`useItemExistenceProvenance`) and
+ * only for its own cohorts (`useCohortStorageBreakdown`, one per cohort
+ * actually shown here) -- never eagerly across the whole Inventory list. */
+function SelectedStockPanel({
+  itemId, itemName, farmId, uomCode, activeBins, farmNameById,
+}: {
+  itemId: string;
+  itemName: string;
+  farmId: string;
+  uomCode: string | undefined;
+  activeBins: { id: string; label: string }[];
+  farmNameById: Map<string, string>;
+}) {
   const availabilityQuery = useItemFarmAvailability(farmId, itemId);
   const notPutAwayQuery = useItemStorageBreakdown(itemId);
+  const provenanceQuery = useItemExistenceProvenance(itemId);
   const fmt = (v: string | undefined) => (v === undefined ? "…" : uomCode ? `${v} ${uomCode}` : v);
+  const rows = provenanceQuery.data ?? [];
 
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-wl-border/60 px-3 py-2 text-[11px] text-wl-text-secondary">
-      <span>In Store (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.in_store_quantity)}</span></span>
-      <span>Reserved (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.reserved_quantity)}</span></span>
-      <span>Issued to operations (this Farm): <span className="font-medium text-wl-text">{fmt(availabilityQuery.data?.issued_to_operations_quantity)}</span></span>
-      <span>Not put away (company-wide): <span className="font-medium text-wl-text">{fmt(notPutAwayQuery.data?.not_put_away_quantity)}</span></span>
+    <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-sunken p-3">
+      <h3 className="text-sm font-semibold text-wl-text">Selected: {itemName}</h3>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-wl-text-secondary">
+        <span>
+          Issued to operations (this Farm):{" "}
+          <span className="font-medium text-wl-text">
+            {availabilityQuery.isError ? "Unavailable — retry" : fmt(availabilityQuery.data?.issued_to_operations_quantity)}
+          </span>
+        </span>
+        <span>
+          Not put away (company-wide):{" "}
+          <span className="font-medium text-wl-text">
+            {notPutAwayQuery.isError ? "Unavailable — retry" : fmt(notPutAwayQuery.data?.not_put_away_quantity)}
+          </span>
+        </span>
+      </div>
+
+      <div>
+        <h4 className="mb-1.5 text-xs font-semibold text-wl-text-secondary">Contributing lots / cohorts</h4>
+        {provenanceQuery.isLoading ? (
+          <p className="text-sm text-wl-text-secondary">Loading…</p>
+        ) : provenanceQuery.isError ? (
+          <p className="text-sm text-wl-flag-fg">Could not load contributing cohorts — retry.</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-wl-text-secondary">No cohorts contribute to this total.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {rows.map((row) => (
+              <li key={row.inventory_quantity_cohort_id} className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+                  <span className="text-wl-text">
+                    Received at{" "}
+                    <span className="font-medium">
+                      {farmNameById.get(row.received_at_farm_id) ?? `Farm ${row.received_at_farm_id.slice(0, 8)}`}
+                    </span>
+                  </span>
+                  <span className="font-medium tabular-nums text-wl-text">{row.balance}{uomCode ? ` ${uomCode}` : ""}</span>
+                </div>
+                <CohortCustodyRow cohortId={row.inventory_quantity_cohort_id} farmId={farmId} activeBins={activeBins} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
 
-function ProvenanceRows({ itemId, farmId, activeBins }: { itemId: string; farmId: string; activeBins: { id: string; label: string }[] }) {
-  const provenanceQuery = useItemExistenceProvenance(itemId);
-  const rows = provenanceQuery.data ?? [];
-  if (provenanceQuery.isLoading) {
-    return <p className="p-3 text-sm text-wl-text-secondary">Loading provenance…</p>;
+/** One row of the primary, Farm-scoped operational table -- Available to
+ * issue / In store / Reserved, all from the one `useItemFarmAvailability`
+ * read (never a separate call per column). */
+function FarmScopedCells({ itemId, farmId, uomCode }: { itemId: string; farmId: string; uomCode: string | undefined }) {
+  const availabilityQuery = useItemFarmAvailability(farmId, itemId);
+  const fmt = (v: string | undefined) => (uomCode ? `${v} ${uomCode}` : v);
+  if (availabilityQuery.isLoading) {
+    return (
+      <>
+        <td className="p-3 text-wl-text-secondary">…</td>
+        <td className="p-3 text-wl-text-secondary">…</td>
+        <td className="p-3 text-wl-text-secondary">…</td>
+      </>
+    );
   }
-  if (rows.length === 0) {
-    return <p className="p-3 text-sm text-wl-text-secondary">No cohorts contribute to this total.</p>;
+  if (availabilityQuery.isError) {
+    return (
+      <>
+        <td className="p-3 text-wl-flag-fg">Unavailable</td>
+        <td className="p-3 text-wl-flag-fg">Unavailable</td>
+        <td className="p-3 text-wl-flag-fg">Unavailable</td>
+      </>
+    );
   }
   return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr className="text-left text-wl-text-tertiary">
-          <th className="p-2 font-medium">Cohort</th>
-          <th className="p-2 font-medium">Balance</th>
-          <th className="p-2 font-medium">Received at (Farm)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <Fragment key={row.inventory_quantity_cohort_id}>
-            <tr className="border-t border-wl-border">
-              <td className="p-2 font-mono text-wl-text-tertiary">{row.inventory_quantity_cohort_id.slice(0, 8)}</td>
-              <td className="p-2 text-wl-text">{row.balance}</td>
-              <td className="p-2 text-wl-text-tertiary">Received at Farm {row.received_at_farm_id.slice(0, 8)}</td>
-            </tr>
-            <tr>
-              <td colSpan={3} className="p-0">
-                <CohortCustodyRow cohortId={row.inventory_quantity_cohort_id} farmId={farmId} activeBins={activeBins} />
-              </td>
-            </tr>
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <td className="p-3 tabular-nums text-wl-text">{fmt(availabilityQuery.data?.available_to_issue_quantity)}</td>
+      <td className="p-3 tabular-nums text-wl-text">{fmt(availabilityQuery.data?.in_store_quantity)}</td>
+      <td className="p-3 tabular-nums text-wl-text">{fmt(availabilityQuery.data?.reserved_quantity)}</td>
+    </>
   );
 }
 
-/** STORE-INV-002A.2/002B: company-wide existence + usable quantity, by
- * item, plus (as of 002B) each contributing cohort's own physical custody
- * breakdown -- "Not put away" and per-Bin balances -- and a compact "Move
- * stock" action. Never labels usable as "available" -- Reservation does
- * not exist yet. Custody is Farm-scoped (a Bin belongs to one Farm); the
- * Farm selector changes which Bins "Move stock" can target, never the
- * company-wide existence/usable totals themselves (docs/domain/
- * STORE_INVENTORY_MODEL.md §13/§18). */
+/** STORE-INV-002A.2/002B: Farm-scoped operational stock -- Available to
+ * issue / In store / Reserved / Attention, one row per active Item -- is the
+ * default, primary view (PILOT-UX-003: routine daily operation defaults to
+ * THIS Farm). Company-wide Existence/Usable totals are a distinct,
+ * visually-secondary, collapsed-by-default section below, never mixed into
+ * the same columns as this Farm's own custody. Selecting a row opens the one
+ * `SelectedStockPanel` below the table with that Item's contributing
+ * cohorts/Bins and Move/Scrap actions -- replacing the previous
+ * table-nested-inside-a-table-row structure. */
 export default function StoreInventoryInventoryPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const itemsQuery = useInventoryItems({ status: "active" });
   const items = itemsQuery.data ?? [];
-  const summary = useItemsExistenceSummary(items.map((i) => i.id));
   const uomsQuery = useUoms();
   const uomsById = new Map((uomsQuery.data ?? []).map((u) => [u.id, u.code]));
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [companyWideOpen, setCompanyWideOpen] = useState(false);
   const treeQuery = useLocationsTree(farmId);
   const activeBins = activeBinsWithPaths(treeQuery.data ?? []);
+  const farmsQuery = useFarms();
+  const farmNameById = new Map((farmsQuery.data ?? []).map((f) => [f.id, f.name]));
+
+  // ONE company-wide read for the whole page (never per-item/per-cohort) --
+  // an Item has "Attention" here only if a queue row for one of its cohorts
+  // was actually received at THIS Farm.
+  const qualityQueueQuery = useQualityWorkQueue();
+  const attentionItemIds = new Set(
+    (qualityQueueQuery.data ?? [])
+      .filter((row) => row.received_at_farm_id === farmId)
+      .map((row) => row.inventory_item_id),
+  );
+
+  // Deferred until the operator actually opens the section -- never fetched
+  // eagerly across every active Item just to render a collapsed summary.
+  const companyWideSummary = useItemsExistenceSummary(items.map((i) => i.id), companyWideOpen);
+
+  const selectedItem = items.find((i) => i.id === selectedItemId) ?? null;
 
   return (
     <div>
       <PageHeader
         title="Inventory"
-        description="Company-wide existence and usable quantity, shared across every Farm in this tenant."
+        description="This Farm's stock, available to issue right now. Company-wide totals are a separate summary below."
         breadcrumbs={
           <Breadcrumbs
             items={[
@@ -345,84 +425,138 @@ export default function StoreInventoryInventoryPage() {
           />
         }
       />
-      <p className="mb-4 text-xs text-wl-text-tertiary">
-        Exists/Usable are company-wide. Available to issue, and the expanded detail&apos;s In Store/Reserved/Issued
-        to operations, are scoped to the selected Farm.
-      </p>
 
       {itemsQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>
+      ) : itemsQuery.isError ? (
+        <p className="text-sm text-wl-flag-fg">Could not load Inventory Items — retry.</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-wl-text">No active Inventory Items configured yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-wl-border text-left text-wl-text-tertiary">
-                <th className="p-3 font-medium">Item</th>
-                <th className="p-3 font-medium">Exists</th>
-                <th className="p-3 font-medium">Usable</th>
-                <th className="p-3 font-medium">Available to issue</th>
-                <th className="p-3 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const row = summary.byItemId[item.id];
-                const isExpanded = expandedItemId === item.id;
-                const uomCode = uomsById.get(item.base_uom_id);
-                return (
-                  <Fragment key={item.id}>
-                    <tr className="border-b border-wl-border last:border-0">
+        <div className="flex flex-col gap-4">
+          <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-wl-border text-left text-wl-text-secondary">
+                  <th className="p-3 font-medium">Item</th>
+                  <th className="p-3 font-medium">Available to issue</th>
+                  <th className="p-3 font-medium">In store</th>
+                  <th className="p-3 font-medium">Reserved</th>
+                  <th className="p-3 font-medium">Attention</th>
+                  <th className="p-3 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const isSelected = selectedItemId === item.id;
+                  const uomCode = uomsById.get(item.base_uom_id);
+                  const hasAttention = attentionItemIds.has(item.id);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`cursor-pointer border-b border-wl-border last:border-0 hover:bg-wl-surface-hover ${isSelected ? "bg-wl-brand-subtle" : ""}`}
+                      onClick={() => setSelectedItemId(isSelected ? null : item.id)}
+                    >
                       <td className="p-3 font-medium text-wl-text">
                         {item.name}
                         {item.lot_tracking_required && (
-                          <span className="ml-2 rounded bg-wl-surface px-1.5 py-0.5 text-[10px] uppercase text-wl-text-tertiary">
+                          <span className="ml-2 rounded bg-wl-surface-sunken px-1.5 py-0.5 text-[10px] uppercase text-wl-text-secondary">
                             lot-tracked
                           </span>
                         )}
                       </td>
-                      <td className="p-3 text-wl-text">
-                        {summary.isLoading ? "…" : row?.existing !== undefined ? `${row.existing} ${uomCode ?? ""}`.trim() : "0"}
-                      </td>
-                      <td className="p-3 text-wl-text">
-                        {summary.isLoading ? "…" : row?.usable !== undefined ? `${row.usable} ${uomCode ?? ""}`.trim() : "0"}
-                      </td>
-                      <td className="p-3 text-wl-text">
-                        <AvailableToIssueCell itemId={item.id} farmId={farmId} uomCode={uomCode} />
+                      <FarmScopedCells itemId={item.id} farmId={farmId} uomCode={uomCode} />
+                      <td className="p-3">
+                        {qualityQueueQuery.isLoading ? (
+                          <span className="text-xs text-wl-text-secondary">…</span>
+                        ) : qualityQueueQuery.isError ? (
+                          <span className="text-xs text-wl-flag-fg">Unavailable</span>
+                        ) : hasAttention ? (
+                          <span className="inline-flex w-fit items-center rounded-full bg-wl-hold-bg px-2 py-0.5 text-xs font-medium text-wl-hold-fg">
+                            Attention
+                          </span>
+                        ) : (
+                          <span className="text-xs text-wl-text-secondary">—</span>
+                        )}
                       </td>
                       <td className="p-3 text-right">
                         <button
                           type="button"
                           className="text-xs font-medium text-wl-brand hover:underline"
-                          onClick={() => setExpandedItemId(isExpanded ? null : item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedItemId(isSelected ? null : item.id);
+                          }}
                         >
-                          {isExpanded ? "Hide detail" : "Show detail"}
+                          {isSelected ? "Hide detail" : "Show detail"}
                         </button>
                       </td>
                     </tr>
-                    {isExpanded && (
-                      <tr className="border-b border-wl-border bg-wl-surface last:border-0">
-                        <td colSpan={5} className="p-0">
-                          <FarmAvailabilitySummary itemId={item.id} farmId={farmId} uomCode={uomCode} />
-                          <ProvenanceRows itemId={item.id} farmId={farmId} activeBins={activeBins} />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {selectedItem && (
+            <SelectedStockPanel
+              itemId={selectedItem.id}
+              itemName={selectedItem.name}
+              farmId={farmId}
+              uomCode={uomsById.get(selectedItem.base_uom_id)}
+              activeBins={activeBins}
+              farmNameById={farmNameById}
+            />
+          )}
+
+          <div className="rounded-xl border border-wl-border bg-wl-surface-raised">
+            <button
+              type="button"
+              className="w-full p-3 text-left text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover"
+              onClick={() => setCompanyWideOpen((open) => !open)}
+              aria-expanded={companyWideOpen}
+            >
+              {companyWideOpen ? "▾" : "▸"} Company-wide totals (all Farms)
+            </button>
+            <div className="overflow-x-auto border-t border-wl-border" hidden={!companyWideOpen}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-wl-border text-left text-wl-text-secondary">
+                    <th className="p-3 font-medium">Item</th>
+                    <th className="p-3 font-medium">Exists</th>
+                    <th className="p-3 font-medium">Usable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => {
+                    const row = companyWideSummary.byItemId[item.id];
+                    const uomCode = uomsById.get(item.base_uom_id);
+                    return (
+                      <tr key={item.id} className="border-b border-wl-border last:border-0">
+                        <td className="p-3 text-wl-text">{item.name}</td>
+                        <td className="p-3 tabular-nums text-wl-text-secondary">
+                          {!companyWideOpen || companyWideSummary.isLoading
+                            ? "…"
+                            : row?.existing !== undefined && row.existing !== null
+                              ? `${row.existing} ${uomCode ?? ""}`.trim()
+                              : "0"}
+                        </td>
+                        <td className="p-3 tabular-nums text-wl-text-secondary">
+                          {!companyWideOpen || companyWideSummary.isLoading
+                            ? "…"
+                            : row?.usable !== undefined && row.usable !== null
+                              ? `${row.usable} ${uomCode ?? ""}`.trim()
+                              : "0"}
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
-}
-
-function AvailableToIssueCell({ itemId, farmId, uomCode }: { itemId: string; farmId: string; uomCode: string | undefined }) {
-  const availabilityQuery = useItemFarmAvailability(farmId, itemId);
-  if (availabilityQuery.isLoading) return <>…</>;
-  const value = availabilityQuery.data?.available_to_issue_quantity ?? "0";
-  return <>{uomCode ? `${value} ${uomCode}` : value}</>;
 }

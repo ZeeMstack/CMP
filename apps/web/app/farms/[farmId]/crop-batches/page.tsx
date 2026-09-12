@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -11,8 +11,24 @@ import { PageHeader } from "@/components/PageHeader";
 import { ResponsiveBatchList } from "@/components/ResponsiveBatchList";
 import { useFarm, useOperationalSummary } from "@/lib/query/hooks";
 
+// PILOT-UX-003: a `?filter=` deep link from Home's own KPI cards -- reuses
+// the exact same authoritative fields `computeHomeKpis` reads
+// (`stage_category`/`open_quality_hold_count`), never a second, divergent
+// definition of "harvest ready" or "has an open hold". An unrecognized/
+// missing value applies no extra filter (never a silent empty list).
+const DEEP_LINK_FILTERS = {
+  harvest_ready: { label: "Harvest ready", test: (b: { current_stage: { stage_category: string } }) => b.current_stage.stage_category === "harvest_ready" },
+  quality_hold: { label: "Batches with open quality holds", test: (b: { open_quality_hold_count: number }) => b.open_quality_hold_count > 0 },
+} as const;
+type DeepLinkFilterKey = keyof typeof DEEP_LINK_FILTERS;
+
 export default function CropBatchesPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const deepLinkKey = searchParams.get("filter");
+  const deepLinkFilter =
+    deepLinkKey && deepLinkKey in DEEP_LINK_FILTERS ? DEEP_LINK_FILTERS[deepLinkKey as DeepLinkFilterKey] : null;
   const { data: farm } = useFarm(farmId);
   // Batch Register needs every legitimate state (active/closed/superseded),
   // not just active -- `state=all` is a distinct cache entry from Home's
@@ -34,6 +50,7 @@ export default function CropBatchesPage() {
     if (!data) return [];
     const query = search.trim().toLowerCase();
     return data.filter((batch) => {
+      if (deepLinkFilter && !deepLinkFilter.test(batch)) return false;
       if (stage && batch.current_stage.name !== stage) return false;
       if (state && batch.state !== state) return false;
       if (query && !batch.code.toLowerCase().includes(query) && !batch.crop.common_name.toLowerCase().includes(query)) {
@@ -41,7 +58,7 @@ export default function CropBatchesPage() {
       }
       return true;
     });
-  }, [data, search, stage, state]);
+  }, [data, search, stage, state, deepLinkFilter]);
 
   return (
     <div>
@@ -51,6 +68,19 @@ export default function CropBatchesPage() {
           <Breadcrumbs items={[{ label: "Home", href: `/farms/${farmId}` }, { label: "Batches" }]} />
         }
       />
+
+      {deepLinkFilter && (
+        <p className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-wl-border bg-wl-brand-subtle px-3 py-2 text-sm text-wl-text">
+          Showing: <span className="font-medium">{deepLinkFilter.label}</span>
+          <button
+            type="button"
+            className="text-xs font-medium text-wl-brand hover:underline"
+            onClick={() => router.push(`/farms/${farmId}/crop-batches`)}
+          >
+            Clear filter
+          </button>
+        </p>
+      )}
 
       {isLoading && <LoadingSkeleton rows={6} label="Loading crop batches" />}
       {error && <ErrorState error={error} onRetry={() => refetch()} />}

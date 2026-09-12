@@ -3,14 +3,15 @@
 import { useEffect, useRef } from "react";
 import type { FieldErrors, UseFormRegister, UseFormSetValue } from "react-hook-form";
 
+import { Button } from "@/components/ui/Button";
 import type { FinishedGoodsLotRead } from "@/lib/api/client";
 import { useFinishedGoodsPlacement } from "@/lib/query/hooks";
 import type { RecordDispatchFormValues } from "@/lib/validation/dispatch";
 
 const inputClass =
-  "min-h-11 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "block text-xs font-medium text-ink-muted";
-const errorClass = "text-xs text-red-700";
+  "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "block text-xs font-medium text-wl-text-secondary";
+const errorClass = "text-xs text-wl-flag-fg";
 
 /** PILOT-READY-001: one Finished Goods Lot line inside the Dispatch form.
  * Fetches this Lot's own live Placement (own component instance per line,
@@ -27,6 +28,7 @@ export function DispatchLineRow({
   register,
   setValue,
   errors,
+  onRemove,
 }: {
   lot: FinishedGoodsLotRead;
   farmId: string;
@@ -34,6 +36,7 @@ export function DispatchLineRow({
   register: UseFormRegister<RecordDispatchFormValues>;
   setValue: UseFormSetValue<RecordDispatchFormValues>;
   errors: FieldErrors<RecordDispatchFormValues>;
+  onRemove: () => void;
 }) {
   const placementQuery = useFinishedGoodsPlacement(farmId, lot.id);
   const hasSeeded = useRef(false);
@@ -49,18 +52,23 @@ export function DispatchLineRow({
   }, [placementQuery.data, index, setValue]);
 
   return (
-    <li className="rounded-md border border-border-subtle p-3">
+    <li className="rounded-md border border-wl-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">{lot.code}</span>
-        <span className="text-xs text-ink-muted">
-          Unplaced{" "}
-          {placementQuery.data
-            ? `${placementQuery.data.unplaced_weight_kg} kg / ${placementQuery.data.unplaced_package_count} pkg`
-            : "Loading…"}
-        </span>
+        <span className="text-sm font-semibold text-wl-text">{lot.code}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-wl-text-secondary">
+            Unplaced{" "}
+            {placementQuery.data
+              ? `${placementQuery.data.unplaced_weight_kg} kg / ${placementQuery.data.unplaced_package_count} pkg`
+              : "Loading…"}
+          </span>
+          <Button type="button" variant="secondary" onClick={onRemove}>
+            Remove
+          </Button>
+        </div>
       </div>
       {placementQuery.data && Number(placementQuery.data.unplaced_weight_kg) <= 0 && (
-        <p className="mt-1 text-xs text-ink-muted">
+        <p className="mt-1 text-xs text-wl-text-secondary">
           This Lot has no unplaced balance -- release it from Cold Storage before dispatching.
         </p>
       )}

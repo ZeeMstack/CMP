@@ -420,7 +420,22 @@ export function ReceiveGoodsForm({
 
   function handleSubmit() {
     setAttempted(true);
-    if (!isValid) return;
+    if (!isValid) {
+      // PILOT-UX-003: a required/invalid Lot-details field (Manufacturer,
+      // Expiry Date) must never fail validation silently inside a still-
+      // collapsed row -- auto-reveal exactly the rows whose error actually
+      // lives in that collapsed section, without touching any row the
+      // operator has not opened for an unrelated reason.
+      setOpenLotDetails((prev) => {
+        const next = new Set(prev);
+        lines.forEach((line, index) => {
+          const err = lineErrors[index];
+          if (err.manufacturerName || err.expiryDate) next.add(line.key);
+        });
+        return next;
+      });
+      return;
+    }
     const payload = buildPayload();
     const fingerprint = JSON.stringify(payload.lines) + payload.received_at + (payload.supplier_name ?? "");
     let idToUse = clientCommandId;

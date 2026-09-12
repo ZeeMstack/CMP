@@ -58,4 +58,14 @@ describe("NurseryJourney", () => {
     render(<NurseryJourney farmId="farm-1" current="seeding" />);
     expect(screen.getByRole("navigation", { name: "Nursery journey" })).toBeInTheDocument();
   });
+
+  it("PILOT-UX-003: shows InterSalads/InterVines as an 'or'-joined pair, never a further sequential arrow between them", () => {
+    render(<NurseryJourney farmId="farm-1" current="seedling" />);
+    expect(screen.getByText("or")).toBeInTheDocument();
+    // Both live inside the same grouped list item -- one arrow leads into
+    // the pair from Seedling, not a separate arrow between the two of them.
+    const intersalads = screen.getByRole("link", { name: /Transfer to Inter Leafy Greens/ });
+    const intervines = screen.getByRole("link", { name: /Transfer to InterVines/ });
+    expect(intersalads.closest("li")).toBe(intervines.closest("li"));
+  });
 });

@@ -104,8 +104,11 @@ export default function SeedingProgramLineDetailPage() {
         </div>
         <div>
           <p className="text-xs text-wl-text-tertiary">Status</p>
+          {/* PILOT-UX-003: `linked_sowing_count` is a record count, never
+              proof the planned quantity was fully sown -- see
+              `SeedingProgramTable.tsx`'s identical `lineStatusLabel`. */}
           <StatusBadge
-            label={line.status === "cancelled" ? "Cancelled" : line.linked_sowing_count > 0 ? "Complete" : "Planned"}
+            label={line.status === "cancelled" ? "Cancelled" : line.linked_sowing_count > 0 ? "Sowing recorded" : "Planned"}
             tone={line.status === "cancelled" ? "neutral" : line.linked_sowing_count > 0 ? "closed" : "active"}
           />
         </div>

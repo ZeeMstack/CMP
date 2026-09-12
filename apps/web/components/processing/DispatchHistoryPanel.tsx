@@ -15,10 +15,10 @@ export function DispatchHistoryPanel({
   isLoading: boolean;
 }) {
   if (isLoading) {
-    return <p className="text-sm text-ink-muted">Loading dispatch history…</p>;
+    return <p className="text-sm text-wl-text-secondary">Loading dispatch history…</p>;
   }
   if (events.length === 0) {
-    return <p className="text-sm text-ink-muted">No dispatches recorded yet in this Farm.</p>;
+    return <p className="text-sm text-wl-text-secondary">No dispatches recorded yet in this Farm.</p>;
   }
 
   const sorted = [...events].sort((a, b) => b.effective_time.localeCompare(a.effective_time));
@@ -26,25 +26,25 @@ export function DispatchHistoryPanel({
   return (
     <ul className="flex flex-col gap-3">
       {sorted.map((event) => (
-        <li key={event.id} className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3">
+        <li key={event.id} className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-serif text-sm font-semibold text-ink">{event.code}</span>
-            <span className="text-xs text-ink-muted">{new Date(event.effective_time).toLocaleString()}</span>
+            <span className="font-serif text-sm font-semibold text-wl-text">{event.code}</span>
+            <span className="text-xs text-wl-text-secondary">{new Date(event.effective_time).toLocaleString()}</span>
           </div>
-          <span className="text-xs text-ink-muted">
+          <span className="text-xs text-wl-text-secondary">
             {event.total_dispatched_weight_kg} kg / {event.total_dispatched_package_count} packages across{" "}
             {event.lines.length} lot{event.lines.length === 1 ? "" : "s"}
           </span>
           {/* Vehicle/dispatch-level reading, shown once per event -- never
               per line below -- same rationale as `DispatchForm`'s own
               review-step temperature block. */}
-          <span className="w-fit rounded-md border border-border-subtle bg-surface-subtle px-2 py-1 text-xs text-ink">
+          <span className="w-fit rounded-md border border-wl-border bg-wl-surface-sunken px-2 py-1 text-xs text-wl-text">
             Temperature: {event.dispatch_temperature_c != null ? `${event.dispatch_temperature_c} °C` : "not recorded"}
           </span>
-          {event.external_reference && <span className="text-xs text-ink-muted">Reference: {event.external_reference}</span>}
+          {event.external_reference && <span className="text-xs text-wl-text-secondary">Reference: {event.external_reference}</span>}
           <ul className="mt-1 flex flex-col gap-0.5">
             {event.lines.map((line) => (
-              <li key={line.id} className="text-xs text-ink-muted">
+              <li key={line.id} className="text-xs text-wl-text-secondary">
                 {line.finished_goods_lot_code} — {line.dispatched_weight_kg} kg / {line.dispatched_package_count} pkg
               </li>
             ))}

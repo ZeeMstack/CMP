@@ -71,6 +71,11 @@ export function PackingForm({
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
   const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // State, not a ref: written from `goToReview`, which is passed inline to
+  // `handleSubmit()` in the JSX below -- a function constructed during
+  // render must never write a ref (React Compiler safety rule; see the
+  // identical note in LeafyHarvestForm.tsx/DispatchForm.tsx).
+  const [reviewedLotIdsKey, setReviewedLotIdsKey] = useState<string | null>(null);
   const initial = nowDateAndTime();
   const cropId = lots[0]?.crop.id;
   const hasCounts = lots.some((l) => l.original_received_whole_unit_count != null);
@@ -179,8 +184,24 @@ export function PackingForm({
     // returns via the guard at the top -- never a loop.
   }, [effectiveTimeIso, versionsQuery.data, selectedVersionId, setValue]);
 
+  // PILOT-UX-003: never show a stale Review -- if the selected-Lot set
+  // changes while the operator is on Review (the source panel below stays
+  // interactive throughout), drop back to Configure so the operator
+  // re-confirms against the current selection rather than reviewing/
+  // submitting a snapshot that no longer matches it. Adjusted directly
+  // during render (React's own blessed pattern) rather than in an effect,
+  // which would cause an extra, avoidable cascading render.
+  const [prevLotIdsKeyForStaleCheck, setPrevLotIdsKeyForStaleCheck] = useState(lotIdsKey);
+  if (lotIdsKey !== prevLotIdsKeyForStaleCheck) {
+    setPrevLotIdsKeyForStaleCheck(lotIdsKey);
+    if (step === "review" && reviewedLotIdsKey !== null && reviewedLotIdsKey !== lotIdsKey) {
+      setStep("configure");
+    }
+  }
+
   function goToReview(values: RecordPackingFormValues) {
     void values;
+    setReviewedLotIdsKey(lotIdsKey);
     setStep("review");
   }
 
