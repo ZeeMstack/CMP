@@ -233,7 +233,7 @@ describe("ProductionTransferForm", () => {
     await addDestinationWithFullPlacement("PP-001", "Z01", "S01", "T01");
 
     await addAllocationToDestination(1, "NP-014", 80);
-    await waitFor(() => expect(screen.getByText("Assigned to Plate").nextElementSibling).toHaveTextContent("80"));
+    await waitFor(() => expect(within(destinationCard(1)).getByText("Assigned").nextElementSibling).toHaveTextContent("80"));
   });
 
   it("blocks a duplicate Plate used as two separate destinations", async () => {
@@ -265,7 +265,7 @@ describe("ProductionTransferForm", () => {
     await addDestinationWithFullPlacement("PP-001", "Z01", "S01", "T01");
     await addAllocationToDestination(1, "NP-014", 150);
 
-    fireEvent.click(screen.getByText(/losses during transfer/i));
+    fireEvent.click(screen.getByRole("button", { name: /add \/ edit loss details/i }));
     const otherInputs = screen.getAllByLabelText(/^other$/i);
     fireEvent.change(otherInputs[otherInputs.length - 1], { target: { value: "5" } });
 
@@ -374,7 +374,7 @@ describe("ProductionTransferForm", () => {
     await addDestinationWithFullPlacement("PP-002", "Z01", "S01", "T01");
 
     const card2 = destinationCard(2);
-    await waitFor(() => expect(within(card2).getByText("Table occupants (server)")).toBeInTheDocument());
+    await waitFor(() => expect(within(card2).getByText(/Table occupants \(server\)/)).toBeInTheDocument());
     expect(
       screen.queryByText(/One of the selected Leafy Tables would exceed its known capacity with this draft/i),
     ).not.toBeInTheDocument();
@@ -463,34 +463,96 @@ describe("ProductionTransferForm", () => {
     await addDestinationWithFullPlacement("PP-002", "Z01", "S01", "T01");
 
     const card2 = destinationCard(2);
-    await waitFor(() => expect(within(card2).getByText("Table occupants (server)")).toBeInTheDocument());
+    await waitFor(() => expect(within(card2).getByText(/Table occupants \(server\)/)).toBeInTheDocument());
     expect(
       screen.queryByText(/One of the selected Leafy Tables would exceed its known capacity with this draft/i),
     ).not.toBeInTheDocument();
   });
 
-  // --- PRE-COMMIT AUDIT CORRECTION 1: Greenhouse carry-forward default ---
+  // --- PILOT-UX-002A: Destination Area default (supersedes the prior
+  // per-row "previous destination's Greenhouse carries forward" behavior --
+  // the ticket explicitly requires Greenhouse/Zone/Span to be settable ONCE
+  // for the working area and applied to every newly added row instead). ---
 
-  it("defaults a new destination's Greenhouse to the previous destination's, but lets the operator change it independently", async () => {
+  it("applies the Destination Area's Greenhouse/Zone/Span to newly added rows, without retroactively changing existing ones", async () => {
     stubFetch({ overview: OVERVIEW_MULTI_GH, structures: { "lgh-a": STRUCTURE_A, "lgh-b": STRUCTURE_B } });
     render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
     await addSource("NP-014");
 
+    // Destination 1, added before any Area is set, starts with no
+    // Greenhouse of its own -- unchanged prior behavior for a first row.
     fireEvent.click(screen.getByRole("button", { name: /add destination production plate/i }));
     const card1 = destinationCard(1);
-    fireEvent.change(within(card1).getByLabelText(/leafy greenhouse/i), { target: { value: "lgh-b" } });
+    expect(within(card1).getByLabelText(/^leafy greenhouse$/i)).toHaveValue("");
 
+    // Set the Destination Area to Greenhouse B / its Zone / its Span.
+    fireEvent.change(screen.getByLabelText(/^Greenhouse$/i), { target: { value: "lgh-b" } });
+    await pickInField(document.body, /Destination area Zone/i, "BZ01");
+    await pickInField(document.body, /Destination area Span/i, "BS01");
+
+    // A newly added row now starts pre-filled with the Area's selection --
+    // the operator only still has to pick its Plate and Table.
     fireEvent.click(screen.getByRole("button", { name: /add destination production plate/i }));
     const card2 = destinationCard(2);
-    await waitFor(() => expect(within(card2).getByLabelText(/leafy greenhouse/i)).toHaveValue("lgh-b"));
+    await waitFor(() => expect(within(card2).getByLabelText(/^leafy greenhouse$/i)).toHaveValue("lgh-b"));
 
-    // The operator can still change destination 2's Greenhouse ...
-    fireEvent.change(within(card2).getByLabelText(/leafy greenhouse/i), { target: { value: "lgh-a" } });
-    await waitFor(() => expect(within(card2).getByLabelText(/leafy greenhouse/i)).toHaveValue("lgh-a"));
+    // Destination 1, added before the Area was set, is untouched.
+    expect(within(card1).getByLabelText(/^leafy greenhouse$/i)).toHaveValue("");
+  });
 
-    // ... without affecting destination 1's own Greenhouse (cross-Greenhouse
-    // destinations in one command must remain possible -- no global state).
-    expect(within(card1).getByLabelText(/leafy greenhouse/i)).toHaveValue("lgh-b");
+  // --- PILOT-UX-002A: Suggest allocation ---
+
+  it("suggests an editable allocation proposal that respects a destination's own Plate capacity", async () => {
+    stubFetch();
+    render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
+    await addSource("NP-014"); // 180 available
+    await addDestinationWithFullPlacement("PP-001", "Z01", "S01", "T01"); // plate-1 capacity 200
+
+    fireEvent.click(screen.getByRole("button", { name: /suggest allocation/i }));
+
+    const card = destinationCard(1);
+    await waitFor(() => expect(within(card).getByText("Assigned").nextElementSibling).toHaveTextContent("180"));
+    expect(within(card).getByText("Remaining").nextElementSibling).toHaveTextContent("20");
+    const sourceRow = screen.getByText("NP-014").closest("li") as HTMLElement;
+    expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("0");
+  });
+
+  it("never overwrites a destination's own allocation with a later Suggest allocation (operator override persists)", async () => {
+    stubFetch();
+    render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
+    await addSource("NP-014"); // 180 available
+    await addDestinationWithFullPlacement("PP-001", "Z01", "S01", "T01"); // capacity 200
+    await addAllocationToDestination(1, "NP-014", 50);
+    await addDestinationWithFullPlacement("PP-002", "Z02", "S02", "T03"); // capacity 1, empty
+
+    fireEvent.click(screen.getByRole("button", { name: /suggest allocation/i }));
+
+    const card1 = destinationCard(1);
+    expect(within(card1).getByText("Assigned").nextElementSibling).toHaveTextContent("50");
+    const card2 = destinationCard(2);
+    await waitFor(() => expect(within(card2).getByText("Assigned").nextElementSibling).toHaveTextContent("1"));
+  });
+
+  // --- PILOT-UX-002A section H: context/draft preservation ---
+
+  it("removing a source clears only its own allocations, leaving other sources' allocations on the same destination intact", async () => {
+    stubFetch();
+    render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
+    await addSource("NP-014");
+    await addSource("NP-015");
+    await addDestinationWithFullPlacement("PP-001", "Z01", "S01", "T01");
+    await addAllocationToDestination(1, "NP-014", 50);
+    await addAllocationToDestination(1, "NP-015", 30);
+
+    const sourceRow = screen.getByText("NP-014").closest("li") as HTMLElement;
+    fireEvent.click(within(sourceRow).getByRole("button", { name: /^remove$/i }));
+
+    await waitFor(() => expect(screen.queryByText("NP-014")).not.toBeInTheDocument());
+    const card = destinationCard(1);
+    await waitFor(() => expect(within(card).getByText("Assigned").nextElementSibling).toHaveTextContent("30"));
   });
 });

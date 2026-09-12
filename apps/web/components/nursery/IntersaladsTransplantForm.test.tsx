@@ -201,7 +201,7 @@ describe("IntersaladsTransplantForm", () => {
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
 
     await addAllocationToDestination(1, "TRAY-014", 80);
-    await waitFor(() => expect(screen.getByText("Assigned to Plate").nextElementSibling).toHaveTextContent("80"));
+    await waitFor(() => expect(within(destinationCard(1)).getByText("Assigned").nextElementSibling).toHaveTextContent("80"));
   });
 
   it("blocks a duplicate Plate used as two separate destinations", async () => {
@@ -235,7 +235,7 @@ describe("IntersaladsTransplantForm", () => {
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
 
-    fireEvent.click(screen.getByText(/losses during transplant/i));
+    fireEvent.click(screen.getByRole("button", { name: /add \/ edit loss details/i }));
     const otherInputs = screen.getAllByLabelText(/^other$/i);
     fireEvent.change(otherInputs[otherInputs.length - 1], { target: { value: "5" } });
 
@@ -407,11 +407,12 @@ describe("IntersaladsTransplantForm", () => {
     await addAllocationToDestination(1, "TRAY-014", 80);
     await addAllocationToDestination(2, "TRAY-014", 60);
 
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
     await waitFor(() =>
-      expect(screen.getByText("Available").nextElementSibling).toHaveTextContent("180"),
+      expect(within(sourceRow).getByText("Available").nextElementSibling).toHaveTextContent("180"),
     );
-    expect(screen.getByText("Allocated").nextElementSibling).toHaveTextContent("140");
-    expect(screen.getByText("Remaining").nextElementSibling).toHaveTextContent("40");
+    expect(within(sourceRow).getByText("Allocated").nextElementSibling).toHaveTextContent("140");
+    expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("40");
   });
 
   it("supports one destination receiving multiple same-Batch sources", async () => {
@@ -424,7 +425,7 @@ describe("IntersaladsTransplantForm", () => {
     await addAllocationToDestination(1, "TRAY-014", 80);
     await addAllocationToDestination(1, "TRAY-015", 50);
 
-    await waitFor(() => expect(screen.getByText("Assigned to Plate").nextElementSibling).toHaveTextContent("130"));
+    await waitFor(() => expect(within(destinationCard(1)).getByText("Assigned").nextElementSibling).toHaveTextContent("130"));
 
     // Per-source totals in the "Source Seedling Tray(s)" section must also
     // reflect both allocations correctly -- not just the destination's own
@@ -468,7 +469,7 @@ describe("IntersaladsTransplantForm", () => {
     await addAllocationToDestination(1, "TRAY-014", 80);
     await addAllocationToDestination(1, "TRAY-015", 50);
 
-    await waitFor(() => expect(screen.getByText("Assigned to Plate").nextElementSibling).toHaveTextContent("130"));
+    await waitFor(() => expect(within(destinationCard(1)).getByText("Assigned").nextElementSibling).toHaveTextContent("130"));
     const tray014Row = screen.getByText("TRAY-014").closest("li") as HTMLElement;
     expect(within(tray014Row).getByText("Allocated").nextElementSibling).toHaveTextContent("80");
     const tray015Row = screen.getByText("TRAY-015").closest("li") as HTMLElement;
@@ -571,14 +572,15 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 170);
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
 
-    fireEvent.click(screen.getByText(/losses during transplant/i));
+    fireEvent.click(within(sourceRow).getByRole("button", { name: /add \/ edit loss details/i }));
     fireEvent.change(screen.getByLabelText(/^damage$/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/^qc rejected$/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/^sample$/i), { target: { value: "2" } });
 
     // 180 available - 170 allocated - 10 losses = 0 remaining.
-    await waitFor(() => expect(screen.getByText("Remaining").nextElementSibling).toHaveTextContent("0"));
+    await waitFor(() => expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("0"));
 
     // One more unit of loss now pushes remaining negative -- blocked.
     fireEvent.change(screen.getByLabelText(/^sample$/i), { target: { value: "3" } });
@@ -596,7 +598,8 @@ describe("IntersaladsTransplantForm", () => {
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 180);
 
-    await waitFor(() => expect(screen.getByText("Remaining").nextElementSibling).toHaveTextContent("0"));
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
+    await waitFor(() => expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("0"));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
     expect(screen.getByText(/Remaining 0/)).toBeInTheDocument();
@@ -679,6 +682,125 @@ describe("IntersaladsTransplantForm", () => {
     // source row and destination card are both still populated.
     expect(screen.getByText("TRAY-014")).toBeInTheDocument();
     expect(destinationCard(1)).toBeInTheDocument();
-    expect(within(destinationCard(1)).getByText("Assigned to Plate").nextElementSibling).toHaveTextContent("150");
+    expect(within(destinationCard(1)).getByText("Assigned").nextElementSibling).toHaveTextContent("150");
+  });
+
+  // --- PILOT-UX-002A: allocation workspace redesign ---
+
+  async function pickPlateOnly(card: HTMLElement, plateCode: string) {
+    fireEvent.focus(within(card).getByLabelText(/^Plate for destination/i));
+    const listbox = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(listbox).getByText(plateCode)).toBeInTheDocument());
+    fireEvent.click(within(listbox).getByText(plateCode));
+  }
+
+  it("selects each source Tray once, reusing it across every destination's allocation instead of re-picking it per destination", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+    await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
+    await addDestinationWithPlateAndTable("NP-002", "IS-A-02");
+
+    // Exactly one "Add a source Tray" control exists in the whole workspace
+    // -- sources are picked once, in the Source section, never re-picked
+    // per destination.
+    expect(screen.getAllByLabelText(/add a source tray/i)).toHaveLength(1);
+
+    // The SAME source is selectable in each destination's own allocation
+    // without ever having been re-added anywhere.
+    await addAllocationToDestination(1, "TRAY-014", 80);
+    await addAllocationToDestination(2, "TRAY-014", 60);
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
+    expect(within(sourceRow).getByText("Allocated").nextElementSibling).toHaveTextContent("140");
+  });
+
+  it("keeps a zero-loss source row compact until the operator opens loss details", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+
+    expect(screen.getByText("Loss:").nextElementSibling).toHaveTextContent("0");
+    expect(screen.queryByLabelText(/^damage$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /add \/ edit loss details/i }));
+    expect(screen.getByLabelText(/^damage$/i)).toBeInTheDocument();
+  });
+
+  it("suggests an editable allocation proposal that respects a destination's own Plate capacity", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014"); // 180 available
+    await addDestinationWithPlateAndTable("NP-001", "IS-A-01"); // plate-1 capacity 200
+
+    fireEvent.click(screen.getByRole("button", { name: /suggest allocation/i }));
+
+    const card = destinationCard(1);
+    await waitFor(() => expect(within(card).getByText("Assigned").nextElementSibling).toHaveTextContent("180"));
+    expect(within(card).getByText("Remaining").nextElementSibling).toHaveTextContent("20");
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
+    expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("0");
+  });
+
+  it("never overwrites a destination's own allocation with a later Suggest allocation (operator override persists)", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014"); // 180 available
+    await addDestinationWithPlateAndTable("NP-001", "IS-A-01"); // capacity 200
+    await addAllocationToDestination(1, "TRAY-014", 50);
+    await addDestinationWithPlateAndTable("NP-002", "IS-A-02"); // capacity 200, empty
+
+    fireEvent.click(screen.getByRole("button", { name: /suggest allocation/i }));
+
+    const card1 = destinationCard(1);
+    expect(within(card1).getByText("Assigned").nextElementSibling).toHaveTextContent("50");
+    const card2 = destinationCard(2);
+    // 180 available - 50 already locked in destination 1 = 130 left for the
+    // still-empty destination 2.
+    await waitFor(() => expect(within(card2).getByText("Assigned").nextElementSibling).toHaveTextContent("130"));
+  });
+
+  it("applies the Destination Area's InterSalads Table to every unconfigured destination row via 'Apply to unconfigured rows'", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+
+    fireEvent.click(screen.getByRole("button", { name: /add destination plate/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add destination plate/i }));
+    const card1 = destinationCard(1);
+    const card2 = destinationCard(2);
+    await pickPlateOnly(card1, "NP-001");
+    await pickPlateOnly(card2, "NP-002");
+
+    fireEvent.focus(screen.getByLabelText(/destination area table/i));
+    const listbox = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(listbox).getByText("IS-A-01")).toBeInTheDocument());
+    fireEvent.click(within(listbox).getByText("IS-A-01"));
+    fireEvent.click(screen.getByRole("button", { name: /apply to unconfigured rows/i }));
+
+    await waitFor(() => expect(within(card1).getByLabelText(/^Table for destination/i)).toHaveValue("IS-A-01"));
+    expect(within(card2).getByLabelText(/^Table for destination/i)).toHaveValue("IS-A-01");
+  });
+
+  it("removing a source clears only its own allocations, leaving other sources' allocations on the same destination intact", async () => {
+    stubFetch();
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+    await addSource(/TRAY-015/, "TRAY-015");
+    await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
+    await addAllocationToDestination(1, "TRAY-014", 50);
+    await addAllocationToDestination(1, "TRAY-015", 30);
+
+    const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
+    fireEvent.click(within(sourceRow).getByRole("button", { name: /^remove$/i }));
+
+    await waitFor(() => expect(screen.queryByText("TRAY-014")).not.toBeInTheDocument());
+    const card = destinationCard(1);
+    await waitFor(() => expect(within(card).getByText("Assigned").nextElementSibling).toHaveTextContent("30"));
   });
 });
