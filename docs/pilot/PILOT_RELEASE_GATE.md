@@ -94,14 +94,12 @@ pytest tests/test_migrations.py -q
 
 If a release specifically touched one feature's migration, the narrower,
 single-file forms (`tests/test_<feature>_migration.py`,
-`tests/test_<feature>_downgrade_guard.py`) are sufficient and much faster.
+`tests/test_<feature>_downgrade_guard.py`) are sufficient and much faster,
+for example:
 
-**Known exception**: do not run `tests/test_nursery_ops_downgrade_guard.py`
-as a whole file — one of its tests
-(`test_migration_downgrade_blocked_when_seeding_provenance_exists`)
-self-deadlocks against `cmp_test` (see `docs/product/OPEN_QUESTIONS.md`,
-"Migration graph decisions"). The rest of that file's tests are safe to
-run individually by node ID.
+```
+pytest tests/test_nursery_ops_downgrade_guard.py -q
+```
 
 ## Frontend
 

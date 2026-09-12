@@ -192,6 +192,17 @@ def test_migration_downgrade_blocked_when_seeding_provenance_exists(test_engine,
         )
         event_id = event.id
 
+        # PILOT-BLOCKER-007: commit and release this scenario-building
+        # connection before invoking the downgrade below. Left open, its
+        # uncommitted writes to sowing_events hold a lock that a later
+        # migration's DDL against that same table (reached while
+        # downgrading through the chain toward _PRE_NURSERY_OPS_REVISION)
+        # must wait on -- the test process self-deadlocking against its
+        # own still-open transaction.
+        session.commit()
+        session.close()
+        conn.close()
+
         # CARRIER-CONFIG-001A: nursery_service.sow_new_batch requires a
         # workflow whose SEEDING stage's required_carrier_type is exactly
         # seed_tray (see nursery_service.SEED_TRAY_CARRIER_TYPE_CODE), so
@@ -328,6 +339,14 @@ def test_migration_downgrade_blocked_when_sown_site_count_unrecorded(test_engine
                 }
             ],
         )
+
+        # PILOT-BLOCKER-007: see the identical comment in
+        # test_migration_downgrade_blocked_when_seeding_provenance_exists
+        # above -- this scenario also writes to sowing_events and must not
+        # leave that transaction open across the downgrade call.
+        session.commit()
+        session.close()
+        conn.close()
 
         with pytest.raises(RuntimeError, match="Cannot downgrade past NURSERY-OPS-001.1"):
             command.downgrade(_cfg(), _PRE_NURSERY_OPS_REVISION)
