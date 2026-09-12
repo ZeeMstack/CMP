@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
@@ -47,24 +47,36 @@ function nowDateAndTime() {
  * a Tray with no completed handoff cannot be selected -- no provisional
  * count, Seeds Sown, or Sown Sites is ever substituted (section 41). */
 export function MoveToSeedlingForm({
-  farmId, onSubmit, onCancel, isSubmitting, serverError,
+  farmId, onSubmit, onCancel, isSubmitting, serverError, initialAssignmentId,
 }: {
   farmId: string;
   onSubmit: (payload: SeedlingEntryCreate) => void;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: string | null;
+  // PILOT-UX-002B: opened from the worklist row itself, or from a final
+  // outcome's own success receipt -- the assignment is already known and
+  // already confirmed `ready_for_seedling`. Frozen here (never re-derived
+  // from a refetch), so the operator is never asked to find/select the same
+  // Tray again, and a background query refresh can never silently retarget
+  // the open form onto a different assignment (section 8/14).
+  initialAssignmentId?: string;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId] = useState(() => crypto.randomUUID());
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState(initialAssignmentId ?? "");
 
   const initial = nowDateAndTime();
   const {
     register, setValue, trigger, getValues, formState: { errors },
   } = useForm<SeedlingEntryFormValues>({
     resolver: zodResolver(seedlingEntryFormSchema),
-    defaultValues: { ...DEFAULT_SEEDLING_ENTRY_FORM_VALUES, effective_date: initial.date, effective_time_of_day: initial.time },
+    defaultValues: {
+      ...DEFAULT_SEEDLING_ENTRY_FORM_VALUES,
+      batch_carrier_assignment_id: initialAssignmentId ?? "",
+      effective_date: initial.date,
+      effective_time_of_day: initial.time,
+    },
     mode: "onBlur",
   });
 
@@ -74,6 +86,31 @@ export function MoveToSeedlingForm({
   const tables = (tablesQuery.data ?? []).filter((t) => t.remaining_capacity > 0);
 
   const selectedTray = eligibleTrays.find((t) => t.batch_carrier_assignment_id === selectedAssignmentId);
+
+  // PILOT-UX-002B section 5: a single valid destination may be preselected
+  // (never auto-submitted) -- `tables` here is already the domain's own
+  // capacity-filtered eligible-destination set, so this invents no
+  // readiness rule of its own.
+  useEffect(() => {
+    if (tables.length === 1 && getValues("destination_seedling_table_id") !== tables[0].id) {
+      setValue("destination_seedling_table_id", tables[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables.length === 1 ? tables[0]?.id : undefined]);
+
+  if (initialAssignmentId && traysQuery.isSuccess && !selectedTray) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="rounded-md border border-border-subtle bg-red-50 px-3 py-2 text-sm text-red-700">
+          This Seed Tray is no longer ready for Seedling -- its eligibility changed since the worklist last loaded.
+          Return to the worklist to see its current status.
+        </p>
+        <Button type="button" variant="secondary" className="self-start" onClick={onCancel}>
+          Back to worklist
+        </Button>
+      </div>
+    );
+  }
 
   async function goToReview() {
     const valid = await trigger();
@@ -155,9 +192,18 @@ export function MoveToSeedlingForm({
       }}
       className="flex flex-col gap-6"
     >
+      {initialAssignmentId && selectedTray && (
+        <p className="rounded-md border border-border-subtle bg-brand-50 px-3 py-2 text-xs text-brand-700">
+          From the Germination worklist — Batch {selectedTray.batch_code}, Seed Tray {selectedTray.tray.code}.
+        </p>
+      )}
       <fieldset className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
         <legend className="px-1 text-sm font-semibold text-ink">Seed Tray</legend>
-        {traysQuery.isSuccess && eligibleTrays.length === 0 ? (
+        {initialAssignmentId && selectedTray ? (
+          <p className="text-sm font-medium text-ink">
+            {selectedTray.batch_code} — {selectedTray.tray.code}
+          </p>
+        ) : traysQuery.isSuccess && eligibleTrays.length === 0 ? (
           <p className="text-sm text-ink-muted">
             No Seed Trays are ready for Seedling. Complete the Germination assessment first.
           </p>

@@ -147,6 +147,44 @@ describe("MoveToSeedlingForm", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/already occupied at capacity/i));
   });
 
+  it("PILOT-UX-002B: opens with the assignment already selected/frozen -- no reselection dropdown, single destination Table preselected", async () => {
+    stubFetch({ tables: [TABLES[0]] }); // only one available destination
+    const onSubmit = vi.fn();
+    render(
+      withQueryClient(
+        <MoveToSeedlingForm
+          farmId="farm-1" onSubmit={onSubmit} onCancel={vi.fn()} isSubmitting={false} initialAssignmentId="bca-1"
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/from the germination worklist/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/^seed tray$/i)).not.toBeInTheDocument();
+    expect(screen.getByText("CB-0001 — ST-0001")).toBeInTheDocument();
+    // Safe default (section 5): the one valid destination is preselected,
+    // never auto-submitted.
+    await waitFor(() => expect((screen.getByLabelText(/seedling table/i) as HTMLSelectElement).value).toBe("table-1"));
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before moving to Seedling")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Move to Seedling" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].batch_carrier_assignment_id).toBe("bca-1");
+  });
+
+  it("PILOT-UX-002B: shows a stale/ineligible message instead of letting the operator submit when eligibility has changed", async () => {
+    stubFetch({ trays: [TRAYS[1]] }); // bca-1 (the frozen assignment) is not in this eligible set
+    render(
+      withQueryClient(
+        <MoveToSeedlingForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} initialAssignmentId="bca-1"
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText(/no longer ready for seedling/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/seedling table/i)).not.toBeInTheDocument();
+  });
+
   it("calls onCancel without submitting", async () => {
     stubFetch();
     const onSubmit = vi.fn();

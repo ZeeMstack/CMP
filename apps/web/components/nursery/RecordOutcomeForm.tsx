@@ -54,16 +54,30 @@ const PLACEMENT_LABEL: Record<string, string> = {
  * form owns its own mutation (unlike PlaceTrolleyForm/MoveTrayForm) because
  * its command URL is scoped to whichever Batch the operator's Tray
  * selection resolves to -- not known until a Tray is picked. */
+export interface RecordOutcomeSuccessInfo {
+  assignmentId: string;
+  batchCode: string;
+  trayCode: string;
+  normalCount: number;
+  abnormalCount: number;
+  assessmentComplete: boolean;
+}
+
 export function RecordOutcomeForm({
-  farmId, onSuccess, onCancel,
+  farmId, onSuccess, onCancel, initialAssignmentId,
 }: {
   farmId: string;
-  onSuccess: () => void;
+  onSuccess: (info: RecordOutcomeSuccessInfo) => void;
   onCancel: () => void;
+  // PILOT-UX-002B: opened from a worklist row, the assignment is already
+  // known -- frozen here (never re-derived from a refetch) so the operator
+  // is never asked to find/select the same Tray again, and a background
+  // query refresh can never silently retarget the open form (section 8/14).
+  initialAssignmentId?: string;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId] = useState(() => crypto.randomUUID());
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState(initialAssignmentId ?? "");
   const [serverError, setServerError] = useState<string | null>(null);
 
   const initial = nowDateAndTime();
@@ -95,11 +109,34 @@ export function RecordOutcomeForm({
   function submitReview() {
     if (!selectedTray) return;
     setServerError(null);
-    const payload = buildGerminationOutcomePayload(getValues(), clientCommandId, selectedAssignmentId);
+    const values = getValues();
+    const payload = buildGerminationOutcomePayload(values, clientCommandId, selectedAssignmentId);
     mutation.mutate(payload, {
-      onSuccess: () => onSuccess(),
+      onSuccess: () =>
+        onSuccess({
+          assignmentId: selectedAssignmentId,
+          batchCode: selectedTray.batch_code,
+          trayCode: selectedTray.tray.code,
+          normalCount: values.normal_seedling_count,
+          abnormalCount: values.abnormal_seedling_count,
+          assessmentComplete: values.assessment_complete,
+        }),
       onError: (error) => setServerError(error instanceof AppError ? error.message : "Something went wrong. Please try again."),
     });
+  }
+
+  if (initialAssignmentId && traysQuery.isSuccess && !selectedTray) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="rounded-md border border-wl-border-strong bg-wl-flag-bg px-3 py-2 text-sm text-wl-flag-fg">
+          This Seed Tray&apos;s data could not be found -- it may have moved since the worklist last loaded. Return
+          to the worklist to see its current status.
+        </p>
+        <Button type="button" variant="secondary" className="self-start" onClick={onCancel}>
+          Back to worklist
+        </Button>
+      </div>
+    );
   }
 
   if (step === "review" && selectedTray) {
@@ -178,9 +215,18 @@ export function RecordOutcomeForm({
       }}
       className="flex flex-col gap-6"
     >
+      {initialAssignmentId && selectedTray && (
+        <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
+          From the Germination worklist — Batch {selectedTray.batch_code}, Seed Tray {selectedTray.tray.code}.
+        </p>
+      )}
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Seed Tray</legend>
-        {traysQuery.isSuccess && trays.length === 0 ? (
+        {initialAssignmentId && selectedTray ? (
+          <p className="text-sm font-medium text-wl-text">
+            {selectedTray.batch_code} — {selectedTray.tray.code}
+          </p>
+        ) : traysQuery.isSuccess && trays.length === 0 ? (
           <p className="text-sm text-wl-text-secondary">No Sown Seed Trays are eligible for a Germination outcome yet.</p>
         ) : (
           <Field label="Seed Tray">

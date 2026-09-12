@@ -384,7 +384,7 @@ function BulkMoveBoard({
  * Physical placement only; no biological Germination outcome field appears
  * here. */
 export function MoveTrayForm({
-  farmId, onSubmit, onCancel, isSubmitting, serverError, initialBatchId, onSetUpTrolley, onSubmitOne,
+  farmId, onSubmit, onCancel, isSubmitting, serverError, initialBatchId, onSetUpTrolley, onSubmitOne, initialTrayId,
 }: {
   farmId: string;
   onSubmit: (payload: PlaceTrayCreate) => void;
@@ -403,6 +403,11 @@ export function MoveTrayForm({
   // distinct from `onSubmit`, which closes the whole form on success (fine
   // for one tray, wrong for looping through many).
   onSubmitOne?: (payload: PlaceTrayCreate) => Promise<unknown>;
+  // PILOT-UX-002B: the operator's worklist row already identifies one exact
+  // Seed Tray -- when set, that Tray is frozen (no dropdown, never the bulk
+  // board) so the operator is never asked to find/select it again. Distinct
+  // from `initialBatchId`, which only narrows a Batch's several trays.
+  initialTrayId?: string | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId] = useState(() => crypto.randomUUID());
@@ -427,21 +432,51 @@ export function MoveTrayForm({
   const orderedEligibleTrays = initialBatchId
     ? [...matchingBatchTrays, ...eligibleTrays.filter((t) => t.batch_id !== initialBatchId)]
     : eligibleTrays;
+  // PILOT-UX-002B: the worklist row already identifies one exact eligible
+  // Tray -- frozen, not re-derived on every refetch, so a query refresh can
+  // never silently retarget an open form onto a different assignment
+  // (section 8/14). If the Tray is no longer eligible (moved, or another
+  // operator already placed it), `frozenTray` simply comes back `undefined`
+  // and the form shows a stale message instead of a broken/blank one.
+  const frozenTray = initialTrayId ? eligibleTrays.find((t) => t.tray.id === initialTrayId) : null;
   const trolleysQuery = useAvailableTrolleys(farmId);
   const trolleys = trolleysQuery.data ?? [];
   const levelsQuery = useTrolleyLevels(farmId, selectedTrolleyId);
   const levels = levelsQuery.data ?? [];
 
   useEffect(() => {
+    if (initialTrayId) return;
     if (matchingBatchTrays.length === 1 && getValues("tray_id") !== matchingBatchTrays[0].tray.id) {
       setValue("tray_id", matchingBatchTrays[0].tray.id);
     }
     // Only ever auto-select once, when exactly one tray from the incoming
     // Batch is eligible -- never re-run on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchingBatchTrays.length]);
+  }, [matchingBatchTrays.length, initialTrayId]);
+  useEffect(() => {
+    if (frozenTray && getValues("tray_id") !== frozenTray.tray.id) {
+      setValue("tray_id", frozenTray.tray.id);
+    }
+    // Sets the frozen Tray exactly once it resolves -- never re-runs for any
+    // other reason, so it can't overwrite an operator's in-progress edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frozenTray?.tray.id]);
   const selectedLevel = levels.find((lvl) => lvl.id === selectedLevelId) ?? null;
   const openSlots = selectedLevel?.mode === "legacy" ? selectedLevel.slots.filter((s) => !s.occupied) : [];
+
+  if (initialTrayId && traysQuery.isSuccess && !frozenTray) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="rounded-md border border-wl-border-strong bg-wl-flag-bg px-3 py-2 text-sm text-wl-flag-fg">
+          This Seed Tray is no longer awaiting Germination placement -- its state changed since the worklist last
+          loaded. Return to the worklist to see its current status.
+        </p>
+        <Button type="button" variant="secondary" className="self-start" onClick={onCancel}>
+          Back to worklist
+        </Button>
+      </div>
+    );
+  }
 
   // PILOT-UX-001 (CTO correction): a Sowing batch commonly has many eligible
   // trays -- the backend only ever moves one tray per command (confirmed:
@@ -449,7 +484,8 @@ export function MoveTrayForm({
   // the Batch and destination selected once and fires fast sequential
   // single-tray moves, rather than forcing the full configure/review form
   // and Batch/Tray re-selection for every single tray.
-  const showBulkBoard = Boolean(initialBatchId) && Boolean(onSubmitOne) && matchingBatchTrays.length > 1 && !forceSingleMode;
+  const showBulkBoard =
+    !initialTrayId && Boolean(initialBatchId) && Boolean(onSubmitOne) && matchingBatchTrays.length > 1 && !forceSingleMode;
   if (showBulkBoard) {
     return (
       <BulkMoveBoard
@@ -552,14 +588,34 @@ export function MoveTrayForm({
       }}
       className="flex flex-col gap-6"
     >
-      {initialBatchId && matchingBatchTrays.length > 0 && (
+      {initialBatchId && !frozenTray && matchingBatchTrays.length > 0 && (
         <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
           Continuing from Sowing — {matchingBatchTrays.length === 1 ? "this Batch's Seed Tray is preselected" : "this Batch's Seed Trays are listed first"} below.
         </p>
       )}
+      {frozenTray && (
+        <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
+          From the Germination worklist — Batch {frozenTray.batch_code}, Seed Tray {frozenTray.tray.code}.
+        </p>
+      )}
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Seed Tray</legend>
-        {traysQuery.isSuccess && eligibleTrays.length === 0 ? (
+        {frozenTray ? (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-wl-text-secondary">Batch</dt>
+              <dd className="font-medium text-wl-text">{frozenTray.batch_code}</dd>
+            </div>
+            <div>
+              <dt className="text-wl-text-secondary">Seed Tray</dt>
+              <dd className="font-medium text-wl-text">{frozenTray.tray.code}</dd>
+            </div>
+            <div>
+              <dt className="text-wl-text-secondary">Seeds sown</dt>
+              <dd className="font-medium text-wl-text">{frozenTray.seeds_sown.toLocaleString()}</dd>
+            </div>
+          </dl>
+        ) : traysQuery.isSuccess && eligibleTrays.length === 0 ? (
           <p className="text-sm text-wl-text-secondary">No Seed Trays are awaiting Germination placement.</p>
         ) : (
           <Field label="Seed Tray" error={errors.tray_id?.message}>
