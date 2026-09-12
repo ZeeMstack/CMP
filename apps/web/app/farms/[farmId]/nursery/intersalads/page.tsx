@@ -105,14 +105,47 @@ export default function IntersaladsTransplantPage() {
             </ul>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="primary" onClick={() => startNew(success.transplant.batch_id)}>
-              Continue this Batch
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => startNew(undefined)}>
-              Start new transplant
-            </Button>
-          </div>
+          {(() => {
+            // PILOT-UX-002A section J: "Continue this Batch" was ambiguous
+            // about what it actually did (another InterSalads transplant
+            // for the same Batch) -- renamed to state that plainly, and
+            // only offered when this command's own authoritative
+            // remainders show there is actually something left to
+            // transplant (never invented, never assumed).
+            //
+            // CTO FINAL UX CHECK: a "Prepare production transfer" next
+            // action was considered here but removed. The only candidate
+            // signal for it, `GET /leafy-production/available-sources`
+            // (`list_available_leafy_production_sources` in
+            // `leafy_production_transfer_service.py`), is a pure
+            // availability query -- "any active nursery_cultivation_plate
+            // assignment on this Batch with a positive authoritative
+            // available count" -- with no biological-readiness or stage
+            // check at all (its own docstring: "Physical current-location
+            // context is informational only... never an eligibility
+            // filter"). The InterSalads transplant that just succeeded is
+            // exactly what produces such an assignment, so checking that
+            // query here would always be true immediately after this
+            // transplant -- i.e. it would be inferring readiness from the
+            // transplant having succeeded, not reading an independent
+            // authoritative signal. No such signal exists today, so this
+            // next action is omitted rather than invented.
+            const totalRemaining = success.transplant.source_lines.reduce(
+              (sum, line) => sum + line.remainder_after, 0,
+            );
+            return (
+              <div className="flex flex-wrap gap-3">
+                {totalRemaining > 0 && (
+                  <Button type="button" variant="primary" onClick={() => startNew(success.transplant.batch_id)}>
+                    Transplant remaining trays
+                  </Button>
+                )}
+                <Button type="button" variant="secondary" onClick={() => startNew(undefined)}>
+                  Start new transplant
+                </Button>
+              </div>
+            );
+          })()}
         </div>
       ) : (
         <IntersaladsTransplantForm

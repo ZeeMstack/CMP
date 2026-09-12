@@ -7,6 +7,7 @@ import ProductionTransferPage from "./page";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 function jsonResponse(body: unknown, status = 200) {

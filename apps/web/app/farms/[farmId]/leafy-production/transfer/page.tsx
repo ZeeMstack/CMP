@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -30,8 +31,20 @@ type SuccessResult = { transfer: LeafyProductionTransferRead; tableLabelById: Re
  * counts. */
 export default function ProductionTransferPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  // PILOT-UX-002A: an optional `?batchId=` deep link pre-fills the Batch
+  // filter -- read once at mount so a caller who already knows the Batch
+  // (e.g. a bookmarked link) never has to search for it. CTO FINAL UX
+  // CHECK removed the one in-app link that used to pass this (InterSalads'
+  // success screen: no authoritative production-readiness signal exists
+  // there yet, see that page's own comment) -- kept here regardless as a
+  // harmless, generic capability of this page; this page's own source
+  // query remains the sole authority on what is actually eligible to
+  // transfer, exactly as when `restrictToBatchId` is set any other way.
+  const [restrictToBatchId, setRestrictToBatchId] = useState<string | undefined>(
+    () => searchParams.get("batchId") ?? undefined,
+  );
   const [formKey, setFormKey] = useState(0);
-  const [restrictToBatchId, setRestrictToBatchId] = useState<string | undefined>(undefined);
   const [serverError, setServerError] = useState<AppError | null>(null);
   const [success, setSuccess] = useState<SuccessResult | null>(null);
 
@@ -111,6 +124,23 @@ export default function ProductionTransferPage() {
             <Button type="button" variant="primary" onClick={() => startNew(success.transfer.batch_id)}>
               Continue this Batch
             </Button>
+            {/* CTO FINAL UX CHECK: this previously routed to the generic
+             * Crop Batch Detail page, which is not "Leafy Production"
+             * context. `/farms/${farmId}/leafy-production` (LEAFY-OPS-001)
+             * is the actual Leafy Production workspace -- its default
+             * "Active Production Plates" tab lists exactly the resulting
+             * Production Cultivation Plate assignments this transfer just
+             * created, each with its current location. No new route, no
+             * backend change; reuses that existing screen as-is (it is not
+             * batch-filtered, so it shows every active Plate in the Farm,
+             * not only this transfer's own -- still a truthful "View
+             * production" destination). */}
+            <Link
+              href={`/farms/${farmId}/leafy-production`}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text transition-colors hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+            >
+              View production
+            </Link>
             <Button type="button" variant="secondary" onClick={() => startNew(undefined)}>
               Start new transfer
             </Button>

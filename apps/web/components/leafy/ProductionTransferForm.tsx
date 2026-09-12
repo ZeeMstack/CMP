@@ -1,18 +1,23 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Control, UseFormSetValue, useFieldArray, useForm, useWatch } from "react-hook-form";
 
+import { AllocationTotalsBar, type AllocationTotalsStat } from "@/components/allocation/AllocationTotalsBar";
+import { CompactLossDisclosure } from "@/components/allocation/CompactLossDisclosure";
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
 import { LeafyLocationSelector, type LeafyLocationValue } from "@/components/leafy/LeafyLocationSelector";
 import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferCreate } from "@/lib/api/client";
+import { suggestAllocations } from "@/lib/allocation/suggestAllocation";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   useAvailableLeafyProductionSources,
   useAvailableProductionPlates,
   useGreenhouseSetupOverview,
+  useGreenhouseStructure,
   useLocationOccupants,
 } from "@/lib/query/hooks";
 import {
@@ -48,6 +53,15 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-1 whitespace-nowrap text-xs">
+      <span className="text-wl-text-secondary">{label}</span>
+      <span className="font-medium text-wl-text">{value}</span>
+    </div>
+  );
+}
+
 function nowDateAndTime() {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -58,14 +72,96 @@ function nowDateAndTime() {
 }
 
 type TableOccupancy = { capacity: number | null; occupiedCount: number };
+type DestinationAreaValue = { leafy_greenhouse_id: string; zone_id: string; span_id: string };
 
-/** One destination card -- mirrors IntersaladsTransplantForm's own
- * `DestinationRow` exactly, substituting the InterSalads flat Table
- * `FilterableSelect` for `LeafyLocationSelector`'s cascading Greenhouse ->
- * Zone -> Span -> Table picker (the one structural difference Leafy
- * Production topology requires). Own nested `useFieldArray` for
+/** PILOT-UX-002A: a "Destination Area" panel -- Greenhouse/Zone/Span only,
+ * no Table -- so the operator sets the working area ONCE and every newly
+ * added destination row starts already scoped to it (Table is still picked
+ * per row, since it's genuinely likely to differ destination to
+ * destination even within one Span). Deliberately its own small component
+ * rather than reusing `LeafyLocationSelector` here: that component's Table
+ * level has no meaning at the area level, and surfacing one anyway would
+ * read as if choosing it assigned something. Does not retroactively touch
+ * any existing destination row -- see `addDestination` below. */
+function DestinationAreaSelector({
+  farmId,
+  greenhouses,
+  greenhousesLoading,
+  value,
+  onChange,
+}: {
+  farmId: string;
+  greenhouses: { greenhouse_id: string; code: string }[];
+  greenhousesLoading: boolean;
+  value: DestinationAreaValue;
+  onChange: (next: DestinationAreaValue) => void;
+}) {
+  const structureQuery = useGreenhouseStructure(farmId, value.leafy_greenhouse_id || "__none__");
+  const zones = value.leafy_greenhouse_id ? (structureQuery.data?.leafy_zones ?? []) : [];
+  const selectedZone = zones.find((z) => z.id === value.zone_id);
+  const spans = selectedZone?.spans ?? [];
+
+  const zoneOptions: FilterableSelectOption[] = zones.map((z) => ({ value: z.id, label: z.code }));
+  const spanOptions: FilterableSelectOption[] = spans.map((s) => ({ value: s.id, label: s.code }));
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        {greenhouses.length > 1 && (
+          <Field label="Greenhouse">
+            <select
+              value={value.leafy_greenhouse_id}
+              onChange={(e) => onChange({ leafy_greenhouse_id: e.target.value, zone_id: "", span_id: "" })}
+              disabled={greenhousesLoading}
+              className={inputClass}
+            >
+              <option value="">Select a Greenhouse…</option>
+              {greenhouses.map((g) => (
+                <option key={g.greenhouse_id} value={g.greenhouse_id}>
+                  {g.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Field label="Zone">
+          <FilterableSelect
+            aria-label="Destination area Zone"
+            options={zoneOptions}
+            value={value.zone_id}
+            disabled={!value.leafy_greenhouse_id}
+            loading={Boolean(value.leafy_greenhouse_id) && structureQuery.isLoading}
+            placeholder="Search Zone by code…"
+            emptyMessage="No Zones configured in this Greenhouse"
+            onChange={(zoneId) => onChange({ ...value, zone_id: zoneId, span_id: "" })}
+          />
+        </Field>
+        <Field label="Span">
+          <FilterableSelect
+            aria-label="Destination area Span"
+            options={spanOptions}
+            value={value.span_id}
+            disabled={!value.zone_id}
+            placeholder="Search Span by code…"
+            emptyMessage="No Spans configured in this Zone"
+            onChange={(spanId) => onChange({ ...value, span_id: spanId })}
+          />
+        </Field>
+      </div>
+      <p className="text-xs text-wl-text-secondary">Applies to newly added destination rows below -- not to existing ones.</p>
+    </div>
+  );
+}
+
+/** One destination row -- PILOT-UX-002A: a compact always-visible summary
+ * line (Plate / Table / Capacity / Assigned / Remaining) with the
+ * Greenhouse/Zone/Span override and the source-allocation editor tucked
+ * behind an expand toggle, since a freshly-added row already starts scoped
+ * to the current Destination Area (see `DestinationAreaSelector`) and most
+ * rows never need to touch it again. Own nested `useFieldArray` for
  * allocations, own `useLocationOccupants` call, reports Table occupancy up
- * via `onOccupancyChange` for the same draft-wide capacity warning. */
+ * via `onOccupancyChange` for the same draft-wide capacity warning --
+ * unchanged from the prior structure, only the surrounding markup differs. */
 function DestinationRow({
   farmId,
   control,
@@ -81,6 +177,8 @@ function DestinationRow({
   sourceOptions,
   onOccupancyChange,
   errors,
+  collapsed,
+  onToggleCollapsed,
 }: {
   farmId: string;
   control: Control<LeafyProductionTransferFormValues>;
@@ -96,6 +194,8 @@ function DestinationRow({
   sourceOptions: FilterableSelectOption[];
   onOccupancyChange: (tableId: string, occupancy: TableOccupancy) => void;
   errors: ReturnType<typeof useForm<LeafyProductionTransferFormValues>>["formState"]["errors"];
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const destination = useWatch({ control, name: `destinations.${index}` });
   const { fields, append, remove, update } = useFieldArray({
@@ -126,6 +226,7 @@ function DestinationRow({
   const destErrors = errors.destinations?.[index];
   const allocatedSourceIds = new Set(destination.allocations.map((a) => a.source_assignment_id));
   const selectableSources = sourceOptions.filter((s) => !allocatedSourceIds.has(s.value));
+  const remainingCapacity = destination.biological_position_count != null ? destination.biological_position_count - assigned : null;
 
   const locationValue: LeafyLocationValue = {
     leafy_greenhouse_id: destination.leafy_greenhouse_id,
@@ -138,8 +239,41 @@ function DestinationRow({
 
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-wl-border p-3">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} destination ${index + 1} detail`}
+          aria-expanded={!collapsed}
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-wl-text-secondary hover:bg-wl-surface-hover"
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+        </button>
         <span className="text-sm font-semibold text-wl-text">Destination {index + 1}</span>
+        <div className="min-w-40 flex-1">
+          <FilterableSelect
+            aria-label={`Plate for destination ${index + 1}`}
+            options={plateOptions}
+            loading={plateOptionsLoading}
+            value={destination.destination_carrier_id}
+            placeholder="Search Plate by code…"
+            emptyMessage="No eligible Production Plates in this Farm"
+            onChange={(plateId) => {
+              const plate = plateOptions.find((p) => p.value === plateId);
+              setValue(`destinations.${index}.destination_carrier_id`, plateId, { shouldValidate: true });
+              setValue(`destinations.${index}.plate_code`, plate?.label ?? "");
+              setValue(`destinations.${index}.biological_position_count`, plateCapacityById[plateId] ?? null);
+            }}
+          />
+        </div>
+        {collapsed && (
+          <span className="text-xs text-wl-text-secondary">
+            {destination.table_label || "Table: not set"}
+          </span>
+        )}
+        <Stat label="Capacity" value={destination.biological_position_count != null ? destination.biological_position_count.toLocaleString() : "Unknown"} />
+        <Stat label="Assigned" value={assigned.toLocaleString()} />
+        <Stat label="Remaining" value={remainingCapacity != null ? remainingCapacity.toLocaleString() : "—"} />
         <button
           type="button"
           onClick={onRemove}
@@ -149,111 +283,89 @@ function DestinationRow({
         </button>
       </div>
 
-      <Field label="Production Cultivation Plate" error={destErrors?.destination_carrier_id?.message}>
-        <FilterableSelect
-          aria-label={`Plate for destination ${index + 1}`}
-          options={plateOptions}
-          loading={plateOptionsLoading}
-          value={destination.destination_carrier_id}
-          placeholder="Search Plate by code…"
-          emptyMessage="No eligible Production Plates in this Farm"
-          onChange={(plateId) => {
-            const plate = plateOptions.find((p) => p.value === plateId);
-            setValue(`destinations.${index}.destination_carrier_id`, plateId, { shouldValidate: true });
-            setValue(`destinations.${index}.plate_code`, plate?.label ?? "");
-            setValue(`destinations.${index}.biological_position_count`, plateCapacityById[plateId] ?? null);
-          }}
-        />
-      </Field>
+      {destErrors?.destination_carrier_id?.message && (
+        <span className={errorClass}>{destErrors.destination_carrier_id.message}</span>
+      )}
+      {destErrors?.allocations?.message && <span className={errorClass}>{destErrors.allocations.message}</span>}
 
-      <LeafyLocationSelector
-        farmId={farmId}
-        leafyGreenhouses={leafyGreenhouses ?? []}
-        leafyGreenhousesLoading={leafyGreenhousesLoading}
-        value={locationValue}
-        onChange={(next) => {
-          setValue(`destinations.${index}.leafy_greenhouse_id`, next.leafy_greenhouse_id, { shouldValidate: true });
-          setValue(`destinations.${index}.zone_id`, next.zone_id, { shouldValidate: true });
-          setValue(`destinations.${index}.span_id`, next.span_id, { shouldValidate: true });
-          setValue(`destinations.${index}.destination_location_id`, next.destination_location_id, {
-            shouldValidate: true,
-          });
-          setValue(`destinations.${index}.table_label`, next.table_label);
-          setValue(`destinations.${index}.table_capacity`, next.table_capacity);
-        }}
-        errors={destErrors}
-      />
+      {!collapsed && (
+        <>
+          <LeafyLocationSelector
+            farmId={farmId}
+            leafyGreenhouses={leafyGreenhouses ?? []}
+            leafyGreenhousesLoading={leafyGreenhousesLoading}
+            value={locationValue}
+            onChange={(next) => {
+              setValue(`destinations.${index}.leafy_greenhouse_id`, next.leafy_greenhouse_id, { shouldValidate: true });
+              setValue(`destinations.${index}.zone_id`, next.zone_id, { shouldValidate: true });
+              setValue(`destinations.${index}.span_id`, next.span_id, { shouldValidate: true });
+              setValue(`destinations.${index}.destination_location_id`, next.destination_location_id, {
+                shouldValidate: true,
+              });
+              setValue(`destinations.${index}.table_label`, next.table_label);
+              setValue(`destinations.${index}.table_capacity`, next.table_capacity);
+            }}
+            errors={destErrors}
+          />
 
-      <div className="flex flex-col gap-2">
-        <span className={labelClass}>Source allocations</span>
-        {destErrors?.allocations?.message && <span className={errorClass}>{destErrors.allocations.message}</span>}
-        {fields.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {fields.map((field, allocationIndex) => (
-              <li key={field.id} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="min-w-0 sm:flex-1">
-                  <FilterableSelect
-                    aria-label={`Source for allocation ${allocationIndex + 1}`}
-                    options={sourceOptions}
-                    value={field.source_assignment_id}
-                    placeholder="Select source Nursery Plate…"
-                    onChange={(sourceId) => {
-                      const current = destination.allocations[allocationIndex];
-                      update(allocationIndex, { ...current, source_assignment_id: sourceId });
-                    }}
-                  />
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  className={`${inputClassBase} w-full sm:w-28 sm:shrink-0`}
-                  aria-label={`Quantity for allocation ${allocationIndex + 1}`}
-                  value={destination.allocations[allocationIndex]?.quantity ?? ""}
-                  onChange={(e) => {
-                    const current = destination.allocations[allocationIndex];
-                    update(allocationIndex, { ...current, quantity: Number(e.target.value) });
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => remove(allocationIndex)}
-                  className="min-h-11 rounded-md border border-wl-border px-2 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <button
-          type="button"
-          disabled={selectableSources.length === 0}
-          onClick={() => append({ source_assignment_id: "", quantity: 0 })}
-          className="min-h-11 self-start rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-hover disabled:opacity-50"
-        >
-          Add source allocation
-        </button>
-      </div>
-
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-        <div>
-          <dt className="text-wl-text-secondary">Assigned to Plate</dt>
-          <dd className="font-medium text-wl-text">{assigned.toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt className="text-wl-text-secondary">Plate capacity</dt>
-          <dd className="font-medium text-wl-text">
-            {destination.biological_position_count != null ? destination.biological_position_count.toLocaleString() : "Unknown"}
-          </dd>
-        </div>
-        {destination.destination_location_id && occupantsQuery.isSuccess && (
-          <div>
-            <dt className="text-wl-text-secondary">Table occupants (server)</dt>
-            <dd className="font-medium text-wl-text">{occupantsQuery.data.active_occupancies.length}</dd>
+          <div className="flex flex-col gap-2">
+            <span className={labelClass}>Source allocations</span>
+            {fields.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {fields.map((field, allocationIndex) => (
+                  <li key={field.id} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="min-w-0 sm:flex-1">
+                      <FilterableSelect
+                        aria-label={`Source for allocation ${allocationIndex + 1}`}
+                        options={sourceOptions}
+                        value={field.source_assignment_id}
+                        placeholder="Select source Nursery Plate…"
+                        onChange={(sourceId) => {
+                          const current = destination.allocations[allocationIndex];
+                          update(allocationIndex, { ...current, source_assignment_id: sourceId });
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className={`${inputClassBase} w-full sm:w-28 sm:shrink-0`}
+                      aria-label={`Quantity for allocation ${allocationIndex + 1}`}
+                      value={destination.allocations[allocationIndex]?.quantity ?? ""}
+                      onChange={(e) => {
+                        const current = destination.allocations[allocationIndex];
+                        update(allocationIndex, { ...current, quantity: Number(e.target.value) });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => remove(allocationIndex)}
+                      className="min-h-11 rounded-md border border-wl-border px-2 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              disabled={selectableSources.length === 0}
+              onClick={() => append({ source_assignment_id: "", quantity: 0 })}
+              className="min-h-11 self-start rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-hover disabled:opacity-50"
+            >
+              Add source allocation
+            </button>
           </div>
-        )}
-      </dl>
+
+          {destination.destination_location_id && occupantsQuery.isSuccess && (
+            <p className="text-xs text-wl-text-secondary">
+              Table occupants (server): {occupantsQuery.data.active_occupancies.length}
+            </p>
+          )}
+        </>
+      )}
     </li>
   );
 }
@@ -279,6 +391,10 @@ export function ProductionTransferForm({
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
   const lastSubmittedFingerprintRef = useRef<string | null>(null);
   const [occupancyByTable, setOccupancyByTable] = useState<Record<string, TableOccupancy>>({});
+  const [collapsedDestinationIds, setCollapsedDestinationIds] = useState<Set<string>>(new Set());
+  const [destinationArea, setDestinationArea] = useState<DestinationAreaValue>({
+    leafy_greenhouse_id: "", zone_id: "", span_id: "",
+  });
 
   const initial = nowDateAndTime();
   const {
@@ -315,6 +431,8 @@ export function ProductionTransferForm({
     () => (overviewQuery.data ?? []).filter((item) => item.classification === "leafy_greens"),
     [overviewQuery.data],
   );
+  const effectiveAreaGreenhouseId =
+    destinationArea.leafy_greenhouse_id || (leafyGreenhouses.length === 1 ? leafyGreenhouses[0].greenhouse_id : "");
 
   // Section 10 (frozen, mirrors InterSalads): a 409 means the state this
   // draft was built against has changed elsewhere. Forces back to
@@ -389,24 +507,84 @@ export function ProductionTransferForm({
     });
   }
 
-  function defaultGreenhouseIdForNewDestination(): string {
-    if (leafyGreenhouses.length === 1) return leafyGreenhouses[0].greenhouse_id;
-    const previous = values.destinations[values.destinations.length - 1];
-    // Only the Greenhouse carries forward (operator speed, section 9 of the
-    // correction ticket) -- never Zone/Span/Table, since those are far more
-    // likely to legitimately differ between destinations even within the
-    // same Greenhouse, and carrying them forward would risk a silent
-    // wrong-Table submission the operator didn't intend.
-    if (previous?.leafy_greenhouse_id) return previous.leafy_greenhouse_id;
-    return "";
+  // PILOT-UX-002A section H: removing a source must not leave dangling
+  // allocation entries pointing at it scattered across destinations --
+  // pruning them here (rather than only flagging them via the schema's
+  // existing "no longer part of the transaction" check) keeps the draft
+  // itself truthful, not just eventually-blocked at Review.
+  function removeSource(index: number) {
+    const removedId = getValues(`sources.${index}.source_assignment_id`);
+    sourcesArray.remove(index);
+    getValues("destinations").forEach((destination, destinationIndex) => {
+      if (destination.allocations.some((a) => a.source_assignment_id === removedId)) {
+        setValue(
+          `destinations.${destinationIndex}.allocations`,
+          destination.allocations.filter((a) => a.source_assignment_id !== removedId),
+          { shouldValidate: true },
+        );
+      }
+    });
   }
 
+  // A freshly-added row still needs its Table (and usually an allocation)
+  // picked, so it starts expanded -- `collapsedDestinationIds` is an
+  // opt-out set, so simply never adding this row's id keeps it expanded
+  // until the operator collapses it themselves.
   function addDestination() {
     destinationsArray.append({
       destination_carrier_id: "", plate_code: "", biological_position_count: null,
-      leafy_greenhouse_id: defaultGreenhouseIdForNewDestination(),
-      zone_id: "", span_id: "", destination_location_id: "", table_label: "", table_capacity: null,
+      leafy_greenhouse_id: effectiveAreaGreenhouseId,
+      zone_id: destinationArea.zone_id, span_id: destinationArea.span_id,
+      destination_location_id: "", table_label: "", table_capacity: null,
       note: "", allocations: [],
+    });
+  }
+
+  function toggleDestinationCollapsed(fieldId: string) {
+    setCollapsedDestinationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldId)) next.delete(fieldId);
+      else next.add(fieldId);
+      return next;
+    });
+  }
+
+  // PILOT-UX-002A section B/D: an editable proposal, never an automatic
+  // transfer -- fills only destinations with a known Plate capacity and no
+  // allocation of their own yet (an operator override, or a destination the
+  // operator is still mid-editing, is never silently replaced). See
+  // `lib/allocation/suggestAllocation.ts` for the exact fill algorithm.
+  function handleSuggestAllocation() {
+    const current = getValues();
+    const sourceIds = new Set(current.sources.map((s) => s.source_assignment_id));
+    const sourceInputs = current.sources.map((s) => ({
+      sourceId: s.source_assignment_id,
+      available: s.current_available - (s.transplant_damage_count + s.qc_rejection_count + s.sample_count + s.other_loss_count),
+    }));
+    const destinationInputs = current.destinations.map((d, index) => ({
+      destinationId: String(index),
+      capacity: d.biological_position_count,
+      existingAllocations: d.allocations
+        .filter((a) => sourceIds.has(a.source_assignment_id))
+        .map((a) => ({ sourceId: a.source_assignment_id, quantity: a.quantity })),
+    }));
+    const result = suggestAllocations(sourceInputs, destinationInputs);
+    result.filledDestinationIds.forEach((destinationIdString) => {
+      const index = Number(destinationIdString);
+      const rows = result.byDestinationId[destinationIdString].map((r) => ({
+        source_assignment_id: r.sourceId,
+        quantity: r.quantity,
+      }));
+      setValue(`destinations.${index}.allocations`, rows, { shouldValidate: true });
+      const fieldId = destinationsArray.fields[index]?.id;
+      if (fieldId) {
+        setCollapsedDestinationIds((prev) => {
+          if (!prev.has(fieldId)) return prev;
+          const next = new Set(prev);
+          next.delete(fieldId);
+          return next;
+        });
+      }
     });
   }
 
@@ -425,6 +603,41 @@ export function ProductionTransferForm({
     const draftCount = values.destinations.filter((d) => d.destination_location_id === tableId).length;
     return occ.occupiedCount + draftCount > occ.capacity;
   });
+
+  // PILOT-UX-002A section C: continuously-visible running totals, computed
+  // from the exact same arithmetic helpers backing validation -- never a
+  // second, independently-maintained copy of this math.
+  const totalAvailable = values.sources.reduce((sum, s) => sum + s.current_available, 0);
+  const totalAllocated = totalTransplantedCount(values);
+  const totalLoss = totalLossCount(values);
+  const totalRemainder = totalAvailable - totalAllocated - totalLoss;
+  const knownCapacityDestinations = values.destinations.filter((d) => d.biological_position_count != null);
+  const unknownCapacityCount = values.destinations.length - knownCapacityDestinations.length;
+  const totalKnownCapacity = knownCapacityDestinations.reduce((sum, d) => sum + (d.biological_position_count ?? 0), 0);
+  const totalUnusedCapacity = knownCapacityDestinations.reduce(
+    (sum, d) => sum + ((d.biological_position_count ?? 0) - destinationAssignedCount(d)),
+    0,
+  );
+  const totalsStats: AllocationTotalsStat[] = [
+    { label: "Source available", value: totalAvailable.toLocaleString() },
+    { label: "Allocated", value: totalAllocated.toLocaleString() },
+    { label: "Source remainder", value: totalRemainder.toLocaleString() },
+    { label: "Loss", value: totalLoss.toLocaleString() },
+    {
+      label: "Destination capacity",
+      value: unknownCapacityCount > 0
+        ? `${totalKnownCapacity.toLocaleString()} (+${unknownCapacityCount} unknown)`
+        : totalKnownCapacity.toLocaleString(),
+    },
+    { label: "Unused capacity", value: totalUnusedCapacity.toLocaleString() },
+  ];
+  const totalsWarning = tableOverCapacity
+    ? "One of the selected Leafy Tables would exceed its known capacity with this draft."
+    : totalRemainder < 0
+      ? "One or more sources are over-allocated."
+      : totalUnusedCapacity < 0
+        ? "One or more destinations exceed capacity."
+        : null;
 
   async function goToReview() {
     const valid = await trigger();
@@ -517,7 +730,10 @@ export function ProductionTransferForm({
                     <span className="text-wl-text">
                       {d.plate_code} → {d.table_label}
                     </span>
-                    <span className="text-wl-text-secondary">{destinationAssignedCount(d).toLocaleString()} plants</span>
+                    <span className="text-wl-text-secondary">
+                      {destinationAssignedCount(d).toLocaleString()} plants
+                      {d.biological_position_count != null ? ` of ${d.biological_position_count.toLocaleString()} capacity` : ""}
+                    </span>
                   </div>
                   <span className="text-xs text-wl-text-secondary">
                     {d.allocations.map((a) => {
@@ -556,6 +772,8 @@ export function ProductionTransferForm({
       className="flex flex-col gap-6"
     >
       <StepIndicator step="configure" />
+
+      {values.sources.length > 0 && <AllocationTotalsBar stats={totalsStats} warning={totalsWarning} />}
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Source Nursery Cultivation Plate(s)</legend>
@@ -597,14 +815,26 @@ export function ProductionTransferForm({
               const sourceRow = (sourcesQuery.data ?? []).find(
                 (s) => s.source_assignment_id === field.source_assignment_id,
               );
+              // `values.sources` (from `useWatch`) can briefly lag one
+              // render behind `sourcesArray.fields` right after an
+              // `append()` -- falling back to `field`'s own (initial, all
+              // -zero) data for that one render avoids a crash without
+              // ever showing a wrong non-zero total.
+              const sourceValues = values.sources[index] ?? field;
+              const lossTotal =
+                sourceValues.transplant_damage_count + sourceValues.qc_rejection_count +
+                sourceValues.sample_count + sourceValues.other_loss_count;
               return (
                 <li key={field.id} className="flex flex-col gap-2 rounded-md border border-wl-border p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
                     <span className="text-sm font-medium text-wl-text">{field.plate_code}</span>
+                    <Stat label="Available" value={field.current_available.toLocaleString()} />
+                    <Stat label="Allocated" value={sourceAllocatedTotal(values, field.source_assignment_id).toLocaleString()} />
+                    <Stat label="Remaining" value={sourceRemaining(values, field.source_assignment_id).toLocaleString()} />
                     <button
                       type="button"
-                      onClick={() => sourcesArray.remove(index)}
-                      className="min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
+                      onClick={() => removeSource(index)}
+                      className="ml-auto min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
                     >
                       Remove
                     </button>
@@ -614,29 +844,8 @@ export function ProductionTransferForm({
                       Currently at {sourceRow.current_location.code}
                     </p>
                   )}
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-                    <div>
-                      <dt className="text-wl-text-secondary">Available</dt>
-                      <dd className="font-medium text-wl-text">{field.current_available.toLocaleString()}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-wl-text-secondary">Allocated</dt>
-                      <dd className="font-medium text-wl-text">
-                        {sourceAllocatedTotal(values, field.source_assignment_id).toLocaleString()}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-wl-text-secondary">Remaining</dt>
-                      <dd className="font-medium text-wl-text">
-                        {sourceRemaining(values, field.source_assignment_id).toLocaleString()}
-                      </dd>
-                    </div>
-                  </dl>
-                  <details>
-                    <summary className="cursor-pointer text-sm font-medium text-wl-text">
-                      Losses during transfer (optional)
-                    </summary>
-                    <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <CompactLossDisclosure total={lossTotal}>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                       <Field label="Damage">
                         <input
                           type="number" min={0} step={1} className={inputClass}
@@ -668,7 +877,7 @@ export function ProductionTransferForm({
                     >
                       <input className={inputClass} {...register(`sources.${index}.other_loss_note`)} />
                     </Field>
-                  </details>
+                  </CompactLossDisclosure>
                   {errors.sources?.[index]?.current_available?.message && (
                     <span className={errorClass}>{errors.sources[index]?.current_available?.message}</span>
                   )}
@@ -683,11 +892,34 @@ export function ProductionTransferForm({
         <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
           <legend className="px-1 text-sm font-semibold text-wl-text">Destination Production Plate(s)</legend>
           {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
-          {tableOverCapacity && (
-            <p role="alert" className={errorClass}>
-              One of the selected Leafy Tables would exceed its known capacity with this draft.
-            </p>
-          )}
+
+          <div className="rounded-lg border border-wl-border bg-wl-surface-sunken p-3">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-wl-text-secondary">
+              Destination area
+            </span>
+            <DestinationAreaSelector
+              farmId={farmId}
+              greenhouses={leafyGreenhouses.map((g) => ({ greenhouse_id: g.greenhouse_id, code: g.code }))}
+              greenhousesLoading={overviewQuery.isLoading}
+              value={{ ...destinationArea, leafy_greenhouse_id: effectiveAreaGreenhouseId }}
+              onChange={setDestinationArea}
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" variant="secondary" onClick={addDestination}>
+              Add destination Production Plate
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleSuggestAllocation}
+              disabled={destinationsArray.fields.length === 0}
+            >
+              Suggest allocation
+            </Button>
+          </div>
+
           <ul className="flex flex-col gap-3">
             {destinationsArray.fields.map((field, index) => (
               <DestinationRow
@@ -706,16 +938,11 @@ export function ProductionTransferForm({
                 sourceOptions={sourceOptions}
                 onOccupancyChange={(tableId, occ) => setOccupancyByTable((prev) => ({ ...prev, [tableId]: occ }))}
                 errors={errors}
+                collapsed={collapsedDestinationIds.has(field.id)}
+                onToggleCollapsed={() => toggleDestinationCollapsed(field.id)}
               />
             ))}
           </ul>
-          <button
-            type="button"
-            onClick={addDestination}
-            className="min-h-11 self-start rounded-md border border-wl-border px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover"
-          >
-            Add destination Production Plate
-          </button>
         </fieldset>
       )}
 
