@@ -205,4 +205,38 @@ describe("ObservationsPage", () => {
     render(withQueryClient(<ObservationsPage />));
     await waitFor(() => expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument());
   });
+
+  it("PILOT-UX-003: confirms before discarding an in-progress draft when the operator switches Batch", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    stubFetch({ batches: [BATCH, { ...BATCH, id: "batch-2", code: "LET-002" }] });
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/LET-001/)).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ record observation/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ record observation/i }));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("spinbutton", { name: /plant height/i }), { target: { value: "21.5" } });
+
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-2" } });
+    expect(confirmSpy).toHaveBeenCalled();
+    // Declined the confirm -- the draft (and its Batch) must still be there.
+    expect(screen.getByRole("spinbutton", { name: /plant height/i })).toHaveValue(21.5);
+    expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("PILOT-UX-003: switches Batch without confirming when the form is untouched", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    stubFetch({ batches: [BATCH, { ...BATCH, id: "batch-2", code: "LET-002" }] });
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/LET-001/)).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ record observation/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ record observation/i }));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-2" } });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
 });

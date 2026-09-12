@@ -341,6 +341,29 @@ describe("PackingPage stable source draft and contextual handoffs", () => {
     expect((screen.getByLabelText(/^version$/i) as HTMLSelectElement).value).toBe("psv-2");
   });
 
+  it("PILOT-UX-003: adding a source while on Review returns to Editing and never shows a stale Review", async () => {
+    stubFetch();
+    render(withQueryClient(<PackingPage />));
+    await addGplToPacking("GA-001");
+    await pickPackSpecAndVersion(/^v2/);
+    fireEvent.change(screen.getByLabelText(/finished goods lot code/i), { target: { value: "FG-001" } });
+    fireEvent.change(screen.getByLabelText(/package count/i), { target: { value: "5" } });
+    await waitFor(() => expect(screen.getByLabelText(/consumed weight/i)).toHaveValue(60));
+    fireEvent.change(screen.getByLabelText(/packed output weight/i), { target: { value: "60" } });
+
+    await waitFor(() => expect(screen.getByText("Balanced")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+
+    // The source panel stays interactive underneath Review -- adding GA-002
+    // here must never leave a stale Review showing only GA-001's numbers.
+    await addGplToPacking("GA-002");
+    expect(screen.queryByText("Review before recording")).not.toBeInTheDocument();
+    expect(screen.getByText(/Pack GA-001, GA-002/)).toBeInTheDocument();
+    // The already-entered top-level fields still survive the return to Editing.
+    expect(screen.getByLabelText(/finished goods lot code/i)).toHaveValue("FG-001");
+  });
+
   it("12. a contextual ?gradedLotIds= loads and preselects the exact source Lots, validated against this Farm's own scoped read", async () => {
     mockSearchParams = new URLSearchParams("gradedLotIds=gpl-1,gpl-2");
     stubFetch();

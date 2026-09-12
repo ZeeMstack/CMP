@@ -35,10 +35,10 @@ export function ObservationHistoryTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+    <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
       <table className="w-full min-w-[640px] text-sm">
         <thead>
-          <tr className="border-b border-border-subtle text-left text-xs font-medium uppercase tracking-wide text-ink-muted">
+          <tr className="border-b border-wl-border text-left text-xs font-medium uppercase tracking-wide text-wl-text-secondary">
             <th className="w-8 px-3 py-2" />
             <th className="px-3 py-2">Date</th>
             <th className="px-3 py-2">Stage</th>
@@ -59,37 +59,37 @@ export function ObservationHistoryTable({
               return (
                 <Fragment key={event.id}>
                   <tr
-                    className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-subtle"
+                    className="cursor-pointer border-b border-wl-border last:border-0 hover:bg-wl-surface-sunken"
                     onClick={() => toggle(event.id)}
                   >
-                    <td className="px-3 py-2 text-ink-muted">
+                    <td className="px-3 py-2 text-wl-text-secondary">
                       {isOpen ? (
                         <ChevronDown aria-hidden="true" className="h-4 w-4" />
                       ) : (
                         <ChevronRight aria-hidden="true" className="h-4 w-4" />
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-ink">
+                    <td className="whitespace-nowrap px-3 py-2 text-wl-text">
                       {formatDateTime(event.effective_time, timeZone)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-ink">{event.stage.name}</td>
-                    <td className="px-3 py-2 text-ink">
+                    <td className="whitespace-nowrap px-3 py-2 text-wl-text">{event.stage.name}</td>
+                    <td className="px-3 py-2 text-wl-text">
                       {event.values.length === 0 ? "—" : `${summary}${more}`}
                     </td>
-                    <td className="max-w-[24ch] truncate px-3 py-2 text-ink-muted">{event.note ?? ""}</td>
+                    <td className="max-w-[24ch] truncate px-3 py-2 text-wl-text-secondary">{event.note ?? ""}</td>
                   </tr>
                   {isOpen && (
-                    <tr className="border-b border-border-subtle bg-surface-subtle last:border-0">
+                    <tr className="border-b border-wl-border bg-wl-surface-sunken last:border-0">
                       <td />
                       <td colSpan={4} className="px-3 py-2">
                         <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
                           {event.values.map((v) => (
                             <div key={v.id} className="flex items-baseline justify-between gap-3 text-sm">
-                              <dt className="text-ink-muted">
+                              <dt className="text-wl-text-secondary">
                                 {v.definition.name}
                                 <span className="text-xs"> ({formatObservationValueTarget(v)})</span>
                               </dt>
-                              <dd className="font-medium text-ink">{formatObservationValue(v)}</dd>
+                              <dd className="font-medium text-wl-text">{formatObservationValue(v)}</dd>
                             </div>
                           ))}
                         </dl>

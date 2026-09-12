@@ -18,7 +18,11 @@ function locationLabel(location: HarvestablePlateRead["location"]): string | nul
  * LEAFY-OPS-001's own "never hide, only flag" convention). Once at least
  * one Plate is selected (`lockedBatchId` set), every other-Batch row is
  * disabled with an explanatory reason rather than silently letting a
- * cross-Batch row be submitted and rejected server-side. */
+ * cross-Batch row be submitted and rejected server-side.
+ *
+ * PILOT-UX-003: compact row list (Waterline tokens) replacing the previous
+ * heavier bordered-card-per-row treatment -- same Add/Remove semantics, no
+ * domain change. */
 export function HarvestablePlatesPanel({
   plates,
   selectedAssignmentIds,
@@ -35,72 +39,77 @@ export function HarvestablePlatesPanel({
   isLoading: boolean;
 }) {
   if (isLoading) {
-    return <p className="text-sm text-ink-muted">Loading harvestable Plates…</p>;
+    return <p className="text-sm text-wl-text-secondary">Loading harvestable Plates…</p>;
   }
   if (plates.length === 0) {
-    return <p className="text-sm text-ink-muted">No harvestable Production Plates in this Farm.</p>;
+    return <p className="text-sm text-wl-text-secondary">No harvestable Production Plates in this Farm.</p>;
   }
 
   return (
-    <ul className="flex flex-col gap-3">
-      {plates.map((plate) => {
-        const isSelected = selectedAssignmentIds.includes(plate.current_batch_carrier_assignment_id);
-        const isWrongBatch = lockedBatchId !== null && plate.batch_id !== lockedBatchId;
-        const location = locationLabel(plate.location);
-        return (
-          <li
-            key={plate.current_batch_carrier_assignment_id}
-            className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="flex flex-col gap-1">
-              <span className="font-serif text-sm font-semibold text-ink">
-                {plate.production_plate_code} — {plate.batch_code}
-              </span>
-              <span className="text-xs text-ink-muted">
-                {plate.crop_common_name}
-                {plate.variety_name ? ` / ${plate.variety_name}` : ""} · Living{" "}
-                {plate.current_living_heads.toLocaleString()}
-              </span>
-              {location ? (
-                <span className="text-xs text-ink-muted">{location}</span>
+    <div className="overflow-hidden rounded-xl border border-wl-border bg-wl-surface-raised">
+      <h3 className="border-b border-wl-border bg-wl-surface-sunken px-3 py-2 text-sm font-semibold text-wl-text">
+        Add Plates
+      </h3>
+      <ul>
+        {plates.map((plate) => {
+          const isSelected = selectedAssignmentIds.includes(plate.current_batch_carrier_assignment_id);
+          const isWrongBatch = lockedBatchId !== null && plate.batch_id !== lockedBatchId;
+          const location = locationLabel(plate.location);
+          return (
+            <li
+              key={plate.current_batch_carrier_assignment_id}
+              className={`flex flex-col gap-2 border-b border-wl-border p-3 last:border-b-0 hover:bg-wl-surface-hover sm:flex-row sm:items-center sm:justify-between ${isSelected ? "bg-wl-brand-subtle" : ""}`}
+            >
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-semibold text-wl-text">
+                  {plate.production_plate_code} — {plate.batch_code}
+                </span>
+                <span className="text-xs text-wl-text-secondary">
+                  {plate.crop_common_name}
+                  {plate.variety_name ? ` / ${plate.variety_name}` : ""} · Living{" "}
+                  {plate.current_living_heads.toLocaleString()}
+                </span>
+                {location ? (
+                  <span className="text-xs text-wl-text-secondary">{location}</span>
+                ) : (
+                  <span className="text-xs text-wl-flag-fg">No current Leafy location on record</span>
+                )}
+                {plate.quality_hold_open && (
+                  <span className="inline-flex w-fit items-center rounded-full bg-wl-flag-bg px-2 py-0.5 text-xs font-medium text-wl-flag-fg">
+                    On quality hold — Harvest blocked
+                  </span>
+                )}
+                {isWrongBatch && !isSelected && (
+                  <span className="text-xs text-wl-text-secondary">
+                    This Harvest is already recording against another Batch — only Plates from the same Batch can be
+                    added.
+                  </span>
+                )}
+              </div>
+              {isSelected ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="self-start sm:self-center"
+                  onClick={() => onRemove(plate.current_batch_carrier_assignment_id)}
+                >
+                  Remove from Harvest
+                </Button>
               ) : (
-                <span className="text-xs text-red-700">No current Leafy location on record</span>
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="self-start sm:self-center"
+                  disabled={plate.quality_hold_open || isWrongBatch}
+                  onClick={() => onAdd(plate)}
+                >
+                  Add to Harvest
+                </Button>
               )}
-              {plate.quality_hold_open && (
-                <span className="inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                  On quality hold — Harvest blocked
-                </span>
-              )}
-              {isWrongBatch && !isSelected && (
-                <span className="text-xs text-ink-muted">
-                  This Harvest is already recording against {lockedBatchId ? "another Batch" : ""} — only Plates
-                  from the same Batch can be added.
-                </span>
-              )}
-            </div>
-            {isSelected ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="self-start sm:self-center"
-                onClick={() => onRemove(plate.current_batch_carrier_assignment_id)}
-              >
-                Remove from Harvest
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="primary"
-                className="self-start sm:self-center"
-                disabled={plate.quality_hold_open || isWrongBatch}
-                onClick={() => onAdd(plate)}
-              >
-                Add to Harvest
-              </Button>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

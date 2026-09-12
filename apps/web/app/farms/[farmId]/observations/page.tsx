@@ -48,6 +48,7 @@ export default function ObservationsPage() {
   const [showRecordForm, setShowRecordForm] = useState(Boolean(prefillBatchId));
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordedCount, setRecordedCount] = useState<number | null>(null);
+  const [formDirty, setFormDirty] = useState(false);
 
   const farmQuery = useFarm(farmId);
   const batchesQuery = useOperationalSummary(farmId, "active");
@@ -69,11 +70,24 @@ export default function ObservationsPage() {
   // render as a misleading blank row.
   const events = (historyQuery.data ?? []).filter((e) => e.values.length > 0);
 
+  // PILOT-UX-003: a Batch switch always invalidates an in-progress
+  // Observation draft -- measurements/targets belong to the Batch they were
+  // entered against, so carrying them into a different one would be wrong,
+  // not merely inconvenient. But that invalidation must never be silent: if
+  // the operator has actually typed something, confirm before discarding it
+  // (never for an untouched, empty form -- that would just be noise).
   function handleSelectBatch(batchId: string) {
+    if (showRecordForm && formDirty) {
+      const confirmed = window.confirm(
+        "You have an in-progress observation for the current batch that hasn't been recorded. Switch batches and discard it?",
+      );
+      if (!confirmed) return;
+    }
     setSelectedBatchId(batchId || null);
     setShowRecordForm(false);
     setRecordError(null);
     setRecordedCount(null);
+    setFormDirty(false);
   }
 
   return (
@@ -93,12 +107,12 @@ export default function ObservationsPage() {
       />
 
       <div className="mb-4 flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-ink-muted" htmlFor="observation-batch-select">
+        <label className="text-xs font-medium text-wl-text-secondary" htmlFor="observation-batch-select">
           Batch
         </label>
         <select
           id="observation-batch-select"
-          className="min-h-11 w-full max-w-md rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="min-h-11 w-full max-w-md rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
           value={selectedBatchId ?? ""}
           onChange={(e) => handleSelectBatch(e.target.value)}
           disabled={batchesQuery.isLoading}
@@ -122,13 +136,13 @@ export default function ObservationsPage() {
         />
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-ink">
+              <span className="text-sm font-medium text-wl-text">
                 {selectedBatch.code} · {selectedBatch.crop.common_name}
                 {selectedBatch.variety ? ` / ${selectedBatch.variety.name}` : ""}
               </span>
-              <span className="text-xs text-ink-muted">
+              <span className="text-xs text-wl-text-secondary">
                 {selectedBatch.current_stage.name} · {formatPlacementSummary(selectedBatch.placement)}
               </span>
             </div>
@@ -148,7 +162,7 @@ export default function ObservationsPage() {
           </div>
 
           {recordedCount !== null && !showRecordForm && (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <div className="rounded-lg border border-wl-border bg-wl-grow-bg px-3 py-2 text-sm text-wl-grow-fg">
               Recorded {recordedCount} observation{recordedCount === 1 ? "" : "s"} for {selectedBatch.code}.
             </div>
           )}
@@ -161,9 +175,11 @@ export default function ObservationsPage() {
               targetsLoading={targetsQuery.isLoading}
               isSubmitting={recordMutation.isPending}
               serverError={recordError}
+              onDirtyChange={setFormDirty}
               onCancel={() => {
                 setShowRecordForm(false);
                 setRecordError(null);
+                setFormDirty(false);
               }}
               onSubmit={(payload: ObservationEventCreate) => {
                 setRecordError(null);
@@ -173,6 +189,7 @@ export default function ObservationsPage() {
                     onSuccess: (result) => {
                       setShowRecordForm(false);
                       setRecordedCount(result.values.length);
+                      setFormDirty(false);
                     },
                     onError: (error) => setRecordError(asAppError(error)),
                   },

@@ -75,11 +75,20 @@ export default function FarmHomePage() {
       <PageHeader title={farm ? farm.name : "Farm overview"} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <SummaryCard label="Active batches" value={activeCount} href={`/farms/${farmId}/crop-batches`} />
-        <SummaryCard label="Harvest ready" value={harvestReadyCount} href={`/farms/${farmId}/crop-batches`} />
+        {/* PILOT-UX-003: each KPI links to the Batch register pre-filtered
+            to the same authoritative field this count was computed from
+            (`crop-batches/page.tsx`'s `DEEP_LINK_FILTERS`), never the
+            unfiltered list -- so the count and the list it opens can never
+            silently disagree. */}
+        <SummaryCard
+          label="Harvest ready"
+          value={harvestReadyCount}
+          href={`/farms/${farmId}/crop-batches?filter=harvest_ready`}
+        />
         <SummaryCard
           label="Batches with open quality holds"
           value={openHoldBatchCount}
-          href={`/farms/${farmId}/crop-batches`}
+          href={`/farms/${farmId}/crop-batches?filter=quality_hold`}
           caption={openHoldBatchCount === 1 ? "1 batch affected" : `${openHoldBatchCount} batches affected`}
         />
       </div>

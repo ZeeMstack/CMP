@@ -135,6 +135,26 @@ describe("ReceiveGoodsPage", () => {
     expect(screen.queryByLabelText("Manufacturer")).not.toBeInTheDocument();
   });
 
+  it("PILOT-UX-003: auto-reveals collapsed Lot details when Expiry Date is required and missing", async () => {
+    stubFetch();
+    render(withQueryClient(<ReceiveGoodsPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Inventory Item"), { target: { value: "item-lot" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /lot details/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "uom-kg" } });
+    // Lot details stays collapsed; Expiry Date is required for this item but
+    // never entered -- the resulting error must never be silently hidden
+    // inside a still-closed section.
+    expect(screen.queryByLabelText(/Expiry Date/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Record Receipt" }));
+
+    await waitFor(() => expect(screen.getByLabelText(/Expiry Date \(required\)/)).toBeInTheDocument());
+    expect(screen.getByText("Expiry date is required for this item")).toBeInTheDocument();
+  });
+
   it("adds another compact row via Add line, without expanding into a large form", async () => {
     stubFetch();
     render(withQueryClient(<ReceiveGoodsPage />));

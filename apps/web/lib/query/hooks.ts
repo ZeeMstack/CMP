@@ -2522,7 +2522,7 @@ export function useCohortLedger(cohortId: string | undefined) {
  * page's item-by-item table -- mirrors `useGradeVersionLabelMap`'s own
  * `useQueries` batching pattern exactly, never one hook call per item in a
  * loop (which would violate the Rules of Hooks). */
-export function useItemsExistenceSummary(itemIds: string[]): {
+export function useItemsExistenceSummary(itemIds: string[], enabled = true): {
   byItemId: Record<string, { existing: string | null; usable: string | null }>;
   isLoading: boolean;
 } {
@@ -2531,14 +2531,14 @@ export function useItemsExistenceSummary(itemIds: string[]): {
     queries: itemIds.map((id) => ({
       queryKey: queryKeys.itemExistence(tenantId ?? "", id),
       queryFn: ({ signal }: { signal: AbortSignal }) => api.getItemExistence(id, signal),
-      enabled: Boolean(tenantId),
+      enabled: Boolean(tenantId) && enabled,
     })),
   });
   const usableQueries = useQueries({
     queries: itemIds.map((id) => ({
       queryKey: queryKeys.itemUsableExistence(tenantId ?? "", id),
       queryFn: ({ signal }: { signal: AbortSignal }) => api.getItemUsableExistence(id, signal),
-      enabled: Boolean(tenantId),
+      enabled: Boolean(tenantId) && enabled,
     })),
   });
   const byItemId: Record<string, { existing: string | null; usable: string | null }> = {};

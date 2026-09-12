@@ -26,15 +26,27 @@ export const recordDispatchFormSchema = z
     code: z.string().min(1, "Dispatch code is required"),
     effective_date: z.string().min(1, "Date is required"),
     effective_time_of_day: z.string().min(1, "Time is required"),
+    // PILOT-UX-003: the operator must actually type a measured reading --
+    // the field starts blank (`null`), never prefilled with a plausible-
+    // looking `0`, which would silently pass as "entered" for a real
+    // freezer/produce temperature. `null` is only rejected explicitly, in
+    // the `superRefine` below, so the field keeps one consistent
+    // `number | null` type instead of a zod input/output split.
     dispatch_temperature_c: z
-      .number({ error: "Dispatch temperature is required" })
+      .number()
       .gt(MIN_TEMPERATURE_C, "Outside the supported range")
-      .lt(MAX_TEMPERATURE_C, "Outside the supported range"),
+      .lt(MAX_TEMPERATURE_C, "Outside the supported range")
+      .nullable(),
     external_reference: z.string(),
     note: z.string(),
     lines: z.array(dispatchLineFormSchema).min(1, "Add at least one Finished Goods Lot").max(50),
   })
   .superRefine((values, ctx) => {
+    if (values.dispatch_temperature_c === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom, path: ["dispatch_temperature_c"], message: "Dispatch temperature is required",
+      });
+    }
     const ids = values.lines.map((l) => l.finished_goods_lot_id);
     const dupIds = new Set(ids.filter((id, i) => ids.indexOf(id) !== i));
     if (dupIds.size > 0) {

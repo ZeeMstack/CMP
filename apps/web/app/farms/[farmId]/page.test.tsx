@@ -65,7 +65,13 @@ describe("FarmHomePage", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "North Farm" })).toBeInTheDocument());
     expect(screen.getByRole("link", { name: /Active batches/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
-    expect(screen.getByRole("link", { name: /Harvest ready/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
+    // PILOT-UX-003: now deep-links to the Batch register pre-filtered to the
+    // same authoritative field the count itself was computed from -- the
+    // accessible name (what the e2e pilot path actually asserts on) is
+    // unchanged, only the query string.
+    expect(screen.getByRole("link", { name: /Harvest ready/ })).toHaveAttribute(
+      "href", "/farms/farm-1/crop-batches?filter=harvest_ready",
+    );
     expect(screen.getByText("Batches with open quality holds")).toBeInTheDocument();
   });
 

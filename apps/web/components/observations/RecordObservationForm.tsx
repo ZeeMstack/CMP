@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import type {
@@ -12,9 +12,15 @@ import type {
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 
 const inputClass =
-  "min-h-10 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600";
-const labelClass = "text-xs font-medium text-ink-muted";
-const errorClass = "text-xs text-red-700";
+  "min-h-10 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
+const labelClass = "text-xs font-medium text-wl-text-secondary";
+const errorClass = "text-xs text-wl-flag-fg";
+
+// PILOT-UX-003: a plain positional cap, not a domain judgment about which
+// measurements matter more -- Observation Definitions carry no "common"/
+// priority flag from configuration, so this only limits how many rows show
+// before "Show more" without asserting any agronomic importance.
+const ROUTINE_DEFINITION_LIMIT = 6;
 
 function nowDateAndTime() {
   const now = new Date();
@@ -50,6 +56,7 @@ export function RecordObservationForm({
   targetsLoading,
   onSubmit,
   onCancel,
+  onDirtyChange,
   isSubmitting,
   serverError,
 }: {
@@ -59,6 +66,11 @@ export function RecordObservationForm({
   targetsLoading: boolean;
   onSubmit: (payload: ObservationEventCreate) => void;
   onCancel: () => void;
+  /** PILOT-UX-003: fires whenever "has the operator entered anything worth
+   * not silently discarding" changes, so the parent page can warn before a
+   * Batch switch would wipe an in-progress draft. Purely a UI convenience --
+   * this component owns no persistence of its own. */
+  onDirtyChange?: (dirty: boolean) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
 }) {
@@ -69,6 +81,8 @@ export function RecordObservationForm({
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [clientCommandId] = useState(() => crypto.randomUUID());
   const [rowError, setRowError] = useState<string | null>(null);
+  const [primaryTargetId, setPrimaryTargetId] = useState("");
+  const [showAllDefinitions, setShowAllDefinitions] = useState(false);
 
   const activeDefinitions = useMemo(
     () => definitions.filter((d) => d.status === "active"),
@@ -83,6 +97,23 @@ export function RecordObservationForm({
   }
 
   const filledCount = Object.values(rows).filter((r) => r.raw.trim() !== "").length;
+  const isDirty = filledCount > 0 || note.trim() !== "";
+  // A side effect (telling the parent something changed), not a render
+  // value -- belongs in an effect, never invoked directly in the render body.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Definitions that can take a specific target at all -- these are the
+  // ones a chosen "Primary target" convenience can apply to.
+  const targetableDefinitions = useMemo(
+    () => activeDefinitions.filter((d) => d.target_scope !== "crop_batch"),
+    [activeDefinitions],
+  );
+  const visibleDefinitions = activeDefinitions.filter(
+    (d, idx) => showAllDefinitions || idx < ROUTINE_DEFINITION_LIMIT || Boolean(rows[d.id]?.raw.trim()) || Boolean(rows[d.id]?.targetId),
+  );
+  const hiddenCount = activeDefinitions.length - visibleDefinitions.length;
 
   function buildValues(): ObservationEventCreate["values"] | null {
     const values: NonNullable<ObservationEventCreate["values"]> = [];
@@ -141,9 +172,9 @@ export function RecordObservationForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+    <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-base font-semibold text-ink">
+        <h2 className="font-serif text-base font-semibold text-wl-text">
           Record observation — {batch.code}
         </h2>
         <Button type="button" variant="secondary" onClick={onCancel}>
@@ -152,12 +183,37 @@ export function RecordObservationForm({
       </div>
 
       {activeDefinitions.length === 0 ? (
-        <p className="text-sm text-ink-muted">
+        <p className="text-sm text-wl-text-secondary">
           No active Observation Definitions are configured for this tenant yet.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {activeDefinitions.map((definition) => {
+          {targetableDefinitions.length > 0 && targets.length > 0 && (
+            <label className="flex flex-col gap-1 rounded-lg border border-wl-border bg-wl-surface-sunken p-2.5">
+              <span className={labelClass}>
+                Primary target — applies to every measurement below that takes a specific target; override any row
+                individually after
+              </span>
+              <select
+                className={inputClass}
+                value={primaryTargetId}
+                disabled={targetsLoading}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setPrimaryTargetId(value);
+                  for (const d of targetableDefinitions) setRow(d.id, { targetId: value });
+                }}
+              >
+                <option value="">Whole batch</option>
+                {targets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {targetLabel(t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {visibleDefinitions.map((definition) => {
             const row = rows[definition.id];
             const needsTarget = definition.target_scope !== "crop_batch";
             const bounds =
@@ -170,7 +226,7 @@ export function RecordObservationForm({
                     : null;
             const fieldLabel = `${definition.name}${definition.unit ? ` (${definition.unit})` : ""}${bounds ? ` · ${bounds}` : ""}`;
             return (
-              <div key={definition.id} className="grid grid-cols-1 gap-2 rounded-lg border border-border-subtle p-2.5 sm:grid-cols-[1fr_auto]">
+              <div key={definition.id} className="grid grid-cols-1 gap-2 rounded-lg border border-wl-border p-2.5 sm:grid-cols-[1fr_auto]">
                 <label className="flex flex-col gap-1">
                   <span className={labelClass}>{fieldLabel}</span>
                   {definition.value_type === "boolean" ? (
@@ -201,31 +257,47 @@ export function RecordObservationForm({
                   )}
                 </label>
                 {needsTarget && (
-                  <label className="flex flex-col gap-1 sm:w-56">
-                    <span className={labelClass}>
-                      {definition.name} target
-                      {definition.target_scope === "carrier_assignment" ? " (required)" : " (optional)"}
-                    </span>
-                    <select
-                      className={inputClass}
-                      value={row?.targetId ?? ""}
-                      onChange={(e) => setRow(definition.id, { targetId: e.target.value })}
-                      disabled={targetsLoading}
-                    >
-                      <option value="">
-                        {definition.target_scope === "either" ? "Whole batch" : "Select a carrier…"}
-                      </option>
-                      {targets.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {targetLabel(t)}
+                  <div className="flex flex-col gap-1 sm:w-56">
+                    <label className="flex flex-col gap-1">
+                      <span className={labelClass}>
+                        {definition.name} target
+                        {definition.target_scope === "carrier_assignment" ? " (required)" : " (optional)"}
+                      </span>
+                      <select
+                        className={inputClass}
+                        value={row?.targetId ?? ""}
+                        onChange={(e) => setRow(definition.id, { targetId: e.target.value })}
+                        disabled={targetsLoading}
+                      >
+                        <option value="">
+                          {definition.target_scope === "either" ? "Whole batch" : "Select a carrier…"}
                         </option>
-                      ))}
-                    </select>
-                  </label>
+                        {targets.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {targetLabel(t)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {/* CLAUDE.md/PILOT-UX-003: scope must be explicit, never
+                        just implied by an empty vs. filled dropdown. Kept as
+                        a SIBLING of the <label>, never nested inside it --
+                        see `PackingInputLineRow`'s identical note: folding
+                        this into the select's accessible name is wrong for
+                        assistive tech and breaks exact-name label queries. */}
+                    <span className="text-[11px] text-wl-text-secondary">
+                      Applies to: {row?.targetId ? targets.find((t) => t.id === row.targetId)?.carrier.code ?? "Selected carrier" : "Whole batch"}
+                    </span>
+                  </div>
                 )}
               </div>
             );
           })}
+          {hiddenCount > 0 && (
+            <Button type="button" variant="secondary" className="self-start" onClick={() => setShowAllDefinitions(true)}>
+              Show {hiddenCount} more measurement{hiddenCount === 1 ? "" : "s"}
+            </Button>
+          )}
         </div>
       )}
 

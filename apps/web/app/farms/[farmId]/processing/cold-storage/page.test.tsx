@@ -106,4 +106,19 @@ describe("ColdStoragePage", () => {
     expect(screen.getByLabelText(/source location/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/destination location/i)).not.toBeInTheDocument();
   });
+
+  it("PILOT-UX-003: Prepare dispatch hands off the selected Lot's actual, stable id", async () => {
+    stubFetch();
+    render(withQueryClient(<ColdStoragePage />));
+
+    await waitFor(() => expect(screen.getByLabelText(/finished goods lot/i)).toBeInTheDocument());
+    fireEvent.focus(screen.getByLabelText(/finished goods lot/i));
+    await waitFor(() => expect(screen.getByText("FG-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("FG-001"));
+
+    await waitFor(() => expect(screen.getByRole("link", { name: "Prepare dispatch" })).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Prepare dispatch" })).toHaveAttribute(
+      "href", "/farms/farm-1/processing/dispatch?finishedGoodsLotId=fg-1",
+    );
+  });
 });

@@ -170,7 +170,7 @@ describe("LeafyHarvestPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
-    expect(screen.getByText("8")).toBeInTheDocument(); // total heads
+    expect(screen.getByText("8 heads")).toBeInTheDocument(); // total heads, unit shown per PILOT-UX-003
   });
 
   it("completes the full Record Harvest flow: configure -> review -> confirm -> success", async () => {
@@ -444,5 +444,87 @@ describe("LeafyHarvestPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
     await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
     expect(screen.getByText("Harvest-time location unavailable")).toBeInTheDocument();
+  });
+
+  it("PILOT-UX-003: adding another Plate preserves already-entered values on unrelated rows", async () => {
+    stubFetch({ plates: [PLATE_A, PLATE_B] });
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /add to harvest/i })[0]);
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "42" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "3.3" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+    await waitFor(() => expect(screen.getAllByLabelText(/heads harvested/i)).toHaveLength(2));
+
+    // The row already filled in before the second Plate was added must be
+    // untouched -- this is the exact regression the old `key={ids.join()}`
+    // remount caused (PILOT-UX-003 group 1).
+    expect(screen.getAllByLabelText(/heads harvested/i)[0]).toHaveValue(42);
+    expect(screen.getAllByLabelText(/raw harvested weight/i)[0]).toHaveValue(3.3);
+  });
+
+  it("PILOT-UX-003: removing one Plate preserves the remaining row's values", async () => {
+    stubFetch({ plates: [PLATE_A, PLATE_B] });
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /add to harvest/i })[0]);
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+    await waitFor(() => expect(screen.getAllByLabelText(/heads harvested/i)).toHaveLength(2));
+
+    fireEvent.change(screen.getAllByLabelText(/heads harvested/i)[1], { target: { value: "7" } });
+    fireEvent.change(screen.getAllByLabelText(/raw harvested weight/i)[1], { target: { value: "1.1" } });
+
+    // Remove the FIRST Plate (PP-001) via its "Remove from Harvest" button --
+    // the second row's (PP-002) already-entered values must survive.
+    fireEvent.click(screen.getAllByRole("button", { name: /remove from harvest/i })[0]);
+    await waitFor(() => expect(screen.getAllByLabelText(/heads harvested/i)).toHaveLength(1));
+    expect(screen.getByLabelText(/heads harvested/i)).toHaveValue(7);
+    expect(screen.getByLabelText(/raw harvested weight/i)).toHaveValue(1.1);
+  });
+
+  it("PILOT-UX-003: switching to Harvest History and back preserves the in-progress draft", async () => {
+    stubFetch();
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "6.5" } });
+
+    fireEvent.click(screen.getByRole("tab", { name: /harvest history/i }));
+    await waitFor(() => expect(screen.getByText("HL-ABC12345 — ICE-0142")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: /harvestable plates/i }));
+    expect(screen.getByLabelText(/heads harvested/i)).toHaveValue(15);
+    expect(screen.getByLabelText(/raw harvested weight/i)).toHaveValue(6.5);
+  });
+
+  it("PILOT-UX-003: success screen offers Grade this lot using the actual returned Produce Lot id", async () => {
+    stubFetch({ recordResult: harvestEvent({ produce_lot_id: "lot-abc-123", produce_lot_code: "HL-ABC12345" }) });
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+    const gradeLink = screen.getByRole("link", { name: "Grade this lot" });
+    expect(gradeLink).toHaveAttribute(
+      "href",
+      "/farms/farm-1/processing/grading?harvestLotId=lot-abc-123",
+    );
   });
 });
