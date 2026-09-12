@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { GradingOutputRow } from "@/components/processing/GradingOutputRow";
@@ -40,23 +40,46 @@ function nowDateAndTime() {
   };
 }
 
+const WEIGHT_EPSILON = 0.001;
+
 /** POSTHARVEST-OPS-001G: "Record Grading" -- one source Harvested Produce
  * Lot, full weight/count reconciliation (rejection/loss/sample/remainder),
  * one or more Graded Produce Lot outputs. Mirrors `LeafyHarvestForm.tsx`'s
  * configure -> review -> confirm shape and idempotency-key discipline
  * exactly. Remounted (via `key`) by the parent whenever the selected source
- * Lot changes, so defaults always reflect the current selection. */
+ * Lot changes -- a genuinely new source is a new draft by design, not a
+ * "wipe" the ticket's draft-preservation rules apply to (those cover the
+ * same source staying selected while unrelated UI state changes around it;
+ * see `input_presented_*`'s own one-time balance seeding below and the
+ * page's `hidden`-tab pattern for that).
+ *
+ * PILOT-UX-002C: `input_presented_weight_kg`/`_whole_unit_count` default
+ * to the source Lot's own full total at mount (the authoritative balance
+ * has almost always not resolved yet -- it is fetched only once a Lot is
+ * selected), then are corrected exactly once to the authoritative balance
+ * when it arrives, via a `hasSeededBalance` ref -- same convention as
+ * `PackingInputLineRow`'s own `hasSeeded` ref -- and only if the operator
+ * has not already edited that field themselves, so a real edit is never
+ * clobbered by a late-arriving read. */
 export function GradingForm({
   sourceLot,
   balance,
+  isBalanceError,
   locations,
+  defaultProcessingLocationId,
+  onProcessingLocationChange,
+  onChangeSource,
   onSubmit,
   isSubmitting,
   serverError,
 }: {
   sourceLot: HarvestedProduceLotRead;
   balance: ProduceLotBalanceRead | undefined;
+  isBalanceError?: boolean;
   locations: LocationTreeNode[];
+  defaultProcessingLocationId?: string;
+  onProcessingLocationChange?: (locationId: string) => void;
+  onChangeSource?: () => void;
   onSubmit: (payload: GradingEventCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
@@ -64,17 +87,18 @@ export function GradingForm({
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
   const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  const hasSeededBalance = useRef(false);
   const initial = nowDateAndTime();
   const hasCounts = sourceLot.total_whole_unit_count != null;
 
   const {
-    register, control, handleSubmit, getValues, setValue, watch, formState: { errors },
+    register, control, handleSubmit, getValues, setValue, watch, formState: { errors, dirtyFields },
   } = useForm<RecordGradingFormValues>({
     resolver: zodResolver(recordGradingFormSchema),
     defaultValues: {
       source_harvested_produce_lot_id: sourceLot.id,
       source_produce_lot_code: sourceLot.code,
-      processing_hall_location_id: "",
+      processing_hall_location_id: defaultProcessingLocationId || "",
       effective_date: initial.date,
       effective_time_of_day: initial.time,
       note: "",
@@ -94,6 +118,19 @@ export function GradingForm({
     mode: "onBlur",
   });
   const { fields, append, remove } = useFieldArray({ control, name: "outputs" });
+
+  useEffect(() => {
+    if (hasSeededBalance.current || !balance) return;
+    hasSeededBalance.current = true;
+    if (!dirtyFields.input_presented_weight_kg) {
+      setValue("input_presented_weight_kg", Number(balance.available_weight_kg));
+    }
+    if (hasCounts && balance.available_whole_unit_count != null && !dirtyFields.input_presented_whole_unit_count) {
+      setValue("input_presented_whole_unit_count", balance.available_whole_unit_count);
+    }
+  }, [balance, hasCounts, dirtyFields, setValue]);
+
+  const isSourceFullyConsumed = balance != null && Number(balance.available_weight_kg) <= WEIGHT_EPSILON;
 
   const [prevServerError, setPrevServerError] = useState(serverError);
   if (serverError !== prevServerError) {
@@ -218,21 +255,48 @@ export function GradingForm({
       className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4"
     >
       <StepIndicator step="configure" />
-      <h2 className="font-serif text-base font-semibold text-ink">Grade {sourceLot.code}</h2>
-      <p className="text-xs text-ink-muted">
-        {sourceLot.crop.common_name}
-        {sourceLot.variety ? ` / ${sourceLot.variety.name}` : ""} · Available{" "}
-        {balance ? `${balance.available_weight_kg} kg` : `${sourceLot.total_harvested_weight_kg} kg (loading balance…)`}
-        {hasCounts && balance ? ` / ${balance.available_whole_unit_count} units` : ""}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <h2 className="font-serif text-base font-semibold text-ink">Grade {sourceLot.code}</h2>
+            <p className="text-xs text-ink-muted">
+              {sourceLot.crop.common_name}
+              {sourceLot.variety ? ` / ${sourceLot.variety.name}` : ""}
+            </p>
+            <p className="text-xs font-semibold text-ink">
+              Gradeable now{" "}
+              {balance ? `${balance.available_weight_kg} kg` : `${sourceLot.total_harvested_weight_kg} kg (confirming…)`}
+              {hasCounts && balance ? ` / ${balance.available_whole_unit_count} units` : ""}
+            </p>
+          </div>
+          <Field label="Processing location" error={errors.processing_hall_location_id?.message}>
+            <LocationSelect
+              nodes={locations}
+              value={watch("processing_hall_location_id")}
+              onChange={(id) => {
+                setValue("processing_hall_location_id", id);
+                onProcessingLocationChange?.(id);
+              }}
+            />
+          </Field>
+        </div>
+        {onChangeSource && (
+          <Button type="button" variant="secondary" onClick={onChangeSource}>
+            Change source
+          </Button>
+        )}
+      </div>
 
-      <Field label="Processing location" error={errors.processing_hall_location_id?.message}>
-        <LocationSelect
-          nodes={locations}
-          value={watch("processing_hall_location_id")}
-          onChange={(id) => setValue("processing_hall_location_id", id)}
-        />
-      </Field>
+      {isBalanceError && (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          This source Lot&apos;s current gradeable balance could not be confirmed. Re-check before recording.
+        </p>
+      )}
+      {isSourceFullyConsumed && (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          This source Lot has already been fully graded — no gradeable balance remains. Choose a different Lot.
+        </p>
+      )}
 
       <fieldset className="grid grid-cols-2 gap-3">
         <Field label="Input presented weight (kg)" error={errors.input_presented_weight_kg?.message}>
@@ -354,7 +418,7 @@ export function GradingForm({
       )}
 
       <div>
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" disabled={isSourceFullyConsumed}>
           Review
         </Button>
       </div>

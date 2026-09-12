@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorState } from "@/components/ErrorState";
 import { GradedProduceLotListItem } from "@/components/processing/GradedProduceLotListItem";
 import { Button } from "@/components/ui/Button";
 import type { GradedProduceLotRead, RecallCaseSummaryRead } from "@/lib/api/client";
@@ -13,7 +14,12 @@ import type { GradedProduceLotRead, RecallCaseSummaryRead } from "@/lib/api/clie
  * silently letting a cross-Crop row be submitted and rejected server-side.
  * A zero-balance or open-recall Lot is always visible (never hidden), badged
  * and disabled -- the write endpoint remains the sole authority that
- * actually blocks Packing while a hold/recall is open. */
+ * actually blocks Packing while a hold/recall is open.
+ *
+ * PILOT-UX-002C: add-only. Removing an already-selected Lot now happens in
+ * `PackingForm`'s own working grid, not here -- keeping one place per
+ * action avoids the two-panels-editing-the-same-selection duplication the
+ * ticket calls out; a selected row here just reads "Added" (disabled). */
 export function GradedProduceLotSourcePanel({
   lots,
   farmId,
@@ -22,8 +28,10 @@ export function GradedProduceLotSourcePanel({
   selectedIds,
   lockedCropId,
   onAdd,
-  onRemove,
   isLoading,
+  isError,
+  error,
+  onRetry,
 }: {
   lots: GradedProduceLotRead[];
   farmId: string;
@@ -32,11 +40,16 @@ export function GradedProduceLotSourcePanel({
   selectedIds: string[];
   lockedCropId: string | null;
   onAdd: (lot: GradedProduceLotRead) => void;
-  onRemove: (lotId: string) => void;
   isLoading: boolean;
+  isError?: boolean;
+  error?: unknown;
+  onRetry?: () => void;
 }) {
   if (isLoading) {
     return <p className="text-sm text-ink-muted">Loading Graded Produce Lots…</p>;
+  }
+  if (isError) {
+    return <ErrorState error={error} onRetry={onRetry} />;
   }
   if (lots.length === 0) {
     return <p className="text-sm text-ink-muted">No Graded Produce Lots available in this Farm.</p>;
@@ -67,8 +80,8 @@ export function GradedProduceLotSourcePanel({
                     </span>
                   )}
                   {isSelected ? (
-                    <Button type="button" variant="secondary" onClick={() => onRemove(lot.id)}>
-                      Remove
+                    <Button type="button" variant="secondary" disabled>
+                      Added
                     </Button>
                   ) : (
                     <Button

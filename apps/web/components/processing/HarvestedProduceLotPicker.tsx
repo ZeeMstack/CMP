@@ -1,67 +1,110 @@
 "use client";
 
-import { Button } from "@/components/ui/Button";
-import type { HarvestedProduceLotRead } from "@/lib/api/client";
+import { useState } from "react";
 
-/** POSTHARVEST-OPS-001G: the source-Lot picker for a new Grading command.
- * No "gradeable" filter exists on the list endpoint (unlike Harvest's own
- * `harvestable-plates` read), so every Harvested Produce Lot in the Farm is
- * shown, newest first; the operator's own knowledge of what still needs
- * grading is what narrows this in practice on the packhouse floor. Once a
- * row is selected, its live balance is fetched separately (see the parent
- * page) to show "available to grade" before the Grading form seeds its
- * defaults from it. */
+import { ErrorState } from "@/components/ErrorState";
+import { HarvestedProduceLotListItem } from "@/components/processing/HarvestedProduceLotListItem";
+import { Button } from "@/components/ui/Button";
+import type { HarvestedProduceLotRead, RecallCaseSummaryRead } from "@/lib/api/client";
+import { useHarvestedProduceLotBalances } from "@/lib/query/hooks";
+
+const BALANCE_EPSILON = 0.001;
+
+/** PILOT-UX-002C: the Grading source-Lot work queue. Every visible Lot's
+ * own balance is read up front (`useHarvestedProduceLotBalances`, no bulk
+ * balance endpoint exists -- see that hook's own note) so "still gradeable"
+ * is the authoritative live figure driving both each row's own label and
+ * the fully-graded filter below, never a value calculated client-side from
+ * incomplete history. Fully-graded Lots (balance confirmed at ~0) are
+ * hidden by default so the floor's actual remaining work is what's in
+ * front of the operator, with an explicit toggle to bring them back for
+ * audit -- never dropped from the underlying list. */
 export function HarvestedProduceLotPicker({
   lots,
+  farmId,
+  recallCases,
   selectedId,
-  onSelect,
   isLoading,
+  isError,
+  error,
+  onRetry,
+  onSelect,
 }: {
   lots: HarvestedProduceLotRead[];
+  farmId: string;
+  recallCases: RecallCaseSummaryRead[] | undefined;
   selectedId: string | null;
-  onSelect: (lot: HarvestedProduceLotRead) => void;
   isLoading: boolean;
+  isError: boolean;
+  error?: unknown;
+  onRetry: () => void;
+  onSelect: (lot: HarvestedProduceLotRead) => void;
 }) {
+  const [showFullyGraded, setShowFullyGraded] = useState(false);
+  const sorted = [...lots].sort((a, b) => b.effective_time.localeCompare(a.effective_time));
+  const balances = useHarvestedProduceLotBalances(
+    farmId,
+    sorted.map((l) => l.id),
+  );
+
   if (isLoading) {
     return <p className="text-sm text-ink-muted">Loading Harvested Produce Lots…</p>;
+  }
+  if (isError) {
+    return <ErrorState error={error} onRetry={onRetry} />;
   }
   if (lots.length === 0) {
     return <p className="text-sm text-ink-muted">No Harvested Produce Lots recorded in this Farm yet.</p>;
   }
 
-  const sorted = [...lots].sort((a, b) => b.effective_time.localeCompare(a.effective_time));
+  const isFullyGraded = (lotId: string) => {
+    const balance = balances[lotId];
+    return balance != null && Number(balance.available_weight_kg) <= BALANCE_EPSILON;
+  };
+  const visible = showFullyGraded ? sorted : sorted.filter((lot) => !isFullyGraded(lot.id));
+  const hiddenCount = sorted.length - visible.length;
 
   return (
-    <ul className="flex flex-col gap-3">
-      {sorted.map((lot) => {
-        const isSelected = lot.id === selectedId;
-        return (
-          <li
-            key={lot.id}
-            className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
-              isSelected ? "border-brand-700 bg-brand-100/40" : "border-border-subtle bg-surface"
-            }`}
-          >
-            <div className="flex flex-col gap-1">
-              <span className="font-serif text-sm font-semibold text-ink">{lot.code}</span>
-              <span className="text-xs text-ink-muted">
-                {lot.crop.common_name}
-                {lot.variety ? ` / ${lot.variety.name}` : ""} · Original {lot.total_harvested_weight_kg} kg
-                {lot.total_whole_unit_count != null ? ` / ${lot.total_whole_unit_count} units` : ""}
-              </span>
-              <span className="text-xs text-ink-muted">{new Date(lot.effective_time).toLocaleString()}</span>
-            </div>
-            <Button
-              type="button"
-              variant={isSelected ? "secondary" : "primary"}
-              className="self-start sm:self-center"
-              onClick={() => onSelect(lot)}
-            >
-              {isSelected ? "Selected" : "Grade this Lot"}
-            </Button>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">Gradeable work queue</h3>
+        {hiddenCount > 0 && (
+          <Button type="button" variant="secondary" onClick={() => setShowFullyGraded((v) => !v)}>
+            {showFullyGraded ? "Hide fully graded" : `Show ${hiddenCount} fully graded`}
+          </Button>
+        )}
+      </div>
+      {visible.length === 0 ? (
+        <p className="text-sm text-ink-muted">No Lots currently have gradeable balance remaining.</p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {visible.map((lot) => {
+            const isSelected = lot.id === selectedId;
+            const balance = balances[lot.id];
+            return (
+              <HarvestedProduceLotListItem
+                key={lot.id}
+                lot={lot}
+                balance={balance}
+                isBalanceLoading={balance == null}
+                recallCases={recallCases}
+              >
+                {() => (
+                  <Button
+                    type="button"
+                    variant={isSelected ? "secondary" : "primary"}
+                    className="self-start sm:self-center"
+                    disabled={!isSelected && isFullyGraded(lot.id)}
+                    onClick={() => onSelect(lot)}
+                  >
+                    {isSelected ? "Selected" : "Grade this Lot"}
+                  </Button>
+                )}
+              </HarvestedProduceLotListItem>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

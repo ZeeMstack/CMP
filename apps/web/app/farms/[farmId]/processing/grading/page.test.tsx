@@ -5,8 +5,10 @@ import { withQueryClient } from "@/lib/test-utils";
 
 import GradingPage from "./page";
 
+let mockSearchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => mockSearchParams,
 }));
 
 function jsonResponse(body: unknown, status = 200) {
@@ -150,6 +152,7 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  mockSearchParams = new URLSearchParams();
 });
 
 async function selectLot(codeText: string) {
@@ -302,5 +305,88 @@ describe("GradingPage effective-time Version selection", () => {
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "12:00" } });
 
     await waitFor(() => expect((screen.getByLabelText(/^version$/i) as HTMLSelectElement).value).toBe(""));
+  });
+});
+
+describe("GradingPage contextual URL handling and draft preservation", () => {
+  it("1. a contextual ?harvestLotId= preselects the exact source, validated against this Farm's own scoped read", async () => {
+    mockSearchParams = new URLSearchParams("harvestLotId=hpl-1");
+    stubFetch();
+    render(withQueryClient(<GradingPage />));
+
+    // The Grading form appears directly for HL-0001 -- no "Grade this Lot"
+    // click required.
+    await waitFor(() => expect(screen.getByText("Grade HL-0001")).toBeInTheDocument());
+    expect(screen.getByLabelText(/processing location/i)).toBeInTheDocument();
+  });
+
+  it("2. an invalid/stale contextual source fails safely, with the queue still available", async () => {
+    mockSearchParams = new URLSearchParams("harvestLotId=hpl-does-not-exist");
+    stubFetch();
+    render(withQueryClient(<GradingPage />));
+
+    await waitFor(() =>
+      expect(screen.getByText(/requested Harvest Lot could not be found/i)).toBeInTheDocument(),
+    );
+    // The queue itself still renders normally, never blocked by the bad context.
+    await waitFor(() => expect(screen.getByText("HL-0001")).toBeInTheDocument());
+    expect(screen.queryByLabelText(/processing location/i)).not.toBeInTheDocument();
+  });
+
+  it("3. the output/disposition draft survives a query refetch (a recording conflict invalidates and refetches the Harvested Produce Lots list)", async () => {
+    stubFetch({ recordError: true });
+    render(withQueryClient(<GradingPage />));
+    await selectLot("HL-0001");
+    fillLocation();
+    await pickGradeAndVersion(/^v2/);
+    fireEvent.change(screen.getByLabelText(/gpl code/i), { target: { value: "GA-001" } });
+    fireEvent.change(screen.getByLabelText(/output weight/i), { target: { value: "100" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    // The 409 conflict invalidates+refetches the Harvested Produce Lots
+    // list (see `useRecordGrading`'s `onError` / `_invalidateGrading`) and
+    // reverts to Configure -- the operator's already-typed draft must
+    // survive that refetch untouched.
+    await waitFor(() => expect(screen.getByLabelText(/gpl code/i)).toHaveValue("GA-001"));
+    expect(screen.getByLabelText(/output weight/i)).toHaveValue(100);
+    expect((screen.getByLabelText(/processing location/i) as HTMLSelectElement).value).toBe("loc-1");
+  });
+
+  it("5. switching to Grading History and back (a non-authoritative UI change) does not wipe the in-progress draft", async () => {
+    stubFetch();
+    render(withQueryClient(<GradingPage />));
+    await selectLot("HL-0001");
+    fillLocation();
+    fireEvent.change(screen.getByLabelText(/gpl code/i), { target: { value: "GA-001" } });
+    fireEvent.change(screen.getByLabelText(/output weight/i), { target: { value: "42" } });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Grading History" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Grade a Lot" }));
+
+    expect(screen.getByLabelText(/gpl code/i)).toHaveValue("GA-001");
+    expect(screen.getByLabelText(/output weight/i)).toHaveValue(42);
+    expect((screen.getByLabelText(/processing location/i) as HTMLSelectElement).value).toBe("loc-1");
+  });
+
+  it("6. the Grading success receipt's Pack-these-outputs handoff uses the response's own stable output Lot ids, never a guess", async () => {
+    stubFetch();
+    render(withQueryClient(<GradingPage />));
+    await selectLot("HL-0001");
+    fillLocation();
+    await pickGradeAndVersion(/^v2/);
+    fireEvent.change(screen.getByLabelText(/gpl code/i), { target: { value: "GA-001" } });
+    fireEvent.change(screen.getByLabelText(/output weight/i), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByText("Grading recorded")).toBeInTheDocument());
+    const handoff = screen.getByRole("link", { name: /pack these outputs/i });
+    // "gpl-1" is `gradingEventResult()`'s own `outputs[0].id` -- the
+    // response's stable id, not the "GA-001" code.
+    expect(handoff.getAttribute("href")).toBe("/farms/farm-1/processing/packing?gradedLotIds=gpl-1");
   });
 });

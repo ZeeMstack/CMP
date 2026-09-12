@@ -72,8 +72,8 @@ export function GradingOutputRow({
   }, [effectiveTimeIso, versionsQuery.data, selectedVersionId, index, setValue]);
 
   return (
-    <li className="rounded-md border border-border-subtle p-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <li className="border-b border-border-subtle py-2 last:border-b-0">
+      <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Grade</span>
           <select
@@ -156,12 +156,14 @@ export function GradingOutputRow({
             )}
           </label>
         )}
+        {removable && (
+          <div className="flex items-end">
+            <Button type="button" variant="secondary" onClick={onRemove}>
+              Remove
+            </Button>
+          </div>
+        )}
       </div>
-      {removable && (
-        <Button type="button" variant="secondary" className="mt-2" onClick={onRemove}>
-          Remove output
-        </Button>
-      )}
     </li>
   );
 }
