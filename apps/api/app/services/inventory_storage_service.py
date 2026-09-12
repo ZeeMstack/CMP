@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,11 +26,11 @@ from app.models.goods_receipt import GoodsReceipt
 from app.models.goods_receipt_line import GoodsReceiptLine
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_lot import InventoryLot
-from app.models.inventory_material_event import InventoryMaterialEvent
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.inventory_storage_movement import InventoryStorageMovement
 from app.models.location import Location
 from app.models.location_type import LocationType
+from app.services import inventory_cohort_accounting_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     IneligibleStorageBinError,
@@ -44,9 +44,7 @@ from app.services.errors import (
 from app.services.inventory_existence_ledger_service import (
     _lock_cohort,
     get_cohort,
-    get_cohort_balance,
     get_cohort_bin_balance,
-    get_cohort_total_custody,
 )
 
 STORE_BIN_LOCATION_TYPE_CODE = "store_bin"
@@ -141,9 +139,13 @@ def record_putaway(
             return existing
         raise InventoryStorageCommandReusedWithDifferentPayloadError(str(client_command_id))
 
-    balance = get_cohort_balance(db, cohort_id=cohort.id)
-    total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
-    not_put_away = balance - total_custody
+    # PILOT-BLOCKER-004 F02: not-put-away is `existence - custody + settled-
+    # from-issued`, never `existence - custody` alone -- omitting the
+    # issued-settlement term goes stale (over-restrictive) once any issued
+    # material has since been consumed/scrapped.
+    not_put_away = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+        db, cohort_id=cohort.id
+    ).not_put_away
     if quantity > not_put_away:
         raise InsufficientNotPutAwayQuantityError(
             f"requested quantity {quantity} exceeds not-put-away quantity {not_put_away} for cohort {cohort_id}"
@@ -304,32 +306,14 @@ def split_custody_core(
 # --- Reads -----------------------------------------------------------------
 
 
-def _cohort_settled_from_issued(db: Session, *, cohort_id: uuid.UUID) -> Decimal:
-    """STORE-INV-004: total Consumption + Scrap-from-issued ever settled
-    against this cohort's own Issue lines -- reduces Existence without
-    touching `get_cohort_total_custody`'s own formula, so it must be added
-    back explicitly wherever "Not put away" is derived from those two
-    (see `get_cohort_not_put_away`)."""
-    return db.execute(
-        select(func.coalesce(func.sum(InventoryMaterialEvent.quantity_base), 0)).where(
-            InventoryMaterialEvent.inventory_quantity_cohort_id == cohort_id,
-            InventoryMaterialEvent.source_kind == "issued",
-            InventoryMaterialEvent.event_kind.in_(("consumption", "scrap")),
-        )
-    ).scalar_one()
-
-
 def get_cohort_not_put_away(db: Session, *, tenant_id: uuid.UUID, cohort_id: uuid.UUID) -> Decimal:
-    """`existence - in-Store - issued-to-operations` (docs' own formula),
-    computed here as `(existence - total_custody) + settled-from-issued` --
-    algebraically identical (STORE-INV-004 keeps `total_custody` and
-    `issued`/`returned` movement-only, so Consumption/Scrap-from-issued,
-    which touch existence but no movement row, must be added back to
-    avoid double-subtracting them)."""
-    balance = get_cohort_balance(db, cohort_id=cohort_id)
-    total_custody = get_cohort_total_custody(db, cohort_id=cohort_id)
-    settled_from_issued = _cohort_settled_from_issued(db, cohort_id=cohort_id)
-    return balance - total_custody + settled_from_issued
+    """`existence - in-Store - issued-to-operations` (docs' own formula) --
+    delegates to `inventory_cohort_accounting_service`, the single
+    authoritative projection (PILOT-BLOCKER-004 F02), so this read model can
+    never drift from the write-side validators that need the same number."""
+    return inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+        db, cohort_id=cohort_id
+    ).not_put_away
 
 
 def get_cohort_bucket_breakdown(db: Session, *, tenant_id: uuid.UUID, cohort_id: uuid.UUID) -> list[dict]:
@@ -433,14 +417,12 @@ def get_item_storage_breakdown(db: Session, *, tenant_id: uuid.UUID, inventory_i
     if not cohort_ids:
         return {"not_put_away_quantity": Decimal("0"), "bins": []}
 
-    total_existence = Decimal("0")
-    total_custody = Decimal("0")
-    total_settled_from_issued = Decimal("0")
+    total_not_put_away = Decimal("0")
     per_bin: dict[uuid.UUID, Decimal] = {}
     for cohort_id in cohort_ids:
-        total_existence += get_cohort_balance(db, cohort_id=cohort_id)
-        total_custody += get_cohort_total_custody(db, cohort_id=cohort_id)
-        total_settled_from_issued += _cohort_settled_from_issued(db, cohort_id=cohort_id)
+        total_not_put_away += inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+            db, cohort_id=cohort_id
+        ).not_put_away
         rows = db.execute(
             select(
                 InventoryStorageMovement.source_location_id, InventoryStorageMovement.destination_location_id,
@@ -462,4 +444,4 @@ def get_item_storage_breakdown(db: Session, *, tenant_id: uuid.UUID, inventory_i
         {"location_id": loc_id, "label": (locations[loc_id].name if loc_id in locations else str(loc_id)), "balance": per_bin[loc_id]}
         for loc_id in bin_ids
     ]
-    return {"not_put_away_quantity": total_existence - total_custody + total_settled_from_issued, "bins": bins}
+    return {"not_put_away_quantity": total_not_put_away, "bins": bins}

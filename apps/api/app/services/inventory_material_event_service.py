@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_material_event import InventoryMaterialEvent
 from app.models.inventory_storage_movement import InventoryStorageMovement
-from app.services import inventory_issue_service
+from app.services import inventory_cohort_accounting_service, inventory_issue_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     InactiveStorageBinError,
@@ -55,9 +55,7 @@ from app.services.errors import (
 )
 from app.services.inventory_existence_ledger_service import (
     _lock_cohort,
-    get_cohort_balance,
     get_cohort_bin_balance,
-    get_cohort_total_custody,
 )
 from app.services.inventory_storage_service import _lock_bin
 
@@ -367,9 +365,13 @@ def record_scrap(
         db.flush()
         _ = bin_
     else:  # not_put_away
-        balance = get_cohort_balance(db, cohort_id=cohort.id)
-        total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
-        not_put_away = balance - total_custody
+        # PILOT-BLOCKER-004 F02: `existence - custody`, missing the
+        # issued-settlement term, goes stale (over-restrictive) once any
+        # issued material has since been consumed/scrapped -- see
+        # `inventory_cohort_accounting_service` for the canonical formula.
+        not_put_away = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+            db, cohort_id=cohort.id
+        ).not_put_away
         if quantity > not_put_away:
             raise InsufficientNotPutAwayQuantityError(
                 f"scrap quantity {quantity} exceeds not-put-away quantity {not_put_away} for cohort {cohort.id}"
