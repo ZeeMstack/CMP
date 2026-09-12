@@ -45,6 +45,7 @@ from app.models.inventory_lot import InventoryLot
 from app.models.inventory_quality_command import InventoryQualityCommand
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.quality_disposition_event import QualityDispositionEvent
+from app.services import inventory_cohort_accounting_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     IneligibleStorageBinError,
@@ -62,9 +63,7 @@ from app.services.errors import (
 from app.services.inventory_existence_ledger_service import (
     _lock_cohort,
     _split_cohort_core,
-    get_cohort_balance,
     get_cohort_bin_balance,
-    get_cohort_total_custody,
 )
 from app.services.inventory_storage_service import _lock_bin, split_custody_core
 
@@ -571,9 +570,13 @@ def apply_quality_disposition_to_partial_quantity(
     )
 
     if custody_location_id is None:
-        bucket_balance = get_cohort_balance(db, cohort_id=source.id) - get_cohort_total_custody(
+        # PILOT-BLOCKER-004 F02: not-put-away's own canonical formula
+        # (existence - custody + settled-from-issued), never the stale
+        # `existence - custody` alone -- see
+        # `inventory_cohort_accounting_service`.
+        bucket_balance = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
             db, cohort_id=source.id
-        )
+        ).not_put_away
     else:
         bin_ = _lock_bin(db, tenant_id=tenant_id, farm_id=source.receiving_farm_id, location_id=custody_location_id)
         if bin_.status != "active":
@@ -712,9 +715,11 @@ def correct_quality_disposition_for_partial_quantity(
     )
 
     if custody_location_id is None:
-        bucket_balance = get_cohort_balance(db, cohort_id=source.id) - get_cohort_total_custody(
+        # PILOT-BLOCKER-004 F02: same canonical not-put-away formula as
+        # `apply_quality_disposition_to_partial_quantity` above.
+        bucket_balance = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
             db, cohort_id=source.id
-        )
+        ).not_put_away
     else:
         bin_ = _lock_bin(db, tenant_id=tenant_id, farm_id=source.receiving_farm_id, location_id=custody_location_id)
         if bin_.status != "active":

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_quantity_cohort import InventoryQuantityCohort
 from app.models.inventory_storage_movement import InventoryStorageMovement
+from app.services import inventory_cohort_accounting_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     ExistenceBelowCustodyError,
@@ -210,12 +211,17 @@ def record_adjustment(
             f"adjustment would drive cohort {cohort_id} balance negative (balance={balance}, delta={quantity_delta})"
         )
     if quantity_delta < 0:
-        # STORE-INV-002B: physical custody can never exceed existence.
-        total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
-        if balance + quantity_delta < total_custody:
+        # PILOT-BLOCKER-004 F02: Existence can never validly drop below
+        # `in_bins + outstanding_issued` -- NOT `total_custody` alone, which
+        # goes stale (over-restrictive) once any issued material has since
+        # been consumed/scrapped (`inventory_cohort_accounting_service`).
+        floor = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+            db, cohort_id=cohort.id
+        ).existence_floor
+        if balance + quantity_delta < floor:
             raise ExistenceBelowCustodyError(
                 f"adjustment would leave cohort {cohort_id} existence ({balance + quantity_delta}) below its "
-                f"current physical custody ({total_custody})"
+                f"current physical + issued custody ({floor})"
             )
 
     entry = InventoryExistenceLedgerEntry(
@@ -331,12 +337,15 @@ def reverse_ledger_entry(
             f"reversal would drive cohort {cohort.id} balance negative (balance={balance}, delta={negated})"
         )
     if negated < 0:
-        # STORE-INV-002B: physical custody can never exceed existence.
-        total_custody = get_cohort_total_custody(db, cohort_id=cohort.id)
-        if balance + negated < total_custody:
+        # PILOT-BLOCKER-004 F02: same floor as record_adjustment above --
+        # `in_bins + outstanding_issued`, never the stale `total_custody`.
+        floor = inventory_cohort_accounting_service.get_cohort_accounting_snapshot(
+            db, cohort_id=cohort.id
+        ).existence_floor
+        if balance + negated < floor:
             raise ExistenceBelowCustodyError(
                 f"reversal would leave cohort {cohort.id} existence ({balance + negated}) below its current "
-                f"physical custody ({total_custody})"
+                f"physical + issued custody ({floor})"
             )
 
     entry = InventoryExistenceLedgerEntry(
