@@ -16,6 +16,7 @@ from app.schemas.inventory_existence import (
 )
 from app.services import inventory_existence_ledger_service, inventory_existence_read_service
 from app.services.errors import (
+    ExistenceBelowCustodyError,
     InsufficientCohortBalanceError,
     InventoryAdjustmentCommandReusedWithDifferentPayloadError,
     InventoryExistenceLedgerEntryNotFoundError,
@@ -50,7 +51,7 @@ def record_adjustment(
             status_code=status.HTTP_409_CONFLICT,
             detail="client_command_id already used with a different payload",
         ) from exc
-    except InsufficientCohortBalanceError as exc:
+    except (InsufficientCohortBalanceError, ExistenceBelowCustodyError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return InventoryExistenceLedgerEntryRead.model_validate(entry)
 
@@ -79,6 +80,7 @@ def record_existence_reversal(
     except (
         InventoryExistenceReversalOfReversalError, InventoryExistenceReversalTargetAlreadyReversedError,
         InsufficientCohortBalanceError, InventoryExistenceReversalUnsupportedForEntryKindError,
+        ExistenceBelowCustodyError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return InventoryExistenceLedgerEntryRead.model_validate(entry)

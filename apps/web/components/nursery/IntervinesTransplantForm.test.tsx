@@ -123,6 +123,22 @@ describe("IntervinesTransplantForm", () => {
     await waitFor(() => expect(screen.getByText("Available Grow Cubes").nextElementSibling).toHaveTextContent("90"));
   });
 
+  it("PILOT-BLOCKER-008 A10: shows 'not configured (effective: 1)' for a null-capacity Table, never 'unlimited'", async () => {
+    stubFetch();
+    render(withQueryClient(<IntervinesTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/source batch \/ tray/i)).toBeInTheDocument());
+    fireEvent.focus(screen.getByLabelText(/source batch \/ tray/i));
+    const sourceListbox = await screen.findByRole("listbox");
+    fireEvent.click(within(sourceListbox).getByText("TRAY-014"));
+
+    await waitFor(() => expect(screen.getByLabelText(/intervines table/i)).toBeInTheDocument());
+    fireEvent.focus(screen.getByLabelText(/intervines table/i));
+    const tableListbox = await screen.findByRole("listbox");
+    // Both fixture Tables (IV-01, IV-02) have `capacity: null`.
+    expect(within(tableListbox).getAllByText(/capacity: not configured \(effective: 1\)/i).length).toBeGreaterThan(0);
+    expect(within(tableListbox).queryByText(/unlimited/i)).not.toBeInTheDocument();
+  });
+
   it("blocks a plant count exceeding the source's own available seedlings", async () => {
     stubFetch();
     render(withQueryClient(<IntervinesTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));

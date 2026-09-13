@@ -450,7 +450,14 @@ export function IntersaladsTransplantForm({
       intersaladsTables.map((t) => ({
         value: t.id,
         label: t.code,
-        description: `capacity: ${t.capacity ?? "unlimited"}`,
+        // PILOT-BLOCKER-008 A10: NULL/unconfigured table occupancy capacity
+        // is NOT unlimited -- the authoritative backend rule (`movement_
+        // service.py`: `effective_capacity = destination_row.capacity or 1`)
+        // treats it as an effective capacity of 1 (exclusive). This is the
+        // TABLE OCCUPANCY capacity, a distinct concept from a Nursery
+        // Cultivation Plate's own (currently unmodeled-when-null)
+        // BIOLOGICAL capacity -- never conflate the two.
+        description: `capacity: ${t.capacity ?? "not configured (effective: 1)"}`,
       })),
     [intersaladsTables],
   );
@@ -568,10 +575,17 @@ export function IntersaladsTransplantForm({
     });
   }
 
+  // PILOT-BLOCKER-008 A10: a NULL table capacity is NOT unlimited -- it must
+  // use the same effective-capacity-of-1 rule the backend authoritatively
+  // enforces (`movement_service.py`: `destination_row.capacity or 1`).
+  // Previously this skipped the over-capacity check entirely for an
+  // unconfigured table, silently letting the draft allocate more than one
+  // destination row onto it with no warning, only for the backend to
+  // reject it at submit.
   const tableOverCapacity = Object.entries(occupancyByTable).some(([tableId, occ]) => {
-    if (occ.capacity == null) return false;
+    const effectiveCapacity = occ.capacity ?? 1;
     const draftCount = values.destinations.filter((d) => d.destination_location_id === tableId).length;
-    return occ.occupiedCount + draftCount > occ.capacity;
+    return occ.occupiedCount + draftCount > effectiveCapacity;
   });
 
   // PILOT-UX-002A section C: continuously-visible running totals, computed

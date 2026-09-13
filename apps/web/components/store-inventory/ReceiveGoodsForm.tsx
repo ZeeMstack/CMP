@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import type { GoodsReceiptCreate, GoodsReceiptLineIn, InventoryItemRead } from "@/lib/api/client";
+import { nowLocalDate, nowLocalTime } from "@/lib/datetime";
 import { AppError } from "@/lib/errors/adapter";
 import { useInventoryItemPackaging, useInventoryItems, useSeedProfileForItem, useUoms } from "@/lib/query/hooks";
 
@@ -374,8 +375,11 @@ export function ReceiveGoodsForm({
   const itemsQuery = useInventoryItems({ status: "active" });
   const items = itemsQuery.data ?? [];
 
-  const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [receivedTime, setReceivedTime] = useState(() => new Date().toISOString().slice(11, 16));
+  // PILOT-BLOCKER-008 A8: local calendar date/time, never a UTC slice --
+  // these feed `type="date"`/`type="time"` inputs, which display and
+  // re-parse as the operator's LOCAL wall clock.
+  const [receivedDate, setReceivedDate] = useState(() => nowLocalDate());
+  const [receivedTime, setReceivedTime] = useState(() => nowLocalTime());
   const [supplierName, setSupplierName] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineState[]>([emptyLine()]);

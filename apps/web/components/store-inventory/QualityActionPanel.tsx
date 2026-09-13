@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import type { QualityWorkQueueRowRead, StorageBucketRead } from "@/lib/api/client";
+import { nowLocalDateTime } from "@/lib/datetime";
 import { AppError } from "@/lib/errors/adapter";
 
 const inputClass =
@@ -29,12 +30,6 @@ function errorMessage(error: AppError): string {
   if (error.kind === "conflict" || error.kind === "invalid_request") return error.message;
   if (error.kind === "permission_error") return "You don't have permission to perform this action.";
   return "Something went wrong. Please try again.";
-}
-
-function nowLocalDateTime(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 /** STORE-INV-002B: sentinel value for the "Not put away" bucket option --
@@ -240,7 +235,14 @@ export function QualityActionPanel({
         <input className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} disabled={fieldsDisabled} />
       </label>
 
-      {serverError && (
+      {commandOutcome === "uncertain" && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          Result not confirmed -- this command was submitted but the server&apos;s response was never received. Retry
+          sends the exact same submitted values again; it is safe to press even if the original attempt actually
+          went through.
+        </p>
+      )}
+      {serverError && commandOutcome !== "uncertain" && (
         <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
           {errorMessage(serverError)}
           {commandOutcome === "conflict" && " Close this action and open a new one to try again."}
@@ -257,7 +259,13 @@ export function QualityActionPanel({
             <Button type="button" variant="primary" disabled={isSubmitting} onClick={onRetry}>
               {isSubmitting ? "Retrying…" : "Retry"}
             </Button>
-            <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+            {/* PILOT-BLOCKER-008 A2: Cancel must stay disabled for the whole
+                "uncertain" state, not just while a retry is in flight -- the
+                frozen command must remain recoverable until its outcome is
+                actually resolved (success, definitive rejection, or a
+                confirmed reconciliation), never discardable via an ordinary
+                Cancel click. */}
+            <Button type="button" variant="secondary" onClick={onCancel} disabled>
               Cancel
             </Button>
           </>

@@ -1,10 +1,17 @@
-"""PILOT-BLOCKER-005 F07: Quality effective-time chronology integrity.
+"""PILOT-BLOCKER-005 F07 (extended by PILOT-BLOCKER-008 A1): Quality
+effective-time chronology integrity.
 
-Focused coverage only (per the ticket's "rapid focused mode") -- naive/
-future/out-of-order rejection for ORDINARY dispositions, and confirmation
-that corrections (explicit target-based operations, docs/domain/
-STORE_INVENTORY_MODEL.md §11) are only held to the timezone-aware rule,
-never the future/ordering checks."""
+Focused coverage -- naive/future/out-of-order rejection for ORDINARY
+dispositions, and confirmation that corrections (explicit target-based
+operations, docs/domain/STORE_INVENTORY_MODEL.md §11) share the
+timezone-aware AND 30-second future-skew rules with ordinary dispositions,
+but never the nondecreasing-vs-current-event ordering rule.
+
+The ±30s boundary cases use `inventory_quality_service._now_provider`, a
+monkeypatchable seam (no freezegun/fake-clock dependency exists in this
+repo) -- pinning it makes both the constructed `effective_time` and the
+validator's own comparison "now" derive from the same fixed value, so the
+boundary proof has zero dependency on real elapsed test-execution time."""
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -139,3 +146,140 @@ def test_correction_chronology_preserves_existing_target_based_semantics(db_sess
     )
     assert reversal.event_kind == "REVERSAL"
     assert replacement is None
+
+
+@pytest.mark.integration
+def test_current_time_correction_accepted(db_session, active_context_with_farm) -> None:
+    """PILOT-BLOCKER-008 A1: a correction at (approximately) the current
+    instant is accepted -- ordinary real-clock now, comfortably inside the
+    30s tolerance regardless of test execution latency."""
+    tenant, user, _headers, farm = active_context_with_farm
+    cohort_id = _receive_cohort(db_session, tenant, farm, actor_user_id=user.id)
+    held = inventory_quality_service.record_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, disposition="HELD", effective_time=NOW,
+    )
+    reversal, replacement = inventory_quality_service.correct_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, target_event_id=held.id, reason="current-time correction",
+        replacement_disposition=None, effective_time=datetime.now(timezone.utc),
+    )
+    assert reversal.event_kind == "REVERSAL"
+    assert replacement is None
+
+
+@pytest.mark.integration
+def test_correction_at_exact_30s_future_boundary_accepted(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """PILOT-BLOCKER-008 A1: effective_time == now + 30s is accepted (rule
+    is `<=`, not `<`). Pins `_now_provider` so the comparison "now" is the
+    exact same fixed value the test constructs `effective_time` from --
+    no real-clock race with validator execution."""
+    tenant, user, _headers, farm = active_context_with_farm
+    cohort_id = _receive_cohort(db_session, tenant, farm, actor_user_id=user.id)
+    held = inventory_quality_service.record_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, disposition="HELD", effective_time=NOW,
+    )
+    fixed_now = datetime.now(timezone.utc)
+    monkeypatch.setattr(inventory_quality_service, "_now_provider", lambda tz: fixed_now)
+    reversal, replacement = inventory_quality_service.correct_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, target_event_id=held.id, reason="exact 30s boundary",
+        replacement_disposition=None, effective_time=fixed_now + timedelta(seconds=30),
+    )
+    assert reversal.event_kind == "REVERSAL"
+    assert replacement is None
+
+
+@pytest.mark.integration
+def test_correction_just_beyond_30s_future_boundary_rejected(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """PILOT-BLOCKER-008 A1: effective_time == now + 30s + 1 microsecond is
+    rejected -- the smallest possible margin beyond the boundary, made safe
+    by pinning `_now_provider` rather than racing real elapsed time."""
+    tenant, user, _headers, farm = active_context_with_farm
+    cohort_id = _receive_cohort(db_session, tenant, farm, actor_user_id=user.id)
+    held = inventory_quality_service.record_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, disposition="HELD", effective_time=NOW,
+    )
+    fixed_now = datetime.now(timezone.utc)
+    monkeypatch.setattr(inventory_quality_service, "_now_provider", lambda tz: fixed_now)
+    with pytest.raises(InvalidQualityEffectiveTimeError):
+        inventory_quality_service.correct_quality_disposition(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            cohort_id=cohort_id, target_event_id=held.id, reason="just beyond boundary",
+            replacement_disposition=None,
+            effective_time=fixed_now + timedelta(seconds=30, microseconds=1),
+        )
+
+
+@pytest.mark.integration
+def test_grossly_future_correction_rejected(db_session, active_context_with_farm) -> None:
+    """PILOT-BLOCKER-008 A1: a correction cannot be used to schedule a
+    future Quality decision -- GrowCMP has no scheduled-decision model."""
+    tenant, user, _headers, farm = active_context_with_farm
+    cohort_id = _receive_cohort(db_session, tenant, farm, actor_user_id=user.id)
+    held = inventory_quality_service.record_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, disposition="HELD", effective_time=NOW,
+    )
+    with pytest.raises(InvalidQualityEffectiveTimeError):
+        inventory_quality_service.correct_quality_disposition(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            cohort_id=cohort_id, target_event_id=held.id, reason="grossly future",
+            replacement_disposition=None,
+            effective_time=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+
+
+@pytest.mark.integration
+def test_partial_correction_future_rule_matches_full_correction(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """PILOT-BLOCKER-008 A1: `correct_quality_disposition_for_partial_
+    quantity` shares the exact same future-skew rule as whole-cohort
+    correction -- accepted at the 30s boundary, rejected just beyond it,
+    rejected when grossly future."""
+    tenant, user, _headers, farm = active_context_with_farm
+    cohort_id = _receive_cohort(db_session, tenant, farm, actor_user_id=user.id)
+    inventory_quality_service.record_quality_disposition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        cohort_id=cohort_id, disposition="REJECTED", effective_time=NOW,
+    )
+    rejected_event_id = inventory_quality_service.resolve_current_event(
+        db_session, tenant_id=tenant.id, cohort_id=cohort_id,
+    ).id
+
+    fixed_now = datetime.now(timezone.utc)
+    monkeypatch.setattr(inventory_quality_service, "_now_provider", lambda tz: fixed_now)
+
+    # Accepted at the exact 30s boundary.
+    child = inventory_quality_service.correct_quality_disposition_for_partial_quantity(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        source_cohort_id=cohort_id, target_event_id=rejected_event_id, quantity=Decimal("10"),
+        corrected_disposition="RELEASED", reason="partial boundary accepted",
+        effective_time=fixed_now + timedelta(seconds=30),
+    )
+    assert child.id is not None
+
+    # Rejected just beyond the boundary.
+    with pytest.raises(InvalidQualityEffectiveTimeError):
+        inventory_quality_service.correct_quality_disposition_for_partial_quantity(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            source_cohort_id=cohort_id, target_event_id=rejected_event_id, quantity=Decimal("10"),
+            corrected_disposition="RELEASED", reason="partial just beyond boundary",
+            effective_time=fixed_now + timedelta(seconds=30, microseconds=1),
+        )
+
+    # Rejected when grossly future.
+    with pytest.raises(InvalidQualityEffectiveTimeError):
+        inventory_quality_service.correct_quality_disposition_for_partial_quantity(
+            db_session, tenant_id=tenant.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            source_cohort_id=cohort_id, target_event_id=rejected_event_id, quantity=Decimal("10"),
+            corrected_disposition="RELEASED", reason="partial grossly future",
+            effective_time=fixed_now + timedelta(days=1),
+        )

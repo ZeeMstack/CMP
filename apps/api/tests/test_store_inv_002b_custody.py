@@ -530,3 +530,52 @@ def test_api_putaway_qc_officer_denied_storekeeper_allowed(client, db_session) -
         json={**payload, "client_command_id": str(uuid.uuid4())}, headers=sk_headers,
     )
     assert allowed.status_code == 201, allowed.text
+
+
+@pytest.mark.integration
+def test_api_existence_adjustment_below_custody_returns_409_not_500(client, db_session) -> None:
+    """PILOT-BLOCKER-008 A9: `ExistenceBelowCustodyError` must be mapped to
+    a truthful 409 conflict, not escape as an unhandled 500 -- mirrors the
+    domain-level proof in `test_existence_adjustment_below_custody_rejected`
+    but through the actual HTTP route, `/inventory-adjustments`."""
+    from app.services import farm_service, tenant_service
+
+    tenant = tenant_service.create_tenant(db_session, code=f"t-custody-409-{uuid.uuid4().hex[:8]}", name="Custody 409 Tenant")
+    farm = farm_service.create_farm(
+        db_session, tenant_id=tenant.id, actor_user_id=None, code="custody-409-farm", name="Custody 409 Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    receiver, _ = _membership_headers(db_session, tenant_id=tenant.id, role_code="storekeeper")
+    _fm_user, fm_headers = _membership_headers(db_session, tenant_id=tenant.id, role_code="farm_manager")
+
+    category = build_category(db_session, tenant, actor_user_id=receiver.id)
+    item = build_item(db_session, tenant, category.id, uom_id(db_session, "kg"), actor_user_id=receiver.id)
+    cohort_id = receive_cohort(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=receiver.id, item_id=item.id,
+        quantity=Decimal("100"),
+    )
+    bin_ = build_store_bin(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=receiver.id)
+    db_session.commit()
+
+    putaway_response = client.post(
+        f"/farms/{farm.id}/inventory-putaways",
+        json={
+            "client_command_id": str(uuid.uuid4()), "inventory_quantity_cohort_id": str(cohort_id),
+            "destination_location_id": str(bin_.id), "quantity": "90", "effective_time": _now().isoformat(),
+        },
+        headers=fm_headers,
+    )
+    assert putaway_response.status_code == 201, putaway_response.text
+
+    # An adjustment that would take existence (100) below outstanding
+    # physical custody (90) must be rejected as a truthful domain conflict.
+    response = client.post(
+        "/inventory-adjustments",
+        json={
+            "client_command_id": str(uuid.uuid4()), "inventory_quantity_cohort_id": str(cohort_id),
+            "quantity_delta": "-20", "effective_time": _now().isoformat(), "reason": "test overdraw below custody",
+        },
+        headers=fm_headers,
+    )
+    assert response.status_code == 409, response.text
+    assert response.status_code != 500

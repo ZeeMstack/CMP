@@ -114,6 +114,15 @@ def _legal_next_dispositions(current_state: str) -> frozenset[str]:
 # beyond it is rejected outright.
 _EFFECTIVE_TIME_FUTURE_TOLERANCE = timedelta(seconds=30)
 
+# Monkeypatchable seam for deterministic boundary testing only (PILOT-BLOCKER-008
+# A1): production behavior is untouched (default is real wall-clock time). No
+# freezegun/fake-clock dependency exists in this repo; a test pins this to a
+# fixed reference so both the constructed `effective_time` and the validator's
+# own comparison "now" derive from the same fixed value, giving an exact
+# `<=30s accepted / >30s rejected` proof with no dependency on real elapsed
+# execution time.
+_now_provider = datetime.now
+
 
 def _require_tz_aware_effective_time(effective_time: datetime) -> None:
     """Every Quality effective timestamp must be timezone-aware -- a naive
@@ -132,16 +141,32 @@ def _validate_ordinary_effective_time(
     the cohort's currently effective Quality decision -- an equal
     `effective_time` remains legal (rule 4); existing `(effective_time,
     recorded_time, id)` ordering already resolves the later command as
-    current. Corrections are explicit target-based operations and never run
-    through this function (rule 5)."""
+    current. Corrections are explicit target-based operations and run
+    through `_validate_correction_effective_time` instead (rule 5)."""
     _require_tz_aware_effective_time(effective_time)
-    now = datetime.now(effective_time.tzinfo)
+    now = _now_provider(effective_time.tzinfo)
     if effective_time > now + _EFFECTIVE_TIME_FUTURE_TOLERANCE:
         raise InvalidQualityEffectiveTimeError("effective_time must not be in the future")
     if current_event is not None and effective_time < current_event.effective_time:
         raise InvalidQualityEffectiveTimeError(
             "effective_time cannot precede the cohort's currently effective Quality decision"
         )
+
+
+def _validate_correction_effective_time(*, effective_time: datetime) -> None:
+    """CORRECTION chronology rules (PILOT-BLOCKER-008 A1, extending F07):
+    a correction remains an explicit target-based operation and is legitimately
+    historical/backdated -- it is never subject to the ordinary nondecreasing-
+    vs-current-event check. It DOES now share the same tz-awareness and
+    30-second future-skew ceiling every other Quality family uses: GrowCMP has
+    no scheduled-decision model, so a materially future correction must not be
+    accepted and become the current Quality decision immediately. Do not add
+    the ordinary "cannot precede current decision" check here -- that would
+    reintroduce scheduled-decision semantics this function must not have."""
+    _require_tz_aware_effective_time(effective_time)
+    now = _now_provider(effective_time.tzinfo)
+    if effective_time > now + _EFFECTIVE_TIME_FUTURE_TOLERANCE:
+        raise InvalidQualityEffectiveTimeError("effective_time must not be in the future")
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -448,10 +473,10 @@ def correct_quality_disposition(
         raise InvalidQualityDispositionTransitionError(
             f"{replacement_disposition!r} is not a valid replacement disposition"
         )
-    # F07 rule 1 only -- corrections remain explicit target-based operations
-    # and are never subject to the future/ordering checks (see
-    # InvalidQualityEffectiveTimeError's docstring).
-    _require_tz_aware_effective_time(effective_time)
+    # PILOT-BLOCKER-008 A1: tz-aware + 30s future-skew ceiling, but never the
+    # ordinary nondecreasing-vs-current-event check -- corrections remain
+    # explicit target-based operations and may legitimately be historical.
+    _validate_correction_effective_time(effective_time=effective_time)
 
     fingerprint = _compute_correction_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, cohort_id=cohort_id, target_event_id=target_event_id,
@@ -716,8 +741,8 @@ def correct_quality_disposition_for_partial_quantity(
         raise InvalidQualityDispositionTransitionError(f"{corrected_disposition!r} is not a valid disposition")
     if quantity <= 0:
         raise InventoryQuantityCohortSplitAllocationExceedsBalanceError("quantity must be positive")
-    # F07 rule 1 only -- see correct_quality_disposition's own comment.
-    _require_tz_aware_effective_time(effective_time)
+    # PILOT-BLOCKER-008 A1 -- see correct_quality_disposition's own comment.
+    _validate_correction_effective_time(effective_time=effective_time)
 
     fingerprint = _compute_partial_correction_fingerprint(
         tenant_id=tenant_id, actor_user_id=actor_user_id, source_cohort_id=source_cohort_id,

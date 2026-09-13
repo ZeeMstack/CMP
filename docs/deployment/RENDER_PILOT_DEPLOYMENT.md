@@ -112,6 +112,31 @@ With the flag:
 
 Focused tests for this flag live in `apps/api/tests/test_migrate_database_script.py`; see "Verify" in the DEPLOY-001E.2 change record for the full list.
 
+## Backup and recovery
+
+**PILOT-BLOCKER-008 B3.** `--backup-confirmed` (see "Migration" above) is an
+operator acknowledgement typed at the command line — it is **not itself a
+backup mechanism** and proves nothing about whether a real recoverable
+snapshot exists. Before any migrating release against Render Postgres:
+
+1. Open the target Postgres instance's own page in the Render dashboard and
+   confirm automated backups (and, if the plan includes it, point-in-time
+   recovery) are enabled and that a recent recovery point actually exists —
+   not merely that the feature is nominally on.
+2. Record what you confirmed (the most recent backup/recovery-point
+   timestamp visible in the dashboard) as this release's backup evidence —
+   this is the concrete evidence field `PILOT_RELEASE_GATE.md`'s Production
+   checklist asks for, distinct from the `--backup-confirmed` flag itself.
+
+Exact retention window, PITR granularity, and restore-drill mechanics are
+governed by Render's own Postgres plan/documentation and are not fixed by
+this repository — this document does not restate provider specifics that
+can change independently of CMP's own code. If a pilot release needs a
+stronger documented guarantee than the dashboard shows (e.g. a rehearsed
+restore drill with a recorded date), that is a separate, explicit decision
+for the release owner to make and record — do not assume one exists merely
+because Render offers the feature.
+
 ## First admin
 
 Same One-off Job mechanism, no application code change, no SQL, no public database exposure:
@@ -147,6 +172,57 @@ Auth0 application type remains a **Regular Web Application** (not SPA, not M2M);
 ## Secrets
 
 Every real secret value (`AUTH0_CLIENT_SECRET`, `AUTH0_SECRET`, `DATABASE_URL`'s credentials, `OIDC_*` real values, `CMP_API_AUDIENCE`) is entered **directly into the Render dashboard's environment-variable settings for the relevant service** — never written into `render.yaml`, never committed to Git. This mirrors the existing rule for the Compose/DigitalOcean path, where real values live only in an external, untracked env file. See "render.yaml" in the DEPLOY-001E.1 discovery record for exactly which variable *names* (not values) a future committed Blueprint should declare with `sync: false`.
+
+## Schema-changing release procedure
+
+**PILOT-BLOCKER-008 B4.** `/ready` (`app/api/ready.py`) proves DB
+**connectivity** only — a bare `SELECT 1` — never that the connected
+schema actually matches what the currently-deployed API code expects. A
+release that does **not** change the database schema can follow the
+ordinary order (API deploy → `/health` → `/ready` → optional web deploy,
+per `PILOT_RELEASE_GATE.md`'s Production checklist) because CMP's additive
+migrations are written to tolerate a brief window of old-code-against-
+old-schema or new-code-against-not-yet-migrated-schema. A release that
+**does** change the schema needs a stricter, explicit maintenance window
+instead — this document does not claim zero-downtime compatibility for a
+schema-changing release unless that specific release has been reviewed and
+shown to be additive/backward-compatible; assume it has not been unless
+someone has said so.
+
+For a schema-changing release:
+
+1. **Declare a maintenance window and stop operator writes** — announce
+   the freeze to pilot operators (per the pilot operating controls in
+   `docs/pilot/PILOT_SETUP.md`) before proceeding; do not instruct
+   operators to keep working through the following steps.
+2. **Confirm a recoverable backup/recovery point exists** — see "Backup
+   and recovery" above; do this before touching anything, not after.
+3. **Deploy the API code that can execute the migration** while traffic is
+   still quiesced (the new code is live, but the maintenance window means
+   no operator traffic is exercising it against the not-yet-migrated
+   schema).
+4. **Run the guarded migration** via the Render One-off Job procedure in
+   "Migration" above — never automatically, never via a Pre-Deploy Command.
+5. **Verify the resulting `alembic_version` matches the expected head**
+   (the exact revision this release's migration should land on) before
+   proceeding — do not rely on the migration command's own exit code alone.
+6. **`/health`** — confirm `200` (liveness; this is DB-independent and
+   would already be green even if step 4 silently failed, so it is not a
+   substitute for step 5).
+7. **`/ready`** — confirm `200` (DB connectivity only — still not proof of
+   schema-match; step 5 is what actually proves that).
+8. **Release Web/API traffic back to normal use** — end the maintenance
+   window only after steps 4–7 all confirm cleanly.
+9. **Smoke one critical operation end-to-end** (e.g. a Movement or a
+   Quality disposition, whichever this release's migration actually
+   touched) against the live, post-migration system before considering the
+   release complete.
+
+Operators must **not** continue writing during the window between step 3
+and step 8 — that window is exactly where new API code could be running
+against a schema that does not yet match it. This procedure supersedes the
+non-schema-changing order above whenever a release's migration is present;
+it is not an additional step layered on top of it.
 
 ## render.yaml
 

@@ -95,7 +95,11 @@ export function LeafyLocationSelector({
     .map((t) => ({
       value: t.id,
       label: t.code,
-      description: `capacity: ${t.capacity ?? "unlimited"}`,
+      // PILOT-BLOCKER-008 A10: NULL means "not configured", effective
+      // capacity 1 (see this file's own `table_capacity` comment above,
+      // and `ProductionTransferForm.tsx`'s `?? 1` computation) -- never
+      // "unlimited".
+      description: `capacity: ${t.capacity ?? "not configured (effective: 1)"}`,
     }));
 
   function ancestryLabel(tableCode: string): string {

@@ -20,7 +20,8 @@ from fastapi.routing import APIRoute
 
 from app.core.auth import require_tenant_context
 from app.core.permissions import Permission, require_permission
-from app.main import app
+from app.core.settings import Settings, settings
+from app.main import app, create_app
 
 _MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -206,13 +207,46 @@ def test_every_permission_bound_to_a_mutation_route_is_a_manage_permission() -> 
 def test_exemption_list_is_exact_not_a_superset() -> None:
     """Guards the exemption list itself from silently growing stale in
     the *permissive* direction: every exempt path must still correspond
-    to a real, currently-mounted mutation route."""
+    to a real, currently-mounted mutation route.
+
+    PILOT-BLOCKER-008 B1: the three `/dev/bootstrap/*` entries only exist
+    on the ambient `app.main.app` singleton when `ENABLE_DEV_AUTH=true` --
+    this checkout's documented safe default is `false` (`.env`/`.env.
+    example`), under which none of them are mounted at all. The old
+    unconditional "must exist as a mutation route" assertion therefore
+    failed outright under the safe default. Test expectations must match
+    application configuration: assert truthfully in both directions
+    instead. `test_dev_bootstrap_paths_exemption_is_truthful_under_both_
+    configurations` below proves the "enabled" side with a hermetic app,
+    since this ambient one cannot demonstrate it under the safe default."""
     all_paths = {route.path for route in _all_api_routes()}
     mutation_paths = {route.path for route in _all_api_routes() if (route.methods or set()) & _MUTATION_METHODS}
     for exempt_path in EXEMPT_PATHS:
-        assert exempt_path in mutation_paths, f"exempt path {exempt_path!r} no longer exists as a real mutation route"
+        if exempt_path.startswith("/dev/bootstrap"):
+            mounted = exempt_path in mutation_paths
+            assert mounted == settings.enable_dev_auth, (
+                f"exempt path {exempt_path!r} mounted={mounted} but settings.enable_dev_auth="
+                f"{settings.enable_dev_auth!r} -- route mounting must track this setting exactly"
+            )
+        else:
+            assert exempt_path in mutation_paths, f"exempt path {exempt_path!r} no longer exists as a real mutation route"
     for prefix in EXEMPT_PREFIXES:
         assert any(p.startswith(prefix) for p in all_paths), f"exempt prefix {prefix!r} matches no real mounted route"
+
+
+def test_dev_bootstrap_paths_exemption_is_truthful_under_both_configurations() -> None:
+    """PILOT-BLOCKER-008 B1: proves the three `/dev/bootstrap/*` exemptions'
+    existence claims are truthful under BOTH configurations the ticket
+    requires proof for, via hermetic app instances (mirroring `test_dev_
+    auth.py`'s own pattern) rather than depending on the ambient `.env`."""
+    disabled_app = create_app(Settings(enable_dev_auth=False, env="development"))
+    disabled_paths = disabled_app.openapi()["paths"].keys()
+    assert not any(p.startswith("/dev/bootstrap") for p in disabled_paths)
+
+    enabled_app = create_app(Settings(enable_dev_auth=True, env="development"))
+    enabled_paths = enabled_app.openapi()["paths"].keys()
+    for exempt_path in ("/dev/bootstrap/tenants", "/dev/bootstrap/users", "/dev/bootstrap/memberships"):
+        assert exempt_path in enabled_paths
 
 
 def test_mutation_enforcement_covers_every_manage_permission_at_least_once() -> None:

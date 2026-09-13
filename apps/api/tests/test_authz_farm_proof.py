@@ -26,6 +26,28 @@ from app.services import farm_service, membership_service, tenant_service, user_
 from tests._oidc_test_support import TEST_ISSUER, configured_oidc, mint_token, unique_subject  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def _enable_dev_auth(monkeypatch):
+    """PILOT-BLOCKER-008 CTO-review follow-up: every test in this file
+    authenticates via the X-Dev-Tenant-Id/X-Dev-User-Id header path (either
+    directly, or through this file's own `_membership_headers` helper or
+    `tests/conftest.py`'s shared `active_context` fixture) -- proving real
+    authorization/farm-access behavior over that transport, never proving
+    anything about `/dev/bootstrap` route mounting (a separate, unrelated
+    concern; see `test_dev_bootstrap_prefix_exemption_is_truthful_under_
+    both_configurations` for that). Forces `settings.enable_dev_auth` on
+    for exactly the duration of each test here, so this file's own release-
+    gate result no longer depends on the ambient `.env` value -- mirrors
+    the identical, already-established technique in `test_carrier_
+    specification.py`'s own `_dev_auth_enabled` fixture and `test_dev_auth.py`'s
+    negative-case pattern. Does not touch the .env file, the Settings class
+    default, or any other file's ambient dependency (tracked separately,
+    unchanged, ~35 files)."""
+    import app.core.dev_auth as dev_auth_module
+
+    monkeypatch.setattr(dev_auth_module.settings, "enable_dev_auth", True)
+
+
 def _membership_headers(db_session, *, role_code: str) -> tuple[uuid.UUID, dict[str, str]]:
     """Creates a fresh tenant + user + active membership with the given
     role_code and returns (tenant_id, dev headers). role_code must be one
