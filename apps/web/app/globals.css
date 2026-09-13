@@ -110,6 +110,47 @@
   --color-wl-hold-fg: #8a6119;
   --color-wl-flag-bg: #f9e9e7;
   --color-wl-flag-fg: #96382e;
+
+  /* Dark brand surfaces (PILOT-UI-002 approved palette) -- reserved for
+     navigation/header/brand surfaces used sparingly, never a full dark
+     theme. Not consumed by any component yet; defined here so a future
+     dark-nav/header treatment references the approved hex values instead of
+     inventing new ones. Adding these has no visual effect anywhere today. */
+  --color-wl-field: #0d4459;
+  --color-wl-field-base: #092f40;
+  --color-wl-field-top: #12576f;
+  --color-wl-on-dark: #e4eff4;
+  --color-wl-on-dark-secondary: #9fd8ea;
+}
+
+/* ==========================================================================
+   PILOT-UI-002: approved GrowCMP operator brand refresh -- neutrals move
+   from the cooler PILOT-UX-001A2-R2 grays to the warmer approved Ink/Muted/
+   Faint/Hairline/Control/Surface/Subtle scale, and focus/selection tokens
+   point at Deepwater 700 / Deepwater 050 per the approved spec.
+
+   Scoped to `[data-app-shell]` (set on AppShell's and StandaloneShell's root
+   element -- the authenticated/operator shells) rather than redefined on
+   :root, so the already-approved-and-live /login screen keeps rendering the
+   exact :root values it does today; nothing under apps/web/app/login/** is
+   edited or affected by this block. Every existing wl-* consumer (Button,
+   Tabs, table.ts, PageHeader, StatusBadge, forms, etc.) re-skins
+   automatically inside the operator shell with no per-component edits.
+   Brand/status tokens (wl-brand, wl-brand-hover/pressed, wl-grow/hold/flag)
+   already equal the approved Deepwater 700 and Success/Caution/Critical
+   values at :root, so they are not repeated here. */
+[data-app-shell] {
+  --color-wl-text: #16130f; /* Ink */
+  --color-wl-text-secondary: #5f5a51; /* Muted */
+  --color-wl-text-tertiary: #6f6a60; /* Faint */
+  --color-wl-border: #e6e1d8; /* Hairline */
+  --color-wl-border-strong: #d2ccc0; /* Control */
+  --color-wl-surface: #fbfaf7; /* Surface */
+  --color-wl-surface-sunken: #f4f1ea; /* Subtle */
+  --color-wl-surface-hover: #f4f1ea; /* Subtle, reused as the hover fill */
+  --color-wl-focus: #145e7a; /* Deepwater 700 */
+  --color-wl-brand-subtle: #e4eff4; /* Deepwater 050 */
+  --color-wl-brand-disabled: #e6e1d8; /* Hairline */
 }
 
 /* Inert future dark palette (PILOT-UX-001A2-R2 section 7). Never activated

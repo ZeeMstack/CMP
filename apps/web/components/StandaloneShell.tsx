@@ -27,7 +27,7 @@ export function StandaloneShell({ children }: { children: ReactNode }) {
   const { bootstrap, selectTenant, isSwitchingTenant } = useAuthBootstrap();
 
   return (
-    <div className="min-h-screen bg-wl-surface">
+    <div data-app-shell="true" className="min-h-screen bg-wl-surface">
       <div className="border-b border-wl-border bg-wl-surface-raised px-4 py-3 md:px-6">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <WaterlineWordmark />
