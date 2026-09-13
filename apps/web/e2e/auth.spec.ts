@@ -19,10 +19,14 @@ test("login page shows the CMP sign-in entry point", async ({ page }) => {
   );
 
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "CMP" })).toBeVisible();
-  await expect(page.getByText("Commercial Hydroponic Operations")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+  await expect(page.getByText("Sign in to continue to GrowCMP.")).toBeVisible();
 
-  const signIn = page.getByRole("link", { name: "Sign in" });
-  await expect(signIn).toBeVisible();
-  await expect(signIn).toHaveAttribute("href", "/auth/login?returnTo=%2Ffarms");
+  const google = page.getByRole("link", { name: /google/i });
+  await expect(google).toBeVisible();
+  await expect(google).toHaveAttribute("href", "/auth/login?connection=google-oauth2&returnTo=%2Ffarms");
+
+  const organization = page.getByRole("link", { name: /organization account/i });
+  await expect(organization).toBeVisible();
+  await expect(organization).toHaveAttribute("href", "/auth/login?returnTo=%2Ffarms");
 });

@@ -66,16 +66,41 @@ export function WaterlineMark({
   );
 }
 
-/** Mark + "growCMP" wordmark lockup (light-background variant): "grow" in
- * Canopy, "CMP" in Deepwater -- deliberately restrained, never bright green
- * (see the ticket's rejection of the prior loud-green prototype). */
-export function WaterlineWordmark({ className = "" }: { className?: string }) {
+export type WaterlineWordmarkVariant = "default" | "inverse";
+
+const WORDMARK_WORD_CLASSES: Record<WaterlineWordmarkVariant, { grow: string; cmp: string }> = {
+  // Light-background presentation (the only one that existed before
+  // UX-004): "grow" in Canopy, "CMP" in Deepwater -- deliberately
+  // restrained, never bright green (see the ticket's rejection of the
+  // prior loud-green prototype).
+  default: { grow: "text-wl-canopy", cmp: "text-wl-deepwater" },
+  // Dark-surface presentation (UX-004 login screen brand panel): Canopy/
+  // Deepwater are near-illegible on a dark surface, so both words use
+  // wl-text-on-brand -- the token this palette already reserves for text
+  // on a dark/brand surface -- rather than any new color.
+  inverse: { grow: "text-wl-text-on-brand", cmp: "text-wl-text-on-brand" },
+};
+
+/** Mark + "growCMP" wordmark lockup -- the one canonical GrowCMP logo
+ * component. `variant="default"` (unchanged from before UX-004) is every
+ * existing consumer's behavior (AppShell, StandaloneShell headers, both
+ * light backgrounds); `variant="inverse"` is for placement on a dark/brand
+ * surface (the UX-004 login screen). Same mark, same typography, same
+ * spacing/lockup geometry either way -- only the word colors change. */
+export function WaterlineWordmark({
+  className = "",
+  variant = "default",
+}: {
+  className?: string;
+  variant?: WaterlineWordmarkVariant;
+}) {
+  const wordClasses = WORDMARK_WORD_CLASSES[variant];
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <WaterlineMark size={26} />
       <span className="font-serif text-base font-semibold leading-none tracking-tight">
-        <span className="text-wl-canopy">grow</span>
-        <span className="text-wl-deepwater">CMP</span>
+        <span className={wordClasses.grow}>grow</span>
+        <span className={wordClasses.cmp}>CMP</span>
       </span>
     </span>
   );
