@@ -396,8 +396,28 @@ def test_cross_tenant_hold_rejected(db_session, active_context_with_farm) -> Non
 # --- API ------------------------------------------------------------------------
 
 
+@pytest.fixture
+def _dev_auth_enabled(monkeypatch):
+    """PILOT-BLOCKER-008 CTO-review follow-up: this is the only test in
+    this file that goes through the real HTTP layer (`client` fixture) and
+    therefore the only one that needs the X-Dev-Tenant-Id/X-Dev-User-Id
+    header path (via `active_context_with_farm`) to actually authenticate
+    -- proving Quality Hold API behavior under an explicitly authenticated,
+    authorized user, never anything about `/dev/bootstrap` route mounting.
+    Forces `settings.enable_dev_auth` on for exactly this test's duration
+    so this file's own release-gate result no longer depends on the
+    ambient `.env` value -- mirrors the identical, already-established
+    technique in `test_carrier_specification.py`'s own `_dev_auth_enabled`
+    fixture. Does not touch the .env file, the Settings class default, or
+    any other file's ambient dependency (tracked separately, unchanged,
+    ~35 files)."""
+    import app.core.dev_auth as dev_auth_module
+
+    monkeypatch.setattr(dev_auth_module.settings, "enable_dev_auth", True)
+
+
 @pytest.mark.integration
-def test_quality_hold_api_smoke(client, active_context_with_farm, db_session) -> None:
+def test_quality_hold_api_smoke(client, active_context_with_farm, db_session, _dev_auth_enabled) -> None:
     tenant, user, headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm)
     db_session.commit()

@@ -28,7 +28,7 @@ const STRUCTURE = {
     },
     {
       id: "zone-2", code: "Z02",
-      spans: [{ id: "span-2", code: "S02", tables: [{ id: "table-3", code: "T03", capacity: 1 }] }],
+      spans: [{ id: "span-2", code: "S02", tables: [{ id: "table-3", code: "T03", capacity: 1 }, { id: "table-4", code: "T04", capacity: null }] }],
     },
   ],
 };
@@ -168,6 +168,24 @@ async function addAllocationToDestination(n: number, sourceCode: string, quantit
 }
 
 describe("ProductionTransferForm", () => {
+  it("PILOT-BLOCKER-008 A10: shows 'not configured (effective: 1)' for a null-capacity Table, never 'unlimited'", async () => {
+    stubFetch();
+    render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
+    await addSource("NP-014");
+    fireEvent.click(screen.getByRole("button", { name: /add destination production plate/i }));
+    const card = destinationCard(1);
+    await pickInField(card, /^Plate for destination/i, "PP-001");
+    await pickInField(card, /^Zone$/i, "Z02");
+    await pickInField(card, /^Span$/i, "S02");
+
+    fireEvent.focus(within(card).getByLabelText(/^Table$/i));
+    const tableListbox = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(tableListbox).getByText("T04")).toBeInTheDocument());
+    expect(within(tableListbox).getByText(/capacity: not configured \(effective: 1\)/i)).toBeInTheDocument();
+    expect(within(tableListbox).queryByText(/unlimited/i)).not.toBeInTheDocument();
+  });
+
   it("renders the source picker for an authorized user", async () => {
     stubFetch();
     render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));

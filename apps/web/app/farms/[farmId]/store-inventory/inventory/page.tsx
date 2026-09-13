@@ -6,6 +6,9 @@ import { useState } from "react";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
+import type { InventoryStorageTransferCreate } from "@/lib/api/client";
+import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
+import { nowLocalDateTime } from "@/lib/datetime";
 import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
 import {
@@ -20,12 +23,6 @@ const labelClass = "block text-[11px] font-medium text-wl-text-secondary";
 
 function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
-}
-
-function nowLocalDateTime(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 /** STORE-INV-002B: compact "Move stock" -- From Bin / To Bin / Quantity,
@@ -44,86 +41,165 @@ function MoveStockForm({
   const [destId, setDestId] = useState(toBins.find((b) => b.id !== fromBins[0]?.id)?.id ?? toBins[0]?.id ?? "");
   const [quantity, setQuantity] = useState("");
   const [effectiveTime, setEffectiveTime] = useState(() => nowLocalDateTime());
-  const [error, setError] = useState<AppError | null>(null);
   const transferMutation = useRecordInventoryStorageTransfer();
+  const command = useFrozenSubmission<InventoryStorageTransferCreate>();
+
+  // PILOT-BLOCKER-008 A5: identical fix to Putaway's (A3) -- while
+  // uncertain, every control that could alter the payload is disabled and
+  // the displayed values come from the frozen submitted payload, never
+  // live form state.
+  const isUncertain = command.outcome === "uncertain";
+  const isSubmitting = command.outcome === "submitting";
+  const fieldsDisabled = isSubmitting || isUncertain;
+  const frozen = command.frozenPayload;
+  const frozenSourceLabel = frozen ? fromBins.find((b) => b.id === frozen.source_location_id)?.label ?? frozen.source_location_id : null;
+  const frozenDestLabel = frozen ? toBins.find((b) => b.id === frozen.destination_location_id)?.label ?? frozen.destination_location_id : null;
+
+  function handleSettled(payload: InventoryStorageTransferCreate) {
+    transferMutation.mutate(
+      { farmId, payload },
+      {
+        onSuccess: () => {
+          command.handleSuccess();
+          setQuantity("");
+          onDone();
+        },
+        onError: (err) => command.handleError(asAppError(err)),
+      },
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-surface p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {isUncertain && frozen ? (
+        <dl className="grid grid-cols-1 gap-2 text-[11px] text-wl-text-secondary sm:grid-cols-3">
+          <div>
+            <dt>From Bin</dt>
+            <dd className="font-medium text-wl-text">{frozenSourceLabel}</dd>
+          </div>
+          <div>
+            <dt>To Bin</dt>
+            <dd className="font-medium text-wl-text">{frozenDestLabel}</dd>
+          </div>
+          <div>
+            <dt>Quantity</dt>
+            <dd className="font-medium text-wl-text">{frozen.quantity}</dd>
+          </div>
+        </dl>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>From Bin</span>
+            <select
+              className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)}
+              disabled={fieldsDisabled}
+            >
+              {fromBins.map((b) => (
+                <option key={b.id} value={b.id}>{b.label} ({b.balance})</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>To Bin</span>
+            <select
+              className={inputClass} value={destId} onChange={(e) => setDestId(e.target.value)}
+              disabled={fieldsDisabled}
+            >
+              {toBins.map((b) => (
+                <option key={b.id} value={b.id}>{b.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>Quantity</span>
+            <input
+              className={inputClass}
+              type="number"
+              min="0"
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              disabled={fieldsDisabled}
+            />
+          </label>
+        </div>
+      )}
+      {!(isUncertain && frozen) && (
         <label className="flex flex-col gap-1">
-          <span className={labelClass}>From Bin</span>
-          <select className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
-            {fromBins.map((b) => (
-              <option key={b.id} value={b.id}>{b.label} ({b.balance})</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>To Bin</span>
-          <select className={inputClass} value={destId} onChange={(e) => setDestId(e.target.value)}>
-            {toBins.map((b) => (
-              <option key={b.id} value={b.id}>{b.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={labelClass}>Quantity</span>
+          <span className={labelClass}>Effective time</span>
           <input
             className={inputClass}
-            type="number"
-            min="0"
-            step="any"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
+            type="datetime-local"
+            value={effectiveTime}
+            onChange={(e) => setEffectiveTime(e.target.value)}
+            disabled={fieldsDisabled}
           />
         </label>
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className={labelClass}>Effective time</span>
-        <input
-          className={inputClass}
-          type="datetime-local"
-          value={effectiveTime}
-          onChange={(e) => setEffectiveTime(e.target.value)}
-        />
-      </label>
+      )}
 
-      {error && (
-        <p className="rounded-md border border-wl-border bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">{error.message}</p>
+      {isUncertain && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          Result not confirmed -- this move was submitted but the server&apos;s response was never received. Retry
+          sends the exact same submitted values again; it is safe to press even if the original attempt actually
+          went through.
+        </p>
+      )}
+      {command.error && !isUncertain && (
+        <p className="rounded-md border border-wl-border bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">
+          {command.error.message}
+        </p>
       )}
 
       <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="primary"
-          disabled={
-            transferMutation.isPending || !sourceId || !destId || sourceId === destId ||
-            !quantity || Number(quantity) <= 0
-          }
-          onClick={() => {
-            setError(null);
-            transferMutation.mutate(
-              {
-                farmId,
-                payload: {
-                  client_command_id: crypto.randomUUID(),
+        {isUncertain ? (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={isSubmitting}
+              onClick={() => {
+                const payload = command.retry();
+                if (!payload) return;
+                handleSettled(payload);
+              }}
+            >
+              {isSubmitting ? "Retrying…" : "Retry"}
+            </Button>
+            {/* Disabled for the whole uncertain state, not just while a
+                retry is in flight. */}
+            <Button type="button" variant="secondary" disabled>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={
+                fieldsDisabled || !sourceId || !destId || sourceId === destId ||
+                !quantity || Number(quantity) <= 0
+              }
+              onClick={() => {
+                const payload = command.submit((clientCommandId) => ({
+                  client_command_id: clientCommandId,
                   inventory_quantity_cohort_id: cohortId,
                   source_location_id: sourceId,
                   destination_location_id: destId,
                   quantity,
                   effective_time: new Date(effectiveTime).toISOString(),
                   note: null,
-                },
-              },
-              { onSuccess: () => { setQuantity(""); onDone(); }, onError: (err) => setError(asAppError(err)) },
-            );
-          }}
-        >
-          {transferMutation.isPending ? "Submitting…" : "Confirm move"}
-        </Button>
-        <Button type="button" variant="secondary" onClick={onDone} disabled={transferMutation.isPending}>
-          Cancel
-        </Button>
+                }));
+                handleSettled(payload);
+              }}
+            >
+              {isSubmitting ? "Submitting…" : "Confirm move"}
+            </Button>
+            <Button type="button" variant="secondary" onClick={onDone} disabled={fieldsDisabled}>
+              Cancel
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

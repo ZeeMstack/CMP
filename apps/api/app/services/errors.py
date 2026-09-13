@@ -1942,13 +1942,16 @@ class InvalidQualityDispositionTransitionError(DomainError):
 
 class InvalidQualityEffectiveTimeError(DomainError):
     """Raised when a Quality command's `effective_time` fails the minimum
-    chronology integrity rules (PILOT-BLOCKER-005 F07): naive (not
-    timezone-aware), materially in the future for an ORDINARY disposition,
-    or earlier than the cohort's currently effective Quality decision for an
-    ORDINARY disposition. Corrections are explicit target-based operations
-    (docs/domain/STORE_INVENTORY_MODEL.md §11) and are only held to the
-    timezone-aware requirement here -- never to the future/ordering checks,
-    which would redefine correction semantics beyond this ticket's scope."""
+    chronology integrity rules (PILOT-BLOCKER-005 F07, extended by
+    PILOT-BLOCKER-008 A1): naive (not timezone-aware) for any of the four
+    command families; materially in the future (beyond the shared 30-second
+    skew allowance) for ANY family, ordinary or correction alike; or earlier
+    than the cohort's currently effective Quality decision for an ORDINARY
+    disposition only. Corrections are explicit target-based operations
+    (docs/domain/STORE_INVENTORY_MODEL.md §11) and may legitimately be
+    historical/backdated -- they share the tz-aware + future-skew checks but
+    are never held to the nondecreasing-vs-current-event ordering check,
+    which would redefine correction semantics beyond scope."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)

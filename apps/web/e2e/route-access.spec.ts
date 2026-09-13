@@ -77,7 +77,24 @@ test("C: authenticated multi-membership with no selection redirects to /select-t
 test("D: a business 401/session_expired after a protected page loaded clears data and redirects to /login with a safe returnTo", async ({
   page,
 }) => {
-  await page.route("**/api/auth/bootstrap", (route) => route.fulfill({ json: fixtures.authBootstrap }));
+  // PILOT-BLOCKER-008 CTO-review follow-up: a second stale assumption in
+  // this fixture, found while fixing the nav selector below -- the
+  // `/api/auth/bootstrap` mock previously always reported "authenticated",
+  // forever, even after the simulated session expiry. This flag lets the
+  // mock truthfully model what a REAL expired session's bootstrap re-check
+  // would report, flipping to "unauthenticated" at the same moment the
+  // business 401 is armed below, exactly mirroring the real world -- see
+  // the FINAL REPORT's root-cause note for why this alone does not yet
+  // make the assertion below pass (a confirmed product defect, not a
+  // remaining test staleness).
+  let sessionExpired = false;
+  await page.route("**/api/auth/bootstrap", (route) =>
+    route.fulfill({
+      json: sessionExpired
+        ? { status: "unauthenticated", user: null, memberships: [], selectedTenantId: null }
+        : fixtures.authBootstrap,
+    }),
+  );
   await page.route("**/api/farms", (route) => route.fulfill({ json: [fixtures.farm] }));
   await page.route(`**/api/farms/${fixtures.farm.id}`, (route) => route.fulfill({ json: fixtures.farm }));
   await page.route(`**/api/farms/${fixtures.farm.id}/crop-batches/operational-summary?state=active`, (route) =>
@@ -88,12 +105,26 @@ test("D: a business 401/session_expired after a protected page loaded clears dat
   await expect(page.getByRole("heading", { name: fixtures.farm.name })).toBeVisible();
 
   // The session "expires": the very next business request comes back
-  // with the BFF's stable session_expired body.
+  // with the BFF's stable session_expired body, and any subsequent
+  // bootstrap re-check now truthfully reports it too.
   await page.route(`**/api/farms/${fixtures.farm.id}/crop-batches/operational-summary?state=all`, (route) =>
     route.fulfill({ status: 401, json: { error: "session_expired" } }),
   );
+  sessionExpired = true;
 
-  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Batches", exact: true }).click();
+  // PILOT-BLOCKER-008 CTO-review follow-up: the top nav no longer has a
+  // "Batches" link (aria-label="Primary" doesn't exist either -- AppShell's
+  // real nav landmarks are aria-label="Main"/"<Module> navigation", per
+  // PILOT-UX-001A2-R2's top-nav-plus-contextual-sidebar redesign; Batches
+  // was deliberately moved out of primary navigation, see AppShell.tsx's
+  // own module comment). The current, real way an operator reaches the
+  // Batch register from a freshly-loaded Home page is the "Active batches"
+  // KPI card (`app/farms/[farmId]/page.tsx`'s `SummaryCard`, linking to
+  // exactly `/farms/{farmId}/crop-batches`) -- this preserves the test's
+  // actual intent (navigating to the page whose `operational-summary?
+  // state=all` request the mock above intercepts) via the CURRENT
+  // navigation contract, not the removed one.
+  await page.getByRole("link", { name: /Active batches/i }).click();
 
   await expect(page).toHaveURL(/\/login\?returnTo=/);
   const returnTo = new URL(page.url()).searchParams.get("returnTo");

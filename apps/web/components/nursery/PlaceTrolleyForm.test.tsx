@@ -55,6 +55,24 @@ describe("PlaceTrolleyForm", () => {
     await waitFor(() => expect(screen.getByText(/GC-01 — 1 of 2 remaining/)).toBeInTheDocument());
   });
 
+  it("PILOT-BLOCKER-008 A10: a null-capacity Chamber shows its true effective capacity (1), never '∞'/'Unlimited'", async () => {
+    stubFetch({
+      chambers: [
+        { id: "chamber-2", code: "GC-02", name: "Germination Chamber 2", trolley_capacity: null, active_trolley_count: 0, remaining_capacity: 1 },
+      ],
+    });
+    render(withQueryClient(<PlaceTrolleyForm farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByText(/GC-02 — 1 of 1 remaining/)).toBeInTheDocument());
+    expect(screen.queryByText(/∞/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    fireEvent.change(screen.getByLabelText(/germination chamber/i), { target: { value: "chamber-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before placing")).toBeInTheDocument());
+    expect(screen.getByText("Chamber capacity").nextElementSibling).toHaveTextContent("not configured (effective: 1)");
+    expect(screen.queryByText(/^Unlimited$/)).not.toBeInTheDocument();
+  });
+
   it("blocks Review until both Trolley and Chamber are chosen", async () => {
     stubFetch();
     render(withQueryClient(<PlaceTrolleyForm farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} />));

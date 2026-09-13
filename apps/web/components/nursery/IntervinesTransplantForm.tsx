@@ -115,7 +115,14 @@ export function IntervinesTransplantForm({
     [effectiveNurseryGreenhouseId, structureQuery.data],
   );
   const tableOptions: FilterableSelectOption[] = useMemo(
-    () => intervinesTables.map((t) => ({ value: t.id, label: t.code, description: `capacity: ${t.capacity ?? "unlimited"}` })),
+    () =>
+      intervinesTables.map((t) => ({
+        value: t.id,
+        label: t.code,
+        // PILOT-BLOCKER-008 A10: NULL means "not configured", effective
+        // occupancy capacity 1 (movement_service.py) -- never "unlimited".
+        description: `capacity: ${t.capacity ?? "not configured (effective: 1)"}`,
+      })),
     [intervinesTables],
   );
 

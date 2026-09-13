@@ -398,6 +398,90 @@ describe("StoreInventoryQualityPage", () => {
     expect(screen.queryByText(/nothing currently needs quality attention/i)).not.toBeInTheDocument();
   });
 
+  it("A6: a refresh failure against a genuinely EMPTY cached queue still shows the stale/error banner, never the successful-empty message", async () => {
+    let queueCallCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/quality-work-queue")) {
+        queueCallCount += 1;
+        if (queueCallCount === 1) return jsonResponse([]);
+        return jsonResponse({ detail: "boom" }, 500);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { queryClient } = renderWithClient(<StoreInventoryQualityPage />);
+    await waitFor(() =>
+      expect(screen.getByText(/nothing currently needs quality attention/i)).toBeInTheDocument(),
+    );
+
+    await queryClient.refetchQueries({ queryKey: queryKeys.qualityWorkQueue(TEST_TENANT_ID) });
+
+    // The cached list was (and still is) empty, but the refresh itself
+    // failed -- this must render as stale/error, never silently fall back
+    // to the successful-empty message just because rows.length === 0.
+    await waitFor(() => expect(screen.getByText(/could not refresh the quality queue/i)).toBeInTheDocument());
+    expect(screen.queryByText(/nothing currently needs quality attention/i)).not.toBeInTheDocument();
+  });
+
+  it("A2: opening a new Quality action is disabled while another command's outcome is uncertain", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init || init.method === undefined) {
+        if (url.endsWith("/quality-work-queue")) {
+          return jsonResponse([
+            queueRow({ inventory_quantity_cohort_id: "coh-1", current_state: "RELEASED", current_event_id: null }),
+            queueRow({ inventory_quantity_cohort_id: "coh-2", item_name: "Other Item", current_state: "RELEASED", current_event_id: null }),
+          ]);
+        }
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/quality-dispositions")) throw new TypeError("Failed to fetch");
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(withQueryClient(<StoreInventoryQualityPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Hold" })[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    // Outcome is now "uncertain" (transport failure) -- every other
+    // "open a new action" trigger, including on a completely different
+    // row, must be disabled so a late response can never land on a
+    // silently-abandoned draft.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    const holdButtons = screen.getAllByRole("button", { name: "Hold" });
+    expect(holdButtons[1]).toBeDisabled();
+  });
+
+  it("A2: Cancel is disabled for the whole uncertain state, not just while a retry is in flight", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init || init.method === undefined) {
+        if (url.endsWith("/quality-work-queue")) {
+          return jsonResponse([queueRow({ current_state: "RELEASED", current_event_id: null })]);
+        }
+        return jsonResponse([]);
+      }
+      if (url.endsWith("/quality-dispositions")) throw new TypeError("Failed to fetch");
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(withQueryClient(<StoreInventoryQualityPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByText(/result not confirmed/i)).toBeInTheDocument();
+  });
+
   it("a stale-target conflict shows the conflict and never auto-retargets a retry", async () => {
     stubFetch([queueRow({ current_state: "HELD" })], (url) => {
       if (url.endsWith("/quality-disposition-corrections")) {

@@ -21,7 +21,8 @@ from fastapi.routing import APIRoute
 
 from app.core.auth import require_tenant_context
 from app.core.permissions import Permission, require_permission
-from app.main import app
+from app.core.settings import Settings, settings
+from app.main import app, create_app
 
 # The explicit, reviewable exemption list (ticket section 7): every GET
 # endpoint that is legitimately NOT gated by a CMP Permission, and why.
@@ -172,13 +173,51 @@ def test_exemption_list_is_exact_not_a_superset() -> None:
     GET endpoint at all (its three routes are POST-only) -- checked
     against every method, not just GET, since the exemption exists to
     future-proof against a hypothetical GET being added there later, not
-    because one exists today."""
+    because one exists today.
+
+    PILOT-BLOCKER-008 B1: `/dev/bootstrap` is mounted on the ambient
+    `app.main.app` singleton only when `ENABLE_DEV_AUTH=true` -- this
+    checkout's own documented safe default is `false` (`.env`/`.env.
+    example`), under which NO route starts with `/dev/bootstrap` at all.
+    The old unconditional "must match some mounted route" assertion
+    therefore failed outright under the safe default -- test expectations
+    must match application configuration, not assume the ambient
+    environment always has dev auth enabled. `test_dev_bootstrap_prefix_
+    exemption_is_truthful_under_both_configurations` below proves the
+    OTHER side (a hermetic app built with `enable_dev_auth=True` really
+    does mount it) so this exemption is still exercised, just never
+    against an assumption this ambient app cannot satisfy."""
     get_paths = {route.path for route in _all_api_routes() if "GET" in (route.methods or set())}
     all_paths = {route.path for route in _all_api_routes()}
     for exempt_path in EXEMPT_PATHS:
         assert exempt_path in get_paths, f"exempt path {exempt_path!r} no longer exists as a real GET route"
     for prefix in EXEMPT_PREFIXES:
-        assert any(p.startswith(prefix) for p in all_paths), f"exempt prefix {prefix!r} matches no real mounted route"
+        prefix_mounted = any(p.startswith(prefix) for p in all_paths)
+        if prefix == "/dev/bootstrap":
+            # Truthful either way: mounted iff this ambient app was built
+            # with dev auth enabled -- never a bare "must exist" assumption.
+            assert prefix_mounted == settings.enable_dev_auth, (
+                f"exempt prefix {prefix!r} mounted={prefix_mounted} but settings.enable_dev_auth="
+                f"{settings.enable_dev_auth!r} -- route mounting must track this setting exactly"
+            )
+        else:
+            assert prefix_mounted, f"exempt prefix {prefix!r} matches no real mounted route"
+
+
+def test_dev_bootstrap_prefix_exemption_is_truthful_under_both_configurations() -> None:
+    """PILOT-BLOCKER-008 B1: proves the `/dev/bootstrap` exemption's
+    existence claim is truthful under BOTH configurations the ticket
+    requires proof for -- not just whatever `ENABLE_DEV_AUTH` the ambient
+    `.env` happens to carry. Builds hermetic app instances (mirroring
+    `test_dev_auth.py`'s own pattern) rather than depending on process-wide
+    environment/import-time state."""
+    disabled_app = create_app(Settings(enable_dev_auth=False, env="development"))
+    disabled_paths = disabled_app.openapi()["paths"].keys()
+    assert not any(p.startswith("/dev/bootstrap") for p in disabled_paths)
+
+    enabled_app = create_app(Settings(enable_dev_auth=True, env="development"))
+    enabled_paths = enabled_app.openapi()["paths"].keys()
+    assert any(p.startswith("/dev/bootstrap") for p in enabled_paths)
 
 
 def test_read_enforcement_covers_every_domain_read_permission_at_least_once() -> None:

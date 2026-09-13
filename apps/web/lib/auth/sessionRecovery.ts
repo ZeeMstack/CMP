@@ -4,10 +4,16 @@
  * `lib/api/client.ts` (every business API call) only ever calls
  * `triggerSessionRecovery()` -- it has no router/QueryClient dependency
  * of its own. `SessionRecoveryCoordinator` (a single component mounted
- * once near the app root) registers the actual handler: clear the
- * QueryClient, then navigate to `/login` with a safe returnTo. This
- * keeps `client.ts` a plain fetch wrapper and keeps routing logic out of
- * the data-fetching layer.
+ * once near the app root) registers the actual handler: obtain an
+ * authoritative bootstrap recheck, then clear the QueryClient and seed it
+ * with that authoritative result. Navigation to `/login` is NOT this
+ * handler's job (PILOT-BLOCKER-008 CTO-review closure) -- `AuthGate`
+ * already redirects an unauthenticated caller off any protected route
+ * using its own live pathname as `returnTo`, and reacts on its own once it
+ * observes the freshly-written bootstrap; see `SessionRecoveryCoordinator.
+ * tsx`'s own docstring for why owning navigation here as well previously
+ * caused a redirect-back race. This keeps `client.ts` a plain fetch
+ * wrapper and keeps routing logic out of the data-fetching layer.
  *
  * Any 401 from a tenant-scoped business request means the same thing
  * regardless of its body shape -- a bare upstream FastAPI 401 and the
@@ -15,7 +21,12 @@
  * neither is parsed for provider-specific detail.
  */
 
-export type SessionRecoveryHandler = (returnToPath: string) => void;
+// PILOT-BLOCKER-008 CTO-review closure: the registered handler may be
+// async (SessionRecoveryCoordinator's now awaits an authoritative
+// bootstrap recheck before navigating) -- callers of `triggerSessionRecovery`
+// deliberately never await it (fire-and-forget from `client.ts`'s fetch
+// wrapper, which has no business awaiting a navigation side effect).
+export type SessionRecoveryHandler = (returnToPath: string) => void | Promise<void>;
 
 let handler: SessionRecoveryHandler | null = null;
 let recoveryTriggered = false;

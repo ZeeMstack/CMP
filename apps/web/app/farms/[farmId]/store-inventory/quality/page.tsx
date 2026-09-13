@@ -113,10 +113,14 @@ export default function StoreInventoryQualityPage() {
         <p className="text-sm text-wl-text-secondary">Loading…</p>
       ) : queueQuery.isError && !hasQueueData ? (
         <ErrorState error={queueQuery.error} onRetry={() => queueQuery.refetch()} />
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-wl-text">Nothing currently needs Quality attention.</p>
       ) : (
         <>
+          {/* PILOT-BLOCKER-008 A6 (Astra R03/F08): a refresh failure must
+              never be presented as "Nothing currently needs Quality
+              attention" merely because the CACHED list happens to be
+              empty -- this banner's visibility depends only on
+              `queueQuery.isError`, never on `rows.length`, unlike the old
+              ternary ordering which only showed it when rows existed. */}
           {queueQuery.isError && (
             <p className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-wl-border-strong bg-wl-flag-bg px-3 py-2 text-xs text-wl-flag-fg">
               Could not refresh the Quality queue -- showing the last known data.
@@ -125,6 +129,13 @@ export default function StoreInventoryQualityPage() {
               </button>
             </p>
           )}
+          {rows.length === 0 ? (
+            // A stale/error state with a genuinely empty cache already got
+            // its banner above -- never additionally claim "Nothing
+            // currently needs Quality attention", which is only true for a
+            // SUCCESSFUL empty result.
+            !queueQuery.isError && <p className="text-sm text-wl-text">Nothing currently needs Quality attention.</p>
+          ) : (
           <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
             <table className="w-full text-sm">
               <thead>
@@ -144,6 +155,12 @@ export default function StoreInventoryQualityPage() {
               // has nothing to correct, exactly like RECEIVED_QUARANTINED.
               const canCorrect = row.current_event_id !== null && row.current_state !== "RECEIVED_QUARANTINED";
               const isOpenForThisRow = draft.context?.cohortId === row.inventory_quantity_cohort_id;
+              // PILOT-BLOCKER-008 A2: once a command is submitting or its
+              // outcome is uncertain, opening ANY action -- on this row or
+              // another -- must never silently discard its frozen id/
+              // payload. Only a resolved draft (editing/conflict/closed)
+              // may be abandoned by opening something else.
+              const blockNewAction = draft.outcome === "submitting" || draft.outcome === "uncertain";
               const badge = RESTRICTION_BADGES[row.current_state] ?? { label: row.current_state, className: "bg-wl-surface-sunken text-wl-text-secondary" };
               const uomCode = uomCodeById.get(row.base_uom_id);
               return (
@@ -175,6 +192,7 @@ export default function StoreInventoryQualityPage() {
                             key={disposition}
                             type="button"
                             variant="secondary"
+                            disabled={blockNewAction}
                             onClick={() => {
                               draft.open({
                                 cohortId: row.inventory_quantity_cohort_id, kind: "ORDINARY", targetEventId: null,
@@ -197,7 +215,8 @@ export default function StoreInventoryQualityPage() {
                         {actions.length > 0 && (
                           <button
                             type="button"
-                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                            disabled={blockNewAction}
                             onClick={() => {
                               draft.open({
                                 cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL", targetEventId: null,
@@ -211,7 +230,8 @@ export default function StoreInventoryQualityPage() {
                         {canCorrect && (
                           <button
                             type="button"
-                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                            disabled={blockNewAction}
                             onClick={() => {
                               // F06: captured once, now, from this row --
                               // never re-read from a later refetch.
@@ -227,7 +247,8 @@ export default function StoreInventoryQualityPage() {
                         {canCorrect && (
                           <button
                             type="button"
-                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline"
+                            className="text-xs font-medium text-wl-text-secondary hover:text-wl-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                            disabled={blockNewAction}
                             onClick={() => {
                               draft.open({
                                 cohortId: row.inventory_quantity_cohort_id, kind: "PARTIAL_CORRECT",
@@ -278,75 +299,100 @@ export default function StoreInventoryQualityPage() {
                           if (!context) return;
                           const frozen = draft.retry();
                           if (!frozen) return;
+                          const { payload, generation } = frozen;
                           const variables = { farmId: row.received_at_farm_id, itemId: row.inventory_item_id };
                           if (context.kind === "ORDINARY") {
                             dispositionMutation.mutate(
-                              { payload: frozen as QualityDispositionCreate, ...variables },
-                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                              { payload: payload as QualityDispositionCreate, ...variables },
+                              {
+                                onSuccess: () => draft.handleSuccess(generation),
+                                onError: (err) => draft.handleError(asAppError(err), generation),
+                              },
                             );
                           } else if (context.kind === "PARTIAL") {
                             partialMutation.mutate(
-                              { payload: frozen as QualityPartialDispositionCreate, ...variables },
-                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                              { payload: payload as QualityPartialDispositionCreate, ...variables },
+                              {
+                                onSuccess: () => draft.handleSuccess(generation),
+                                onError: (err) => draft.handleError(asAppError(err), generation),
+                              },
                             );
                           } else if (context.kind === "CORRECT") {
                             correctMutation.mutate(
-                              { payload: frozen as QualityDispositionCorrectionCreate, ...variables },
-                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                              { payload: payload as QualityDispositionCorrectionCreate, ...variables },
+                              {
+                                onSuccess: () => draft.handleSuccess(generation),
+                                onError: (err) => draft.handleError(asAppError(err), generation),
+                              },
                             );
                           } else {
                             partialCorrectMutation.mutate(
-                              { payload: frozen as QualityPartialCorrectionCreate, ...variables },
-                              { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                              { payload: payload as QualityPartialCorrectionCreate, ...variables },
+                              {
+                                onSuccess: () => draft.handleSuccess(generation),
+                                onError: (err) => draft.handleError(asAppError(err), generation),
+                              },
                             );
                           }
                         }}
                         onSubmitOrdinary={({ reason, effectiveTime }) => {
                           if (draft.context?.kind !== "ORDINARY") return;
-                          const payload = draft.submit({
+                          const { payload, generation } = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
                             disposition: draft.context.disposition, effective_time: effectiveTime,
                             reason: reason.trim() || null,
-                          }) as QualityDispositionCreate;
+                          });
                           dispositionMutation.mutate(
-                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
-                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            { payload: payload as QualityDispositionCreate, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            {
+                              onSuccess: () => draft.handleSuccess(generation),
+                              onError: (err) => draft.handleError(asAppError(err), generation),
+                            },
                           );
                         }}
                         onSubmitPartial={({ quantity, disposition, reason, effectiveTime, custodyLocationId }) => {
-                          const payload = draft.submit({
+                          const { payload, generation } = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id, quantity, disposition,
                             effective_time: effectiveTime, reason: reason.trim() || null,
                             custody_location_id: custodyLocationId,
-                          }) as QualityPartialDispositionCreate;
+                          });
                           partialMutation.mutate(
-                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
-                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            { payload: payload as QualityPartialDispositionCreate, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            {
+                              onSuccess: () => draft.handleSuccess(generation),
+                              onError: (err) => draft.handleError(asAppError(err), generation),
+                            },
                           );
                         }}
                         onSubmitCorrect={({ reason, replacementDisposition, effectiveTime }) => {
                           if (draft.context?.kind !== "CORRECT" || !draft.context.targetEventId) return;
-                          const payload = draft.submit({
+                          const { payload, generation } = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
                             target_event_id: draft.context.targetEventId, reason,
                             replacement_disposition: replacementDisposition, effective_time: effectiveTime,
-                          }) as QualityDispositionCorrectionCreate;
+                          });
                           correctMutation.mutate(
-                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
-                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            { payload: payload as QualityDispositionCorrectionCreate, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            {
+                              onSuccess: () => draft.handleSuccess(generation),
+                              onError: (err) => draft.handleError(asAppError(err), generation),
+                            },
                           );
                         }}
                         onSubmitPartialCorrect={({ quantity, correctedDisposition, reason, effectiveTime, custodyLocationId }) => {
                           if (draft.context?.kind !== "PARTIAL_CORRECT" || !draft.context.targetEventId) return;
-                          const payload = draft.submit({
+                          const { payload, generation } = draft.submit({
                             inventory_quantity_cohort_id: row.inventory_quantity_cohort_id,
                             target_event_id: draft.context.targetEventId, quantity,
                             corrected_disposition: correctedDisposition, reason, effective_time: effectiveTime,
                             custody_location_id: custodyLocationId,
-                          }) as QualityPartialCorrectionCreate;
+                          });
                           partialCorrectMutation.mutate(
-                            { payload, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
-                            { onSuccess: draft.handleSuccess, onError: (err) => draft.handleError(asAppError(err)) },
+                            { payload: payload as QualityPartialCorrectionCreate, farmId: row.received_at_farm_id, itemId: row.inventory_item_id },
+                            {
+                              onSuccess: () => draft.handleSuccess(generation),
+                              onError: (err) => draft.handleError(asAppError(err), generation),
+                            },
                           );
                         }}
                       />
@@ -359,6 +405,7 @@ export default function StoreInventoryQualityPage() {
               </tbody>
             </table>
           </div>
+          )}
         </>
       )}
     </div>

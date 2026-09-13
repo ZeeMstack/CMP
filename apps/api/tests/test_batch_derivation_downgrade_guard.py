@@ -221,6 +221,17 @@ def test_migration_downgrade_blocked_when_split_history_exists(test_engine, alem
         )
         event_id = event.id
 
+        # PILOT-BLOCKER-008 B2: commit and release this scenario-building
+        # connection before invoking the downgrade below -- mirrors the
+        # PILOT-BLOCKER-007 fix in test_nursery_ops_downgrade_guard.py. Left
+        # open, its uncommitted writes hold a lock that a later migration's
+        # DDL against the same tables (reached while downgrading through
+        # the chain toward _PRE_CMP012_REVISION) must wait on -- the test
+        # process self-deadlocking against its own still-open transaction.
+        session.commit()
+        session.close()
+        conn.close()
+
         with pytest.raises(RuntimeError, match="Cannot downgrade past CMP-012"):
             command.downgrade(_cfg(), _PRE_CMP012_REVISION)
 

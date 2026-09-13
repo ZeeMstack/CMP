@@ -330,9 +330,88 @@ describe("MoveTrayForm", () => {
 
     await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
     expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument();
-    expect(screen.getByText("1 tray remains")).toBeInTheDocument();
     expect(screen.getByText(/tray st-0003 could not be moved/i)).toBeInTheDocument();
+    // PILOT-BLOCKER-008 A4: the failed tray itself is the only one
+    // "remaining" here (targets.length - failedIndex === 1) -- no
+    // additional unattempted trays exist, so no separate "more trays not
+    // yet attempted" line is shown (it would be redundant with the line
+    // above, and worse, imply a phantom extra tray).
+    expect(screen.queryByText(/not yet attempted/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue Remaining" })).toBeInTheDocument();
+  });
+
+  it("PILOT-BLOCKER-008 A4: a per-row network failure shows an unresolved result, and Retry resends the exact frozen id/payload", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    const { AppError } = await import("@/lib/errors/adapter");
+    const onSubmitOne = vi.fn()
+      .mockRejectedValueOnce(new AppError("network_error", "Failed to fetch"))
+      .mockResolvedValueOnce({});
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("2 trays ready")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Show trays" }));
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Move" })[0]);
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText(/result not confirmed/i)).toBeInTheDocument());
+    expect(screen.queryByText(/could not be moved/i)).not.toBeInTheDocument();
+
+    // Destination controls lock while any row's outcome is unresolved.
+    expect(screen.getByLabelText(/^trolley$/i)).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
+    expect(onSubmitOne.mock.calls[1][0]).toEqual(onSubmitOne.mock.calls[0][0]);
+    await waitFor(() => expect(screen.queryByText(/result not confirmed/i)).not.toBeInTheDocument());
+  });
+
+  it("PILOT-BLOCKER-008 A4: Move All halts at an unknown outcome (never labels it 'could not be moved'), and 'Retry and Continue' replays the exact frozen command before advancing", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS });
+    const { AppError } = await import("@/lib/errors/adapter");
+    const onSubmitOne = vi.fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new AppError("network_error", "Failed to fetch"))
+      .mockResolvedValueOnce({});
+    render(
+      withQueryClient(
+        <MoveTrayForm
+          farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+          initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("2 trays ready")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move All 2 Trays" }));
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
+
+    // Truthful state: 1 confirmed, tray 2's result unknown -- never "could
+    // not be moved", and no fabricated "N trays remain" phantom count.
+    expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument();
+    expect(screen.getByText(/tray st-0003: result not confirmed/i)).toBeInTheDocument();
+    expect(screen.queryByText(/could not be moved/i)).not.toBeInTheDocument();
+    // The main "Move All" button is disabled -- resuming must go through
+    // "Retry and Continue", never a fresh restart from tray 1.
+    expect(screen.getByRole("button", { name: /move all 2 trays/i })).toBeDisabled();
+
+    const retryButton = screen.getByRole("button", { name: "Retry and Continue" });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(3));
+    // The 3rd call replays tray 2's EXACT frozen payload (same client_command_id).
+    expect(onSubmitOne.mock.calls[2][0]).toEqual(onSubmitOne.mock.calls[1][0]);
+    await waitFor(() => expect(screen.getByText(/2 trays moved to Trolley GT-01 \/ Level GT-01-L01/i)).toBeInTheDocument());
   });
 
   it("PILOT-UX-001: excludes slot-based legacy Levels from the Move All destination", async () => {

@@ -605,6 +605,68 @@ describe("IntersaladsTransplantForm", () => {
     expect(screen.getByText(/Remaining 0/)).toBeInTheDocument();
   });
 
+  it("PILOT-BLOCKER-008 A10: shows 'not configured (effective: 1)', never 'unlimited', for a null-capacity Table", async () => {
+    stubFetch({
+      structure: {
+        ...STRUCTURE,
+        nursery_intersalads: {
+          ...STRUCTURE.nursery_intersalads,
+          tables: [...STRUCTURE.nursery_intersalads.tables, { id: "table-3", code: "IS-A-03", capacity: null }],
+        },
+      },
+      occupantsByLocation: { "table-3": { target: { kind: "location", id: "table-3" }, active_occupancies: [] } },
+    });
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+    fireEvent.click(screen.getByRole("button", { name: /add destination plate/i }));
+    fireEvent.focus(within(destinationCard(1)).getByLabelText(/^Table for destination/i));
+    const listbox = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(listbox).getByText("IS-A-03")).toBeInTheDocument());
+    expect(within(listbox).getByText(/capacity: not configured \(effective: 1\)/i)).toBeInTheDocument();
+    expect(within(listbox).queryByText(/unlimited/i)).not.toBeInTheDocument();
+  });
+
+  it("PILOT-BLOCKER-008 A10: a null-capacity Table's over-allocation is caught, not silently treated as unbounded", async () => {
+    stubFetch({
+      structure: {
+        ...STRUCTURE,
+        nursery_intersalads: {
+          ...STRUCTURE.nursery_intersalads,
+          tables: [...STRUCTURE.nursery_intersalads.tables, { id: "table-3", code: "IS-A-03", capacity: null }],
+        },
+      },
+      occupantsByLocation: { "table-3": { target: { kind: "location", id: "table-3" }, active_occupancies: [] } },
+    });
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+    // Two destination Plates on the SAME null-capacity Table -- effective
+    // capacity 1, so this must trip the over-capacity warning exactly as a
+    // configured capacity: 1 Table would (never silently exempted as
+    // "unlimited").
+    await addDestinationWithPlateAndTable("NP-001", "IS-A-03");
+    await addDestinationWithPlateAndTable("NP-002", "IS-A-03");
+
+    await waitFor(() => expect(screen.getByText(/exceed its known capacity/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
+  });
+
+  it("PILOT-BLOCKER-008 A10: an unknown Plate biological capacity still renders 'Capacity unknown', never a fabricated number", async () => {
+    stubFetch({
+      plates: [{ id: "plate-3", code: "NP-003", status: "active", specification_id: null, specification: null }],
+    });
+    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
+    await addSource(/TRAY-014/, "TRAY-014");
+    fireEvent.click(screen.getByRole("button", { name: /add destination plate/i }));
+    fireEvent.focus(within(destinationCard(1)).getByLabelText(/^Plate for destination/i));
+    const listbox = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(listbox).getByText("NP-003")).toBeInTheDocument());
+    expect(within(listbox).getByText(/capacity unknown/i)).toBeInTheDocument();
+  });
+
   it("accounts for server occupants plus every same-Table destination already in the draft", async () => {
     stubFetch({
       occupantsByLocation: {

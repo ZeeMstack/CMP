@@ -163,3 +163,158 @@ Once `--readiness` reports every item `PASS` (or only the Seed Lot item outstand
 
 1. Register the real Seed Lot (`--apply` again with `seed_lot` filled in), or have the storekeeper do it live once the physical lot arrives.
 2. Everything from that point — Sowing, Germination, Seedling, Inter Leafy Greens, Production Transfer, Leafy Production, Harvest, Grading, Packing, Cold Storage, Dispatch, Traceability/Recall — is real operator execution through the normal application UI/API, never this bootstrap. PILOT-SETUP-001A creates the stage; it never performs on it.
+
+## 15. Pilot staff access roster (PILOT-BLOCKER-008 B7)
+
+Astra identified staff access as a bounded pilot-operating control that does
+not require a new subsystem — this is a manual roster, not an invitation/
+onboarding platform (that remains explicitly out of scope). Before the
+Leafy pilot's live acceptance cycle begins, the supervisor maintains one
+roster, kept alongside this document (a spreadsheet or a page in the
+pilot's own tracking system — this document does not mandate a specific
+tool), with one row per person who will touch CMP during the cycle:
+
+| Name | CMP identity/email | Role (`role_code`) | Operational responsibility | Login tested? | Expected permissions tested? | Quality segregation pairing | Removed/disabled after pilot |
+|---|---|---|---|---|---|---|---|
+
+- **Role (`role_code`)** must be one of the approved codes in
+  `docs/domain/ROLE_PERMISSION_POLICY_PROPOSAL.md` §0.A (`tenant_admin`,
+  `farm_manager`, `head_grower`, `production_supervisor`, `operator`,
+  `storekeeper`, `qc_officer`, `auditor`, `packing_supervisor`,
+  `cold_store_supervisor`, `dispatch_officer`, `read_only`) — never an
+  invented or ad-hoc label.
+- **Expected permissions tested?** means someone actually confirmed, for
+  this specific person, that the actions their `role_code` should allow
+  succeed and the actions it should not allow are refused — cross-check
+  against the live grant matrix in `ROLE_PERMISSION_POLICY_PROPOSAL.md`
+  §12 ("MATRIX A — Imperial Pilot"), not against memory or assumption.
+- **Quality segregation pairing** records who is paired with whom under
+  the existing segregation-of-duties rule already enforced in the Quality
+  domain (a receiver cannot release their own material) — name the actual
+  second person for each `qc_officer`/`storekeeper` pairing expected to be
+  active during the cycle.
+- **Removed/disabled after pilot** is a closeout action, not a note: once
+  the bounded acceptance cycle ends, confirm each pilot-only account's
+  membership is deactivated or the account itself is disabled, and record
+  that it was done.
+
+This roster is an operating control this document asks the supervisor to
+keep — it does not change, and is not a substitute for, the actual
+`Membership`/`role_code` grants already enforced in the backend.
+
+## 16. Seed input control (PILOT-BLOCKER-008 B7 — pilot procedure)
+
+**GrowCMP does not currently automatically enforce the seed-input chain
+below.** `SeedLot` (`apps/api/app/models/seed_lot.py`) is a real, already-
+built identity/catalog record — code, supplier, variety, dates, status —
+but per `docs/domain/SEED_SOWING_MODEL.md` it "carries no quantity-on-hand,
+cost, or germination-test data," and quantity/disposition tracking for
+seed stock is explicitly deferred there to a future input-store ledger
+ticket. Until that exists, the following is a **manual pilot procedure**,
+not a backend-enforced one — do not describe or imply to operators that
+CMP is tracking this automatically.
+
+For each sowing during the bounded acceptance cycle, the responsible
+operator and a supervisor jointly record:
+
+| SeedLot (code) | Inventory receipt / lot / cohort reference | Quality disposition | Issued quantity (where applicable) | Used/sown quantity | Remaining quantity | Responsible operator | Supervisor reconciliation/sign-off |
+|---|---|---|---|---|---|---|---|
+
+- **Quality disposition** is the actual Quality decision (Released/Held/
+  Rejected/Hold-Released) recorded in CMP for the receiving cohort this
+  seed came from, where the seed was received through the normal Goods
+  Receipt → Quality flow — copy the real recorded disposition, never
+  assume "Released."
+- **Held or rejected seed must not be sown** under this pilot procedure.
+  If a disposition is anything other than Released/Hold-Released at the
+  time of sowing, stop and escalate to the supervisor rather than sowing
+  it anyway — CMP's Sowing command does not itself block on Quality
+  disposition for seed today, so this check is the operator's/
+  supervisor's responsibility, not a system guardrail.
+- **Supervisor reconciliation/sign-off** happens after sowing: confirm
+  used + remaining accounts for the whole issued/received quantity, and
+  initial/date the row once confirmed.
+
+This procedure does not fabricate a backend integration — it is a paper
+(or spreadsheet) control layered on top of CMP's real Sowing records,
+closing the gap `SEED_SOWING_MODEL.md` already documents as deferred.
+
+## 17. Dispatch recipient / recall register (PILOT-BLOCKER-008 B7 — pilot procedure)
+
+GrowCMP's Dispatch and Recall models are deliberately recipient-agnostic —
+`docs/domain/TRACEABILITY_MODEL.md`'s trace result always includes
+`capability_limitations: ["recipient_not_modeled"]`, and `docs/domain/
+RECALL_CONTAINMENT_MODEL.md` states plainly that "a dispatched lot is
+reported only as immutable dispatch history — never as 'recalled from a
+customer' or 'recovered.'" **`trace_complete: true` proves the GrowCMP
+genealogy is complete; it is never equivalent to recipient coverage** —
+knowing every dispatch a lot went to is not the same as knowing who
+received it or being able to reach them.
+
+For the bounded Leafy pilot, the dispatch officer/supervisor maintains one
+external register (a spreadsheet, not a new CMP model — no customer/order
+model is being built), one row per Dispatch:
+
+| GrowCMP dispatch reference | Recipient/customer name | Delivery destination | Contact | Date/time | Quantities | Vehicle/reference (if used) |
+|---|---|---|---|---|---|---|
+
+- **GrowCMP dispatch reference** is the real, immutable dispatch identifier
+  CMP recorded — this is the join key between the CMP trace and this
+  external register.
+- This register is **owned outside CMP** for the duration of the bounded
+  pilot — it is explicitly not a commitment to build a customer/order
+  model, and this document does not ask for one.
+
+**Recall drill requirement.** Before or during the acceptance cycle, the
+supervisor runs one recall drill demonstrating the full chain end to end:
+GrowCMP trace → the affected dispatch reference(s) it names → this
+external register → every affected recipient actually contactable using
+the register's own recorded contact information. A drill that stops at
+"GrowCMP traced to N dispatches" without confirming every one of those N
+recipients is findable and contactable in the register has not
+demonstrated the thing this control exists to prove.
+
+## 18. Master data freeze during acceptance cycle (PILOT-BLOCKER-008 B8)
+
+This is an **operating control — a supervisor discipline, not a new lock
+feature or backend enforcement mechanism.** During the bounded Leafy
+acceptance cycle, the following master-data categories are frozen: any
+change requires named supervisor change control (a deliberate, recorded
+decision by the pilot supervisor) rather than being made ad hoc by whoever
+notices something looks wrong.
+
+Pre-cycle freeze/check, confirm each of the following is correct and
+stable before the cycle starts:
+
+- Farm timezone
+- Operator device clocks (each device an operator will actually use to
+  record effective times — a clock more than the existing ~30s Quality
+  skew tolerance off real time will surface as rejected commands, not a
+  silent error)
+- Greenhouse/location hierarchy
+- Trolleys/levels
+- Seed Trays
+- Nursery Cultivation Plates
+- Production Cultivation Plates
+- Table occupancy capacities (see the corrected wording/behavior in
+  `IntersaladsTransplantForm.tsx`/`IntervinesTransplantForm.tsx`/
+  `LeafyLocationSelector.tsx`/`PlaceTrolleyForm.tsx` — a `null` capacity
+  here means "not configured, effective 1," never "unlimited")
+- Plate biological capacities — **currently unmodeled when unset; this
+  remains genuinely unknown and must not be treated as a fixed number
+  during the freeze check.** Do not fabricate a biological capacity value
+  to make this checklist item "complete."
+- Crops/varieties
+- Workflow versions
+- Grade definition versions
+- Pack specification versions
+- Processing/cold-store locations
+
+If any of the above genuinely needs to change mid-cycle (a real
+misconfiguration discovered in flight, not a preference), the pilot
+supervisor makes and records that decision explicitly — including why the
+freeze was broken and what was changed — rather than the change happening
+silently through the ordinary Farm Setup UI/API by whoever has the
+permission to make it. This document does not add a technical block on
+those same API calls; the control is procedural, enforced by the
+supervisor and the roster in §15, not by new code.
