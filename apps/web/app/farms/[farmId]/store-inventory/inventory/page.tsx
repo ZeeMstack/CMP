@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
+import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import type { InventoryStorageTransferCreate } from "@/lib/api/client";
 import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
@@ -501,6 +502,7 @@ export default function StoreInventoryInventoryPage() {
           />
         }
       />
+      <StoreSubNav farmId={farmId} />
 
       {itemsQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>

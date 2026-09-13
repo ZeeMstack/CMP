@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
+import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import type {
@@ -774,6 +775,7 @@ export default function StoreInventoryIssuePage() {
           />
         }
       />
+      <StoreSubNav farmId={farmId} />
       <div className="mb-4">
         <Tabs
           tabs={[

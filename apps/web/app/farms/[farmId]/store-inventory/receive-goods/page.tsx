@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { ReceiveGoodsForm } from "@/components/store-inventory/ReceiveGoodsForm";
+import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import type { GoodsReceiptCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { useFarm, useRecordGoodsReceipt } from "@/lib/query/hooks";
@@ -39,6 +40,7 @@ export default function ReceiveGoodsPage() {
           />
         }
       />
+      <StoreSubNav farmId={farmId} />
 
       {success ? (
         <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">

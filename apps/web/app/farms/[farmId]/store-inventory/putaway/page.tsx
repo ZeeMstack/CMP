@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ErrorState } from "@/components/ErrorState";
 import { PageHeader } from "@/components/PageHeader";
+import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import type { InventoryPutawayCreate, NotPutAwayQueueEntryRead } from "@/lib/api/client";
 import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
@@ -249,6 +250,7 @@ export default function StoreInventoryPutawayPage() {
           />
         }
       />
+      <StoreSubNav farmId={farmId} />
 
       {treeQuery.isError && !hasTreeData ? (
         <div className="mb-4">
