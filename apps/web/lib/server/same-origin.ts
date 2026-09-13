@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { resolveAuthMode } from "@/lib/server/auth-mode";
+import { resolveAuthMode, type AuthMode } from "@/lib/server/auth-mode";
 
 const WEB_URL_SCHEMES = new Set(["http:", "https:"]);
 
@@ -15,7 +15,7 @@ const WEB_URL_SCHEMES = new Set(["http:", "https:"]);
  * or a non-web scheme (e.g. `javascript:`, `file:`, `ftp:`) -- callers must
  * treat `null` as "fail closed", never fall back to a weaker check.
  */
-function resolveTrustedOrigin(): string | null {
+export function resolveTrustedOrigin(): string | null {
   const raw = process.env.APP_BASE_URL;
   if (!raw) return null;
   let parsed: URL;
@@ -26,6 +26,27 @@ function resolveTrustedOrigin(): string | null {
   }
   if (!WEB_URL_SCHEMES.has(parsed.protocol)) return null;
   return parsed.origin;
+}
+
+/**
+ * Resolves the origin any CMP-owned route must use to build an absolute,
+ * same-app redirect target (LIVE-ACCEPTANCE-HOTFIX-001) -- e.g. the
+ * post-logout destination handed to the Auth0 SDK's `/auth/logout` route,
+ * which (unlike its own login handler) forwards `returnTo` into
+ * `post_logout_redirect_uri` verbatim rather than resolving it against
+ * `appBaseUrl` itself, so a relative value reaches Auth0 unresolved and
+ * fails its Allowed Logout URLs check.
+ *
+ * Mirrors `isSameOriginRequest`'s trust boundary exactly: `mode === "real"`
+ * trusts only the configured `APP_BASE_URL` (never the request's Host/
+ * X-Forwarded-* headers -- see DEPLOY-001G above), failing closed to
+ * `null` if it is unset or invalid; dev/test bypass modes never require
+ * `APP_BASE_URL` and fall back to the request's own origin, which is
+ * accurate there (`next dev`/`next start` bind to `localhost`).
+ */
+export function resolveTrustedAppOrigin(request: NextRequest, mode: AuthMode): string | null {
+  if (mode === "real") return resolveTrustedOrigin();
+  return request.nextUrl.origin;
 }
 
 /**
