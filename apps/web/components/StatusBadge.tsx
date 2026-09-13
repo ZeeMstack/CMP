@@ -5,6 +5,12 @@ const TONE_CLASSES: Record<string, string> = {
   // Awaiting QC / hold.
   attention: "bg-wl-hold-bg text-wl-hold-fg",
   closed: "bg-wl-surface-sunken text-wl-text-secondary",
+  // PILOT-UI-002 approved Critical tone -- hold/recall/blocked/rejected/
+  // serious exceptions. Additive: no existing caller passes this tone yet,
+  // so this does not change any current screen's rendering; call sites
+  // that should adopt it are a separate, domain-judgment decision (which
+  // specific statuses count as "serious"), out of this ticket's scope.
+  critical: "bg-wl-flag-bg text-wl-flag-fg",
 };
 
 export type StatusTone = keyof typeof TONE_CLASSES;

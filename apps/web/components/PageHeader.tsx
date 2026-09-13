@@ -16,7 +16,7 @@ export function PageHeader({
       {breadcrumbs}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1.5">
-          <h1 className="font-serif text-[28px] font-semibold leading-tight tracking-tight text-wl-text md:text-[32px]">
+          <h1 className="font-serif text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-wl-text md:text-[32px]">
             {title}
           </h1>
           {description && <p className="max-w-[65ch] text-sm text-wl-text-secondary">{description}</p>}

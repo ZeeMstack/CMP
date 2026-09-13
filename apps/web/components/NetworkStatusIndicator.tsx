@@ -30,7 +30,7 @@ export function NetworkStatusIndicator() {
   return (
     <div
       role="status"
-      className="flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900"
+      className="flex items-center gap-1.5 rounded-full bg-wl-hold-bg px-2.5 py-1 text-xs font-medium text-wl-hold-fg"
     >
       <WifiOff aria-hidden="true" className="h-3.5 w-3.5" />
       Offline

@@ -57,8 +57,8 @@ export default function SelectTenantPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16">
-      <h1 className="mb-1 text-xl font-semibold text-ink">GrowCMP</h1>
-      <p className="mb-6 text-sm text-ink-muted">Choose a tenant.</p>
+      <h1 className="mb-1 text-xl font-semibold text-wl-text">GrowCMP</h1>
+      <p className="mb-6 text-sm text-wl-text-secondary">Choose a tenant.</p>
       <ul className="space-y-2">
         {bootstrap.memberships.map((membership) => (
           <li key={membership.tenantId}>
@@ -66,10 +66,10 @@ export default function SelectTenantPage() {
               type="button"
               onClick={() => handleSelect(membership.tenantId)}
               disabled={isSwitchingTenant}
-              className="block w-full min-h-11 rounded-lg border border-border-subtle bg-surface px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-60"
+              className="block w-full min-h-11 rounded-lg border border-wl-border bg-wl-surface-raised px-4 py-3 text-left hover:border-wl-border-strong hover:bg-wl-brand-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus disabled:opacity-60"
             >
-              <span className="font-medium text-ink">{membership.tenantName}</span>
-              <span className="ml-2 text-sm text-ink-muted">
+              <span className="font-medium text-wl-text">{membership.tenantName}</span>
+              <span className="ml-2 text-sm text-wl-text-secondary">
                 {membership.tenantCode} · {humanizeEnumCode(membership.roleCode)}
               </span>
             </button>
