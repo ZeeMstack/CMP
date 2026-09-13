@@ -7,6 +7,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ErrorState } from "@/components/ErrorState";
 import { PageHeader } from "@/components/PageHeader";
 import { QualityActionPanel } from "@/components/store-inventory/QualityActionPanel";
+import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import type {
   QualityDispositionCorrectionCreate, QualityDispositionCreate, QualityPartialCorrectionCreate,
@@ -108,6 +109,7 @@ export default function StoreInventoryQualityPage() {
           />
         }
       />
+      <StoreSubNav farmId={farmId} />
 
       {queueQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>

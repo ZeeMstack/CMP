@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  usePathname: () => "/farms/farm-1/store-inventory/receive-goods",
 }));
 
 import { withQueryClient } from "@/lib/test-utils";

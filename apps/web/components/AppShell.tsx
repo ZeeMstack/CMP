@@ -26,11 +26,23 @@ interface NavGroupDef {
   id: string;
   label: string;
   items: NavLink[];
+  /** PILOT-UX-005 closure: when true, AppShell renders no left contextual
+   * sidebar for this module -- its items are surfaced some other in-page
+   * way instead (Store uses a horizontal StoreSubNav near its own page
+   * header, freeing that ~240px of width for its tables/queues). */
+  hideSidebar?: boolean;
 }
 
-/** The frozen UI-OPT-001 navigation tree (CEO_ALIGNMENT_SPEC.md), now
- * rendered as PILOT-UX-001A2-R2's top-nav-plus-contextual-sidebar IA rather
- * than one grouped accordion sidebar -- see AppShell's module doc below.
+/** PILOT-UX-005: the primary navigation tree, reorganized into 8 short
+ * top-level slots (Home + 7 modules) so the top nav never needs horizontal
+ * scrolling -- superseding the longer UI-OPT-001/CEO_ALIGNMENT_SPEC.md
+ * label set for this top-level layer only. Sub-items and hrefs are
+ * unchanged from the prior tree (routes are never renamed or removed here);
+ * "Vines Production" is folded into "Production" so it no longer consumes
+ * its own top-level slot, and the operational "Store & Inventory" group's
+ * sidebar is reduced to Operations/Inventory only (Receive Goods, Putaway,
+ * Quality, and Issue remain live routes, reachable from the Store
+ * Operations workbench rather than as permanent sidebar entries).
  * Routes not named here (Processing landing, Seed Lots, Locations, Batches,
  * and -- as of UX-IA-001 -- Stores & Bins, Inventory Categories, Inventory
  * Items, Units of Measure, superseded into the single "Store & Inventory
@@ -60,7 +72,7 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
     },
     {
       id: "nursery",
-      label: "Nursery Operations",
+      label: "Nursery",
       items: [
         { label: "Seeding", href: `/farms/${farmId}/nursery/sowings/new` },
         { label: "Germination", href: `/farms/${farmId}/nursery/germination` },
@@ -73,11 +85,18 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
       ],
     },
     {
+      // PILOT-UX-005: Leafy and Vines production merged into one top-level
+      // "Production" module -- Vines no longer owns a separate primary-nav
+      // slot. The two "Transfer to Production" leaves are relabeled here
+      // (Leafy/Vines qualifier added) purely to stay distinguishable now
+      // that they sit side by side; hrefs are unchanged.
       id: "production",
-      label: "Production Operations",
+      label: "Production",
       items: [
         { label: "Leafy Production", href: `/farms/${farmId}/leafy-production` },
-        { label: "Transfer to Production", href: `/farms/${farmId}/leafy-production/transfer` },
+        { label: "Transfer to Leafy Production", href: `/farms/${farmId}/leafy-production/transfer` },
+        { label: "Vines Production", href: `/farms/${farmId}/vines-production` },
+        { label: "Transfer to Vines Production", href: `/farms/${farmId}/vines-production/transfer` },
         // AGRONOMY-OPS-001: one shared workspace across Nursery/Leafy/Vines
         // batches (not stage-specific), placed here per the ticket's own
         // preferred IA rather than duplicated into every crop-stage group.
@@ -85,16 +104,8 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
       ],
     },
     {
-      id: "vines_production",
-      label: "Vines Production",
-      items: [
-        { label: "Vines Production", href: `/farms/${farmId}/vines-production` },
-        { label: "Transfer to Production", href: `/farms/${farmId}/vines-production/transfer` },
-      ],
-    },
-    {
       id: "harvest",
-      label: "Harvest & Post-Harvest",
+      label: "Post-Harvest",
       items: [
         { label: "Harvest", href: `/farms/${farmId}/leafy-production/harvest` },
         { label: "Vines Harvest", href: `/farms/${farmId}/vines-production/harvest` },
@@ -106,8 +117,29 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
       ],
     },
     {
+      // STORE-INV-002A.2/STORE-INV-003: OPERATIONS -- receiving, Quality
+      // disposition, physical custody/putaway, and Reservation & Issue --
+      // distinct from "Store & Inventory Setup" below (configuration:
+      // Stores/Bins, Inventory Catalog, Categories, UOM reference).
+      // PILOT-UX-005: reduced to Operations (renamed from Overview, now the
+      // Store Operations workbench) and Inventory only. Receive Goods,
+      // Putaway, Quality, and Issue remain live routes -- launched as tasks
+      // from the Store Operations workbench rather than kept as permanent
+      // navigation entries -- never deleted, never unreachable. Closure
+      // pass: a permanent left sidebar is no longer justified for just two
+      // items, so `hideSidebar` moves this pair into each Store page's own
+      // horizontal StoreSubNav instead, freeing that width for its tables.
+      id: "store-inventory",
+      label: "Store",
+      hideSidebar: true,
+      items: [
+        { label: "Operations", href: `/farms/${farmId}/store-inventory` },
+        { label: "Inventory", href: `/farms/${farmId}/store-inventory/inventory` },
+      ],
+    },
+    {
       id: "dispatch",
-      label: "Dispatch & Traceability",
+      label: "Dispatch",
       items: [
         { label: "Dispatch", href: `/farms/${farmId}/processing/dispatch` },
         { label: "Traceability", href: `/farms/${farmId}/traceability` },
@@ -115,30 +147,8 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
       ],
     },
     {
-      // STORE-INV-002A.2: the first turn this operational module is allowed
-      // to appear in primary navigation at all (docs/build-plans/
-      // STORE_INV_002A2_QUALITY_OPERATIONAL_UX_BUILD_PLAN.md) -- distinct
-      // from "Store & Inventory Setup" above (configuration: Stores/Bins,
-      // Inventory Catalog, Categories, UOM reference). This module is
-      // OPERATIONS: receiving, existence/usable-quantity visibility, Quality
-      // disposition, physical custody/putaway (STORE-INV-002B), and -- as of
-      // STORE-INV-003 -- Reservation & Issue (one compact "Issue" entry, no
-      // separate top-level Reservations module). Deliberately no
-      // Returns/Work Orders entries yet -- STORE-INV-004 scope.
-      id: "store-inventory",
-      label: "Store & Inventory",
-      items: [
-        { label: "Overview", href: `/farms/${farmId}/store-inventory` },
-        { label: "Receive Goods", href: `/farms/${farmId}/store-inventory/receive-goods` },
-        { label: "Putaway", href: `/farms/${farmId}/store-inventory/putaway` },
-        { label: "Inventory", href: `/farms/${farmId}/store-inventory/inventory` },
-        { label: "Quality", href: `/farms/${farmId}/store-inventory/quality` },
-        { label: "Issue", href: `/farms/${farmId}/store-inventory/issue` },
-      ],
-    },
-    {
       id: "farm-setup",
-      label: "Farm Setup & Master Data",
+      label: "Setup",
       items: [
         { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup` },
         // UX-IA-001 (CEO_ALIGNMENT_SPEC.md "Store & Inventory Setup
@@ -233,7 +243,7 @@ function TopNav({
   return (
     <nav
       aria-label="Main"
-      className="hidden items-stretch gap-1 overflow-x-auto border-b border-wl-border bg-wl-surface-raised px-4 md:flex md:px-6"
+      className="hidden items-stretch gap-0.5 border-b border-wl-border bg-wl-surface-raised px-4 lg:flex lg:px-6"
     >
       <Link
         href={homeHref}
@@ -262,7 +272,7 @@ function ContextualSidebar({ group, activeHref }: { group: NavGroupDef; activeHr
   return (
     <aside
       aria-label={`${group.label} navigation`}
-      className="hidden w-60 shrink-0 flex-col gap-0.5 border-r border-wl-border bg-wl-surface py-4 md:flex"
+      className="hidden w-60 shrink-0 flex-col gap-0.5 border-r border-wl-border bg-wl-surface py-4 lg:flex"
     >
       <div className="px-4 pb-2 text-[11px] font-medium uppercase tracking-wide text-wl-text-tertiary">
         {group.label}
@@ -300,8 +310,11 @@ function mobileLinkClass(active: boolean): string {
 /** Mobile keeps the existing drawer/accordion navigation concept (section
  * 29) rather than compressing the top-nav/contextual-sidebar split into an
  * unreadable width -- Home plus each module, expandable to that module's
- * children, all in one panel. Farm/Tenant selection also lives here on
- * mobile since the identity bar hides them below `md:`. */
+ * children, all in one panel. Farm/Tenant selection also lives here below
+ * the shared breakpoint since the identity bar hides them there too
+ * (PILOT-UX-005 closure: bumped from `md:` to `lg:` so the 8-label desktop
+ * top nav only ever renders once there is comfortably enough width for it,
+ * never clipped/scrolling in the narrower part of the old `md:` range). */
 function MobileNav({
   farmId,
   groups,
@@ -342,7 +355,7 @@ function MobileNav({
   }
 
   return (
-    <nav id="mobile-nav" aria-label="Main" className="flex flex-col border-b border-wl-border bg-wl-surface-raised px-3 py-3 md:hidden">
+    <nav id="mobile-nav" aria-label="Main" className="flex flex-col border-b border-wl-border bg-wl-surface-raised px-3 py-3 lg:hidden">
       {(farms || memberships) && (
         <div className="mb-3 flex flex-col gap-2 border-b border-wl-border pb-3">
           {farms && (
@@ -482,7 +495,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
             onClick={() => setMobileNavOpen((v) => !v)}
             aria-expanded={mobileNavOpen}
             aria-controls="mobile-nav"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-wl-text hover:bg-wl-surface-hover md:hidden"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-wl-text hover:bg-wl-surface-hover lg:hidden"
           >
             {mobileNavOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
             <span className="sr-only">Toggle navigation</span>
@@ -490,7 +503,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
 
           <WaterlineWordmark />
 
-          <div className="hidden min-w-0 items-center gap-5 md:flex">
+          <div className="hidden min-w-0 items-center gap-5 lg:flex">
             {farms && (
               <div className="flex flex-col leading-tight">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-wl-text-tertiary">Farm</span>
@@ -516,7 +529,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
           <button
             type="button"
             onClick={handleSignOut}
-            className="hidden h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus md:flex"
+            className="hidden h-9 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus lg:flex"
           >
             <LogOut aria-hidden="true" className="h-4 w-4" />
             Sign out
@@ -543,7 +556,7 @@ export function AppShell({ farmId, children }: { farmId: string; children: React
       )}
 
       <div className="flex min-w-0 flex-1">
-        {activeGroup && <ContextualSidebar group={activeGroup} activeHref={activeHref} />}
+        {activeGroup && !activeGroup.hideSidebar && <ContextualSidebar group={activeGroup} activeHref={activeHref} />}
         <main id="main-content" className="min-w-0 flex-1 bg-wl-surface px-4 py-5 md:px-8 md:py-7">
           {children}
         </main>

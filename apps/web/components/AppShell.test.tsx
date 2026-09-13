@@ -36,24 +36,15 @@ function topNav() {
   return screen.getByRole("navigation", { name: "Main" });
 }
 
-const GROUP_LABELS = [
-  "Nursery Operations",
-  "Production Operations",
-  "Vines Production",
-  "Harvest & Post-Harvest",
-  "Dispatch & Traceability",
-  "Store & Inventory",
-  "Farm Setup & Master Data",
-];
+const GROUP_LABELS = ["Nursery", "Production", "Post-Harvest", "Store", "Dispatch", "Setup"];
 
 const GROUP_FIRST_CHILD: Record<string, string> = {
-  "Nursery Operations": "/farms/farm-1/nursery/sowings/new",
-  "Production Operations": "/farms/farm-1/leafy-production",
-  "Vines Production": "/farms/farm-1/vines-production",
-  "Harvest & Post-Harvest": "/farms/farm-1/leafy-production/harvest",
-  "Dispatch & Traceability": "/farms/farm-1/processing/dispatch",
-  "Store & Inventory": "/farms/farm-1/store-inventory",
-  "Farm Setup & Master Data": "/farms/farm-1/farm-setup",
+  Nursery: "/farms/farm-1/nursery/sowings/new",
+  Production: "/farms/farm-1/leafy-production",
+  "Post-Harvest": "/farms/farm-1/leafy-production/harvest",
+  Store: "/farms/farm-1/store-inventory",
+  Dispatch: "/farms/farm-1/processing/dispatch",
+  Setup: "/farms/farm-1/farm-setup",
 };
 
 describe("findActiveHref (most-specific matching)", () => {
@@ -144,14 +135,14 @@ describe("AppShell top navigation (main modules)", () => {
   it("current pathname identifies the correct active top module", () => {
     renderShell("/farms/farm-1/leafy-production/harvest");
     const nav = topNav();
-    expect(within(nav).getByRole("link", { name: "Harvest & Post-Harvest" })).toHaveAttribute("aria-current", "true");
-    expect(within(nav).getByRole("link", { name: "Production Operations" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Post-Harvest" })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).getByRole("link", { name: "Production" })).not.toHaveAttribute("aria-current");
   });
 
-  it("activates Dispatch & Traceability, not a fabricated module, for the Recall Cases detail route", () => {
+  it("activates Dispatch, not a fabricated module, for the Recall Cases detail route", () => {
     renderShell("/farms/farm-1/processing/recall-cases/case-1");
     const nav = topNav();
-    expect(within(nav).getByRole("link", { name: "Dispatch & Traceability" })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute("aria-current", "true");
   });
 
   it("marks Home active and no module active on the farm home route", () => {
@@ -209,18 +200,25 @@ describe("AppShell contextual sidebar", () => {
     );
   });
 
-  it("VINES-OPS-001B: Vines Production shows its own two entries when active", () => {
+  it("PILOT-UX-005: Vines Production sits inside the merged Production module, no longer its own top-level slot", () => {
     renderShell("/farms/farm-1/vines-production");
     const aside = sidebar();
     expect(within(aside).getByRole("link", { name: "Vines Production" })).toHaveAttribute(
       "href",
       "/farms/farm-1/vines-production",
     );
-    expect(within(aside).getByRole("link", { name: "Transfer to Production" })).toHaveAttribute(
+    expect(within(aside).getByRole("link", { name: "Transfer to Vines Production" })).toHaveAttribute(
       "href",
       "/farms/farm-1/vines-production/transfer",
     );
+    expect(within(aside).getByRole("link", { name: "Leafy Production" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/leafy-production",
+    );
     expect(within(aside).queryByRole("link", { name: "Seeding" })).not.toBeInTheDocument();
+    const nav = topNav();
+    expect(within(nav).getByRole("link", { name: "Production" })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).queryByRole("link", { name: "Vines Production" })).not.toBeInTheDocument();
   });
 
   it("UX-IA-001: exposes exactly one Store & Inventory Setup entry, and none of the four superseded entries", () => {
@@ -268,32 +266,20 @@ describe("AppShell contextual sidebar", () => {
     );
   });
 
-  it("STORE-INV-003: exposes exactly Overview / Receive Goods / Putaway / Inventory / Quality / Issue, no placeholders", () => {
-    renderShell("/farms/farm-1/store-inventory");
-    const aside = sidebar();
-    const expected: Record<string, string> = {
-      Overview: "/farms/farm-1/store-inventory",
-      "Receive Goods": "/farms/farm-1/store-inventory/receive-goods",
-      Putaway: "/farms/farm-1/store-inventory/putaway",
-      Inventory: "/farms/farm-1/store-inventory/inventory",
-      Quality: "/farms/farm-1/store-inventory/quality",
-      Issue: "/farms/farm-1/store-inventory/issue",
-    };
-    for (const [label, href] of Object.entries(expected)) {
-      expect(within(aside).getByRole("link", { name: label })).toHaveAttribute("href", href);
-    }
-    // No future/unbuilt concepts (a separate Reservations module, Returns,
-    // Transfers, Work Orders) and no duplication of the separate,
-    // config-only "Store & Inventory Setup" workspace entries. Reservation
-    // is deliberately a mode INSIDE the "Issue" page, never its own
-    // top-level nav entry.
-    for (const forbidden of [
-      "Reservations", "Returns", "Transfers", "Work Orders",
-      "Store & Inventory Setup", "Storage", "Inventory Catalog", "Settings",
-    ]) {
-      expect(within(aside).queryByRole("link", { name: forbidden })).not.toBeInTheDocument();
-    }
-  });
+  it.each([
+    "/farms/farm-1/store-inventory",
+    "/farms/farm-1/store-inventory/inventory",
+    "/farms/farm-1/store-inventory/receive-goods",
+    "/farms/farm-1/store-inventory/putaway",
+    "/farms/farm-1/store-inventory/quality",
+    "/farms/farm-1/store-inventory/issue",
+  ])(
+    "PILOT-UX-005 closure: %s renders no contextual sidebar -- Store's Operations/Inventory pair moved to an in-page StoreSubNav",
+    (pathname) => {
+      renderShell(pathname);
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     "/farms/farm-1/store-inventory",
@@ -302,14 +288,14 @@ describe("AppShell contextual sidebar", () => {
     "/farms/farm-1/store-inventory/inventory",
     "/farms/farm-1/store-inventory/quality",
     "/farms/farm-1/store-inventory/issue",
-  ])("STORE-INV-002A.2: %s keeps Store & Inventory active in the top nav, not Store & Inventory Setup", (pathname) => {
+  ])("STORE-INV-002A.2: %s keeps Store active in the top nav, not Setup", (pathname) => {
     renderShell(pathname);
     const nav = topNav();
-    expect(within(nav).getByRole("link", { name: "Store & Inventory" })).toHaveAttribute("aria-current", "true");
-    expect(within(nav).getByRole("link", { name: "Farm Setup & Master Data" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Store" })).toHaveAttribute("aria-current", "true");
+    expect(within(nav).getByRole("link", { name: "Setup" })).not.toHaveAttribute("aria-current");
   });
 
-  it("shows ONLY Nursery's children when Nursery Operations is active", () => {
+  it("shows ONLY Nursery's children when Nursery is active", () => {
     renderShell("/farms/farm-1/nursery/germination");
     const aside = sidebar();
     expect(within(aside).getByRole("link", { name: "Seeding" })).toBeInTheDocument();
@@ -344,7 +330,7 @@ describe("AppShell accessibility", () => {
   it("indicates the active top-level module with more than color: an aria-current attribute", () => {
     renderShell("/farms/farm-1/leafy-production/harvest");
     const nav = topNav();
-    expect(within(nav).getByRole("link", { name: "Harvest & Post-Harvest" })).toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Post-Harvest" })).toHaveAttribute("aria-current");
   });
 });
 
@@ -360,7 +346,7 @@ describe("AppShell mobile navigation", () => {
     renderShell("/farms/farm-1/leafy-production/harvest");
     fireEvent.click(screen.getByRole("button", { name: /toggle navigation/i }));
     const mobileNav = document.getElementById("mobile-nav") as HTMLElement;
-    expect(within(mobileNav).getByRole("button", { name: /Harvest & Post-Harvest/ })).toHaveAttribute(
+    expect(within(mobileNav).getByRole("button", { name: /Post-Harvest/ })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
@@ -371,7 +357,7 @@ describe("AppShell mobile navigation", () => {
     renderShell("/farms/farm-1/leafy-production/harvest");
     fireEvent.click(screen.getByRole("button", { name: /toggle navigation/i }));
     const mobileNav = document.getElementById("mobile-nav") as HTMLElement;
-    const toggle = within(mobileNav).getByRole("button", { name: /Harvest & Post-Harvest/ });
+    const toggle = within(mobileNav).getByRole("button", { name: /Post-Harvest/ });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
@@ -390,7 +376,7 @@ describe("AppShell mobile navigation", () => {
     renderShell("/farms/farm-1");
     fireEvent.click(screen.getByRole("button", { name: /toggle navigation/i }));
     const mobileNav = document.getElementById("mobile-nav") as HTMLElement;
-    fireEvent.click(within(mobileNav).getByRole("button", { name: /Farm Setup & Master Data/ }));
+    fireEvent.click(within(mobileNav).getByRole("button", { name: /Setup/ }));
     expect(within(mobileNav).getByRole("link", { name: "Carrier Specifications" })).toHaveAttribute(
       "href",
       "/carrier-specifications",

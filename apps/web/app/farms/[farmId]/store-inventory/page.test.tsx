@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  usePathname: () => "/farms/farm-1/store-inventory",
 }));
 
 import { withQueryClient } from "@/lib/test-utils";
@@ -27,10 +28,10 @@ const QUEUE_ROW = {
   last_actor_user_id: null, last_effective_time: null,
 };
 const NOT_PUT_AWAY_ROW = {
-  inventory_quantity_cohort_id: "coh-1", inventory_item_id: "item-1", item_name: "Calcium Nitrate",
-  base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: "LOT-1",
-  received_at_farm_id: "farm-1", receipt_code: "GR-F1-20260907-001", receipt_received_at: "2026-09-07T08:00:00Z",
-  not_put_away_quantity: "500.000",
+  inventory_quantity_cohort_id: "coh-2", inventory_item_id: "item-2", item_name: "Perlite",
+  base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: null,
+  received_at_farm_id: "farm-1", receipt_code: "GR-F1-20260906-002", receipt_received_at: "2026-09-06T08:00:00Z",
+  not_put_away_quantity: "12.000",
 };
 
 function stubFetch(overrides: Record<string, unknown> = {}) {
@@ -49,42 +50,88 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("StoreInventoryOverviewPage", () => {
-  it("shows a factual summary -- recent receipts and quantities awaiting Quality action", async () => {
+describe("StoreInventoryOverviewPage (PILOT-UX-005 Store Operations workbench)", () => {
+  it("shows a unified Action Required queue with both Quality and Putaway rows, plus recent receipts", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryOverviewPage />));
-    await waitFor(() => expect(screen.getByText("GR-F1-20260907-001")).toBeInTheDocument());
-    expect(screen.getByText(/awaiting a/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate — Lot LOT-1")).toBeInTheDocument());
+
+    expect(screen.getByText("Quality")).toBeInTheDocument();
+    expect(screen.getByText("Quarantined")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/quality",
+    );
+
+    expect(screen.getByText("Putaway")).toBeInTheDocument();
+    expect(screen.getByText("Awaiting putaway")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Put away" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/putaway",
+    );
+
+    // Recent Goods Receipts is a secondary, compact list, not a large card.
+    expect(screen.getAllByText("GR-F1-20260907-001").length).toBeGreaterThan(0);
   });
 
-  it("never invents a readiness score or custody claim", async () => {
+  it("never invents a readiness score, current-location, or availability claim", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryOverviewPage />));
-    await waitFor(() => expect(screen.getByText("GR-F1-20260907-001")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Quality")).toBeInTheDocument());
     expect(screen.queryByText(/ready/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/current location/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/current store/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/available/i)).not.toBeInTheDocument();
   });
 
-  it("shows nothing-awaiting message when the queue is empty", async () => {
-    stubFetch({ queue: [] });
-    render(withQueryClient(<StoreInventoryOverviewPage />));
-    await waitFor(() => expect(screen.getByText(/nothing is currently quarantined/i)).toBeInTheDocument());
-  });
-
-  it("STORE-INV-002B: shows a factual awaiting-putaway count with a link to Putaway", async () => {
+  it("never fabricates a Lot suffix for a row with no manufacturer_lot_reference", async () => {
     stubFetch();
     render(withQueryClient(<StoreInventoryOverviewPage />));
-    await waitFor(() => expect(screen.getByText(/not yet put away/i)).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: "Go to Putaway" })).toHaveAttribute(
-      "href", "/farms/farm-1/store-inventory/putaway",
+    await waitFor(() => expect(screen.getByText("Perlite")).toBeInTheDocument());
+    expect(screen.queryByText(/Perlite — Lot/)).not.toBeInTheDocument();
+  });
+
+  it("shows a nothing-needs-action message only when both queues are empty", async () => {
+    stubFetch({ queue: [], notPutAway: [] });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() =>
+      expect(screen.getByText(/nothing currently needs quality or putaway action/i)).toBeInTheDocument(),
     );
   });
 
-  it("STORE-INV-002B: shows nothing-awaiting-putaway message when the not-put-away queue is empty", async () => {
+  it("shows only the Putaway row when the Quality queue is empty", async () => {
+    stubFetch({ queue: [] });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText("Perlite")).toBeInTheDocument());
+    expect(screen.queryByText("Quarantined")).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing currently needs/i)).not.toBeInTheDocument();
+  });
+
+  it("shows only the Quality row when the Putaway queue is empty", async () => {
     stubFetch({ notPutAway: [] });
     render(withQueryClient(<StoreInventoryOverviewPage />));
-    await waitFor(() => expect(screen.getByText(/nothing is currently awaiting putaway/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate — Lot LOT-1")).toBeInTheDocument());
+    expect(screen.queryByText("Awaiting putaway")).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing currently needs/i)).not.toBeInTheDocument();
+  });
+
+  it("exposes Receive Goods (primary) and Issue Stock (secondary) as header actions, not sidebar destinations", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText("Store Operations")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Receive Goods" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/receive-goods",
+    );
+    expect(screen.getByRole("link", { name: "Issue Stock" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/issue",
+    );
+  });
+
+  it("renders the Operations/Inventory StoreSubNav with Operations active, replacing the removed left sidebar", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    const nav = await screen.findByRole("navigation", { name: "Store & Inventory" });
+    expect(within(nav).getByRole("link", { name: "Operations" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Inventory" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/inventory",
+    );
   });
 });
