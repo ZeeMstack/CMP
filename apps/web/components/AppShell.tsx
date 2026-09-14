@@ -20,6 +20,12 @@ import type { FarmRead } from "@/lib/api/client";
 interface NavLink {
   label: string;
   href: string;
+  /** PILOT-UX-006: low-risk, additive grouping label within a nav group's
+   * own sidebar -- never a route/permission change. Only the "Setup" group
+   * currently uses this, to visually separate this Farm's own configuration
+   * from tenant-wide company/master catalogs (CLAUDE.md "Farm Setup":
+   * distinguish, don't restructure). */
+  section?: string;
 }
 
 interface NavGroupDef {
@@ -150,7 +156,7 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
       id: "farm-setup",
       label: "Setup",
       items: [
-        { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup` },
+        { label: "Greenhouse & Locations", href: `/farms/${farmId}/farm-setup`, section: "This Farm" },
         // UX-IA-001 (CEO_ALIGNMENT_SPEC.md "Store & Inventory Setup
         // navigation"): supersedes the four separate STORE-INV-001A
         // entries (Stores & Bins, Inventory Categories, Inventory Items,
@@ -159,24 +165,25 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
         // modules. The four legacy routes stay live for deep links/
         // bookmarks (never deleted), same precedent as Processing landing/
         // Seed Lots/Locations/Batches above.
-        { label: "Store & Inventory Setup", href: `/farms/${farmId}/store-inventory-setup` },
-        { label: "Carrier Specifications", href: "/carrier-specifications" },
+        { label: "Store & Inventory Setup", href: `/farms/${farmId}/store-inventory-setup`, section: "This Farm" },
+        { label: "Carrier Specifications", href: "/carrier-specifications", section: "Company catalogs" },
         // PILOT-BLOCKER-001: the farm-scoped physical Carrier registry --
         // deliberately placed right after Carrier Specifications (the
         // tenant-wide reusable design it registers against) even though its
-        // own href IS farm-scoped, unlike its neighbor.
-        { label: "Physical Carriers", href: `/farms/${farmId}/carriers` },
-        { label: "Crops & Varieties", href: "/crops" },
-        { label: "Production Systems", href: "/production-systems" },
-        { label: "Workflows", href: "/workflows" },
-        { label: "Grade Definitions", href: "/grade-definitions" },
-        { label: "Packaging Units", href: "/packaging-units" },
-        { label: "Pack Specifications", href: "/pack-specifications" },
+        // own href IS farm-scoped, unlike its neighbor. `section` groups it
+        // with "This Farm" in the sidebar regardless of this list order.
+        { label: "Physical Carriers", href: `/farms/${farmId}/carriers`, section: "This Farm" },
+        { label: "Crops & Varieties", href: "/crops", section: "Company catalogs" },
+        { label: "Production Systems", href: "/production-systems", section: "Company catalogs" },
+        { label: "Workflows", href: "/workflows", section: "Company catalogs" },
+        { label: "Grade Definitions", href: "/grade-definitions", section: "Company catalogs" },
+        { label: "Packaging Units", href: "/packaging-units", section: "Company catalogs" },
+        { label: "Pack Specifications", href: "/pack-specifications", section: "Company catalogs" },
         // AUTHZ-OPS-001: tenant-wide (no farmId), same reasoning as every
         // other entry in this group -- shown only to a tenant_admin caller;
         // the backend's own TENANT_MEMBERS_READ/MANAGE checks remain
         // authoritative regardless of whether this link is visible.
-        ...(canManageUsers ? [{ label: "Users & Roles", href: "/users" }] : []),
+        ...(canManageUsers ? [{ label: "Users & Roles", href: "/users", section: "Company catalogs" }] : []),
       ],
     },
   ];
@@ -266,9 +273,39 @@ function TopNav({
   );
 }
 
+/** Groups items by `section`, preserving each section's first-appearance
+ * order and each item's original relative order within its section -- never
+ * reorders the underlying `items` array itself (some entries are ordered
+ * deliberately for other reasons, see e.g. "Physical Carriers"'s own
+ * comment in `navGroups`). Groups with no `section` on any item collapse to
+ * a single unlabeled section, so this is a no-op for every group except
+ * "Setup". */
+function groupBySection(items: NavLink[]): { section: string | null; items: NavLink[] }[] {
+  const order: string[] = [];
+  const bySection = new Map<string, NavLink[]>();
+  const unsectioned: NavLink[] = [];
+  for (const item of items) {
+    if (!item.section) {
+      unsectioned.push(item);
+      continue;
+    }
+    if (!bySection.has(item.section)) {
+      order.push(item.section);
+      bySection.set(item.section, []);
+    }
+    bySection.get(item.section)!.push(item);
+  }
+  const groups: { section: string | null; items: NavLink[] }[] = order.map((section) => ({
+    section, items: bySection.get(section)!,
+  }));
+  if (unsectioned.length > 0) groups.push({ section: null, items: unsectioned });
+  return groups;
+}
+
 /** Left context sidebar = only child items of the active main module
  * (PILOT-UX-001A2-R2 section 11) -- never every group's children at once. */
 function ContextualSidebar({ group, activeHref }: { group: NavGroupDef; activeHref: string | null }) {
+  const sections = groupBySection(group.items);
   return (
     <aside
       aria-label={`${group.label} navigation`}
@@ -277,26 +314,35 @@ function ContextualSidebar({ group, activeHref }: { group: NavGroupDef; activeHr
       <div className="px-4 pb-2 text-[11px] font-medium uppercase tracking-wide text-wl-text-tertiary">
         {group.label}
       </div>
-      <ul className="flex flex-col gap-0.5 px-2">
-        {group.items.map((item) => {
-          const active = item.href === activeHref;
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-9 items-center rounded-lg px-3 text-sm font-medium ${
-                  active
-                    ? "bg-wl-brand-subtle text-wl-brand"
-                    : "text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text"
-                }`}
-              >
-                {item.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {sections.map((section, idx) => (
+        <div key={section.section ?? `_unsectioned_${idx}`} className="flex flex-col gap-0.5">
+          {section.section && (
+            <div className={`px-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-wl-text-tertiary ${idx > 0 ? "pt-3" : ""}`}>
+              {section.section}
+            </div>
+          )}
+          <ul className="flex flex-col gap-0.5 px-2">
+            {section.items.map((item) => {
+              const active = item.href === activeHref;
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={`flex min-h-9 items-center rounded-lg px-3 text-sm font-medium ${
+                      active
+                        ? "bg-wl-brand-subtle text-wl-brand"
+                        : "text-wl-text-secondary hover:bg-wl-surface-hover hover:text-wl-text"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </aside>
   );
 }

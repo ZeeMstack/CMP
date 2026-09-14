@@ -49,6 +49,8 @@ export default function LeafyProductionPage() {
   const [movingPlateId, setMovingPlateId] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<AppError | null>(null);
   const [moveSuccess, setMoveSuccess] = useState<{ plateCode: string; toLabel: string } | null>(null);
+  const [batchFilter, setBatchFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
 
   const activePlatesQuery = useActiveProductionPlates(farmId);
   const historyQuery = useProductionDispositionHistory(farmId);
@@ -66,6 +68,22 @@ export default function LeafyProductionPage() {
     (activePlatesQuery.data ?? []).find((p) => p.batch_carrier_assignment_id === selectedPlateId) ?? null;
   const movingPlate: ActiveProductionPlateRead | null =
     (activePlatesQuery.data ?? []).find((p) => p.batch_carrier_assignment_id === movingPlateId) ?? null;
+
+  // Filtering is entirely client-side over the existing farm-scoped read --
+  // no new endpoint/field, just narrowing what's already loaded. Batch
+  // options are the distinct Batches actually present, never a separate
+  // Batch-listing read.
+  const allActivePlates = activePlatesQuery.data ?? [];
+  const batchOptions = Array.from(
+    new Map(allActivePlates.map((p) => [p.batch_id, p.batch_code])).entries(),
+  ).sort((a, b) => a[1].localeCompare(b[1]));
+  const visiblePlates = allActivePlates.filter((p) => {
+    if (batchFilter && p.batch_id !== batchFilter) return false;
+    if (locationFilter && !(p.current_location?.ancestry_label ?? "").toLowerCase().includes(locationFilter.toLowerCase())) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -230,60 +248,105 @@ export default function LeafyProductionPage() {
               {activePlatesQuery.isError && (
                 <ErrorState error={activePlatesQuery.error} onRetry={() => activePlatesQuery.refetch()} />
               )}
-              {activePlatesQuery.isSuccess && (activePlatesQuery.data ?? []).length === 0 && (
+              {activePlatesQuery.isSuccess && allActivePlates.length === 0 && (
                 <EmptyState
                   title="No active Production Plates in this Farm."
                   description="Plates appear here once a Production Transfer has placed living plants in Leafy Production."
                 />
               )}
-              {activePlatesQuery.isSuccess && (activePlatesQuery.data ?? []).length > 0 && (
-                <ul className="flex flex-col gap-3">
-                  {(activePlatesQuery.data ?? []).map((plate) => (
-                    <li
-                      key={plate.batch_carrier_assignment_id}
-                      className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <span className="font-serif text-sm font-semibold text-ink">
-                          {plate.plate_code} — {plate.batch_code}
-                        </span>
-                        <span className="text-xs text-ink-muted">
-                          {plate.crop_common_name}
-                          {plate.variety_name ? ` / ${plate.variety_name}` : ""} · Living{" "}
-                          {plate.current_living_population.toLocaleString()}
-                        </span>
-                        {plate.current_location ? (
-                          <span className="text-xs text-ink-muted">{plate.current_location.ancestry_label}</span>
-                        ) : (
-                          <span className="text-xs text-red-700">No current Leafy location on record</span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2 self-start sm:self-center">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={!plate.current_location}
-                          onClick={() => setMovingPlateId(plate.batch_carrier_assignment_id)}
-                        >
-                          Move plate
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
-                        >
-                          Record Plant Loss
-                        </Button>
-                        <Link
-                          href={`/farms/${farmId}/observations?batchId=${plate.batch_id}`}
-                          className="inline-flex h-9 items-center justify-center rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover"
-                        >
-                          Record observation
-                        </Link>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+              {activePlatesQuery.isSuccess && allActivePlates.length > 0 && (
+                <>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-ink-muted">Batch</span>
+                      <select
+                        className="min-h-9 rounded-md border border-border-subtle bg-surface px-2.5 text-sm text-ink"
+                        value={batchFilter}
+                        onChange={(e) => setBatchFilter(e.target.value)}
+                      >
+                        <option value="">All batches</option>
+                        {batchOptions.map(([id, code]) => (
+                          <option key={id} value={id}>{code}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-ink-muted">Location</span>
+                      <input
+                        type="text"
+                        className="min-h-9 rounded-md border border-border-subtle bg-surface px-2.5 text-sm text-ink"
+                        placeholder="Search greenhouse/zone/table…"
+                        value={locationFilter}
+                        onChange={(e) => setLocationFilter(e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  {visiblePlates.length === 0 ? (
+                    <p className="text-sm text-ink-muted">No Production Plates match this filter.</p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+                      <table className="w-full min-w-[760px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-border-subtle text-ink-muted">
+                            <th className="p-3 font-medium">Plate</th>
+                            <th className="p-3 font-medium">Batch / Variety</th>
+                            <th className="p-3 font-medium">Living</th>
+                            <th className="p-3 font-medium">Location</th>
+                            <th className="p-3 font-medium" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visiblePlates.map((plate) => (
+                            <tr key={plate.batch_carrier_assignment_id} className="border-b border-border-subtle last:border-0">
+                              <td className="p-3 font-medium text-ink">{plate.plate_code}</td>
+                              <td className="p-3 text-ink">
+                                {plate.batch_code}
+                                <span className="block text-xs text-ink-muted">
+                                  {plate.crop_common_name}
+                                  {plate.variety_name ? ` / ${plate.variety_name}` : ""}
+                                </span>
+                              </td>
+                              <td className="p-3 tabular-nums text-ink">{plate.current_living_population.toLocaleString()}</td>
+                              <td className="p-3 text-ink">
+                                {plate.current_location ? (
+                                  <span className="text-xs text-ink-muted">{plate.current_location.ancestry_label}</span>
+                                ) : (
+                                  <span className="text-xs text-red-700">No current Leafy location on record</span>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    disabled={!plate.current_location}
+                                    onClick={() => setMovingPlateId(plate.batch_carrier_assignment_id)}
+                                  >
+                                    Move plate
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="primary"
+                                    onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
+                                  >
+                                    Record Plant Loss
+                                  </Button>
+                                  <Link
+                                    href={`/farms/${farmId}/observations?batchId=${plate.batch_id}&assignmentId=${plate.batch_carrier_assignment_id}`}
+                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover"
+                                  >
+                                    Record observation
+                                  </Link>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

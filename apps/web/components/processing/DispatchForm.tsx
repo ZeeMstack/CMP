@@ -75,7 +75,7 @@ export function DispatchForm({
   const initial = nowDateAndTime();
 
   const {
-    register, control, handleSubmit, getValues, setValue, formState: { errors },
+    register, control, handleSubmit, getValues, setValue, watch, formState: { errors },
   } = useForm<RecordDispatchFormValues>({
     resolver: zodResolver(recordDispatchFormSchema),
     defaultValues: {
@@ -214,6 +214,20 @@ export function DispatchForm({
             </li>
           ))}
         </ul>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-wl-surface-sunken p-3 text-sm">
+          <div>
+            <dt className="text-wl-text-secondary">Total dispatched weight</dt>
+            <dd className="tabular-nums font-medium text-wl-text">
+              {values.lines.reduce((sum, l) => sum + (l.dispatched_weight_kg || 0), 0)} kg
+            </dd>
+          </div>
+          <div>
+            <dt className="text-wl-text-secondary">Total packages</dt>
+            <dd className="tabular-nums font-medium text-wl-text">
+              {values.lines.reduce((sum, l) => sum + (l.dispatched_package_count || 0), 0)}
+            </dd>
+          </div>
+        </dl>
         {values.external_reference && (
           <p className="text-sm text-wl-text-secondary">
             Reference: <span className="text-wl-text">{values.external_reference}</span>
@@ -266,6 +280,19 @@ export function DispatchForm({
         {typeof errors.lines?.message === "string" && <p className={errorClass}>{errors.lines.message}</p>}
         {errors.lines?.root && <p className={errorClass}>{errors.lines.root.message}</p>}
       </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-wl-surface-sunken p-3 text-sm">
+        <div>
+          <dt className="text-wl-text-secondary">Lots in this Dispatch</dt>
+          <dd className="tabular-nums font-medium text-wl-text">{fields.length}</dd>
+        </div>
+        <div>
+          <dt className="text-wl-text-secondary">Total weight so far</dt>
+          <dd className="tabular-nums font-medium text-wl-text">
+            {watch("lines").reduce((sum, l) => sum + (l.dispatched_weight_kg || 0), 0)} kg
+          </dd>
+        </div>
+      </dl>
 
       <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Dispatch code" error={errors.code?.message}>

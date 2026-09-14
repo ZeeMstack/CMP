@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ColdStorageMovementForm } from "@/components/processing/ColdStorageMovementForm";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
+import { Tabs } from "@/components/ui/Tabs";
 import { AppError } from "@/lib/errors/adapter";
 import {
   useFinishedGoodsLots, useFinishedGoodsStorageMovements, useLocationsTree, useRecordFinishedGoodsStorageMovement,
@@ -51,6 +52,7 @@ export default function ColdStoragePage() {
   const [contextInvalid, setContextInvalid] = useState(false);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState(false);
+  const [tab, setTab] = useState<"move" | "history">("move");
 
   const lotsQuery = useFinishedGoodsLots(farmId);
   const locationsQuery = useLocationsTree(farmId);
@@ -117,6 +119,7 @@ export default function ColdStoragePage() {
                 setSelectedLotId(id);
                 setRecordSuccess(false);
                 setRecordError(null);
+                setTab("move");
               }}
               placeholder="Search by Lot code…"
               aria-label="Finished Goods Lot"
@@ -139,32 +142,49 @@ export default function ColdStoragePage() {
                   Prepare dispatch
                 </LinkButton>
               </div>
-              {recordSuccess ? (
-                <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-                  <h2 className="font-serif text-base font-semibold text-wl-text">Movement recorded</h2>
-                  <Button type="button" variant="primary" className="self-start" onClick={() => setRecordSuccess(false)}>
-                    Record another
-                  </Button>
-                </div>
-              ) : (
-                <ColdStorageMovementForm
-                  key={selectedLot.id}
-                  farmId={farmId}
-                  lot={selectedLot}
-                  locations={locationsQuery.data ?? []}
-                  isSubmitting={recordMutation.isPending}
-                  serverError={recordError}
-                  onSubmit={(payload) => {
-                    setRecordError(null);
-                    recordMutation.mutate(payload, {
-                      onSuccess: () => setRecordSuccess(true),
-                      onError: (error) => setRecordError(asAppError(error)),
-                    });
-                  }}
-                />
-              )}
+              <Tabs
+                tabs={[
+                  { id: "move", label: "Move" },
+                  { id: "history", label: "History" },
+                ]}
+                activeId={tab}
+                onChange={(id) => setTab(id as "move" | "history")}
+                aria-label="Cold Storage sections"
+              />
 
-              <div>
+              {/* PILOT-UX-006: current custody/movement stays the primary
+                  view; historical events move behind a secondary "History"
+                  tab rather than always-visible in the same scroll. Both
+                  panels stay mounted (toggled with `hidden`) so switching
+                  tabs never drops an in-progress movement draft. */}
+              <div hidden={tab !== "move"}>
+                {recordSuccess ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                    <h2 className="font-serif text-base font-semibold text-wl-text">Movement recorded</h2>
+                    <Button type="button" variant="primary" className="self-start" onClick={() => setRecordSuccess(false)}>
+                      Record another
+                    </Button>
+                  </div>
+                ) : (
+                  <ColdStorageMovementForm
+                    key={selectedLot.id}
+                    farmId={farmId}
+                    lot={selectedLot}
+                    locations={locationsQuery.data ?? []}
+                    isSubmitting={recordMutation.isPending}
+                    serverError={recordError}
+                    onSubmit={(payload) => {
+                      setRecordError(null);
+                      recordMutation.mutate(payload, {
+                        onSuccess: () => setRecordSuccess(true),
+                        onError: (error) => setRecordError(asAppError(error)),
+                      });
+                    }}
+                  />
+                )}
+              </div>
+
+              <div hidden={tab !== "history"}>
                 <h3 className="mb-2 font-serif text-sm font-semibold text-wl-text">Movement history — {selectedLot.code}</h3>
                 {movementsQuery.isLoading && <p className="text-sm text-wl-text-secondary">Loading…</p>}
                 {!movementsQuery.isLoading && (movementsQuery.data ?? []).length === 0 && (

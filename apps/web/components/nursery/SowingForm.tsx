@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
@@ -48,6 +48,28 @@ function nowDateAndTime() {
     date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
   };
+}
+
+// PILOT-UX-006: "+ Add Seed Lot" navigates away to a full route
+// (`/seed-lots/new`), which unmounts this form -- everything already
+// entered (Nursery/Station, tray allocation, quantities) would otherwise be
+// silently lost. The draft is saved to sessionStorage (per-Farm, per-tab)
+// immediately before that navigation and restored -- once -- the next time
+// this form mounts for the same Farm. Never touches server state; purely a
+// same-tab convenience for this one known navigate-away-and-back path.
+function sowingDraftStorageKey(farmId: string) {
+  return `cmp:sowing-draft:${farmId}`;
+}
+
+interface SowingDraftSnapshot {
+  formValues: SowingFormValues;
+  nurseryGreenhouseId: string;
+  fastSiteQty: string;
+  fastSeedQty: string;
+  fastSpecId: string;
+  manualMode: boolean;
+  showTrayDetails: boolean;
+  seedAllocationNote: string | null;
 }
 
 export interface SowingPlanPrefill {
@@ -103,13 +125,66 @@ export function SowingForm({
 
   const initial = nowDateAndTime();
   const {
-    register, control, watch, setValue, trigger, getValues, formState: { errors },
+    register, control, watch, setValue, trigger, getValues, reset, formState: { errors },
   } = useForm<SowingFormValues>({
     resolver: zodResolver(sowingFormSchema),
     defaultValues: { ...DEFAULT_SOWING_FORM_VALUES, effective_date: initial.date, effective_time_of_day: initial.time },
     mode: "onBlur",
   });
   const { fields, append, remove, replace } = useFieldArray({ control, name: "trays" });
+
+  // Restore a draft saved just before navigating to "+ Add Seed Lot",
+  // exactly once per mount -- never overwrites a draft with a stale replay
+  // on a later re-render, and never applies to a different Farm's key.
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = window.sessionStorage.getItem(sowingDraftStorageKey(farmId));
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const snapshot = JSON.parse(raw) as SowingDraftSnapshot;
+      reset(snapshot.formValues);
+      setNurseryGreenhouseId(snapshot.nurseryGreenhouseId);
+      setFastSiteQty(snapshot.fastSiteQty);
+      setFastSeedQty(snapshot.fastSeedQty);
+      setFastSpecId(snapshot.fastSpecId);
+      setManualMode(snapshot.manualMode);
+      setShowTrayDetails(snapshot.showTrayDetails);
+      setSeedAllocationNote(snapshot.seedAllocationNote);
+    } catch {
+      // Malformed/stale snapshot -- ignore rather than throw, the operator
+      // just starts this Sowing fresh.
+    } finally {
+      try {
+        window.sessionStorage.removeItem(sowingDraftStorageKey(farmId));
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farmId]);
+
+  function saveDraftBeforeLeaving() {
+    const snapshot: SowingDraftSnapshot = {
+      formValues: getValues(),
+      nurseryGreenhouseId,
+      fastSiteQty,
+      fastSeedQty,
+      fastSpecId,
+      manualMode,
+      showTrayDetails,
+      seedAllocationNote,
+    };
+    try {
+      window.sessionStorage.setItem(sowingDraftStorageKey(farmId), JSON.stringify(snapshot));
+    } catch {
+      // Best-effort only -- if storage is unavailable, the operator simply
+      // re-enters values on return, exactly as before this change.
+    }
+  }
 
   const overviewQuery = useGreenhouseSetupOverview(farmId);
   const nurseries = useMemo(
@@ -447,7 +522,11 @@ export function SowingForm({
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <div className="flex items-center justify-between gap-2">
           <legend className="px-1 text-sm font-semibold text-wl-text">Seed Lot</legend>
-          <Link href={`/farms/${farmId}/seed-lots/new`} className="text-xs font-medium text-wl-brand hover:underline">
+          <Link
+            href={`/farms/${farmId}/seed-lots/new`}
+            onClick={saveDraftBeforeLeaving}
+            className="text-xs font-medium text-wl-brand hover:underline"
+          >
             + Add Seed Lot
           </Link>
         </div>
@@ -481,21 +560,6 @@ export function SowingForm({
         )}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Seeding Machine (optional)</legend>
-        <p className="text-xs text-wl-text-secondary">Farm-level equipment — recorded as provenance only.</p>
-        <Field label="Seeding Machine">
-          <select {...register("seeding_machine_id")} className={inputClass}>
-            <option value="">None</option>
-            {seedingMachinesQuery.data?.map((machine) => (
-              <option key={machine.id} value={machine.id}>
-                {machine.code}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </fieldset>
-
       <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-wl-text">Sowing date/time</legend>
         <Field label="Date" error={errors.effective_date?.message}>
@@ -505,6 +569,34 @@ export function SowingForm({
           <input type="time" {...register("effective_time_of_day")} className={inputClass} />
         </Field>
       </fieldset>
+
+      {/* PILOT-UX-006: Seeding Machine and Note are both optional,
+          less-common fields -- collapsed behind one disclosure rather than
+          full always-expanded fieldsets carrying the same visual weight as
+          the required Nursery/Seed Lot sections above. A native <details>
+          never unmounts its content when closed, so any value already
+          entered here survives collapsing/expanding untouched. */}
+      <details className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-wl-text">More details (optional)</summary>
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-wl-text-secondary">Seeding Machine — farm-level equipment, recorded as provenance only.</p>
+            <Field label="Seeding Machine">
+              <select {...register("seeding_machine_id")} className={inputClass}>
+                <option value="">None</option>
+                {seedingMachinesQuery.data?.map((machine) => (
+                  <option key={machine.id} value={machine.id}>
+                    {machine.code}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Note">
+            <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
+          </Field>
+        </div>
+      </details>
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Seed Trays</legend>
@@ -777,11 +869,6 @@ export function SowingForm({
             )}
           </>
         )}
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
-        <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
       </fieldset>
 
       <div>

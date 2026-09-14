@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { LinkButton } from "@/components/admin/LinkButton";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageHeader } from "@/components/PageHeader";
 import { RecordVinesHarvestForm } from "@/components/vines/RecordVinesHarvestForm";
@@ -36,7 +37,7 @@ export default function VinesHarvestPage() {
   const [selectedGutterIds, setSelectedGutterIds] = useState<string[]>([]);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
-    lotCode: string; batchCode: string; totalWeight: string; gutterCount: number;
+    lotId: string; lotCode: string; batchCode: string; totalWeight: string; gutterCount: number;
   } | null>(null);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
@@ -76,8 +77,12 @@ export default function VinesHarvestPage() {
         />
       </div>
 
-      {tab === "harvestable" && (
-        <div className="flex flex-col gap-4">
+      {/* PILOT-UX-006: both tab panels stay mounted (toggled with `hidden`,
+          never a conditional-render unmount) so switching to "Harvest
+          History" and back never wipes an in-progress Harvest draft --
+          mirrors leafy-production/harvest/page.tsx's identical `hidden`
+          convention. */}
+      <div hidden={tab !== "harvestable"} className="flex flex-col gap-4">
           {recordSuccess ? (
             <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
               <h2 className="font-serif text-base font-semibold text-ink">Harvest recorded</h2>
@@ -103,25 +108,37 @@ export default function VinesHarvestPage() {
                 Living plant count and Grow Bag capacity are unchanged -- these Gutters remain fully harvestable
                 again later.
               </p>
-              <Button
-                type="button"
-                variant="primary"
-                className="self-start"
-                onClick={() => {
-                  setSelectedGutterIds([]);
-                  setRecordSuccess(null);
-                  setRecordError(null);
-                }}
-              >
-                Done
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setSelectedGutterIds([]);
+                    setRecordSuccess(null);
+                    setRecordError(null);
+                  }}
+                >
+                  Record another Harvest
+                </Button>
+                {/* Uses only the actual Harvested Produce Lot id returned by
+                    this command -- never a lookup by display code -- and hands
+                    it to Grading as a hint it re-resolves against its own
+                    scoped read (mirrors leafy-production/harvest/page.tsx's
+                    identical "Grade this lot" handoff exactly). */}
+                <LinkButton
+                  variant="primary"
+                  href={`/farms/${farmId}/processing/grading?harvestLotId=${recordSuccess.lotId}`}
+                >
+                  Grade this lot
+                </LinkButton>
+              </div>
             </div>
           ) : (
             <>
               {selectedSources.length > 0 && (
                 <RecordVinesHarvestForm
-                  key={selectedGutterIds.join(",")}
                   sources={selectedSources}
+                  onRemoveSource={(gutterId) => setSelectedGutterIds((ids) => ids.filter((id) => id !== gutterId))}
                   isSubmitting={recordMutation.isPending}
                   serverError={recordError}
                   onSubmit={(payload) => {
@@ -130,6 +147,7 @@ export default function VinesHarvestPage() {
                       onSuccess: (result) => {
                         setSelectedGutterIds([]);
                         setRecordSuccess({
+                          lotId: result.produce_lot_id,
                           lotCode: result.produce_lot_code,
                           batchCode: result.batch_code,
                           totalWeight: result.current_total_harvested_weight_kg,
@@ -151,10 +169,9 @@ export default function VinesHarvestPage() {
               />
             </>
           )}
-        </div>
-      )}
+      </div>
 
-      {tab === "history" && (
+      <div hidden={tab !== "history"}>
         <VinesHarvestHistoryPanel
           events={harvestsQuery.data ?? []}
           correctingLineId={correctingLineId}
@@ -172,7 +189,7 @@ export default function VinesHarvestPage() {
             }
           }}
         />
-      )}
+      </div>
     </div>
   );
 }

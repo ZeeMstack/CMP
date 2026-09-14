@@ -178,18 +178,30 @@ describe("AppShell contextual sidebar", () => {
     expect(within(aside).queryByRole("link", { name: "Leafy Production" })).not.toBeInTheDocument();
   });
 
-  it("PILOT-BLOCKER-001: Farm Setup sidebar includes a farm-scoped Physical Carriers entry after Carrier Specifications", () => {
+  it("PILOT-BLOCKER-001: Farm Setup sidebar includes a farm-scoped Physical Carriers entry", () => {
     renderShell("/farms/farm-1/farm-setup");
     const aside = sidebar();
-    const links = within(aside).getAllByRole("link");
-    const labels = links.map((l) => l.textContent);
-    const specIndex = labels.indexOf("Carrier Specifications");
-    expect(specIndex).toBeGreaterThanOrEqual(0);
-    expect(labels[specIndex + 1]).toBe("Physical Carriers");
     expect(within(aside).getByRole("link", { name: "Physical Carriers" })).toHaveAttribute(
       "href",
       "/farms/farm-1/carriers",
     );
+  });
+
+  it("PILOT-UX-006: Farm Setup sidebar groups this Farm's own configuration apart from company-wide catalogs", () => {
+    renderShell("/farms/farm-1/farm-setup");
+    const aside = sidebar();
+    const links = within(aside).getAllByRole("link");
+    const labels = links.map((l) => l.textContent);
+    const farmSectionEnd = labels.indexOf("Carrier Specifications");
+    expect(farmSectionEnd).toBeGreaterThan(0);
+    // Every farm-scoped entry (this Farm's own configuration) precedes every
+    // tenant-wide catalog entry -- a route/permission-neutral grouping label
+    // only, never a reorder of which routes exist.
+    expect(labels.slice(0, farmSectionEnd)).toEqual([
+      "Greenhouse & Locations", "Store & Inventory Setup", "Physical Carriers",
+    ]);
+    expect(within(aside).getByText("This Farm")).toBeInTheDocument();
+    expect(within(aside).getByText("Company catalogs")).toBeInTheDocument();
   });
 
   it("VINES-OPS-001A: Nursery sidebar includes Transfer to InterVines", () => {

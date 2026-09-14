@@ -75,7 +75,7 @@ export function LeafyHarvestForm({
   const initial = nowDateAndTime();
 
   const {
-    register, control, handleSubmit, getValues, formState: { errors },
+    register, control, handleSubmit, getValues, watch, formState: { errors },
   } = useForm<RecordLeafyHarvestFormValues>({
     resolver: zodResolver(recordLeafyHarvestFormSchema),
     defaultValues: {
@@ -334,6 +334,18 @@ export function LeafyHarvestForm({
         <div>
           <dt className="text-wl-text-secondary">Plates in this Harvest</dt>
           <dd className="tabular-nums font-medium text-wl-text">{fields.length}</dd>
+        </div>
+        <div>
+          <dt className="text-wl-text-secondary">Total heads so far</dt>
+          <dd className="tabular-nums font-medium text-wl-text">
+            {watch("lines").reduce((sum, l) => sum + (l.heads_harvested || 0), 0).toLocaleString()}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-wl-text-secondary">Total raw weight so far</dt>
+          <dd className="tabular-nums font-medium text-wl-text">
+            {watch("lines").reduce((sum, l) => sum + (l.raw_harvested_weight_kg || 0), 0)} kg
+          </dd>
         </div>
       </dl>
 
