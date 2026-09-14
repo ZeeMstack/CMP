@@ -63,9 +63,16 @@ export function SeedingProgramTable({ lines, farmId }: { lines: SeedingProgramLi
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-wl-text-secondary">
                   {/* A record count, not a sown quantity -- see `lineStatusLabel`. */}
-                  {line.linked_sowing_count > 0
-                    ? `${line.linked_sowing_count} sowing record${line.linked_sowing_count === 1 ? "" : "s"}`
-                    : "—"}
+                  {line.linked_sowing_count > 0 ? (
+                    <Link
+                      href={`/farms/${farmId}/planning/seeding-program-lines/${line.id}`}
+                      className="font-medium text-wl-brand hover:underline"
+                    >
+                      View sowings ({line.linked_sowing_count})
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <StatusBadge label={status.label} tone={status.tone} />
@@ -78,7 +85,7 @@ export function SeedingProgramTable({ lines, farmId }: { lines: SeedingProgramLi
                       href={sowNowHref(farmId, line)}
                       className="inline-flex min-h-9 items-center rounded-md bg-wl-brand px-3 text-sm font-medium text-wl-text-on-brand hover:bg-wl-brand-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
                     >
-                      Sow now
+                      {line.linked_sowing_count > 0 ? "Sow additional" : "Sow now"}
                     </Link>
                   )}
                 </td>

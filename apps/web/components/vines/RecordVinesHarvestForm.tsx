@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
@@ -42,17 +42,23 @@ function nowDateAndTime() {
  * weight (never a per-Bag/per-plant split -- ticket's own frozen compact
  * UX: "Gutter | Raw weight"). Weight-only, no heads/count field anywhere.
  * Membership (which Gutters are included) is owned by the parent page
- * (`VinesHarvestableSourcesPanel`'s Add/Remove) -- this component is
- * remounted (via `key`) whenever that set changes. Mirrors `LeafyHarvestForm.
- * tsx`'s configure -> review -> confirm shape exactly, scaled to N
+ * (`VinesHarvestableSourcesPanel`'s Add/Remove). PILOT-UX-006: this
+ * component is no longer remounted via a `key` on every add/remove -- that
+ * wiped every already-entered weight/note on every other row. Instead the
+ * form stays mounted for the life of the draft and the effect below
+ * reconciles `lines` to the `sources` prop by `gutter_id`, mirroring
+ * `LeafyHarvestForm.tsx`'s identical reconciliation exactly. Mirrors
+ * `LeafyHarvestForm.tsx`'s configure -> review -> confirm shape, scaled to N
  * independent Gutter lines (one CropBatch only). */
 export function RecordVinesHarvestForm({
   sources,
+  onRemoveSource,
   onSubmit,
   isSubmitting,
   serverError,
 }: {
   sources: VinesHarvestableSourceRead[];
+  onRemoveSource: (gutterId: string) => void;
   onSubmit: (payload: RecordVinesHarvestCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
@@ -60,10 +66,11 @@ export function RecordVinesHarvestForm({
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
   const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  const [reviewedGutterIdsKey, setReviewedGutterIdsKey] = useState<string | null>(null);
   const initial = nowDateAndTime();
 
   const {
-    register, control, handleSubmit, getValues, formState: { errors },
+    register, control, handleSubmit, getValues, watch, formState: { errors },
   } = useForm<RecordVinesHarvestFormValues>({
     resolver: zodResolver(recordVinesHarvestFormSchema),
     defaultValues: {
@@ -74,12 +81,54 @@ export function RecordVinesHarvestForm({
       note: "",
       lines: sources.map((s) => ({
         ...DEFAULT_VINES_HARVEST_LINE_FORM_VALUES,
-        gutter_id: s.gutter_id, gutter_code: s.gutter_code, living_plant_count: s.living_plant_count,
+        gutter_id: s.gutter_id, gutter_code: s.gutter_code, greenhouse_code: s.greenhouse_code,
+        living_plant_count: s.living_plant_count,
       })),
     },
     mode: "onBlur",
   });
-  const { fields } = useFieldArray({ control, name: "lines" });
+  const { fields, append, remove } = useFieldArray({ control, name: "lines" });
+  const gutterIdsKey = sources.map((s) => s.gutter_id).join(",");
+  const sourceByGutterId = useMemo(
+    () => new Map(sources.map((s) => [s.gutter_id, s])),
+    [sources],
+  );
+
+  // Reconcile `lines` to the current `sources` prop by id, in place -- never
+  // a full reset. Removals first, then append exactly the sources not
+  // already represented (mirrors `LeafyHarvestForm.tsx`'s identical effect).
+  useEffect(() => {
+    const propIds = sources.map((s) => s.gutter_id);
+    const current = getValues("lines");
+    const removeIndices = current.reduce<number[]>((acc, line, idx) => {
+      if (!propIds.includes(line.gutter_id)) acc.push(idx);
+      return acc;
+    }, []);
+    if (removeIndices.length > 0) remove(removeIndices);
+    const remainingIds = current
+      .filter((_, idx) => !removeIndices.includes(idx))
+      .map((line) => line.gutter_id);
+    for (const source of sources) {
+      if (remainingIds.includes(source.gutter_id)) continue;
+      append({
+        ...DEFAULT_VINES_HARVEST_LINE_FORM_VALUES,
+        gutter_id: source.gutter_id, gutter_code: source.gutter_code, greenhouse_code: source.greenhouse_code,
+        living_plant_count: source.living_plant_count,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gutterIdsKey]);
+
+  // Never show a stale Review: if the selected-source set changes while the
+  // operator is on Review, drop back to Configure (mirrors
+  // `LeafyHarvestForm.tsx`'s identical guard).
+  const [prevGutterIdsKeyForStaleCheck, setPrevGutterIdsKeyForStaleCheck] = useState(gutterIdsKey);
+  if (gutterIdsKey !== prevGutterIdsKeyForStaleCheck) {
+    setPrevGutterIdsKeyForStaleCheck(gutterIdsKey);
+    if (step === "review" && reviewedGutterIdsKey !== null && reviewedGutterIdsKey !== gutterIdsKey) {
+      setStep("configure");
+    }
+  }
 
   const [prevServerError, setPrevServerError] = useState(serverError);
   if (serverError !== prevServerError) {
@@ -89,6 +138,7 @@ export function RecordVinesHarvestForm({
 
   function goToReview(values: RecordVinesHarvestFormValues) {
     void values;
+    setReviewedGutterIdsKey(gutterIdsKey);
     setStep("review");
   }
 
@@ -129,7 +179,9 @@ export function RecordVinesHarvestForm({
         <ul className="flex flex-col gap-3">
           {values.lines.map((line) => (
             <li key={line.gutter_id} className="rounded-md border border-border-subtle p-3 text-sm">
-              <p className="font-medium text-ink">{line.gutter_code}</p>
+              <p className="font-medium text-ink">
+                {line.gutter_code} <span className="font-normal text-ink-muted">— {line.greenhouse_code}</span>
+              </p>
               <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
                 <div>
                   <dt className="text-ink-muted">Living plants</dt>
@@ -184,25 +236,43 @@ export function RecordVinesHarvestForm({
       <h2 className="font-serif text-base font-semibold text-ink">Record Harvest — {sources[0]?.batch_code}</h2>
 
       <ul className="flex flex-col gap-3">
-        {fields.map((field, index) => (
-          <li key={field.id} className="rounded-md border border-border-subtle p-3">
-            <p className="text-sm font-semibold text-ink">
-              {field.gutter_code}{" "}
-              <span className="font-normal text-ink-muted">— Living {field.living_plant_count.toLocaleString()}</span>
-            </p>
-            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Raw weight (kg)" error={errors.lines?.[index]?.harvested_weight_kg?.message}>
-                <input
-                  type="number" min={0.001} step={0.001} className={inputClass}
-                  {...register(`lines.${index}.harvested_weight_kg`, { valueAsNumber: true })}
-                />
-              </Field>
-              <Field label="Note (optional)">
-                <input className={inputClass} {...register(`lines.${index}.note`)} />
-              </Field>
-            </div>
-          </li>
-        ))}
+        {fields.map((field, index) => {
+          const source = sourceByGutterId.get(field.gutter_id);
+          return (
+            <li key={field.id} className="rounded-md border border-border-subtle p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-ink">
+                  {field.gutter_code}{" "}
+                  <span className="font-normal text-ink-muted">
+                    — {field.greenhouse_code} · Living {field.living_plant_count.toLocaleString()}
+                  </span>
+                </p>
+                <Button
+                  type="button" variant="secondary"
+                  onClick={() => onRemoveSource(field.gutter_id)}
+                >
+                  Remove
+                </Button>
+              </div>
+              {source?.quality_hold_open && (
+                <span className="mt-1 inline-flex w-fit items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                  Quality hold
+                </span>
+              )}
+              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Raw weight (kg)" error={errors.lines?.[index]?.harvested_weight_kg?.message}>
+                  <input
+                    type="number" min={0.001} step={0.001} className={inputClass}
+                    {...register(`lines.${index}.harvested_weight_kg`, { valueAsNumber: true })}
+                  />
+                </Field>
+                <Field label="Note (optional)">
+                  <input className={inputClass} {...register(`lines.${index}.note`)} />
+                </Field>
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {errors.lines?.root && <p className={errorClass}>{errors.lines.root.message}</p>}
 
@@ -210,6 +280,12 @@ export function RecordVinesHarvestForm({
         <div>
           <dt className="text-ink-muted">Gutters in this Harvest</dt>
           <dd className="font-medium text-ink">{fields.length}</dd>
+        </div>
+        <div>
+          <dt className="text-ink-muted">Total raw weight so far</dt>
+          <dd className="tabular-nums font-medium text-ink">
+            {watch("lines").reduce((sum, l) => sum + (l.harvested_weight_kg || 0), 0)} kg
+          </dd>
         </div>
       </dl>
 

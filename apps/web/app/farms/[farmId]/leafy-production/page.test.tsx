@@ -90,15 +90,15 @@ describe("LeafyProductionPage", () => {
   it("renders the Active Production Plates list", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
-    expect(screen.getByText(/Living 180/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    expect(screen.getByText("180")).toBeInTheDocument();
     expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
   });
 
   it("breadcrumbs the grouped-nav parent (Production Operations), not the stale flat-nav Batches label", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     expect(screen.getByText("Production Operations")).toBeInTheDocument();
     expect(screen.queryByText("Batches")).not.toBeInTheDocument();
   });
@@ -106,14 +106,14 @@ describe("LeafyProductionPage", () => {
   it("shows a location warning for a Plate with no current Leafy location", async () => {
     stubFetch({ activePlates: [ZERO_PLATE] });
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-002 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-002")).toBeInTheDocument());
     expect(screen.getByText(/No current Leafy location on record/)).toBeInTheDocument();
   });
 
   it("completes the full Record Plant Loss flow: configure -> review -> confirm -> success", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
@@ -134,7 +134,7 @@ describe("LeafyProductionPage", () => {
   it("blocks Review with an over-loss client-side warning", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -151,7 +151,7 @@ describe("LeafyProductionPage", () => {
   it("requires a note when reason is Other", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -173,7 +173,7 @@ describe("LeafyProductionPage", () => {
       },
     });
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -219,7 +219,7 @@ describe("LeafyProductionPage", () => {
     );
 
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
@@ -247,7 +247,7 @@ describe("LeafyProductionPage", () => {
     ];
     stubFetch({ history: releasedHistory });
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/Released/)).toBeInTheDocument());
@@ -284,7 +284,7 @@ describe("LeafyProductionPage", () => {
     ];
     stubFetch({ history: correctedHistory });
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     // Original REDUCTION: immutable, still shown as "Loss 5 — Dead",
@@ -322,7 +322,7 @@ describe("LeafyProductionPage", () => {
     ];
     stubFetch({ history: voidHistory });
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/Loss 5 — Dead/)).toBeInTheDocument());
@@ -335,7 +335,7 @@ describe("LeafyProductionPage", () => {
   it("allows submitting a correction from history", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
     await waitFor(() => expect(screen.getByText(/Loss 5/)).toBeInTheDocument());
 
@@ -453,7 +453,7 @@ function stubFetchForMove(overrides: Record<string, unknown> = {}) {
 
 async function openMoveForm() {
   render(withQueryClient(<LeafyProductionPage />));
-  await waitFor(() => expect(screen.getByText("PP-900 — ICE-0900")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("PP-900")).toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: /move plate/i }));
   await waitFor(() => expect(screen.getByText("Move plate — PP-900")).toBeInTheDocument());
 }
@@ -478,7 +478,7 @@ describe("Move plate", () => {
   it("renders operator-friendly current placement with a Move plate action, no UUIDs", async () => {
     stubFetchForMove();
     render(withQueryClient(<LeafyProductionPage />));
-    await waitFor(() => expect(screen.getByText("PP-900 — ICE-0900")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PP-900")).toBeInTheDocument());
     expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /move plate/i })).toBeEnabled();
     expect(document.body.textContent).not.toMatch(UUID_PATTERN);

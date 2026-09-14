@@ -128,7 +128,9 @@ describe("VinesHarvestPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /^add$/i })[0]);
 
     await waitFor(() => expect(screen.getByText(/Record Harvest — TOM-001/)).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /remove/i })).toBeInTheDocument();
+    // Two "Remove" affordances now exist by design (PILOT-UX-006): one in
+    // the harvest worksheet row itself, one in the source picker below it.
+    expect(screen.getAllByRole("button", { name: /remove/i }).length).toBeGreaterThanOrEqual(1);
     const otherBatchRow = screen.getByText("GUT-003").closest("tr");
     expect(otherBatchRow).not.toBeNull();
     expect((otherBatchRow as HTMLElement).querySelector("button[disabled]")).toBeTruthy();

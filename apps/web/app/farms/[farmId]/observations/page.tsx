@@ -43,6 +43,7 @@ export default function ObservationsPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const searchParams = useSearchParams();
   const prefillBatchId = searchParams.get("batchId");
+  const prefillAssignmentId = searchParams.get("assignmentId");
 
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(prefillBatchId);
   const [showRecordForm, setShowRecordForm] = useState(Boolean(prefillBatchId));
@@ -173,6 +174,7 @@ export default function ObservationsPage() {
               definitions={definitionsQuery.data ?? []}
               targets={targetsQuery.data ?? []}
               targetsLoading={targetsQuery.isLoading}
+              initialTargetId={selectedBatchId === prefillBatchId ? prefillAssignmentId : null}
               isSubmitting={recordMutation.isPending}
               serverError={recordError}
               onDirtyChange={setFormDirty}

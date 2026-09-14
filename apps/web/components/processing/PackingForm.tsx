@@ -387,6 +387,17 @@ export function PackingForm({
               )}
             </div>
           </fieldset>
+          {(() => {
+            const selectedVersion = selectableVersions.find((v) => v.id === selectedVersionId);
+            if (!selectedVersion) return null;
+            return (
+              <p className="text-xs text-ink-muted">
+                Selected: <span className="font-medium text-ink">{watched.pack_specification_label}</span>
+                {selectedVersion.nominal_net_weight_kg ? ` — nominal ${selectedVersion.nominal_net_weight_kg} kg` : ""}
+                {selectedVersion.whole_units_per_pack ? ` / ${selectedVersion.whole_units_per_pack} units per pack` : ""}
+              </p>
+            );
+          })()}
 
           <fieldset className="grid grid-cols-2 gap-3">
             <Field label="Finished Goods Lot code" error={errors.finished_goods_lot_code?.message}>

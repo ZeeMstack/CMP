@@ -54,6 +54,7 @@ export function RecordObservationForm({
   definitions,
   targets,
   targetsLoading,
+  initialTargetId,
   onSubmit,
   onCancel,
   onDirtyChange,
@@ -64,6 +65,12 @@ export function RecordObservationForm({
   definitions: ObservationDefinitionRead[];
   targets: ObservationTargetRead[];
   targetsLoading: boolean;
+  /** PILOT-UX-006: a Batch Carrier Assignment id carried forward from the
+   * Plate/Gutter the operator was just working on (Leafy/Vines Production's
+   * own "Record observation" link), applied as the Primary target exactly
+   * once its match appears in `targets` -- never guessed/fabricated if it
+   * never matches a real target (e.g. the assignment has since ended). */
+  initialTargetId?: string | null;
   onSubmit: (payload: ObservationEventCreate) => void;
   onCancel: () => void;
   /** PILOT-UX-003: fires whenever "has the operator entered anything worth
@@ -110,6 +117,25 @@ export function RecordObservationForm({
     () => activeDefinitions.filter((d) => d.target_scope !== "crop_batch"),
     [activeDefinitions],
   );
+
+  // Apply a carried-forward target exactly once, only after it actually
+  // resolves against this Batch's own scoped `targets` read -- never assumed
+  // valid just because a caller passed it. Guarded so a later target refetch
+  // (e.g. after recording) never re-applies it over a value the operator has
+  // since changed. Adjusted directly during render (React's own blessed
+  // pattern for reacting to a prop/query settling, mirrors the identical
+  // `prevServerError`/`prevPlateIdsKeyForStaleCheck` guards used elsewhere in
+  // this codebase, e.g. `LeafyHarvestForm.tsx`) rather than in an effect,
+  // which would cause an extra, avoidable cascading render.
+  const [initialTargetApplied, setInitialTargetApplied] = useState(false);
+  if (!initialTargetApplied && initialTargetId && !targetsLoading) {
+    const match = targets.find((t) => t.id === initialTargetId);
+    if (match) {
+      setPrimaryTargetId(match.id);
+      for (const d of targetableDefinitions) setRow(d.id, { targetId: match.id });
+    }
+    setInitialTargetApplied(true);
+  }
   const visibleDefinitions = activeDefinitions.filter(
     (d, idx) => showAllDefinitions || idx < ROUTINE_DEFINITION_LIMIT || Boolean(rows[d.id]?.raw.trim()) || Boolean(rows[d.id]?.targetId),
   );

@@ -17,6 +17,7 @@ export const HARVEST_CORRECTION_REASONS = [
 export const vinesHarvestLineFormSchema = z.object({
   gutter_id: z.string().min(1),
   gutter_code: z.string(),
+  greenhouse_code: z.string(),
   living_plant_count: z.number(),
   harvested_weight_kg: z.number({ error: "Raw harvested weight is required" }).positive("Must be greater than 0"),
   note: z.string(),
@@ -49,7 +50,7 @@ export type RecordVinesHarvestFormValues = z.infer<typeof recordVinesHarvestForm
 
 export const DEFAULT_VINES_HARVEST_LINE_FORM_VALUES: Omit<
   VinesHarvestLineFormValues,
-  "gutter_id" | "gutter_code" | "living_plant_count"
+  "gutter_id" | "gutter_code" | "greenhouse_code" | "living_plant_count"
 > = {
   harvested_weight_kg: 0,
   note: "",

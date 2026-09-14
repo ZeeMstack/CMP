@@ -200,8 +200,9 @@ export function GradingForm({
         <StepIndicator step="review" />
         <h2 className="font-serif text-base font-semibold text-ink">Review before recording</h2>
         <p className="text-sm text-ink-muted">
-          Source <span className="font-medium text-ink">{values.source_produce_lot_code}</span> ·{" "}
-          {values.effective_date} {values.effective_time_of_day}
+          Source <span className="font-medium text-ink">{values.source_produce_lot_code}</span> · Batch{" "}
+          <span className="font-medium text-ink">{sourceLot.batch_code}</span> · {values.effective_date}{" "}
+          {values.effective_time_of_day}
         </p>
         <ReconciliationSummary
           inputLabel="Input presented"
@@ -260,8 +261,13 @@ export function GradingForm({
           <div>
             <h2 className="font-serif text-base font-semibold text-ink">Grade {sourceLot.code}</h2>
             <p className="text-xs text-ink-muted">
-              {sourceLot.crop.common_name}
+              Batch <span className="font-medium text-ink">{sourceLot.batch_code}</span> · {sourceLot.crop.common_name}
               {sourceLot.variety ? ` / ${sourceLot.variety.name}` : ""}
+            </p>
+            <p className="text-xs text-ink-muted">
+              Originally harvested{" "}
+              <span className="font-medium text-ink">{sourceLot.total_harvested_weight_kg} kg</span>
+              {hasCounts ? ` / ${sourceLot.total_whole_unit_count} units` : ""}
             </p>
             <p className="text-xs font-semibold text-ink">
               Gradeable now{" "}

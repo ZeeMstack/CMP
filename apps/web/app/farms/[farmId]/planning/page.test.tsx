@@ -120,7 +120,7 @@ describe("PlanningPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Seeding Program" }));
 
     await waitFor(() => expect(screen.getByText("Sowing recorded")).toBeInTheDocument());
-    expect(screen.getByText("2 sowing records")).toBeInTheDocument();
+    expect(screen.getByText("View sowings (2)")).toBeInTheDocument();
     expect(screen.queryByText("Complete")).not.toBeInTheDocument();
   });
 
