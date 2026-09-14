@@ -328,6 +328,7 @@ export default function GerminationPage() {
           farmId={farmId}
           receipt={receipt}
           rows={rows}
+          onRefreshWorklist={worklist.refetch}
           onDismiss={() => setReceipt(null)}
           onOpenOutcome={(assignmentId) => {
             setReceipt(null);
@@ -530,6 +531,7 @@ export function GerminationReceiptCard({
   farmId,
   receipt,
   rows,
+  onRefreshWorklist,
   onDismiss,
   onOpenOutcome,
   onOpenSeedling,
@@ -537,6 +539,7 @@ export function GerminationReceiptCard({
   farmId: string;
   receipt: NonNullable<Receipt>;
   rows: GerminationWorklistRow[];
+  onRefreshWorklist: () => void;
   onDismiss: () => void;
   onOpenOutcome: (assignmentId: string) => void;
   onOpenSeedling: (assignmentId: string) => void;
@@ -545,38 +548,47 @@ export function GerminationReceiptCard({
   // an empty spec list for receipt kinds with no printable label ("outcome"
   // records no physical placement change) is a no-op for the hook.
   //
-  // PILOT-SCAN-001B FINAL CLOSURE: `place_tray`'s own response
-  // (`TrayPlacementRead`) does not return a `batch_carrier_assignment_id`
-  // -- unlike every other stage's command result. That stable identity
-  // already exists (it was opened at Sowing and simply continues through
-  // this Movement, unchanged) and is already loaded on this exact page: the
-  // Germination worklist read (`useGerminationWorklist` ->
-  // `GerminationTrayRead.batch_carrier_assignment_id`) carries it per tray.
-  // Looking it up here is using an already-authoritative, already-fetched
-  // value -- never inventing one. The bounded fallback to the Carrier's own
-  // permanent QR applies ONLY if that lookup genuinely fails (the tray is
-  // for some reason absent from the currently-loaded worklist snapshot) --
-  // documented in docs/domain/QR_SCAN_MODEL.md.
+  // PILOT-SCAN-001B FINAL CLOSURE (placement identity enforcement):
+  // `place_tray`'s own response (`TrayPlacementRead`) does not return a
+  // `batch_carrier_assignment_id` -- unlike every other stage's command
+  // result. That stable identity already exists (it was opened at Sowing
+  // and simply continues through this Movement, unchanged) and is already
+  // loaded on this exact page: the Germination worklist read
+  // (`useGerminationWorklist` -> `GerminationTrayRead.
+  // batch_carrier_assignment_id`) carries it per tray. Looking it up here
+  // is using an already-authoritative, already-fetched value -- never
+  // inventing one.
+  //
+  // There is NO fallback to the Carrier's own permanent QR here: an
+  // Operational Placement/Stage Label representing Batch + Seed Tray +
+  // Germination placement must never silently become a permanent Carrier
+  // QR (that would let a later, unrelated Batch's occupancy of the same
+  // reused Carrier resolve as if it were THIS placement). If the lookup
+  // genuinely fails (the tray is absent from the currently-loaded
+  // worklist snapshot), no Operational Placement Label is generated at
+  // all -- the render below shows an explicit "not available yet" message
+  // with a Refresh action instead. A "Print Carrier Label" action is
+  // still offered separately, explicitly labelled as the Carrier's own
+  // permanent identity, never presented as this placement's label.
   const placementAssignmentId =
     receipt.kind === "placement" ? rows.find((r) => r.trayId === receipt.trayId)?.assignmentId : undefined;
-  const placementEntityType: "batch_carrier_assignment" | "carrier" = placementAssignmentId
-    ? "batch_carrier_assignment"
-    : "carrier";
   const trayLabelSpecs =
     receipt.kind === "placement"
-      ? [
-          {
-            entityType: placementEntityType,
-            entityId: placementAssignmentId ?? receipt.trayId,
-            ...germinationPlacementLabel({
-              batchCode: receipt.batchCode,
-              trayCode: receipt.trayCode,
-              chamberCode: receipt.chamberCode,
-              trolleyCode: receipt.trolleyCode,
-              positionCode: receipt.positionCode,
-            }),
-          },
-        ]
+      ? placementAssignmentId
+        ? [
+            {
+              entityType: "batch_carrier_assignment" as const,
+              entityId: placementAssignmentId,
+              ...germinationPlacementLabel({
+                batchCode: receipt.batchCode,
+                trayCode: receipt.trayCode,
+                chamberCode: receipt.chamberCode,
+                trolleyCode: receipt.trolleyCode,
+                positionCode: receipt.positionCode,
+              }),
+            },
+          ]
+        : []
       : receipt.kind === "seedling"
         ? [
             {
@@ -599,15 +611,36 @@ export function GerminationReceiptCard({
           Seed Tray {receipt.trayCode} ({receipt.batchCode}) moved to Trolley {receipt.trolleyCode} / Chamber{" "}
           {receipt.chamberCode} / {receipt.positionCode}.
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!trayLabels.labels || trayLabels.labels.length === 0}
-            onClick={() => trayLabels.labels && printLabels(trayLabels.labels)}
-          >
-            {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {placementAssignmentId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!trayLabels.labels || trayLabels.labels.length === 0}
+              onClick={() => trayLabels.labels && printLabels(trayLabels.labels)}
+            >
+              {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
+            </Button>
+          ) : (
+            <>
+              <p className="text-sm text-wl-text-secondary">
+                Placement identity is not available yet. Refresh before printing.
+              </p>
+              <Button type="button" variant="secondary" onClick={onRefreshWorklist}>
+                Refresh
+              </Button>
+              {/* A different label type from the Operational Placement Label
+                  above -- the Carrier's own permanent identity, never this
+                  placement's identity. Kept available so the operator is
+                  not left with no printable label at all. */}
+              <Link
+                href={`/farms/${farmId}/labels/carrier/${receipt.trayId}`}
+                className="text-xs font-medium text-wl-text-secondary underline hover:text-wl-text"
+              >
+                Print Carrier Label instead
+              </Link>
+            </>
+          )}
           {row?.nextAction.kind === "record_outcome" && (
             <Button type="button" variant="primary" onClick={() => onOpenOutcome(row.assignmentId)}>
               Record outcome

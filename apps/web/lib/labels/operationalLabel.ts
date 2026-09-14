@@ -4,22 +4,32 @@ import type { LabelSize } from "@/components/labels/LabelCard";
  * presentation-only shape every stage-label builder below returns. Never
  * a new source of domain truth: every field passed into these builders
  * must already come from an already-authoritative read (a just-succeeded
- * command's own response), never invented/guessed/re-derived.
+ * command's own response), never invented/guessed/re-derived. This module
+ * is deliberately QR-entity-agnostic -- it only formats what gets
+ * PRINTED; which QR entity type/id backs a label is decided by each
+ * calling page (see `docs/domain/QR_SCAN_MODEL.md`'s per-stage table).
  *
- * Distinguishes, per `docs/domain/QR_SCAN_MODEL.md`'s frozen terms:
+ * Distinguishes, per `docs/domain/QR_SCAN_MODEL.md`'s frozen terms and
+ * the FINAL CLOSURE entity-selection rule (no implicit fallback between
+ * these three meanings):
  *  - Batch Master Label: identifies the biological Batch itself
  *    (QR entity_type "crop_batch"). One per Batch, never one per tray.
+ *  - Permanent Carrier Label: identifies a reusable Carrier's own
+ *    physical identity (QR entity_type "carrier"), independent of which
+ *    Batch it currently holds -- PILOT-SCAN-001's original generic label.
  *  - Operational Placement Label: identifies ONE specific physical
  *    carrier/placement (a Seed Tray, Nursery/Production Cultivation
  *    Plate, Grow Cube, or Grow Bag) together with a PRINT-TIME SNAPSHOT
- *    of the batch/stage/location context it currently holds. The QR
- *    itself is the same Carrier's own permanent identity (entity_type
- *    "carrier") as its Permanent Carrier Label -- the only difference is
- *    the printed TEXT, which is stage-aware here. This keeps every stage
- *    (including Germination, whose own command response carries no
- *    `batch_carrier_assignment_id`) on one uniform, backend-untouched QR
- *    entity type, and lets "Reprint" for any of these later reuse the
- *    exact same generic Carrier label route PILOT-SCAN-001 already built.
+ *    of the batch/stage/location context it currently holds. Its QR is
+ *    ALWAYS the stable Batch-placement identity (entity_type
+ *    "batch_carrier_assignment"), never the reusable Carrier's own
+ *    identity -- a Carrier can later hold a different Batch, and a
+ *    placement label must keep resolving THIS placement for its whole
+ *    physical life, never silently become the new occupant's label. If
+ *    no stable placement id is available (Germination placement is the
+ *    one stage where this can genuinely happen -- see
+ *    `germination/page.tsx`'s `GerminationReceiptCard`), NO Operational
+ *    Placement Label is built at all; there is no Carrier-QR fallback.
  *  - Both label kinds use the STANDARD (100x60mm) template -- per
  *    `LabelCard.tsx`'s own existing size rationale, "standard" is for
  *    "operational identity, more identifying text to fit"; a stage label

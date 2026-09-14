@@ -515,7 +515,7 @@ describe("GerminationPage worklist", () => {
   });
 });
 
-describe("GerminationReceiptCard (PILOT-SCAN-001B FINAL CLOSURE: placement QR entity selection)", () => {
+describe("GerminationReceiptCard (PILOT-SCAN-001B: placement identity enforcement, no Carrier fallback)", () => {
   const placementReceipt = {
     kind: "placement" as const,
     batchCode: "CB-0001",
@@ -544,6 +544,7 @@ describe("GerminationReceiptCard (PILOT-SCAN-001B FINAL CLOSURE: placement QR en
         farmId="farm-1"
         receipt={placementReceipt}
         rows={[{ ...TRAYS[0], assignmentId: "bca-1", trayId: "tray-1" } as never]}
+        onRefreshWorklist={() => {}}
         onDismiss={() => {}}
         onOpenOutcome={() => {}}
         onOpenSeedling={() => {}}
@@ -556,42 +557,64 @@ describe("GerminationReceiptCard (PILOT-SCAN-001B FINAL CLOSURE: placement QR en
     vi.unstubAllGlobals();
   });
 
-  it("falls back to the Carrier's own permanent QR ONLY when no matching worklist row/assignment id is found for this tray", async () => {
-    let requestedEntityType: string | null = null;
+  it("generates NO Operational Placement Label and never requests a Carrier QR when no matching worklist row/assignment id is found -- shows an unavailable/retry message instead", async () => {
+    let generateCalled = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (init?.method === "POST" && url.includes("/qr/carrier/tray-1/generate")) {
-          requestedEntityType = "carrier";
-          return jsonResponse({ id: "qr-1", entity_type: "carrier", token: "tok-1", created_at: "2026-01-01T00:00:00Z" });
-        }
-        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment")) {
-          requestedEntityType = "batch_carrier_assignment";
+        if (init?.method === "POST" && url.includes("/qr/") && url.includes("/generate")) {
+          generateCalled = true;
         }
         return jsonResponse({});
       }),
     );
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const refreshSpy = vi.fn();
 
-    // Empty `rows` -- simulates the one bounded, documented case where this
-    // tray genuinely cannot be found in the currently-loaded worklist
-    // snapshot, so no assignment id is available to this component.
+    // Empty `rows` -- simulates the one case where this tray genuinely
+    // cannot be found in the currently-loaded worklist snapshot, so no
+    // assignment id is available to this component.
     render(
       <GerminationReceiptCard
         farmId="farm-1"
         receipt={placementReceipt}
         rows={[]}
+        onRefreshWorklist={refreshSpy}
         onDismiss={() => {}}
         onOpenOutcome={() => {}}
         onOpenSeedling={() => {}}
       />,
     );
 
-    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
-    fireEvent.click(printButton);
-    await waitFor(() => expect(openSpy).toHaveBeenCalledTimes(1));
-    expect(requestedEntityType).toBe("carrier");
+    // No "Print Tray Label" button at all -- no QR of any kind is ever
+    // generated for this placement when its identity is unavailable.
+    expect(screen.queryByRole("button", { name: "Print Tray Label" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Placement identity is not available yet\. Refresh before printing\./)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    // Give any stray async effect a tick, then confirm no QR generate call
+    // of any entity type was ever made.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(generateCalled).toBe(false);
     vi.unstubAllGlobals();
+  });
+
+  it("still offers an explicitly-labelled 'Print Carrier Label instead' link -- a different, clearly distinct label type, never presented as this placement's label", async () => {
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[]}
+        onRefreshWorklist={() => {}}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    const carrierLink = screen.getByRole("link", { name: "Print Carrier Label instead" });
+    expect(carrierLink).toHaveAttribute("href", "/farms/farm-1/labels/carrier/tray-1");
   });
 });
