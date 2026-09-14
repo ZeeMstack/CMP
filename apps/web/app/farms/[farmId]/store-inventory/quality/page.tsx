@@ -1,7 +1,7 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { Fragment } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Fragment, useEffect } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ErrorState } from "@/components/ErrorState";
@@ -68,6 +68,13 @@ const ORDINARY_ACTIONS: Record<string, string[]> = {
  * action; it never auto-retargets. */
 export default function StoreInventoryQualityPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  // PILOT-BLOCKER-009 R2: a row-specific "Review" launched from Store
+  // Operations carries the cohort id it means, but this URL parameter is
+  // never trusted as authorization or proof of existence -- it is only
+  // resolved against this page's own scoped queue read below, and it never
+  // opens or executes any action by itself.
+  const continuationCohortId = searchParams.get("cohortId");
   const queueQuery = useQualityWorkQueue();
   const draft = useQualityCommandDraft();
   const farmsQuery = useFarms();
@@ -94,6 +101,19 @@ export default function StoreInventoryQualityPage() {
   // failed", never "empty".
   const hasQueueData = queueQuery.data !== undefined;
 
+  const continuationRow = continuationCohortId
+    ? rows.find((row) => row.inventory_quantity_cohort_id === continuationCohortId)
+    : undefined;
+  // Only a resolved, successful read can say the target is genuinely gone --
+  // while still loading/stale-erroring, silence rather than a false "gone".
+  const continuationMissing = Boolean(continuationCohortId) && hasQueueData && !queueQuery.isError && !continuationRow;
+
+  useEffect(() => {
+    if (!continuationRow) return;
+    const element = document.getElementById(`quality-row-${continuationRow.inventory_quantity_cohort_id}`);
+    element?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  }, [continuationRow]);
+
   return (
     <div>
       <PageHeader
@@ -110,6 +130,12 @@ export default function StoreInventoryQualityPage() {
         }
       />
       <StoreSubNav farmId={farmId} />
+
+      {continuationMissing && (
+        <p className="mb-3 rounded-md border border-wl-border bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
+          That Quality item is no longer in the current work queue.
+        </p>
+      )}
 
       {queueQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>
@@ -157,6 +183,7 @@ export default function StoreInventoryQualityPage() {
               // has nothing to correct, exactly like RECEIVED_QUARANTINED.
               const canCorrect = row.current_event_id !== null && row.current_state !== "RECEIVED_QUARANTINED";
               const isOpenForThisRow = draft.context?.cohortId === row.inventory_quantity_cohort_id;
+              const isContinuationTarget = continuationRow?.inventory_quantity_cohort_id === row.inventory_quantity_cohort_id;
               // PILOT-BLOCKER-008 A2: once a command is submitting or its
               // outcome is uncertain, opening ANY action -- on this row or
               // another -- must never silently discard its frozen id/
@@ -167,7 +194,10 @@ export default function StoreInventoryQualityPage() {
               const uomCode = uomCodeById.get(row.base_uom_id);
               return (
                 <Fragment key={row.inventory_quantity_cohort_id}>
-                <tr className={`border-b border-wl-border last:border-0 hover:bg-wl-surface-hover ${isOpenForThisRow ? "bg-wl-brand-subtle" : ""}`}>
+                <tr
+                  id={`quality-row-${row.inventory_quantity_cohort_id}`}
+                  className={`border-b border-wl-border last:border-0 hover:bg-wl-surface-hover ${isOpenForThisRow || isContinuationTarget ? "bg-wl-brand-subtle" : ""}`}
+                >
                   <td className="p-3 align-top">
                     <p className="font-medium text-wl-text">{row.item_name}</p>
                     <p className="text-xs text-wl-text-secondary">

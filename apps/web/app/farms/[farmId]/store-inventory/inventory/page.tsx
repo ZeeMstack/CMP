@@ -18,6 +18,18 @@ import {
   useRecordInventoryScrap, useRecordInventoryStorageTransfer, useUoms,
 } from "@/lib/query/hooks";
 
+// PILOT-BLOCKER-009 R7: the Quality work queue lists every positive-balance
+// cohort company-wide, RELEASED/HOLD_RELEASED (ordinary, usable) stock
+// included (docs/domain/STORE_INVENTORY_MODEL.md §11) -- membership alone is
+// never an exception. Only these `current_state` values are an authoritative
+// exception a cohort can be in.
+const EXCEPTION_STATES = new Set(["RECEIVED_QUARANTINED", "HELD", "REJECTED"]);
+const EXCEPTION_REASON_LABEL: Record<string, string> = {
+  RECEIVED_QUARANTINED: "Awaiting Quality",
+  HELD: "On hold",
+  REJECTED: "Rejected",
+};
+
 const inputClass =
   "min-h-9 w-full rounded-md border border-wl-border bg-wl-surface px-2 text-xs text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const labelClass = "block text-[11px] font-medium text-wl-text-secondary";
@@ -352,7 +364,7 @@ function CohortCustodyRow({
  * only for its own cohorts (`useCohortStorageBreakdown`, one per cohort
  * actually shown here) -- never eagerly across the whole Inventory list. */
 function SelectedStockPanel({
-  itemId, itemName, farmId, uomCode, activeBins, farmNameById,
+  itemId, itemName, farmId, uomCode, activeBins, farmNameById, exceptionStateByCohortId,
 }: {
   itemId: string;
   itemName: string;
@@ -360,6 +372,7 @@ function SelectedStockPanel({
   uomCode: string | undefined;
   activeBins: { id: string; label: string }[];
   farmNameById: Map<string, string>;
+  exceptionStateByCohortId: Map<string, string>;
 }) {
   const availabilityQuery = useItemFarmAvailability(farmId, itemId);
   const notPutAwayQuery = useItemStorageBreakdown(itemId);
@@ -395,20 +408,29 @@ function SelectedStockPanel({
           <p className="text-sm text-wl-text-secondary">No cohorts contribute to this total.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {rows.map((row) => (
-              <li key={row.inventory_quantity_cohort_id} className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                  <span className="text-wl-text">
-                    Received at{" "}
-                    <span className="font-medium">
-                      {farmNameById.get(row.received_at_farm_id) ?? `Farm ${row.received_at_farm_id.slice(0, 8)}`}
+            {rows.map((row) => {
+              const exceptionState = exceptionStateByCohortId.get(row.inventory_quantity_cohort_id);
+              const exceptionReason = exceptionState ? EXCEPTION_REASON_LABEL[exceptionState] ?? exceptionState : null;
+              return (
+                <li key={row.inventory_quantity_cohort_id} className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+                    <span className="text-wl-text">
+                      Received at{" "}
+                      <span className="font-medium">
+                        {farmNameById.get(row.received_at_farm_id) ?? `Farm ${row.received_at_farm_id.slice(0, 8)}`}
+                      </span>
+                      {exceptionReason && (
+                        <span className="ml-2 inline-flex w-fit items-center rounded-full bg-wl-hold-bg px-2 py-0.5 text-[11px] font-medium text-wl-hold-fg">
+                          {exceptionReason}
+                        </span>
+                      )}
                     </span>
-                  </span>
-                  <span className="font-medium tabular-nums text-wl-text">{row.balance}{uomCode ? ` ${uomCode}` : ""}</span>
-                </div>
-                <CohortCustodyRow cohortId={row.inventory_quantity_cohort_id} farmId={farmId} activeBins={activeBins} />
-              </li>
-            ))}
+                    <span className="font-medium tabular-nums text-wl-text">{row.balance}{uomCode ? ` ${uomCode}` : ""}</span>
+                  </div>
+                  <CohortCustodyRow cohortId={row.inventory_quantity_cohort_id} farmId={farmId} activeBins={activeBins} />
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -472,13 +494,38 @@ export default function StoreInventoryInventoryPage() {
   const farmNameById = new Map((farmsQuery.data ?? []).map((f) => [f.id, f.name]));
 
   // ONE company-wide read for the whole page (never per-item/per-cohort) --
-  // an Item has "Attention" here only if a queue row for one of its cohorts
-  // was actually received at THIS Farm.
+  // an Item has "Attention" here only if one of its cohorts received at
+  // THIS Farm carries a real authoritative exception state (R7). The
+  // Quality work queue itself lists every positive-balance cohort
+  // company-wide, RELEASED/HOLD_RELEASED included -- mere membership was
+  // the pre-fix defect, never treated as an exception on its own.
+  //
+  // R6 residual (unchanged pre-existing choice, not solved by this ticket):
+  // `received_at_farm_id` is receipt provenance only, never authoritative
+  // current custody (docs/domain/STORE_INVENTORY_MODEL.md §7) -- so this
+  // Farm filter is a heuristic ("likely still near where it was received"),
+  // not a custody-authoritative scope. Precise current-Farm Attention scope
+  // needs custody/location-farm metadata this read model does not expose.
   const qualityQueueQuery = useQualityWorkQueue();
-  const attentionItemIds = new Set(
+  const hasQualityQueueData = qualityQueueQuery.data !== undefined;
+  const exceptionRowsForFarm = hasQualityQueueData
+    ? (qualityQueueQuery.data ?? []).filter(
+        (row) => row.received_at_farm_id === farmId && EXCEPTION_STATES.has(row.current_state),
+      )
+    : [];
+  const exceptionReasonsByItemId = new Map<string, Set<string>>();
+  exceptionRowsForFarm.forEach((row) => {
+    const reasons = exceptionReasonsByItemId.get(row.inventory_item_id) ?? new Set<string>();
+    reasons.add(row.current_state);
+    exceptionReasonsByItemId.set(row.inventory_item_id, reasons);
+  });
+  // Company-wide (not Farm-filtered) -- feeds the selected-item panel, which
+  // shows each contributing cohort's own exception regardless of which Farm
+  // received it.
+  const exceptionStateByCohortId = new Map(
     (qualityQueueQuery.data ?? [])
-      .filter((row) => row.received_at_farm_id === farmId)
-      .map((row) => row.inventory_item_id),
+      .filter((row) => EXCEPTION_STATES.has(row.current_state))
+      .map((row) => [row.inventory_quantity_cohort_id, row.current_state]),
   );
 
   // Deferred until the operator actually opens the section -- never fetched
@@ -528,7 +575,7 @@ export default function StoreInventoryInventoryPage() {
                 {items.map((item) => {
                   const isSelected = selectedItemId === item.id;
                   const uomCode = uomsById.get(item.base_uom_id);
-                  const hasAttention = attentionItemIds.has(item.id);
+                  const exceptionReasons = exceptionReasonsByItemId.get(item.id);
                   return (
                     <tr
                       key={item.id}
@@ -545,13 +592,18 @@ export default function StoreInventoryInventoryPage() {
                       </td>
                       <FarmScopedCells itemId={item.id} farmId={farmId} uomCode={uomCode} />
                       <td className="p-3">
-                        {qualityQueueQuery.isLoading ? (
+                        {qualityQueueQuery.isLoading && !hasQualityQueueData ? (
                           <span className="text-xs text-wl-text-secondary">…</span>
-                        ) : qualityQueueQuery.isError ? (
+                        ) : qualityQueueQuery.isError && !hasQualityQueueData ? (
                           <span className="text-xs text-wl-flag-fg">Unavailable</span>
-                        ) : hasAttention ? (
-                          <span className="inline-flex w-fit items-center rounded-full bg-wl-hold-bg px-2 py-0.5 text-xs font-medium text-wl-hold-fg">
-                            Attention
+                        ) : exceptionReasons && exceptionReasons.size > 0 ? (
+                          <span
+                            title={[...exceptionReasons].map((s) => EXCEPTION_REASON_LABEL[s] ?? s).join(", ")}
+                            className="inline-flex w-fit items-center rounded-full bg-wl-hold-bg px-2 py-0.5 text-xs font-medium text-wl-hold-fg"
+                          >
+                            {exceptionReasons.size === 1
+                              ? EXCEPTION_REASON_LABEL[[...exceptionReasons][0]] ?? [...exceptionReasons][0]
+                              : `${exceptionReasons.size} exceptions`}
                           </span>
                         ) : (
                           <span className="text-xs text-wl-text-secondary">—</span>
@@ -584,6 +636,7 @@ export default function StoreInventoryInventoryPage() {
               uomCode={uomsById.get(selectedItem.base_uom_id)}
               activeBins={activeBins}
               farmNameById={farmNameById}
+              exceptionStateByCohortId={exceptionStateByCohortId}
             />
           )}
 
