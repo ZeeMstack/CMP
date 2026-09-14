@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { intersaladsPlacementLabel } from "@/lib/labels/operationalLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
+import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordIntersaladsTransplant } from "@/lib/query/hooks";
 
 function asAppError(error: unknown): AppError {
@@ -33,6 +36,23 @@ export default function IntersaladsTransplantPage() {
   const [success, setSuccess] = useState<SuccessResult | null>(null);
 
   const mutation = useRecordIntersaladsTransplant(farmId);
+
+  // PILOT-SCAN-001B FINAL CLOSURE: the destination Batch Carrier
+  // Assignment this transplant line itself just opened, not the
+  // destination Carrier's own permanent identity -- see the identical
+  // rationale in `sowings/new/page.tsx`.
+  const placementLabelSpecs = success
+    ? success.transplant.destination_lines.map((line) => ({
+        entityType: "batch_carrier_assignment" as const,
+        entityId: line.destination_batch_carrier_assignment_id,
+        ...intersaladsPlacementLabel({
+          batchCode: success.transplant.batch_code,
+          carrierCode: line.carrier.code,
+          tableCode: success.tableCodeById[line.destination_location_id] ?? "—",
+        }),
+      }))
+    : [];
+  const placementLabels = usePreparedPrintLabels(farmId, placementLabelSpecs);
 
   function startNew(batchId?: string) {
     setSuccess(null);
@@ -135,6 +155,14 @@ export default function IntersaladsTransplantPage() {
             );
             return (
               <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!placementLabels.labels || placementLabels.labels.length === 0}
+                  onClick={() => placementLabels.labels && printLabels(placementLabels.labels)}
+                >
+                  {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
+                </Button>
                 {totalRemaining > 0 && (
                   <Button type="button" variant="primary" onClick={() => startNew(success.transplant.batch_id)}>
                     Transplant remaining trays

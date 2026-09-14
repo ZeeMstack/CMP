@@ -19,6 +19,14 @@ const DIMENSIONS: Record<LabelSize, { widthMm: number; heightMm: number; qrMm: n
   standard: { widthMm: 100, heightMm: 60, qrMm: 32 },
 };
 
+/** PILOT-SCAN-001B: exported so the label-only print document
+ * (`/print/labels`, which may mix SMALL and STANDARD labels in one print
+ * job -- e.g. a Batch Master Label alongside several Tray labels) can
+ * size each physical page correctly without duplicating these mm values. */
+export function labelDimensionsMm(size: LabelSize): { widthMm: number; heightMm: number } {
+  return DIMENSIONS[size];
+}
+
 export function LabelCard({
   size,
   entityTypeLabel,

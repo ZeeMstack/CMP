@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
 
 import { withQueryClient } from "@/lib/test-utils";
 
-import GerminationPage from "./page";
+import GerminationPage, { GerminationReceiptCard } from "./page";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -189,6 +189,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("GerminationPage worklist", () => {
@@ -259,9 +260,13 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(OUTCOMES_BY_BATCH[batchId] ?? emptyOutcomes(batchId, ""));
         }
         if (url.includes("/nursery/seedling/trays")) return jsonResponse(SEEDLING_TRAYS);
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-1/generate")) {
+          return jsonResponse({ id: "qr-tray-1", entity_type: "batch_carrier_assignment", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
+        }
         return jsonResponse([]);
       }),
     );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
 
@@ -282,6 +287,23 @@ describe("GerminationPage worklist", () => {
     );
     // Bca-1 is now placed and unobserved -- the truthful next step is offered directly.
     expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument();
+
+    // PILOT-SCAN-001B: "Print Tray Label" -- the QR token is prepared in the
+    // background as soon as the receipt renders, so by the time the operator
+    // clicks it, the print window opens synchronously with the Chamber/
+    // Trolley/Level context this exact placement just recorded.
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [openedUrl] = openSpy.mock.calls[0];
+    const encodedItems = new URL(String(openedUrl), "http://localhost").searchParams.get("items") ?? "[]";
+    const printedLabels = JSON.parse(encodedItems) as Array<{ token: string; code: string; lines: string[] }>;
+    expect(printedLabels).toHaveLength(1);
+    expect(printedLabels[0].token).toBe("tok-tray-1");
+    expect(printedLabels[0].code).toBe("ST-0001");
+    expect(printedLabels[0].lines.join(" ")).toContain("GC-01");
+    expect(printedLabels[0].lines.join(" ")).toContain("GT-01");
+    expect(printedLabels[0].lines.join(" ")).toContain("GT-01-L01");
   });
 
   it("clicking a row's Record outcome opens with that exact assignment frozen -- no reselection", async () => {
@@ -353,9 +375,13 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(SEEDLING_TRAYS);
         }
         if (url.includes("/nursery/seedling/tables/available")) return jsonResponse([{ id: "table-1", code: "ST01", name: "Table 1", capacity: 4, active_tray_count: 0, remaining_capacity: 4, seedling_area: { id: "area-1", code: "SA", name: "Seedling Area" }, greenhouse: { id: "gh-1", code: "NUR", name: "Nursery" } }]);
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-2/generate")) {
+          return jsonResponse({ id: "qr-tray-2", entity_type: "batch_carrier_assignment", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
+        }
         return jsonResponse([]);
       }),
     );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0002")).toBeInTheDocument());
@@ -389,6 +415,18 @@ describe("GerminationPage worklist", () => {
     await waitFor(() =>
       expect(screen.getByText(/Seed Tray ST-0002 \(CB-0002\) moved to Seedling Table ST01 — 196 living seedlings/)).toBeInTheDocument(),
     );
+
+    // PILOT-SCAN-001B: same physical Seed Tray identity carries into the
+    // Seedling-stage label -- Seedling entry never swaps carriers.
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [openedUrl] = openSpy.mock.calls[0];
+    const encodedItems = new URL(String(openedUrl), "http://localhost").searchParams.get("items") ?? "[]";
+    const printedLabels = JSON.parse(encodedItems) as Array<{ token: string; code: string; lines: string[] }>;
+    expect(printedLabels[0].token).toBe("tok-tray-2");
+    expect(printedLabels[0].code).toBe("ST-0002");
+    expect(printedLabels[0].lines.join(" ")).toContain("ST01");
   });
 
   it("seeds the Batch filter from the incoming URL context and keeps it editable", async () => {
@@ -474,5 +512,109 @@ describe("GerminationPage worklist", () => {
     await waitFor(() => expect(screen.getByLabelText(/^trolley$/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+  });
+});
+
+describe("GerminationReceiptCard (PILOT-SCAN-001B: placement identity enforcement, no Carrier fallback)", () => {
+  const placementReceipt = {
+    kind: "placement" as const,
+    batchCode: "CB-0001",
+    trayId: "tray-1",
+    trayCode: "ST-0001",
+    trolleyCode: "GT-01",
+    chamberCode: "GC-01",
+    positionCode: "GT-01-L01",
+  };
+
+  it("uses the batch_carrier_assignment QR when the worklist already has a stable assignment id for this tray", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-1/generate")) {
+          return jsonResponse({ id: "qr-1", entity_type: "batch_carrier_assignment", token: "tok-1", created_at: "2026-01-01T00:00:00Z" });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[{ ...TRAYS[0], assignmentId: "bca-1", trayId: "tray-1" } as never]}
+        onRefreshWorklist={() => {}}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("generates NO Operational Placement Label and never requests a Carrier QR when no matching worklist row/assignment id is found -- shows an unavailable/retry message instead", async () => {
+    let generateCalled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.includes("/qr/") && url.includes("/generate")) {
+          generateCalled = true;
+        }
+        return jsonResponse({});
+      }),
+    );
+    const refreshSpy = vi.fn();
+
+    // Empty `rows` -- simulates the one case where this tray genuinely
+    // cannot be found in the currently-loaded worklist snapshot, so no
+    // assignment id is available to this component.
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[]}
+        onRefreshWorklist={refreshSpy}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    // No "Print Tray Label" button at all -- no QR of any kind is ever
+    // generated for this placement when its identity is unavailable.
+    expect(screen.queryByRole("button", { name: "Print Tray Label" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Placement identity is not available yet\. Refresh before printing\./)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    // Give any stray async effect a tick, then confirm no QR generate call
+    // of any entity type was ever made.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(generateCalled).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("still offers an explicitly-labelled 'Print Carrier Label instead' link -- a different, clearly distinct label type, never presented as this placement's label", async () => {
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[]}
+        onRefreshWorklist={() => {}}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    const carrierLink = screen.getByRole("link", { name: "Print Carrier Label instead" });
+    expect(carrierLink).toHaveAttribute("href", "/farms/farm-1/labels/carrier/tray-1");
   });
 });

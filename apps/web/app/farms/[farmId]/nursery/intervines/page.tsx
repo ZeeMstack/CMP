@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import type { IntervinesTransplantRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { intervinesPlacementLabel } from "@/lib/labels/operationalLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
+import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useIntervinesPlacementGrowCubes, useIntervinesPlacements, useRecordIntervinesTransplant } from "@/lib/query/hooks";
 
 function asAppError(error: unknown): AppError {
@@ -34,6 +37,26 @@ export default function IntervinesTransplantPage() {
   const [success, setSuccess] = useState<SuccessResult | null>(null);
 
   const mutation = useRecordIntervinesTransplant(farmId);
+
+  // PILOT-SCAN-001B: Grow Cube placements only -- Grow Bags do not exist
+  // at this stage, so this label never references one.
+  //
+  // PILOT-SCAN-001B FINAL CLOSURE: QR identifies the destination Batch
+  // Carrier Assignment this transplant line itself just opened, not the
+  // Grow Cube's own permanent identity -- see the identical rationale in
+  // `sowings/new/page.tsx`.
+  const placementLabelSpecs = success
+    ? success.transplant.grow_cubes.map((gc) => ({
+        entityType: "batch_carrier_assignment" as const,
+        entityId: gc.destination_batch_carrier_assignment_id,
+        ...intervinesPlacementLabel({
+          batchCode: success.transplant.batch_code,
+          carrierCode: gc.carrier.code,
+          tableCode: success.tableCode,
+        }),
+      }))
+    : [];
+  const placementLabels = usePreparedPrintLabels(farmId, placementLabelSpecs);
 
   function startNew(batchId?: string) {
     setSuccess(null);
@@ -92,6 +115,14 @@ export default function IntervinesTransplantPage() {
           </details>
 
           <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!placementLabels.labels || placementLabels.labels.length === 0}
+              onClick={() => placementLabels.labels && printLabels(placementLabels.labels)}
+            >
+              {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
+            </Button>
             <Button type="button" variant="primary" onClick={() => startNew(success.transplant.batch_id)}>
               Continue this Batch
             </Button>

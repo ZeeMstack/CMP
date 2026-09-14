@@ -74,6 +74,13 @@ describe("classifyRoute", () => {
     expect(classifyRoute("/farms/abc/crop-batches/xyz")).toBe("protected");
   });
 
+  it("classifies the QR scan and label-only print routes as protected (PILOT-SCAN-001, PILOT-SCAN-001B)", () => {
+    expect(classifyRoute("/q")).toBe("protected");
+    expect(classifyRoute("/q/abc123")).toBe("protected");
+    expect(classifyRoute("/print")).toBe("protected");
+    expect(classifyRoute("/print/labels")).toBe("protected");
+  });
+
   it("classifies /admin routes as platform-admin, never protected (PILOT-SETUP-001B3)", () => {
     expect(classifyRoute("/admin/tenants")).toBe("platform-admin");
     expect(classifyRoute("/admin/tenants/new")).toBe("platform-admin");
@@ -93,6 +100,26 @@ describe("classifyRoute", () => {
 
   it("classifies anything else as unclassified", () => {
     expect(classifyRoute("/some-unknown-route")).toBe("unclassified");
+  });
+});
+
+describe("PILOT-SCAN-001B FINAL CLOSURE: /print/labels is a normal protected route, never an unauthenticated information-disclosure route", () => {
+  it("an unauthenticated visit to /print/labels redirects to /login with returnTo preserved -- the print-only document never renders unauthenticated", () => {
+    const pathname = "/print/labels";
+    const search = '?items=[{"token":"tok-1"}]';
+    expect(classifyRoute(pathname)).toBe("protected");
+    const decision = decideRouteAccess({ routeClass: classifyRoute(pathname), phase: "unauthenticated", pathname, search });
+    expect(decision).toEqual({
+      kind: "redirect",
+      to: `/login?returnTo=${encodeURIComponent(`${pathname}${search}`)}`,
+    });
+  });
+
+  it("a ready, authenticated session is allowed through -- no second/weaker auth mechanism for this route", () => {
+    const pathname = "/print/labels";
+    expect(
+      decideRouteAccess({ routeClass: classifyRoute(pathname), phase: "ready", pathname, search: "" }),
+    ).toEqual({ kind: "allow" });
   });
 });
 
