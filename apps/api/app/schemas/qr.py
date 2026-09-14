@@ -183,6 +183,11 @@ class PrintLabelRequest(BaseModel):
 
 
 class PrintLabelResponse(BaseModel):
+    """`requested_at`, not `printed_at`: a browser print dialog cannot
+    prove a physical label was actually produced (PILOT-SCAN-001 FINAL
+    SECURITY CLOSURE) -- this only records when the print request was
+    made."""
+
     qr_identifier_id: uuid.UUID
-    printed_at: datetime
+    requested_at: datetime
     is_reprint: bool

@@ -1,13 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ farmId: "farm-1", entityType: "carrier", entityId: "carrier-1" }),
+// Renders the exact `value` qrcode.react was asked to encode as plain
+// text -- the most direct, implementation-stable way to prove what URL
+// was actually handed to the QR renderer, without decoding SVG modules.
+vi.mock("qrcode.react", () => ({
+  QRCodeSVG: ({ value }: { value: string }) => <svg data-testid="qr-value">{value}</svg>,
 }));
 
 import { withQueryClient } from "@/lib/test-utils";
 
-import LabelPreviewPage from "./page";
+import { LabelPreviewClient } from "./LabelPreviewClient";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -57,10 +60,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("LabelPreviewPage", () => {
+function renderPreview(canonicalAppOrigin: string | null = "https://growcmp.com") {
+  return render(
+    withQueryClient(
+      <LabelPreviewClient farmId="farm-1" entityType="carrier" entityId="carrier-1" canonicalAppOrigin={canonicalAppOrigin} />,
+    ),
+  );
+}
+
+describe("LabelPreviewClient", () => {
   it("shows a human-readable code alongside the QR", async () => {
     stubFetch();
-    render(withQueryClient(<LabelPreviewPage />));
+    renderPreview();
 
     await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
     expect(screen.getByText("Production Cultivation Plate")).toBeInTheDocument();
@@ -69,18 +80,53 @@ describe("LabelPreviewPage", () => {
 
   it("reprinting reuses the same QR identity -- generate is called at most once per entity", async () => {
     const calls = stubFetch();
-    render(withQueryClient(<LabelPreviewPage />));
+    renderPreview();
     await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
-    await waitFor(() => expect(screen.getByText(/print recorded/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
-    await waitFor(() => expect(screen.getByText(/reprint recorded/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
 
     const generateCalls = calls.filter((c) => c.url.includes("/qr/carrier/carrier-1/generate"));
     expect(generateCalls.length).toBe(1);
     const printCalls = calls.filter((c) => c.url.includes("/qr/tok-abc/print"));
     expect(printCalls.length).toBe(2);
+  });
+
+  it("the print-recorded message never claims the physical label was actually produced", async () => {
+    stubFetch();
+    renderPreview();
+    await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+    expect(screen.queryByText(/print recorded/i)).not.toBeInTheDocument();
+  });
+
+  it("PILOT-SCAN-001 FINAL SECURITY CLOSURE: refuses to render a QR when no canonical origin is configured, rather than falling back to the browser's own origin", async () => {
+    stubFetch();
+    renderPreview(null);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByText(/APP_BASE_URL/)).toBeInTheDocument();
+    expect(screen.queryByTestId("qr-value")).not.toBeInTheDocument();
+  });
+
+  it("PILOT-SCAN-001 FINAL SECURITY CLOSURE: the printed QR is built from the configured canonical origin, never window.location.origin", async () => {
+    // jsdom's default window origin is http://localhost:3000 -- prove the
+    // rendered QR ignores it entirely when a different canonical origin is
+    // configured (as production, with APP_BASE_URL=https://growcmp.com,
+    // always would be).
+    expect(window.location.origin).toBe("http://localhost:3000");
+
+    stubFetch();
+    renderPreview("https://growcmp.com");
+
+    await waitFor(() => expect(screen.getByTestId("qr-value")).toBeInTheDocument());
+    const encoded = screen.getByTestId("qr-value").textContent ?? "";
+    expect(encoded).toBe("https://growcmp.com/q/tok-abc");
+    expect(encoded).not.toContain("localhost");
   });
 });

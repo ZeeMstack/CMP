@@ -25,12 +25,14 @@ export function LabelCard({
   code,
   secondaryLine,
   token,
+  canonicalAppOrigin,
 }: {
   size: LabelSize;
   entityTypeLabel: string;
   code: string;
   secondaryLine?: ReactNode;
   token: string;
+  canonicalAppOrigin: string;
 }) {
   const { widthMm, heightMm, qrMm } = DIMENSIONS[size];
   return (
@@ -47,7 +49,7 @@ export function LabelCard({
         </div>
       </div>
       <div className="flex-shrink-0">
-        <QrCodeSvg token={token} sizeMm={qrMm} />
+        <QrCodeSvg canonicalAppOrigin={canonicalAppOrigin} token={token} sizeMm={qrMm} />
       </div>
     </div>
   );

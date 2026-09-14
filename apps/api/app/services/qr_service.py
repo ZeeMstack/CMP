@@ -218,30 +218,36 @@ def record_label_print(
     template_version: str,
     reason: str | None,
 ) -> tuple[datetime, bool]:
-    """Appends one `AuditEvent` per print/reprint -- never a second QR
+    """Appends one `AuditEvent` per print REQUEST -- never a second QR
     identity, never a business/operational event (PILOT-SCAN-001: printing
-    a label is not proof that farm work occurred). `is_reprint` is derived
-    from whether a prior print event already exists for this QR identity,
-    never accepted from the caller (an operator cannot declare their own
-    print "not a reprint")."""
-    prior_print_count = db.execute(
+    a label is not proof that farm work occurred). The action is named
+    `qr_label_print_requested`, not `qr_label_printed`: a browser print
+    dialog can never prove a physical label actually came out of a
+    printer, so the audit trail only claims what is actually known -- that
+    a print was requested. "Initial print"/"reprint" mean "first print
+    request"/"subsequent print request for the same active QR identity",
+    the adequate pilot-audit meaning, never a physical-output guarantee.
+    `is_reprint` is derived from whether a prior print REQUEST already
+    exists for this QR identity, never accepted from the caller (an
+    operator cannot declare their own request "not a reprint")."""
+    prior_print_request_count = db.execute(
         select(sa_func.count(AuditEvent.id)).where(
             AuditEvent.tenant_id == tenant_id,
             AuditEvent.entity_type == "qr_identifier",
             AuditEvent.entity_id == qr_identifier.id,
-            AuditEvent.action == "qr_label_printed",
+            AuditEvent.action == "qr_label_print_requested",
         )
     ).scalar_one()
-    is_reprint = prior_print_count > 0
+    is_reprint = prior_print_request_count > 0
     if is_reprint and qr_identifier.entity_type not in _PERMANENT_ENTITY_TYPES and not (reason and reason.strip()):
         raise QrReprintReasonRequiredError(qr_identifier.entity_type)
 
-    printed_at = datetime.now(timezone.utc)
+    requested_at = datetime.now(timezone.utc)
     append_audit_event(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
-        action="qr_label_printed",
+        action="qr_label_print_requested",
         entity_type="qr_identifier",
         entity_id=qr_identifier.id,
         event_data={
@@ -255,7 +261,7 @@ def record_label_print(
         },
     )
     db.commit()
-    return printed_at, is_reprint
+    return requested_at, is_reprint
 
 
 def _entity_id_of(identifier: QrIdentifier) -> uuid.UUID:

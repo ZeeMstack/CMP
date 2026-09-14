@@ -11350,7 +11350,13 @@ export interface components {
             /** Template Version */
             template_version: string;
         };
-        /** PrintLabelResponse */
+        /**
+         * PrintLabelResponse
+         * @description `requested_at`, not `printed_at`: a browser print dialog cannot
+         *     prove a physical label was actually produced (PILOT-SCAN-001 FINAL
+         *     SECURITY CLOSURE) -- this only records when the print request was
+         *     made.
+         */
         PrintLabelResponse: {
             /**
              * Qr Identifier Id
@@ -11358,10 +11364,10 @@ export interface components {
              */
             qr_identifier_id: string;
             /**
-             * Printed At
+             * Requested At
              * Format: date-time
              */
-            printed_at: string;
+            requested_at: string;
             /** Is Reprint */
             is_reprint: boolean;
         };

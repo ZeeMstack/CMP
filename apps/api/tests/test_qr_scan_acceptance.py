@@ -214,7 +214,7 @@ def test_qr_scan_acceptance_flow(test_engine) -> None:
                 # --- 8: reprint audit does not mint a second QR or a business
                 # event -----------------------------------------------------------
                 audit_count_before = db.execute(
-                    text("SELECT count(*) FROM audit_events WHERE action = 'qr_label_printed'")
+                    text("SELECT count(*) FROM audit_events WHERE action = 'qr_label_print_requested'")
                 ).scalar_one()
                 harvest_events_before = db.execute(text("SELECT count(*) FROM harvest_events")).scalar_one()
                 qr_row_count_before = db.execute(text("SELECT count(*) FROM qr_identifiers")).scalar_one()
@@ -230,7 +230,7 @@ def test_qr_scan_acceptance_flow(test_engine) -> None:
                 assert resp.json()["is_reprint"] is True
 
                 audit_count_after = db.execute(
-                    text("SELECT count(*) FROM audit_events WHERE action = 'qr_label_printed'")
+                    text("SELECT count(*) FROM audit_events WHERE action = 'qr_label_print_requested'")
                 ).scalar_one()
                 harvest_events_after = db.execute(text("SELECT count(*) FROM harvest_events")).scalar_one()
                 qr_row_count_after = db.execute(text("SELECT count(*) FROM qr_identifiers")).scalar_one()

@@ -58,20 +58,45 @@ _NOT_FOUND_ERRORS = (
 
 # entity_type -> (read permission, manage permission). `manage` gates
 # generating/(re)printing a label for that entity type; `read` gates
-# resolving/scanning it. `batch_carrier_assignment` (the physical
-# placement) reuses the parent Batch's own permission tier -- CMP-006
-# already treats "what crop batch does this carrier contain right now" as
-# part of Crop Batch authority, and no dedicated placement-level
-# permission exists in the current catalog (never fabricated here).
+# resolving/scanning it. FROZEN, exact-existing-permission mapping (PILOT-
+# SCAN-001 final closure) -- each pair is not a plausible guess but the
+# literal `Permission` already gating the real HTTP endpoint that serves
+# the same underlying read `qr_service` calls for that entity type:
+#
+#   crop_batch                -> GET .../crop-batches/{id}            (app/api/crop_batches.py)
+#   location                  -> GET .../locations/{id}               (app/api/locations.py)
+#   carrier                   -> GET .../carriers/{id}                (app/api/carriers.py)
+#   asset                     -> GET .../assets/{id}                  (app/api/assets.py)
+#   batch_carrier_assignment  -> GET .../carriers/{id}/batch-assignment
+#                                 and .../crop-batches/{id}/carriers   (app/api/sowings.py)
+#   harvested_produce_lot     -> GET .../harvested-produce-lots/{id}  (app/api/harvests.py)
+#   graded_produce_lot        -> GET .../graded-produce-lots/{id}     (app/api/grading.py)
+#   finished_goods_lot        -> GET .../finished-goods-lots/{id}     (app/api/packing.py)
+#
+# `batch_carrier_assignment` is gated by `sowing.read`/`sowing.manage`,
+# NOT `crop_batch.read`/`crop_batch.manage` -- CMP-006's own
+# BatchCarrierAssignment read/write authority already lives under Sowing
+# (both `list_batch_carriers` and `get_carrier_batch_assignment`, the
+# exact two functions `qr_service` calls for this entity type, are
+# `sowing.read`-gated in `app/api/sowings.py`), never Crop Batch.
+# `finished_goods_lot` is gated by `packing.read`/`packing.manage`, NOT
+# `finished_goods_storage.read`/`.manage` -- `packing_service.
+# get_finished_goods_lot` (the exact function `qr_service` calls) is
+# exposed at `GET .../finished-goods-lots/{id}` in `app/api/packing.py`,
+# gated by `packing.read`; `finished_goods_storage.*` governs physical
+# cold-store custody/movement, a different concern this entity type's own
+# identity read never touches. Neither substitution is a convenience
+# guess -- both were verified against the live route table before this
+# mapping was frozen; see `docs/domain/QR_SCAN_MODEL.md`.
 ENTITY_PERMISSIONS: dict[str, tuple[Permission, Permission]] = {
     "crop_batch": (Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE),
     "location": (Permission.LOCATION_READ, Permission.LOCATION_MANAGE),
     "carrier": (Permission.CARRIER_READ, Permission.CARRIER_MANAGE),
     "asset": (Permission.ASSET_READ, Permission.ASSET_MANAGE),
-    "batch_carrier_assignment": (Permission.CROP_BATCH_READ, Permission.CROP_BATCH_MANAGE),
+    "batch_carrier_assignment": (Permission.SOWING_READ, Permission.SOWING_MANAGE),
     "harvested_produce_lot": (Permission.HARVEST_READ, Permission.HARVEST_MANAGE),
     "graded_produce_lot": (Permission.GRADING_READ, Permission.GRADING_MANAGE),
-    "finished_goods_lot": (Permission.FINISHED_GOODS_STORAGE_READ, Permission.FINISHED_GOODS_STORAGE_MANAGE),
+    "finished_goods_lot": (Permission.PACKING_READ, Permission.PACKING_MANAGE),
 }
 
 
@@ -149,7 +174,7 @@ def print_qr_label(
     _require_manage(ctx, identifier.entity_type)
 
     try:
-        printed_at, is_reprint = qr_service.record_label_print(
+        requested_at, is_reprint = qr_service.record_label_print(
             db, tenant_id=ctx.tenant_id, farm_id=identifier.farm_id, actor_user_id=ctx.user_id,
             qr_identifier=identifier, template=payload.template, template_version=payload.template_version,
             reason=payload.reason,
@@ -158,4 +183,4 @@ def print_qr_label(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="A reason is required to reprint this label"
         ) from exc
-    return PrintLabelResponse(qr_identifier_id=identifier.id, printed_at=printed_at, is_reprint=is_reprint)
+    return PrintLabelResponse(qr_identifier_id=identifier.id, requested_at=requested_at, is_reprint=is_reprint)
