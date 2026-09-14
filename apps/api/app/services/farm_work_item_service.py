@@ -20,7 +20,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -785,6 +785,52 @@ def list_work_items(
     )
     query = query.order_by(priority_rank, FarmWorkItem.due_at.asc().nulls_last(), FarmWorkItem.created_at.asc())
     query = query.limit(min(limit, MAX_LIST_LIMIT))
+    return list(db.execute(query).scalars().all())
+
+
+def list_work_items_for_context(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    crop_batch_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = None,
+    carrier_id: uuid.UUID | None = None,
+    asset_id: uuid.UUID | None = None,
+    limit: int = 20,
+) -> list[FarmWorkItem]:
+    """PILOT-SCAN-001: open/in-progress/blocked Work Items matching one of
+    this Farm Work Item's own structured context references -- reused by
+    the QR scan resolver so a scanned Table/Batch/Carrier surfaces its
+    relevant work without inferring any relationship this ticket didn't
+    already establish. Never returns a completed/cancelled item (matches
+    `list_work_items`'s own default). Exactly one of the four context ids
+    should normally be given; if more than one is, an item matching ANY of
+    them is returned (a plain OR), consistent with each column being an
+    independent structured reference on the same row."""
+    _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
+    conditions = []
+    if crop_batch_id is not None:
+        conditions.append(FarmWorkItem.crop_batch_id == crop_batch_id)
+    if location_id is not None:
+        conditions.append(FarmWorkItem.location_id == location_id)
+    if carrier_id is not None:
+        conditions.append(FarmWorkItem.carrier_id == carrier_id)
+    if asset_id is not None:
+        conditions.append(FarmWorkItem.asset_id == asset_id)
+    if not conditions:
+        return []
+    query = (
+        select(FarmWorkItem)
+        .where(
+            FarmWorkItem.tenant_id == tenant_id,
+            FarmWorkItem.farm_id == farm_id,
+            FarmWorkItem.status.notin_(WORK_ITEM_TERMINAL_STATUSES),
+            or_(*conditions),
+        )
+        .order_by(FarmWorkItem.created_at.desc())
+        .limit(min(limit, MAX_LIST_LIMIT))
+    )
     return list(db.execute(query).scalars().all())
 
 

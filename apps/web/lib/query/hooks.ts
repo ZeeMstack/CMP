@@ -3801,3 +3801,52 @@ export function useCreateShiftHandover(farmId: string) {
     },
   });
 }
+
+// --- PILOT-SCAN-001: QR identifiers, scan context, and label printing ------
+
+/** Idempotent on the backend (repeated calls return the same active QR
+ * identity) -- no cache invalidation needed here, since a label preview
+ * page calls this once and renders the returned token directly. */
+export function useGenerateQrIdentifier(farmId: string) {
+  return useMutation({
+    mutationFn: ({ entityType, entityId }: { entityType: api.QrEntityType; entityId: string }) =>
+      api.generateQrIdentifier(farmId, entityType, entityId),
+  });
+}
+
+/** The label preview route's own read: generation is idempotent (a
+ * "Print Label" screen always wants THE one active QR identity for this
+ * entity, creating it on first visit, reusing it on every later one) --
+ * modeled as a query, not a mutation, since repeat/refetch calls are safe
+ * and side-effect-free from this hook's own callers' perspective. */
+export function useQrIdentifierFor(farmId: string, entityType: api.QrEntityType, entityId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.qrIdentifierFor(tenantId ?? "", farmId, entityType, entityId),
+    queryFn: ({ signal }) => api.generateQrIdentifier(farmId, entityType, entityId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(entityId),
+  });
+}
+
+export function useResolveQr(token: string, enabled = true) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.qrScan(tenantId ?? "", token),
+    queryFn: ({ signal }) => api.resolveQr(token, signal),
+    staleTime: 0, // PILOT-SCAN-001: always resolve current authoritative state, never stale occupancy/status.
+    enabled: Boolean(tenantId) && enabled && Boolean(token),
+  });
+}
+
+export function usePrintQrLabel(token: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: api.PrintLabelRequest) => api.printQrLabel(token, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.qrScan(tenantId, token) });
+    },
+  });
+}

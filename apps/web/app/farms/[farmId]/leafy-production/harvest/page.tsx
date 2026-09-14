@@ -206,6 +206,12 @@ export default function LeafyHarvestPage() {
               >
                 Grade this lot
               </LinkButton>
+              <LinkButton
+                variant="secondary"
+                href={`/farms/${farmId}/labels/harvested_produce_lot/${recordSuccess.lotId}`}
+              >
+                Print Label
+              </LinkButton>
             </div>
           </div>
         ) : (

@@ -14,6 +14,8 @@ Nursery propagation; leafy-green and vine greenhouses; input store; production; 
 
 PILOT-OPS-001 (`docs/domain/FARM_WORK_ITEM_MODEL.md`) adds a small operational work/assignment domain — the Farm Work Item — and "Today on the Farm" as the main authenticated operating screen for a farm. A Work Item never replaces the authoritative farm transaction it may relate to (harvest, observation, ...); it tracks assignment/status and, for transaction-backed work, links to the resulting record. Not a project-management, HR/payroll, or scheduling system.
 
+PILOT-SCAN-001 (`docs/domain/QR_SCAN_MODEL.md`) makes physical GrowCMP identities scannable: printable QR labels for Carriers, Assets, Locations, Crop Batches, Batch Carrier Assignments ("placements"), Harvested/Graded Produce Lots, and Finished Goods Lots, plus an authenticated scan-and-resolve page. A QR identifies context only — scanning never executes a farm operation (move, harvest, record loss, release Quality, ...); it resolves current authoritative state and prepares links into the existing workflows that do.
+
 ## Excluded unless separately approved
 
 Open fields, livestock, orchards, GIS/satellite features, machinery telematics, payroll, accounting, invoicing, general ledger, and retail POS.

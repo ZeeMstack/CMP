@@ -150,6 +150,7 @@ export default function CarriersPage() {
                     <th className="px-4 py-2 font-medium">Specification</th>
                     <th className="px-4 py-2 font-medium">Status</th>
                     <th className="px-4 py-2 font-medium">Issued</th>
+                    <th className="px-4 py-2 font-medium" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
@@ -168,6 +169,14 @@ export default function CarriersPage() {
                           <StatusBadge label={carrier.status} tone={tone} />
                         </td>
                         <td className="px-4 py-2 text-ink-muted">{carrier.issued_date ?? "—"}</td>
+                        <td className="px-4 py-2 text-right">
+                          <Link
+                            href={`/farms/${farmId}/labels/carrier/${carrier.id}`}
+                            className="text-sm font-medium text-brand-700 hover:underline"
+                          >
+                            Print Label
+                          </Link>
+                        </td>
                       </tr>
                     );
                   })}

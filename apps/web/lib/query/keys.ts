@@ -340,4 +340,9 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "shift-handovers", "latest"] as const,
   shiftHandovers: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "shift-handovers"] as const,
+
+  // --- PILOT-SCAN-001: QR identifiers + scan context --------------------------
+  qrScan: (tenantId: string, token: string) => ["tenant", tenantId, "qr", token] as const,
+  qrIdentifierFor: (tenantId: string, farmId: string, entityType: string, entityId: string) =>
+    ["tenant", tenantId, "farms", farmId, "qr-identifier", entityType, entityId] as const,
 };

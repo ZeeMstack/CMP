@@ -50,6 +50,7 @@ from app.api.packing import router as packing_router
 from app.api.uoms import router as uoms_router
 from app.api.platform_tenants import router as platform_tenants_router
 from app.api.production_systems import router as production_systems_router
+from app.api.qr import router as qr_router
 from app.api.quality_holds import router as quality_holds_router
 from app.api.ready import router as ready_router
 from app.api.recall import router as recall_router
@@ -133,6 +134,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(recall_router)
     api.include_router(farm_work_items_router)
     api.include_router(shift_handovers_router)
+    api.include_router(qr_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

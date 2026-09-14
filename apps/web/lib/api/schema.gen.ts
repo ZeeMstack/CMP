@@ -4666,6 +4666,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/qr/{entity_type}/{entity_id}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Qr Identifier */
+        post: operations["generate_qr_identifier_farms__farm_id__qr__entity_type___entity_id__generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/qr/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve Qr */
+        get: operations["resolve_qr_qr__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/qr/{token}/print": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Print Qr Label */
+        post: operations["print_qr_label_qr__token__print_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dev/bootstrap/tenants": {
         parameters: {
             query?: never;
@@ -4893,6 +4944,39 @@ export interface components {
             commissioned_date: string | null;
             /** Retired Date */
             retired_date: string | null;
+        };
+        /** AssetScanContext */
+        AssetScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "asset";
+            /** Name */
+            name: string;
+            /** Asset Type Name */
+            asset_type_name: string;
+            /** Status */
+            status: string;
+            current_location: components["schemas"]["LocationPathSummary"] | null;
+            /** Unresolved Reason */
+            unresolved_reason: string | null;
         };
         /** AuthMeMembership */
         AuthMeMembership: {
@@ -5122,8 +5206,8 @@ export interface components {
              */
             id: string;
             carrier: components["schemas"]["CarrierRefSummary"];
-            source_batch: components["schemas"]["BatchSummary"];
-            output_batch: components["schemas"]["BatchSummary"];
+            source_batch: components["schemas"]["app__schemas__batch_derivation__BatchSummary"];
+            output_batch: components["schemas"]["app__schemas__batch_derivation__BatchSummary"];
             /**
              * Released Source Assignment Id
              * Format: uuid
@@ -5167,6 +5251,38 @@ export interface components {
             opening_batch_derivation_event_id: string | null;
             /** Released By Batch Derivation Event Id */
             released_by_batch_derivation_event_id: string | null;
+        };
+        /** BatchCarrierAssignmentScanContext */
+        BatchCarrierAssignmentScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "batch_carrier_assignment";
+            batch: components["schemas"]["app__schemas__qr__BatchSummary"];
+            /** Carrier Code */
+            carrier_code: string;
+            current_location: components["schemas"]["LocationPathSummary"] | null;
+            /** Released */
+            released: boolean;
+            /** Unresolved Reason */
+            unresolved_reason: string | null;
         };
         /** BatchDerivationEventRead */
         BatchDerivationEventRead: {
@@ -5236,7 +5352,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            output_batch: components["schemas"]["BatchSummary"];
+            output_batch: components["schemas"]["app__schemas__batch_derivation__BatchSummary"];
             /** Recorded Plant Quantity Total */
             recorded_plant_quantity_total: number;
             /** Recorded Carrier Assignment Count */
@@ -5249,7 +5365,7 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            source_batch: components["schemas"]["BatchSummary"];
+            source_batch: components["schemas"]["app__schemas__batch_derivation__BatchSummary"];
             /**
              * Source Batch Stage Run Id
              * Format: uuid
@@ -5274,7 +5390,7 @@ export interface components {
              * Format: date-time
              */
             effective_time: string;
-            batch: components["schemas"]["BatchSummary"];
+            batch: components["schemas"]["app__schemas__batch_derivation__BatchSummary"];
             /** Recorded Plant Quantity Total */
             recorded_plant_quantity_total: number;
             /** Recorded Carrier Assignment Count */
@@ -5473,16 +5589,6 @@ export interface components {
             /** Reason */
             reason: string | null;
         };
-        /** BatchSummary */
-        BatchSummary: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Code */
-            code: string;
-        };
         /**
          * BootstrapMembershipCreate
          * @description Development-only: creates a membership without requiring an existing
@@ -5571,6 +5677,38 @@ export interface components {
             id: string;
             /** Code */
             code: string;
+        };
+        /** CarrierScanContext */
+        CarrierScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "carrier";
+            /** Carrier Type Name */
+            carrier_type_name: string;
+            /** Status */
+            status: string;
+            current_batch: components["schemas"]["app__schemas__qr__BatchSummary"] | null;
+            current_location: components["schemas"]["LocationPathSummary"] | null;
+            /** Unresolved Reason */
+            unresolved_reason: string | null;
         };
         /** CarrierSpecificationCreate */
         CarrierSpecificationCreate: {
@@ -5974,6 +6112,38 @@ export interface components {
             superseded_by_batch_derivation_event_id: string | null;
             /** Created By Batch Derivation Event Id */
             created_by_batch_derivation_event_id: string | null;
+        };
+        /** CropBatchScanContext */
+        CropBatchScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "crop_batch";
+            crop: components["schemas"]["QrCropSummary"];
+            variety: components["schemas"]["QrVarietySummary"] | null;
+            /** State */
+            state: string;
+            /** Current Stage Name */
+            current_stage_name: string;
+            /** Placements */
+            placements: components["schemas"]["PlacementSummary"][];
         };
         /** CropCreate */
         CropCreate: {
@@ -6610,6 +6780,41 @@ export interface components {
             potentially_affected_dispatched_weight_kg: string;
             /** Potentially Affected Dispatched Package Count */
             potentially_affected_dispatched_package_count: number;
+        };
+        /** FinishedGoodsLotScanContext */
+        FinishedGoodsLotScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "finished_goods_lot";
+            crop: components["schemas"]["QrCropSummary"];
+            variety: components["schemas"]["QrVarietySummary"] | null;
+            /** Net Packed Weight Kg */
+            net_packed_weight_kg: string;
+            /** Package Count */
+            package_count: number;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
         };
         /** FinishedGoodsLotSummary */
         FinishedGoodsLotSummary: {
@@ -7399,6 +7604,41 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /** GradedProduceLotScanContext */
+        GradedProduceLotScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "graded_produce_lot";
+            crop: components["schemas"]["QrCropSummary"];
+            variety: components["schemas"]["QrVarietySummary"] | null;
+            /** Source Harvested Produce Lot Code */
+            source_harvested_produce_lot_code: string;
+            /** Original Received Weight Kg */
+            original_received_weight_kg: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
         /** GradingEventCreate */
         GradingEventCreate: {
             /**
@@ -7880,6 +8120,40 @@ export interface components {
             dispatches: components["schemas"]["app__schemas__traceability__DispatchLineRead"][];
             summary: components["schemas"]["ImpactSummary"];
             completeness: components["schemas"]["Completeness"];
+        };
+        /** HarvestedProduceLotScanContext */
+        HarvestedProduceLotScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "harvested_produce_lot";
+            batch: components["schemas"]["app__schemas__qr__BatchSummary"];
+            /** Total Harvested Weight Kg */
+            total_harvested_weight_kg: string;
+            /** Total Whole Unit Count */
+            total_whole_unit_count: number | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
         };
         /** ImpactSummary */
         ImpactSummary: {
@@ -9852,6 +10126,16 @@ export interface components {
             carrier_code: string | null;
             batch: components["schemas"]["OccupantBatchContext"] | null;
         };
+        /** LocationOccupantSummary */
+        LocationOccupantSummary: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "carrier" | "asset";
+            /** Code */
+            code: string;
+        };
         /** LocationPathEntry */
         LocationPathEntry: {
             /**
@@ -9887,6 +10171,13 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** LocationPathSummary */
+        LocationPathSummary: {
+            /** Path String */
+            path_string: string;
+            /** Codes */
+            codes: string[];
         };
         /** LocationReactivate */
         LocationReactivate: {
@@ -9932,6 +10223,35 @@ export interface components {
             occupiable: boolean;
             /** Capacity */
             capacity: number | null;
+        };
+        /** LocationScanContext */
+        LocationScanContext: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Actions */
+            actions?: components["schemas"]["ScanAction"][];
+            /** Work Items */
+            work_items?: components["schemas"]["ScanWorkItemSummary"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            entity_type: "location";
+            /** Name */
+            name: string;
+            location: components["schemas"]["LocationPathSummary"];
+            /** Occupants */
+            occupants: components["schemas"]["LocationOccupantSummary"][];
         };
         /** LocationTreeNode */
         LocationTreeNode: {
@@ -10962,6 +11282,22 @@ export interface components {
             common_ancestor_path: components["schemas"]["LocationPathSegment"][] | null;
         };
         /**
+         * PlacementSummary
+         * @description One current physical portion of a Batch -- CMP-006's own
+         *     BatchCarrierAssignment identity, never collapsed into the parent
+         *     Batch (a Batch may occupy several Carriers/Locations at once).
+         */
+        PlacementSummary: {
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /** Carrier Code */
+            carrier_code: string;
+            location: components["schemas"]["LocationPathSummary"] | null;
+        };
+        /**
          * PlatformTenantOnboardingAdminCreate
          * @description The initial tenant_admin identity a Platform Admin is
          *     administratively vouching for -- an OIDC binding, never a password or
@@ -11004,6 +11340,36 @@ export interface components {
             /** Admin User Created */
             admin_user_created: boolean;
             membership: components["schemas"]["MembershipRead"];
+        };
+        /** PrintLabelRequest */
+        PrintLabelRequest: {
+            /** Reason */
+            reason?: string | null;
+            /** Template */
+            template: string;
+            /** Template Version */
+            template_version: string;
+        };
+        /**
+         * PrintLabelResponse
+         * @description `requested_at`, not `printed_at`: a browser print dialog cannot
+         *     prove a physical label was actually produced (PILOT-SCAN-001 FINAL
+         *     SECURITY CLOSURE) -- this only records when the print request was
+         *     made.
+         */
+        PrintLabelResponse: {
+            /**
+             * Qr Identifier Id
+             * Format: uuid
+             */
+            qr_identifier_id: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Is Reprint */
+            is_reprint: boolean;
         };
         /** ProduceLotBalanceRead */
         ProduceLotBalanceRead: {
@@ -11368,6 +11734,37 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** QrCropSummary */
+        QrCropSummary: {
+            /** Code */
+            code: string;
+            /** Common Name */
+            common_name: string;
+        };
+        /** QrIdentifierRead */
+        QrIdentifierRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Token */
+            token: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** QrVarietySummary */
+        QrVarietySummary: {
             /** Code */
             code: string;
             /** Name */
@@ -12183,6 +12580,40 @@ export interface components {
             name: string;
             /** Description */
             description: string;
+        };
+        /**
+         * ScanAction
+         * @description One prepared-workspace link. `href` is a CMP frontend route the
+         *     caller is already authorized to open -- the destination page
+         *     independently re-resolves/validates every id itself (PILOT-SCAN-001:
+         *     QR resolution is never authorization for the downstream command).
+         */
+        ScanAction: {
+            /** Label */
+            label: string;
+            /** Href */
+            href: string;
+        };
+        /**
+         * ScanWorkItemSummary
+         * @description PILOT-OPS-001 structured-context cross-reference -- never a
+         *     duplicate of the Work Item itself, just enough to let the operator
+         *     decide whether to open it.
+         */
+        ScanWorkItemSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
         };
         /**
          * SeedLotBatchSummary
@@ -14933,6 +15364,16 @@ export interface components {
             /** Spans */
             spans: components["schemas"]["SpanSetupConfig"][];
         };
+        /** BatchSummary */
+        app__schemas__batch_derivation__BatchSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+        };
         /** DispatchLineRead */
         app__schemas__dispatch__DispatchLineRead: {
             /**
@@ -15363,6 +15804,18 @@ export interface components {
              * Format: date-time
              */
             recorded_time: string;
+        };
+        /** BatchSummary */
+        app__schemas__qr__BatchSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            crop: components["schemas"]["QrCropSummary"];
+            variety: components["schemas"]["QrVarietySummary"] | null;
         };
         /** QualityHoldRead */
         app__schemas__quality_hold__QualityHoldRead: {
@@ -27250,6 +27703,120 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShiftHandoverRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_qr_identifier_farms__farm_id__qr__entity_type___entity_id__generate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QrIdentifierRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_qr_qr__token__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropBatchScanContext"] | components["schemas"]["LocationScanContext"] | components["schemas"]["CarrierScanContext"] | components["schemas"]["AssetScanContext"] | components["schemas"]["BatchCarrierAssignmentScanContext"] | components["schemas"]["HarvestedProduceLotScanContext"] | components["schemas"]["GradedProduceLotScanContext"] | components["schemas"]["FinishedGoodsLotScanContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    print_qr_label_qr__token__print_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrintLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintLabelResponse"];
                 };
             };
             /** @description Validation Error */

@@ -2421,3 +2421,28 @@ class ShiftHandoverNotFoundError(DomainError):
 
 class ShiftHandoverCommandReusedWithDifferentPayloadError(DomainError):
     pass
+
+
+class QrIdentifierNotFoundError(DomainError):
+    """Raised for an unknown token, a token belonging to a different
+    tenant, or a revoked token -- routers must map every one of these to
+    the identical generic 404 (PILOT-SCAN-001: never an oracle for whether
+    a token, or the entity behind it, exists)."""
+
+    pass
+
+
+class QrEntityNotEligibleError(DomainError):
+    """Raised when `entity_type` is not one of the pilot-supported QR
+    identity kinds."""
+
+    pass
+
+
+class QrReprintReasonRequiredError(DomainError):
+    """Raised when reprinting an operational/lot label (Crop Batch, Batch
+    Carrier Assignment, Harvested/Graded Produce Lot, Finished Goods Lot)
+    with no reason -- policy the ticket sets explicitly; a permanent
+    Carrier/Asset/Location label reprint never requires one."""
+
+    pass

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/StatusBadge";
@@ -125,8 +126,16 @@ function TreeNode({
         {isRoot && subtreeQuery.error && (
           <span className="text-xs text-red-700">Occupancy unavailable for this branch</span>
         )}
-        <span className="ml-auto shrink-0">
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <OccupancyDetail node={node} occupancy={resolvedOccupancy} loading={isRoot && subtreeQuery.isLoading} />
+          {node.occupiable && (
+            <Link
+              href={`/farms/${farmId}/labels/location/${node.id}`}
+              className="text-xs font-medium text-brand-700 hover:underline"
+            >
+              Print Label
+            </Link>
+          )}
         </span>
       </div>
       {hasChildren && expanded && (

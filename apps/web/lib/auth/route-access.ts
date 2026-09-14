@@ -65,6 +65,12 @@ export function classifyRoute(pathname: string): RouteClass {
   if (pathname.startsWith("/api/") || pathname.startsWith("/api")) return "api";
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return "platform-admin";
   if (pathname === "/" || pathname === "/farms" || pathname.startsWith("/farms/")) return "protected";
+  // PILOT-SCAN-001: a scanned QR label's landing page -- same "protected"
+  // class as /farms/*, so an unauthenticated scan redirects to /login with
+  // returnTo preserved (loginRedirectFor below) and lands the operator back
+  // on the exact scanned token after signing in, never on a second,
+  // QR-specific authentication mechanism.
+  if (pathname === "/q" || pathname.startsWith("/q/")) return "protected";
   return "unclassified";
 }
 

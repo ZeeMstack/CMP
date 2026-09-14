@@ -87,6 +87,14 @@ export default function CropBatchDetailPage() {
     <div>
       <PageHeader
         title={batch.code}
+        actions={
+          <Link
+            href={`/farms/${farmId}/labels/crop_batch/${batchId}`}
+            className="flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+          >
+            Print Label
+          </Link>
+        }
         breadcrumbs={
           <Breadcrumbs
             items={[
