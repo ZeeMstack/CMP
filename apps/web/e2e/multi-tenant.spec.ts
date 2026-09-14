@@ -33,12 +33,23 @@ test("switching from Alpha to Beta never shows Alpha data after the switch begin
   await page.route(`**/api/farms/${betaFarm.id}/crop-batches/operational-summary?state=active`, (route) =>
     route.fulfill({ json: [] }),
   );
+  // PILOT-OPS-001: Today on the Farm's own board/aggregation reads.
+  for (const farm of [alphaFarm, betaFarm]) {
+    await page.route(`**/api/farms/${farm.id}/work-items*`, (route) => route.fulfill({ json: [] }));
+    await page.route(`**/api/farms/${farm.id}/shift-handovers/latest`, (route) => route.fulfill({ json: null }));
+    await page.route(`**/api/farms/${farm.id}/leafy-production/harvestable-plates*`, (route) =>
+      route.fulfill({ json: [] }),
+    );
+  }
 
   // Initial state: Alpha selected, exactly one farm -> auto-navigates
   // straight through to Alpha's farm Home.
   await page.goto("/farms");
   await expect(page).toHaveURL(`/farms/${alphaFarm.id}`);
-  await expect(page.getByRole("heading", { name: "Alpha Farm" })).toBeVisible();
+  // PILOT-OPS-001: the page's own H1 is now "Today on the Farm"; the farm
+  // name is shown as descriptive text under it instead.
+  await expect(page.getByRole("heading", { name: "Today on the Farm" })).toBeVisible();
+  await expect(page.getByText("Alpha Farm")).toBeVisible();
   await expect(page.getByText("Beta Farm")).toHaveCount(0);
 
   // Switch tenant via the AppShell TenantSelector.
@@ -54,5 +65,6 @@ test("switching from Alpha to Beta never shows Alpha data after the switch begin
   // the page once the switch has landed -- not as a flash, not as
   // leftover stale content.
   await expect(page.getByText("Alpha Farm")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Beta Farm" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today on the Farm" })).toBeVisible();
+  await expect(page.getByText("Beta Farm")).toBeVisible();
 });

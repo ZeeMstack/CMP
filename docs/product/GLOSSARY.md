@@ -181,6 +181,16 @@
 | Containment | The derived, always-current fact that a specific entity is a member of an OPEN recall case's frozen scope; begins at open-commit, ends at close-commit, never based on effective-time arithmetic |
 | Live State | Current available/placed/unplaced/dispatch reads for a recall case's scoped finished-goods lots — always computed fresh, distinct from and never merged with frozen scope |
 
+## Farm work engine and shift handover (`docs/domain/FARM_WORK_ITEM_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Farm Work Item | A small, operator-facing task/assignment record ("Today on the Farm") — never a substitute for the authoritative farm transaction (harvest, observation, ...) it may relate to |
+| Completion Mode | `MANUAL_RECORD` (explicit operator checkbox) vs. `OPERATIONAL_RECORD` (can only complete by linking the real resulting GrowCMP record — never a checkbox) |
+| Result Reference | The structured `result_entity_type`/`result_entity_id`/`result_recorded_at` an `OPERATIONAL_RECORD` Work Item stores once linked — the answer to "what record proves this work was completed?" |
+| Blocked | A Work Item's active-but-stalled state; requires a reason; Unblock/Resume always returns it to `IN_PROGRESS` |
+| Shift Handover | A small, immutable, insert-only note a user finishing a shift leaves for the farm; may reference unresolved Work Items but never closes or clones them |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

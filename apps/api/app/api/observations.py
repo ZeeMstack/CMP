@@ -7,7 +7,7 @@ from app.core.db import get_db
 from app.core.auth import TenantContext
 from app.core.permissions import Permission, require_permission
 from app.schemas.observation_event import ObservationEventCreate, ObservationEventRead, ObservationTargetRead
-from app.services import observation_service
+from app.services import farm_work_item_service, observation_service
 from app.services.errors import (
     BatchCarrierAssignmentNotFoundError,
     CropBatchClosedError,
@@ -87,9 +87,22 @@ def record_observation(
         TooManyObservationEntriesError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return observation_service.get_observation_event(
+
+    result = observation_service.get_observation_event(
         db, tenant_id=ctx.tenant_id, farm_id=farm_id, batch_id=batch_id, observation_event_id=event.id
     )
+    # PILOT-OPS-001: the Observation is already authoritative and committed
+    # above -- linking the optional Work Item is best-effort and never
+    # repeats or invalidates this result on failure (CLAUDE.md
+    # "Transaction-backed completion").
+    if payload.work_item_id is not None:
+        result.work_item_link_status = farm_work_item_service.link_operational_result_best_effort(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            work_item_id=payload.work_item_id, client_command_id=payload.client_command_id,
+            result_entity_type="observation_event", result_entity_id=event.id,
+            effective_time=payload.effective_time,
+        )
+    return result
 
 
 @router.get(

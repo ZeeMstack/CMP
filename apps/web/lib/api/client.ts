@@ -2360,3 +2360,138 @@ export function cancelSeedingProgramLine(
     `/farms/${farmId}/seeding-program-lines/${lineId}/cancel`, payload, signal,
   );
 }
+
+// --- PILOT-OPS-001: Farm Work Item / Shift Handover ("Today on the Farm") ----
+
+export type FarmWorkItemRead = components["schemas"]["FarmWorkItemRead"];
+export type FarmWorkItemCreate = components["schemas"]["FarmWorkItemCreate"];
+export type FarmWorkItemUpdateIn = components["schemas"]["FarmWorkItemUpdateIn"];
+export type FarmWorkItemStartIn = components["schemas"]["FarmWorkItemStartIn"];
+export type FarmWorkItemBlockIn = components["schemas"]["FarmWorkItemBlockIn"];
+export type FarmWorkItemUnblockIn = components["schemas"]["FarmWorkItemUnblockIn"];
+export type FarmWorkItemCompleteIn = components["schemas"]["FarmWorkItemCompleteIn"];
+export type FarmWorkItemCancelIn = components["schemas"]["FarmWorkItemCancelIn"];
+export type FarmWorkItemLinkResultIn = components["schemas"]["FarmWorkItemLinkResultIn"];
+export type FarmWorkItemHistoryEntryRead = components["schemas"]["FarmWorkItemHistoryEntryRead"];
+export type WorkItemCategory = FarmWorkItemRead["category"];
+export type WorkItemStatus = FarmWorkItemRead["status"];
+export type WorkItemPriority = FarmWorkItemRead["priority"];
+export type ShiftHandoverRead = components["schemas"]["ShiftHandoverRead"];
+export type ShiftHandoverCreate = components["schemas"]["ShiftHandoverCreate"];
+
+/** Today on the Farm's board is ONE bounded list read -- the frontend
+ * derives every section (My Work / Blocked / In Progress / Carryover /
+ * Farm Work) from it via a pure function
+ * (`lib/format/workItemBoard.ts::bucketWorkItems`), mirroring
+ * `computeHomeKpis`/`groupBatchesByStage`'s established pattern. */
+export function listWorkItems(
+  farmId: string,
+  options: { includeCompleted?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead[]> {
+  const query = options.includeCompleted ? "?include_completed=true" : "";
+  return getJson<FarmWorkItemRead[]>(`/farms/${farmId}/work-items${query}`, signal);
+}
+
+export function getWorkItem(farmId: string, workItemId: string, signal?: AbortSignal): Promise<FarmWorkItemRead> {
+  return getJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}`, signal);
+}
+
+export function getWorkItemHistory(
+  farmId: string,
+  workItemId: string,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemHistoryEntryRead[]> {
+  return getJson<FarmWorkItemHistoryEntryRead[]>(`/farms/${farmId}/work-items/${workItemId}/history`, signal);
+}
+
+export function createWorkItem(
+  farmId: string,
+  payload: FarmWorkItemCreate,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items`, payload, signal);
+}
+
+export function updateWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemUpdateIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/update`, payload, signal);
+}
+
+export function startWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemStartIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/start`, payload, signal);
+}
+
+export function blockWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemBlockIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/block`, payload, signal);
+}
+
+export function unblockWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemUnblockIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/unblock`, payload, signal);
+}
+
+export function completeWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemCompleteIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/complete`, payload, signal);
+}
+
+export function cancelWorkItem(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemCancelIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/cancel`, payload, signal);
+}
+
+/** Reconciliation only -- the normal path links a Work Item automatically
+ * from inside `recordHarvest`/`recordObservation` on success. This is
+ * exposed so a UI can retry a failed automatic link without repeating the
+ * underlying operation (see those functions' own doc comments). */
+export function linkWorkItemResult(
+  farmId: string,
+  workItemId: string,
+  payload: FarmWorkItemLinkResultIn,
+  signal?: AbortSignal,
+): Promise<FarmWorkItemRead> {
+  return postJson<FarmWorkItemRead>(`/farms/${farmId}/work-items/${workItemId}/link-result`, payload, signal);
+}
+
+export function getLatestShiftHandover(farmId: string, signal?: AbortSignal): Promise<ShiftHandoverRead | null> {
+  return getJson<ShiftHandoverRead | null>(`/farms/${farmId}/shift-handovers/latest`, signal);
+}
+
+export function listShiftHandovers(farmId: string, signal?: AbortSignal): Promise<ShiftHandoverRead[]> {
+  return getJson<ShiftHandoverRead[]>(`/farms/${farmId}/shift-handovers`, signal);
+}
+
+export function createShiftHandover(
+  farmId: string,
+  payload: ShiftHandoverCreate,
+  signal?: AbortSignal,
+): Promise<ShiftHandoverRead> {
+  return postJson<ShiftHandoverRead>(`/farms/${farmId}/shift-handovers`, payload, signal);
+}

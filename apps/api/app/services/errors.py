@@ -2350,3 +2350,74 @@ class LastActiveTenantAdminError(DomainError):
     check (CLAUDE.md rule 11 / AUTHZ-OPS-001 section 11)."""
 
     pass
+
+
+class UserNotFoundError(DomainError):
+    pass
+
+
+# --- PILOT-OPS-001: Farm Work Item / Shift Handover ---------------------------
+
+
+class FarmWorkItemNotFoundError(DomainError):
+    pass
+
+
+class FarmWorkItemCommandReusedWithDifferentPayloadError(DomainError):
+    """A command's `client_command_id` was already used for a different
+    request payload on this or another Farm Work Item -- exact replay
+    (same id, same content) is idempotent; a same-id/different-payload
+    retry is rejected outright, mirroring every other command in this
+    codebase (e.g. `LocationUpdateReusedWithDifferentPayloadError`)."""
+
+    pass
+
+
+class FarmWorkItemInvalidTransitionError(DomainError):
+    """Raised when a lifecycle command does not apply to the Work Item's
+    current status (e.g. starting an already-completed item, unblocking an
+    item that isn't blocked)."""
+
+    pass
+
+
+class FarmWorkItemNotAssignableError(DomainError):
+    """Raised when an operator attempts to start/block/complete a Work Item
+    that is currently assigned to a different user."""
+
+    pass
+
+
+class FarmWorkItemManualCompletionNotAllowedError(DomainError):
+    """Raised when a manual `complete` command targets an
+    `OPERATIONAL_RECORD` Work Item -- it can only ever be completed by
+    linking the authoritative GrowCMP record via `link_operational_result`,
+    never a checkbox (CLAUDE.md "Transaction-backed completion")."""
+
+    pass
+
+
+class FarmWorkItemResultConflictError(DomainError):
+    """Raised when `link_operational_result` is called for a Work Item
+    that is already COMPLETED with a *different* result reference than the
+    one supplied -- an exact-same-reference call is a harmless idempotent
+    no-op, but a genuinely different result can never silently replace an
+    already-recorded completion."""
+
+    pass
+
+
+class FarmWorkItemWrongCompletionModeError(DomainError):
+    """Raised when `link_operational_result` targets a `MANUAL_RECORD`
+    Work Item -- only `OPERATIONAL_RECORD` items may be completed this
+    way."""
+
+    pass
+
+
+class ShiftHandoverNotFoundError(DomainError):
+    pass
+
+
+class ShiftHandoverCommandReusedWithDifferentPayloadError(DomainError):
+    pass

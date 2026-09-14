@@ -46,6 +46,14 @@ function stubFetch() {
       const url = String(input);
       if (url.includes("/operational-summary")) return jsonResponse(batches);
       if (url.endsWith("/farms/farm-1")) return jsonResponse(farm);
+      // PILOT-OPS-001: Today on the Farm's own board/aggregation reads --
+      // empty by default so these tests stay focused on the KPI/stage
+      // content they were written to prove; dedicated Work Item behavior
+      // is covered by lib/format/workItemBoard.test.ts and the
+      // component-level work-item tests.
+      if (url.includes("/work-items")) return jsonResponse([]);
+      if (url.includes("/shift-handovers/latest")) return jsonResponse(null);
+      if (url.includes("/harvestable-plates")) return jsonResponse([]);
       return jsonResponse({});
     }),
   );
@@ -63,7 +71,11 @@ describe("FarmHomePage", () => {
     stubFetch();
     render(withQueryClient(<FarmHomePage />));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "North Farm" })).toBeInTheDocument());
+    // PILOT-OPS-001: the page's own H1 is now "Today on the Farm" (the
+    // ticket's explicit page title); the farm name is shown as descriptive
+    // text under it rather than as the heading itself.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Today on the Farm" })).toBeInTheDocument());
+    expect(screen.getByText("North Farm")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Active batches/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
     // PILOT-UX-003: now deep-links to the Batch register pre-filtered to the
     // same authoritative field the count itself was computed from -- the

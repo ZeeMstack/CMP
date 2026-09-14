@@ -2,15 +2,34 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { CreateWorkItemForm } from "@/components/work-items/CreateWorkItemForm";
+import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
+import { WorkItemSection } from "@/components/work-items/WorkItemSection";
+import type { FarmWorkItemCreate } from "@/lib/api/client";
+import { AppError } from "@/lib/errors/adapter";
 import { computeHomeKpis } from "@/lib/format/homeKpis";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import { groupBatchesByStage } from "@/lib/format/stageOrder";
-import { useFarm, useOperationalSummary } from "@/lib/query/hooks";
+import { bucketWorkItems } from "@/lib/format/workItemBoard";
+import {
+  useCreateWorkItem,
+  useCurrentUserId,
+  useFarm,
+  useHarvestablePlates,
+  useLatestShiftHandover,
+  useOperationalSummary,
+  useWorkItems,
+} from "@/lib/query/hooks";
+
+function errorMessage(error: unknown): string {
+  return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
+}
 
 function SummaryCard({ label, value, href, caption }: { label: string; value: string | number; href?: string; caption?: string }) {
   const cardClass = `h-full rounded-xl border border-wl-border bg-wl-surface-raised p-4 transition-colors ${href ? "hover:border-wl-brand" : ""}`;
@@ -33,94 +52,234 @@ function SummaryCard({ label, value, href, caption }: { label: string; value: st
   );
 }
 
+/** A failed LIVE aggregation source (Ready Now / Attention) must never be
+ * silently rendered as "nothing to do" -- shows its own retry-able error
+ * inline, independent of every other section on the board (CLAUDE.md
+ * "Empty / Error / Loading truth"). */
+function LiveSourcePanel({
+  title,
+  isLoading,
+  error,
+  onRetry,
+  isEmpty,
+  emptyLabel,
+  children,
+}: {
+  title: string;
+  isLoading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  isEmpty: boolean;
+  emptyLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 font-serif text-base font-semibold text-wl-text">{title}</h2>
+      {isLoading && <LoadingSkeleton rows={2} label={`Loading ${title.toLowerCase()}`} />}
+      {!isLoading && Boolean(error) && <ErrorState error={error} onRetry={onRetry} />}
+      {!isLoading && !error && isEmpty && <p className="text-sm text-wl-text-secondary">{emptyLabel}</p>}
+      {!isLoading && !error && !isEmpty && children}
+    </section>
+  );
+}
+
 export default function FarmHomePage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const currentUserId = useCurrentUserId();
   const { data: farm } = useFarm(farmId);
-  // Home's first-load request budget is exactly 2: farm + active
-  // operational summary. No other network call belongs on this page.
+
+  const workItemsQuery = useWorkItems(farmId);
+  const handoverQuery = useLatestShiftHandover(farmId);
+  const harvestableQuery = useHarvestablePlates(farmId);
   const summaryQuery = useOperationalSummary(farmId, "active");
 
-  // Grouped by (stage_category, stage name) -- not stage ID (which would
-  // fragment equivalent configured workflows into separate rows for no
-  // reason) and not name alone (which would silently merge two genuinely
-  // different stages, e.g. a nursery "Growing" step and a production
-  // "Growing" step, that only happen to share a display name).
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createMutation = useCreateWorkItem(farmId);
+
+  const board = useMemo(
+    () =>
+      bucketWorkItems(workItemsQuery.data ?? [], {
+        currentUserId,
+        now: new Date(),
+        farmTimezone: farm?.timezone ?? "UTC",
+      }),
+    [workItemsQuery.data, currentUserId, farm?.timezone],
+  );
+
+  const attentionBatches = useMemo(
+    () => (summaryQuery.data ?? []).filter((b) => b.open_quality_hold_count > 0),
+    [summaryQuery.data],
+  );
+
+  const activeBatches = summaryQuery.data ?? [];
+  const homeKpis = computeHomeKpis(activeBatches);
   const stageBreakdown = useMemo(
     () => (summaryQuery.data ? groupBatchesByStage(summaryQuery.data) : []),
     [summaryQuery.data],
   );
-  // If two groups share a visible name but differ by category, disambiguate
-  // with a minimal, humanized category suffix -- never raw category codes.
-  const nameOccurrences = useMemo(() => {
+  const stageNameOccurrences = useMemo(() => {
     const counts = new Map<string, number>();
     for (const group of stageBreakdown) counts.set(group.name, (counts.get(group.name) ?? 0) + 1);
     return counts;
   }, [stageBreakdown]);
 
-  if (summaryQuery.isLoading) {
-    return <LoadingSkeleton rows={4} label="Loading farm overview" />;
+  function handleCreate(payload: FarmWorkItemCreate) {
+    setCreateError(null);
+    createMutation.mutate(payload, {
+      onSuccess: () => setCreating(false),
+      onError: (error) => setCreateError(errorMessage(error)),
+    });
   }
 
-  if (summaryQuery.error) {
-    // Never silently fall back to a misleading FE-001-style calculation --
-    // if the operational summary fails, say so plainly.
-    return <ErrorState error={summaryQuery.error} onRetry={() => summaryQuery.refetch()} />;
+  if (workItemsQuery.isLoading) {
+    return <LoadingSkeleton rows={4} label="Loading today on the farm" />;
   }
-
-  const activeBatches = summaryQuery.data ?? [];
-  const { activeCount, harvestReadyCount, openHoldBatchCount } = computeHomeKpis(activeBatches);
+  if (workItemsQuery.error) {
+    return <ErrorState error={workItemsQuery.error} onRetry={() => workItemsQuery.refetch()} />;
+  }
 
   return (
     <div>
-      <PageHeader title={farm ? farm.name : "Farm overview"} />
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <SummaryCard label="Active batches" value={activeCount} href={`/farms/${farmId}/crop-batches`} />
-        {/* PILOT-UX-003: each KPI links to the Batch register pre-filtered
-            to the same authoritative field this count was computed from
-            (`crop-batches/page.tsx`'s `DEEP_LINK_FILTERS`), never the
-            unfiltered list -- so the count and the list it opens can never
-            silently disagree. */}
-        <SummaryCard
-          label="Harvest ready"
-          value={harvestReadyCount}
-          href={`/farms/${farmId}/crop-batches?filter=harvest_ready`}
-        />
-        <SummaryCard
-          label="Batches with open quality holds"
-          value={openHoldBatchCount}
-          href={`/farms/${farmId}/crop-batches?filter=quality_hold`}
-          caption={openHoldBatchCount === 1 ? "1 batch affected" : `${openHoldBatchCount} batches affected`}
-        />
-      </div>
+      <PageHeader
+        title="Today on the Farm"
+        description={farm ? farm.name : undefined}
+        actions={
+          !creating && (
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              New work item
+            </Button>
+          )
+        }
+      />
 
-      <section className="mt-8">
-        <h2 className="mb-3 font-serif text-base font-semibold text-wl-text">Active production by stage</h2>
-        {stageBreakdown.length === 0 ? (
-          <p className="text-sm text-wl-text-secondary">No active batches yet.</p>
-        ) : (
-          <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-            {stageBreakdown.map((stage) => {
-              const needsDisambiguation = (nameOccurrences.get(stage.name) ?? 0) > 1;
-              return (
-                <li
-                  key={`${stage.category}-${stage.name}`}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
-                >
-                  <span className="text-wl-text">
-                    {stage.name}
-                    {needsDisambiguation && (
-                      <span className="text-wl-text-secondary"> · {humanizeEnumCode(stage.category)}</span>
-                    )}
-                  </span>
-                  <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-wl-brand-subtle px-2 py-0.5 text-xs font-semibold text-wl-brand">
-                    {stage.count}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      {creating && (
+        <div className="mb-6">
+          <CreateWorkItemForm
+            isSubmitting={createMutation.isPending}
+            serverError={createError}
+            currentUserId={currentUserId}
+            onCancel={() => {
+              setCreating(false);
+              setCreateError(null);
+            }}
+            onSubmit={handleCreate}
+          />
+        </div>
+      )}
+
+      <ShiftHandoverPanel farmId={farmId} latest={handoverQuery.data} openWorkItems={board.farmWide} />
+
+      <WorkItemSection title="My Work" items={board.myWork} farmId={farmId} currentUserId={currentUserId} emptyLabel="Nothing assigned to you right now." />
+
+      <LiveSourcePanel
+        title="Ready Now"
+        isLoading={harvestableQuery.isLoading}
+        error={harvestableQuery.error}
+        onRetry={() => harvestableQuery.refetch()}
+        isEmpty={(harvestableQuery.data ?? []).length === 0}
+        emptyLabel="Nothing ready to harvest right now."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {(harvestableQuery.data ?? []).map((plate) => (
+            <li key={plate.production_plate_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="text-wl-text">
+                {plate.crop_common_name} · Batch {plate.batch_code} · {plate.production_plate_code}
+                {plate.location?.grow_table && (
+                  <span className="text-wl-text-secondary"> · {plate.location.grow_table.code}</span>
+                )}
+              </span>
+              <Link
+                href={`/farms/${farmId}/leafy-production/harvest?batchId=${plate.batch_id}`}
+                className="shrink-0 text-sm font-medium text-wl-brand hover:underline"
+              >
+                Open Harvest
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <LiveSourcePanel
+        title="Attention"
+        isLoading={summaryQuery.isLoading}
+        error={summaryQuery.error}
+        onRetry={() => summaryQuery.refetch()}
+        isEmpty={attentionBatches.length === 0}
+        emptyLabel="No exceptions right now."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {attentionBatches.map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="text-wl-text">
+                Batch {b.code} · {b.open_quality_hold_count} open quality hold{b.open_quality_hold_count === 1 ? "" : "s"}
+              </span>
+              <Link href={`/farms/${farmId}/crop-batches/${b.id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
+                View batch
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <WorkItemSection title="In Progress" items={board.inProgress} farmId={farmId} currentUserId={currentUserId} hideWhenEmpty />
+      <WorkItemSection title="Blocked" items={board.blocked} farmId={farmId} currentUserId={currentUserId} hideWhenEmpty />
+      <WorkItemSection
+        title="Carryover"
+        items={board.carryover}
+        farmId={farmId}
+        currentUserId={currentUserId}
+        hideWhenEmpty
+      />
+      <WorkItemSection
+        title="Farm Work"
+        items={board.farmWide}
+        farmId={farmId}
+        currentUserId={currentUserId}
+        emptyLabel="No open work items for this farm."
+      />
+
+      {/* Secondary, below the operational work engine -- PILOT-UX-003's
+          deep-linking KPIs, unchanged, never the page's primary content. */}
+      {!summaryQuery.isLoading && !summaryQuery.error && (
+        <section className="mt-8 border-t border-wl-border pt-6">
+          <h2 className="mb-3 font-serif text-base font-semibold text-wl-text">Production overview</h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <SummaryCard label="Active batches" value={homeKpis.activeCount} href={`/farms/${farmId}/crop-batches`} />
+            <SummaryCard
+              label="Harvest ready"
+              value={homeKpis.harvestReadyCount}
+              href={`/farms/${farmId}/crop-batches?filter=harvest_ready`}
+            />
+            <SummaryCard
+              label="Batches with open quality holds"
+              value={homeKpis.openHoldBatchCount}
+              href={`/farms/${farmId}/crop-batches?filter=quality_hold`}
+              caption={homeKpis.openHoldBatchCount === 1 ? "1 batch affected" : `${homeKpis.openHoldBatchCount} batches affected`}
+            />
+          </div>
+
+          {stageBreakdown.length > 0 && (
+            <ul className="mt-4 divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+              {stageBreakdown.map((stage) => {
+                const needsDisambiguation = (stageNameOccurrences.get(stage.name) ?? 0) > 1;
+                return (
+                  <li key={`${stage.category}-${stage.name}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <span className="text-wl-text">
+                      {stage.name}
+                      {needsDisambiguation && <span className="text-wl-text-secondary"> · {humanizeEnumCode(stage.category)}</span>}
+                    </span>
+                    <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-wl-brand-subtle px-2 py-0.5 text-xs font-semibold text-wl-brand">
+                      {stage.count}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

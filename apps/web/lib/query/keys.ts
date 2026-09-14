@@ -328,4 +328,16 @@ export const queryKeys = {
   // --- AUTHZ-OPS-001: Users & Roles administration ---------------------------
   memberships: (tenantId: string) => ["tenant", tenantId, "memberships"] as const,
   assignableRoles: (tenantId: string) => ["tenant", tenantId, "roles"] as const,
+
+  // --- PILOT-OPS-001: Farm Work Item / Shift Handover ("Today on the Farm") --
+  workItems: (tenantId: string, farmId: string, includeCompleted: boolean) =>
+    ["tenant", tenantId, "farms", farmId, "work-items", includeCompleted] as const,
+  workItem: (tenantId: string, farmId: string, workItemId: string) =>
+    ["tenant", tenantId, "farms", farmId, "work-items", workItemId] as const,
+  workItemHistory: (tenantId: string, farmId: string, workItemId: string) =>
+    ["tenant", tenantId, "farms", farmId, "work-items", workItemId, "history"] as const,
+  latestShiftHandover: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "shift-handovers", "latest"] as const,
+  shiftHandovers: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "shift-handovers"] as const,
 };

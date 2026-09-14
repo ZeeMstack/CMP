@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 
@@ -84,6 +85,10 @@ class ObservationEventCreate(BaseModel):
     note: str | None = None
     values: list[ObservationValueIn] = Field(default_factory=list)
     germination_checks: list[GerminationCheckIn] = Field(default_factory=list)
+    # PILOT-OPS-001: optional Farm Work Item to complete on success. Never
+    # required -- an Observation recorded outside "Today on the Farm" (no
+    # Work Item involved at all) is unaffected.
+    work_item_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod
@@ -178,3 +183,10 @@ class ObservationEventRead(BaseModel):
     note: str | None
     values: list[ObservationValueRead]
     germination_checks: list[GerminationCheckRead]
+    # PILOT-OPS-001: set only when `work_item_id` was supplied on create --
+    # "linked"/"failed" report the best-effort Farm Work Item completion
+    # outcome; this Observation is authoritative and successful either way
+    # (CLAUDE.md "Transaction-backed completion" -- a link failure is never
+    # surfaced as an Observation failure, and the Observation is never
+    # repeated to retry it).
+    work_item_link_status: Literal["linked", "failed"] | None = None
