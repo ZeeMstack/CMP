@@ -281,3 +281,55 @@ def test_qr_scan_acceptance_flow(test_engine) -> None:
             cleanup_traceability_scenario(test_engine, other_tenant_id)
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_batch_qr_shows_every_simultaneous_active_placement_separately(test_engine) -> None:
+    """PILOT-SCAN-001D proof 10: a Batch occupying more than one physical
+    Carrier at once (the same shape a CMP-012 split produces -- several
+    simultaneously active `BatchCarrierAssignment`s under one Batch) must
+    show each one as its own distinct placement on the Batch's own QR scan
+    -- never collapsed into a single ambiguous "the batch is somewhere"
+    fact. Uses `resolve_scan_context`'s unchanged `crop_batch` branch
+    (`qr_service.py`), which already aggregates one `PlacementSummary` per
+    active assignment -- this proves that existing aggregation actually
+    surfaces >1 placement end-to-end through the real API, not just that
+    the code path exists."""
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as db:
+            tenant, user, farm = build_committed_tenant_farm(db)
+            tenant_id = tenant.id
+            scaffold = build_batch_with_assignments(
+                db, tenant, user, farm, carrier_count=2, carrier_type_code="cultivation_plate"
+            )
+            batch_id = scaffold["batch"].id
+            carrier_codes = {c.code for c in scaffold["carriers"]}
+            db.commit()
+
+            headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+            app.dependency_overrides[get_db] = lambda: db
+            app.dependency_overrides[get_engine] = lambda: test_engine
+            client = TestClient(app)
+            client.__enter__()
+            try:
+                resp = client.post(f"/farms/{farm.id}/qr/crop_batch/{batch_id}/generate", headers=headers)
+                assert resp.status_code == 200, resp.text
+                token = resp.json()["token"]
+
+                resp = client.get(f"/qr/{token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                body = resp.json()
+                assert body["entity_type"] == "crop_batch"
+                placements = body["placements"]
+                assert len(placements) == 2
+                assert {p["carrier_code"] for p in placements} == carrier_codes
+                # Two distinct placement identities, never collapsed into one.
+                assert len({p["batch_carrier_assignment_id"] for p in placements}) == 2
+            finally:
+                client.__exit__(None, None, None)
+                app.dependency_overrides.pop(get_db, None)
+                app.dependency_overrides.pop(get_engine, None)
+    finally:
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)

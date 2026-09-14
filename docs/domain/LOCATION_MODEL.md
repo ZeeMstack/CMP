@@ -42,6 +42,8 @@ Uniqueness is enforced by three partial indexes: two for the generic set (mirror
 
 **Deferred:** reparenting/move, `code`/`location_type`/`farm_id` edits, and hard deletion of locations; Grow Cube individual-plant identity; Carrier-as-occupancy-target (`target_carrier_id`); carriers/occupancy/movement changes beyond what already exists. `name` edit and active/inactive lifecycle (deactivate/reactivate) are no longer deferred — see "Location maintenance lifecycle" below (frozen design, UX-IA-001, not yet implemented).
 
+**Permanent QR identity (PILOT-SCAN-001D).** Every Location — every node in the generic tree above, at any depth, including purely structural nodes such as Zone/Span with no direct occupant — automatically receives its own permanent, active `QrIdentifier` row at creation, through both `create_location` and `bulk_generate_children`. The QR never changes because occupancy, status, or metadata changes; it identifies the physical Location record itself, never a current occupant. Full lifecycle, scan-resolution behavior, backfill for pre-existing Locations, and the frozen "Permanent Physical Identity"/"Current Occupancy" terms are in `QR_SCAN_MODEL.md` — this document only fixes that the rule applies uniformly across the whole generic tree, with no leaf-only or occupiable-only carve-out.
+
 ## Farm Setup (implemented, FARM-SETUP-001, extended FARM-SETUP-001.1)
 
 The first usable physical-configuration experience, built entirely on the primitives above — no new Location/capacity semantics, no crop-agnostic-rule exceptions. Purpose: let an authorized user answer "what physical farm do I have?" and configure it truthfully, without manual SQL, fabricated locations, or invented Imperial-specific data in domain logic.

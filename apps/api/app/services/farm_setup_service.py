@@ -30,8 +30,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
+from app.models.asset import Asset
 from app.models.location import Location
-from app.services import asset_service, location_service
+from app.services import asset_service, location_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.schemas.farm_setup import (
     GreenhouseOverviewItem,
@@ -60,6 +61,22 @@ from app.services.errors import (
 )
 
 ACTION = "farm_setup.greenhouse_created"
+
+
+class _CreatedPhysicalEntities:
+    """PILOT-SCAN-001D: accumulates every Location/Asset this command
+    creates (mutated in place across the nested structure-builder
+    functions below, exactly like `GreenhouseSetupCounts`) so
+    `create_greenhouse_setup` can provision one permanent QR identity per
+    entity in a single pass, right before its own one commit -- never a
+    separate/earlier commit that could break this command's existing
+    all-or-nothing guarantee. Deliberately excludes `AssetPosition` (e.g.
+    Trolley Levels) -- only Location/Carrier/Asset are permanent,
+    QR-eligible physical entities."""
+
+    def __init__(self) -> None:
+        self.locations: list[Location] = []
+        self.assets: list[Asset] = []
 
 
 def _compute_fingerprint(payload: GreenhouseSetupCreate) -> str:
@@ -100,7 +117,7 @@ def _result_from_prior_event(row: dict) -> GreenhouseSetupResult:
 
 def _create_leafy_structure(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, greenhouse: Location,
-    config: LeafySetupConfig, counts: GreenhouseSetupCounts,
+    config: LeafySetupConfig, counts: GreenhouseSetupCounts, created: _CreatedPhysicalEntities,
 ) -> None:
     for zone_cfg in config.zones:
         zone = location_service._create_location_core(
@@ -108,6 +125,7 @@ def _create_leafy_structure(
             code=zone_cfg.code, name=f"Zone {zone_cfg.code}", parent_location_id=greenhouse.id,
             greenhouse_classification=None, occupiable=None, capacity=None,
         )
+        created.locations.append(zone)
         counts.zones += 1
         for span_cfg in zone_cfg.spans:
             span = location_service._create_location_core(
@@ -115,6 +133,7 @@ def _create_leafy_structure(
                 code=span_cfg.code, name=f"Span {span_cfg.code}", parent_location_id=zone.id,
                 greenhouse_classification=None, occupiable=None, capacity=None,
             )
+            created.locations.append(span)
             counts.spans += 1
             tables_cfg = span_cfg.tables
             tables = location_service._bulk_generate_children_core(
@@ -127,12 +146,13 @@ def _create_leafy_structure(
                 # occupiable leaf) -- see location_service's own docstring.
                 occupiable=True,
             )
+            created.locations.extend(tables)
             counts.tables += len(tables)
 
 
 def _create_vines_structure(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, greenhouse: Location,
-    config: VinesSetupConfig, counts: GreenhouseSetupCounts,
+    config: VinesSetupConfig, counts: GreenhouseSetupCounts, created: _CreatedPhysicalEntities,
 ) -> None:
     for zone_cfg in config.zones:
         zone = location_service._create_location_core(
@@ -140,6 +160,7 @@ def _create_vines_structure(
             code=zone_cfg.code, name=f"Zone {zone_cfg.code}", parent_location_id=greenhouse.id,
             greenhouse_classification=None, occupiable=None, capacity=None,
         )
+        created.locations.append(zone)
         counts.zones += 1
         for span_cfg in zone_cfg.spans:
             span = location_service._create_location_core(
@@ -147,6 +168,7 @@ def _create_vines_structure(
                 code=span_cfg.code, name=f"Span {span_cfg.code}", parent_location_id=zone.id,
                 greenhouse_classification=None, occupiable=None, capacity=None,
             )
+            created.locations.append(span)
             counts.spans += 1
             gutters_cfg = span_cfg.gutters
             gutters = location_service._bulk_generate_children_core(
@@ -158,6 +180,7 @@ def _create_vines_structure(
                 # is the occupiable leaf) -- its own type default
                 # (non-occupiable) is correct and left unchanged.
             )
+            created.locations.extend(gutters)
             counts.gutters += len(gutters)
             for gutter in gutters:
                 bag_positions = location_service._bulk_generate_children_core(
@@ -174,19 +197,21 @@ def _create_vines_structure(
                     # grow_bag_position.default_occupiable is already True.
                     occupiable=None,
                 )
+                created.locations.extend(bag_positions)
                 counts.bag_positions += len(bag_positions)
 
 
 def _create_nursery_structure(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, greenhouse: Location,
-    config: NurserySetupConfig, counts: GreenhouseSetupCounts,
+    config: NurserySetupConfig, counts: GreenhouseSetupCounts, created: _CreatedPhysicalEntities,
 ) -> None:
     if config.seeding_station is not None:
-        location_service._create_location_core(
+        seeding_station = location_service._create_location_core(
             db, tenant_id=tenant_id, farm_id=farm_id, location_type_code="seeding_station",
             code=config.seeding_station.code, name=config.seeding_station.name or "Seeding Station",
             parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None, capacity=None,
         )
+        created.locations.append(seeding_station)
         counts.seeding_stations = 1
 
     if config.germination_chamber is not None:
@@ -196,12 +221,13 @@ def _create_nursery_structure(
         # explicit override, since germination_chamber's own
         # `LocationType.default_occupiable` stays `false` (mirrors the same
         # override pattern already used for leafy `grow_table`).
-        location_service._create_location_core(
+        germination_chamber = location_service._create_location_core(
             db, tenant_id=tenant_id, farm_id=farm_id, location_type_code="germination_chamber",
             code=config.germination_chamber.code, name=config.germination_chamber.name or "Germination Chamber",
             parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=True,
             capacity=config.germination_chamber.trolley_capacity,
         )
+        created.locations.append(germination_chamber)
         counts.germination_chambers = 1
 
     groups = (
@@ -217,6 +243,7 @@ def _create_nursery_structure(
             code=f"{greenhouse.code}-{area_type_code.upper()}", name=area_type_code.replace("_", " ").title(),
             parent_location_id=greenhouse.id, greenhouse_classification=None, occupiable=None, capacity=None,
         )
+        created.locations.append(area)
         tables = location_service._bulk_generate_children_core(
             db, tenant_id=tenant_id, farm_id=farm_id, parent_id=area.id,
             location_type_code=table_type_code, code_prefix=table_cfg.code_prefix,
@@ -226,6 +253,7 @@ def _create_nursery_structure(
             # default_occupiable=True -- no override needed.
             occupiable=None,
         )
+        created.locations.extend(tables)
         setattr(counts, count_field, len(tables))
 
     # PILOT-UX-001B2: `trolleys` (explicit, hand-entered codes) and
@@ -248,9 +276,12 @@ def _create_nursery_structure(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_type_code="germination_trolley",
             code=trolley_code, name=trolley_name or f"Trolley {trolley_code}", commissioned_date=None,
         )
+        created.assets.append(trolley)
         # PILOT-UX-001B: new-model Levels only -- server-prepends the
         # Trolley's own code to the (now operator-configurable) Level
-        # prefix, and creates zero child Slot AssetPositions.
+        # prefix, and creates zero child Slot AssetPositions. AssetPositions
+        # (Levels) are not a QR-eligible entity type -- only the Trolley
+        # Asset itself gets a permanent QR.
         _asset_type, positions = asset_service._generate_levels_core(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_id=trolley.id,
             level_count=levels_cfg.level_count, level_prefix=f"{trolley.code}-{levels_cfg.level_prefix}",
@@ -260,11 +291,12 @@ def _create_nursery_structure(
         counts.trolley_levels += levels_cfg.level_count
 
     for machine_cfg in config.seeding_machines:
-        asset_service._register_asset_core(
+        seeding_machine = asset_service._register_asset_core(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_type_code="seeding_machine",
             code=machine_cfg.code, name=machine_cfg.name or f"Seeding Machine {machine_cfg.code}",
             commissioned_date=None,
         )
+        created.assets.append(seeding_machine)
         counts.seeding_machines += 1
 
 
@@ -294,29 +326,47 @@ def create_greenhouse_setup(
             code=payload.code, name=payload.name, parent_location_id=None,
             greenhouse_classification=payload.classification, occupiable=None, capacity=None,
         )
+        created = _CreatedPhysicalEntities()
+        created.locations.append(greenhouse)
 
         counts = GreenhouseSetupCounts()
         if payload.classification == "nursery":
             _create_nursery_structure(
                 db, tenant_id=tenant_id, farm_id=farm_id, greenhouse=greenhouse,
-                config=payload.nursery, counts=counts,
+                config=payload.nursery, counts=counts, created=created,
             )
         elif payload.classification == "leafy_greens":
             _create_leafy_structure(
                 db, tenant_id=tenant_id, farm_id=farm_id, greenhouse=greenhouse,
-                config=payload.leafy, counts=counts,
+                config=payload.leafy, counts=counts, created=created,
             )
         else:
             _create_vines_structure(
                 db, tenant_id=tenant_id, farm_id=farm_id, greenhouse=greenhouse,
-                config=payload.vines, counts=counts,
+                config=payload.vines, counts=counts, created=created,
+            )
+
+        # PILOT-SCAN-001D: one permanent QR per Location/Asset this command
+        # created (the Greenhouse itself included), all in this same
+        # transaction, right before the one commit below -- never a
+        # separate/earlier commit that could leave part of this structure
+        # without its permanent QR if a later step failed.
+        for location in created.locations:
+            qr_provisioning.ensure_qr_identifier_for_new_entity(
+                db, tenant_id=tenant_id, farm_id=farm_id, entity_type="location", entity_id=location.id,
+                actor_user_id=actor_user_id,
+            )
+        for asset in created.assets:
+            qr_provisioning.ensure_qr_identifier_for_new_entity(
+                db, tenant_id=tenant_id, farm_id=farm_id, entity_type="asset", entity_id=asset.id,
+                actor_user_id=actor_user_id,
             )
     except Exception:
         # Defensive backstop: every `_*_core` call already rolls back on
         # its own IntegrityError, but any other exception (a validation
         # error raised by this module, an unexpected failure) must still
         # guarantee nothing partial survives -- no new Greenhouse, no
-        # partial Zones/Spans/Tables/Gutters/Bag Positions/assets.
+        # partial Zones/Spans/Tables/Gutters/Bag Positions/assets/QRs.
         db.rollback()
         raise
 

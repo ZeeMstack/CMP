@@ -27,16 +27,26 @@ def _insert_qr(db_session, *, tenant_id, farm_id, carrier_id, user_id, token=Non
 
 @pytest.fixture
 def carrier_scenario(db_session, active_context_with_farm):
-    from app.services import carrier_service
+    """PILOT-SCAN-001D: builds its Carrier via direct ORM insert, never
+    `carrier_service.register_carrier` -- that service now auto-provisions
+    a permanent QR identity at creation, which would leave this fixture's
+    Carrier already holding an active `QrIdentifier` before any test here
+    inserts its own via `_insert_qr`, corrupting every test below's own
+    "first identity"/"second identity" precondition. Matches this file's
+    own stated philosophy even better than the service call did: these
+    tests prove the `qr_identifiers` SCHEMA itself, independent of
+    `qr_service`'s (or now `carrier_service`'s) own behavior."""
+    from app.models.carrier import Carrier
 
     tenant, user, headers, farm = active_context_with_farm
     from tests.conftest import ensure_seed_tray_specification
 
     spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
-    carrier = carrier_service.register_carrier(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        specification_id=spec.id, code="QR-CARRIER-0001", issued_date=None,
+    carrier = Carrier(
+        tenant_id=tenant.id, farm_id=farm.id, carrier_type_id=spec.carrier_type_id,
+        specification_id=spec.id, code="QR-CARRIER-0001",
     )
+    db_session.add(carrier)
     db_session.commit()
     return tenant, user, farm, carrier
 
@@ -72,12 +82,18 @@ def test_token_is_globally_unique(db_session, carrier_scenario) -> None:
     _insert_qr(db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id, user_id=user.id, token="dup-token")
     db_session.commit()
 
-    from app.services import carrier_service
+    from app.models.carrier import Carrier
 
-    other_carrier = carrier_service.register_carrier(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
-        specification_id=carrier.specification_id, code="QR-CARRIER-0002", issued_date=None,
+    # PILOT-SCAN-001D: direct ORM insert, not `carrier_service.register_carrier`
+    # -- that would auto-provision this Carrier's own active QR and make
+    # the assertion below trip the (also-real, but different) "one active
+    # QR per Carrier" constraint instead of the GLOBAL token-uniqueness
+    # constraint this test specifically exists to prove.
+    other_carrier = Carrier(
+        tenant_id=tenant.id, farm_id=farm.id, carrier_type_id=carrier.carrier_type_id,
+        specification_id=carrier.specification_id, code="QR-CARRIER-0002",
     )
+    db_session.add(other_carrier)
     db_session.commit()
     with pytest.raises(IntegrityError):
         _insert_qr(

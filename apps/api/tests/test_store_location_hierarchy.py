@@ -18,9 +18,9 @@ def _farm(db_session, tenant, user, *, code):
     )
 
 
-def _create(db_session, tenant, farm, *, location_type_code, code, parent_location_id=None):
+def _create(db_session, tenant, farm, user, *, location_type_code, code, parent_location_id=None):
     return location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=None,
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         location_type_code=location_type_code, code=code, name=code, parent_location_id=parent_location_id,
         greenhouse_classification=None, occupiable=None,
     )
@@ -30,9 +30,9 @@ def _create(db_session, tenant, farm, *, location_type_code, code, parent_locati
 def test_store_direct_to_bin_unchanged(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    store = _create(db_session, tenant, farm, location_type_code="store", code="MAIN-STORE")
+    store = _create(db_session, tenant, farm, user, location_type_code="store", code="MAIN-STORE")
     bin_ = _create(
-        db_session, tenant, farm, location_type_code="store_bin", code="BIN-001", parent_location_id=store.id
+        db_session, tenant, farm, user, location_type_code="store_bin", code="BIN-001", parent_location_id=store.id
     )
     assert bin_.parent_location_id == store.id
 
@@ -41,12 +41,12 @@ def test_store_direct_to_bin_unchanged(db_session, active_context) -> None:
 def test_store_area_to_bin(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    store = _create(db_session, tenant, farm, location_type_code="store", code="STORE-A")
+    store = _create(db_session, tenant, farm, user, location_type_code="store", code="STORE-A")
     area = _create(
-        db_session, tenant, farm, location_type_code="store_area", code="SEED-AREA", parent_location_id=store.id
+        db_session, tenant, farm, user, location_type_code="store_area", code="SEED-AREA", parent_location_id=store.id
     )
     bin_ = _create(
-        db_session, tenant, farm, location_type_code="store_bin", code="BIN-001", parent_location_id=area.id
+        db_session, tenant, farm, user, location_type_code="store_bin", code="BIN-001", parent_location_id=area.id
     )
     assert area.parent_location_id == store.id
     assert bin_.parent_location_id == area.id
@@ -57,12 +57,12 @@ def test_store_area_to_bin(db_session, active_context) -> None:
 def test_store_rack_to_bin(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    store = _create(db_session, tenant, farm, location_type_code="store", code="STORE-B")
+    store = _create(db_session, tenant, farm, user, location_type_code="store", code="STORE-B")
     rack = _create(
-        db_session, tenant, farm, location_type_code="store_rack", code="RACK-01", parent_location_id=store.id
+        db_session, tenant, farm, user, location_type_code="store_rack", code="RACK-01", parent_location_id=store.id
     )
     bin_ = _create(
-        db_session, tenant, farm, location_type_code="store_bin", code="BIN-001", parent_location_id=rack.id
+        db_session, tenant, farm, user, location_type_code="store_bin", code="BIN-001", parent_location_id=rack.id
     )
     assert rack.parent_location_id == store.id
     assert bin_.parent_location_id == rack.id
@@ -73,15 +73,15 @@ def test_store_rack_to_bin(db_session, active_context) -> None:
 def test_store_area_rack_bin_full_chain(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    store = _create(db_session, tenant, farm, location_type_code="store", code="STORE-C")
+    store = _create(db_session, tenant, farm, user, location_type_code="store", code="STORE-C")
     area = _create(
-        db_session, tenant, farm, location_type_code="store_area", code="SEED-AREA", parent_location_id=store.id
+        db_session, tenant, farm, user, location_type_code="store_area", code="SEED-AREA", parent_location_id=store.id
     )
     rack = _create(
-        db_session, tenant, farm, location_type_code="store_rack", code="RACK-01", parent_location_id=area.id
+        db_session, tenant, farm, user, location_type_code="store_rack", code="RACK-01", parent_location_id=area.id
     )
     bin_ = _create(
-        db_session, tenant, farm, location_type_code="store_bin", code="BIN-001", parent_location_id=rack.id
+        db_session, tenant, farm, user, location_type_code="store_bin", code="BIN-001", parent_location_id=rack.id
     )
     assert bin_.parent_location_id == rack.id
     assert bin_.occupiable is True
@@ -91,8 +91,8 @@ def test_store_area_rack_bin_full_chain(db_session, active_context) -> None:
 def test_multiple_root_stores_per_farm(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    main_store = _create(db_session, tenant, farm, location_type_code="store", code="MAIN")
-    chemical_store = _create(db_session, tenant, farm, location_type_code="store", code="CHEMICAL")
+    main_store = _create(db_session, tenant, farm, user, location_type_code="store", code="MAIN")
+    chemical_store = _create(db_session, tenant, farm, user, location_type_code="store", code="CHEMICAL")
     assert main_store.id != chemical_store.id
     assert main_store.parent_location_id is None
     assert chemical_store.parent_location_id is None
@@ -106,10 +106,10 @@ def test_store_shelf_is_not_a_real_type(db_session, active_context) -> None:
 
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
-    store = _create(db_session, tenant, farm, location_type_code="store", code="STORE-D")
+    store = _create(db_session, tenant, farm, user, location_type_code="store", code="STORE-D")
     with pytest.raises(LocationTypeNotFoundError):
         _create(
-            db_session, tenant, farm, location_type_code="store_shelf", code="SHELF-01",
+            db_session, tenant, farm, user, location_type_code="store_shelf", code="SHELF-01",
             parent_location_id=store.id,
         )
 
@@ -121,12 +121,12 @@ def test_greenhouse_cannot_hold_store_area(db_session, active_context) -> None:
     tenant, user, _headers = active_context
     farm = _farm(db_session, tenant, user, code=f"sf-{uuid.uuid4().hex[:8]}")
     greenhouse = location_service.create_location(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=None, location_type_code="greenhouse",
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, location_type_code="greenhouse",
         code="GH-01", name="GH-01", parent_location_id=None, greenhouse_classification="leafy_greens",
         occupiable=None,
     )
     with pytest.raises(InvalidLocationHierarchyError):
         _create(
-            db_session, tenant, farm, location_type_code="store_area", code="INVALID-AREA",
+            db_session, tenant, farm, user, location_type_code="store_area", code="INVALID-AREA",
             parent_location_id=greenhouse.id,
         )

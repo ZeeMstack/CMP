@@ -209,7 +209,7 @@ def test_cross_tenant_movement_destination_is_404_after_permission_succeeds(
 
     other_tenant, other_farm = _new_tenant_with_farm(db_session, code_prefix="foreign-mv")
     foreign_location = location_service.create_location(
-        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
+        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=scenario["user"].id,
         location_type_code="greenhouse", code="foreign-gh", name="Foreign Greenhouse",
         parent_location_id=None, greenhouse_classification="leafy_greens", occupiable=None,
     )

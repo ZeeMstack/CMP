@@ -25,7 +25,6 @@ called).
 """
 from __future__ import annotations
 
-import secrets
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -43,6 +42,7 @@ from app.models.carrier import Carrier
 from app.models.carrier_type import CarrierType
 from app.models.grading_event import GradingEvent
 from app.models.harvested_produce_lot import HarvestedProduceLot
+from app.models.location import Location
 from app.models.qr_identifier import QR_IDENTIFIER_ENTITY_TYPES, QrIdentifier
 from app.schemas.qr import (
     AssetScanContext,
@@ -73,6 +73,7 @@ from app.services import (
     location_service,
     movement_service,
     packing_service,
+    qr_provisioning,
     sowing_service,
 )
 from app.services.audit import append_audit_event
@@ -85,16 +86,11 @@ from app.services.errors import (
     QrReprintReasonRequiredError,
 )
 
-_ENTITY_COLUMNS: dict[str, str] = {
-    "crop_batch": "crop_batch_id",
-    "location": "location_id",
-    "carrier": "carrier_id",
-    "asset": "asset_id",
-    "batch_carrier_assignment": "batch_carrier_assignment_id",
-    "harvested_produce_lot": "harvested_produce_lot_id",
-    "graded_produce_lot": "graded_produce_lot_id",
-    "finished_goods_lot": "finished_goods_lot_id",
-}
+# PILOT-SCAN-001D: single source of truth moved to `qr_provisioning`
+# (a dependency-free leaf module both this file and every physical
+# master-data creation service can import) -- kept as a local alias so
+# every existing reference below is unchanged.
+_ENTITY_COLUMNS = qr_provisioning.ENTITY_COLUMNS
 
 # PILOT-SCAN-001: permanent physical identity (label never requires a reason
 # to reprint) vs. everything else, which is an operational/lot record (a
@@ -168,18 +164,15 @@ def generate_or_get_qr_identifier(
     if existing is not None:
         return existing
 
-    identifier = QrIdentifier(
-        tenant_id=tenant_id,
-        farm_id=farm_id,
-        entity_type=entity_type,
-        token=secrets.token_urlsafe(24),
-        status="active",
-        created_by_user_id=actor_user_id,
-        **{column: entity_id},
-    )
-    db.add(identifier)
     try:
-        db.flush()
+        identifier = qr_provisioning.insert_qr_identifier(
+            db,
+            tenant_id=tenant_id,
+            farm_id=farm_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            actor_user_id=actor_user_id,
+        )
     except IntegrityError:
         db.rollback()
         existing = db.execute(
@@ -205,6 +198,94 @@ def generate_or_get_qr_identifier(
     db.commit()
     db.refresh(identifier)
     return identifier
+
+
+# entity_type -> (ORM model, QrIdentifier column) for the three permanent
+# physical entity types the backfill below covers. Never crop_batch/lot
+# types -- PILOT-SCAN-001D is specifically about permanent physical master
+# data created before automatic creation-time QR provisioning existed.
+_PERMANENT_PHYSICAL_MODELS: dict[str, tuple[type, str]] = {
+    "location": (Location, "location_id"),
+    "carrier": (Carrier, "carrier_id"),
+    "asset": (Asset, "asset_id"),
+}
+
+
+def backfill_missing_permanent_qr_identifiers(
+    db: Session,
+    *,
+    actor_user_id: uuid.UUID,
+    tenant_id: uuid.UUID | None = None,
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """PILOT-SCAN-001D: for Locations/Carriers/Assets that existed before
+    automatic creation-time QR provisioning (`qr_provisioning.
+    ensure_qr_identifier_for_new_entity`, now wired into every
+    Location/Carrier/Asset creation path), ensures each one ends up with
+    exactly one active permanent `QrIdentifier` -- without requiring an
+    operator to open every record and click "Generate QR" by hand.
+
+    Idempotent and safe to rerun: reuses `generate_or_get_qr_identifier`
+    per entity, so an entity that already has an active QR (from a prior
+    backfill run, or from the ordinary creation-time hook) is simply
+    skipped, and a genuine concurrent race (e.g. an operator's "Print
+    Label" click for the same pre-existing entity, running at the same
+    moment as this backfill) is handled by that same function's own
+    IntegrityError fallback -- never a duplicate active identity.
+
+    Each entity is provisioned independently (`generate_or_get_qr_identifier`
+    commits per entity): one entity's failure (e.g. a farm that has since
+    gone inactive) is recorded in the returned `errors` list and does not
+    abort the rest of the run. `tenant_id=None` scans every tenant -- pass
+    an explicit tenant to scope one run to a single tenant.
+
+    `dry_run=True` only counts what is missing -- it deliberately never
+    calls `generate_or_get_qr_identifier` at all (that function commits
+    per entity; a caller-side rollback afterward could not undo it), so a
+    dry run is guaranteed to write nothing.
+
+    Returns `{"provisioned": {"location": n, "carrier": n, "asset": n},
+    "already_had_qr": {...}, "errors": [(entity_type, entity_id, message)]}`.
+    A clean rerun reports zero newly provisioned and zero errors."""
+    provisioned = {"location": 0, "carrier": 0, "asset": 0}
+    already_had_qr = {"location": 0, "carrier": 0, "asset": 0}
+    errors: list[tuple[str, uuid.UUID, str]] = []
+
+    for entity_type, (model, column) in _PERMANENT_PHYSICAL_MODELS.items():
+        join_condition = (
+            (QrIdentifier.tenant_id == model.tenant_id)
+            & (getattr(QrIdentifier, column) == model.id)
+            & (QrIdentifier.status == "active")
+        )
+        total_query = select(sa_func.count()).select_from(model)
+        missing_query = select(model).outerjoin(QrIdentifier, join_condition).where(QrIdentifier.id.is_(None))
+        if tenant_id is not None:
+            total_query = total_query.where(model.tenant_id == tenant_id)
+            missing_query = missing_query.where(model.tenant_id == tenant_id)
+        total_count = db.execute(total_query).scalar_one()
+        missing = db.execute(missing_query).scalars().all()
+        already_had_qr[entity_type] = total_count - len(missing)
+
+        if dry_run:
+            provisioned[entity_type] = len(missing)
+            continue
+
+        for entity in missing:
+            try:
+                generate_or_get_qr_identifier(
+                    db,
+                    tenant_id=entity.tenant_id,
+                    farm_id=entity.farm_id,
+                    entity_type=entity_type,
+                    entity_id=entity.id,
+                    actor_user_id=actor_user_id,
+                )
+                provisioned[entity_type] += 1
+            except Exception as exc:  # noqa: BLE001 -- one bad entity must never abort the whole backfill
+                db.rollback()
+                errors.append((entity_type, entity.id, str(exc)))
+
+    return {"provisioned": provisioned, "already_had_qr": already_had_qr, "errors": errors}
 
 
 def record_label_print(

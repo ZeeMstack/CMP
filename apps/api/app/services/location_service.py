@@ -9,7 +9,7 @@ from app.models.inventory_storage_movement import InventoryStorageMovement
 from app.models.location import Location
 from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
-from app.services import farm_service, movement_service
+from app.services import farm_service, movement_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.services.errors import (
     DuplicateLocationCodeError,
@@ -264,6 +264,13 @@ def create_location(
             "parent_location_id": str(parent_location_id) if parent_location_id else None,
         },
     )
+    # PILOT-SCAN-001D: every permanent Location gets its permanent QR
+    # identity automatically at creation -- never a manual "Generate QR"
+    # step. Same transaction/commit as the Location row itself.
+    qr_provisioning.ensure_qr_identifier_for_new_entity(
+        db, tenant_id=tenant_id, farm_id=farm_id, entity_type="location", entity_id=location.id,
+        actor_user_id=actor_user_id,
+    )
     db.commit()
     db.refresh(location)
     return location
@@ -396,6 +403,13 @@ def bulk_generate_children(
             "count": len(created),
         },
     )
+    # PILOT-SCAN-001D: one permanent QR per bulk-generated Location, same
+    # transaction as the whole batch.
+    for location in created:
+        qr_provisioning.ensure_qr_identifier_for_new_entity(
+            db, tenant_id=tenant_id, farm_id=farm_id, entity_type="location", entity_id=location.id,
+            actor_user_id=actor_user_id,
+        )
     db.commit()
     for location in created:
         db.refresh(location)
