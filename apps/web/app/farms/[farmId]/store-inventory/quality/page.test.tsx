@@ -3,9 +3,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+let searchParamsValue = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
   usePathname: () => "/farms/farm-1/store-inventory/quality",
+  useSearchParams: () => searchParamsValue,
 }));
 
 import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
@@ -54,6 +57,7 @@ function stubFetch(
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  searchParamsValue = new URLSearchParams();
 });
 
 /** Like `withQueryClient`, but also hands back the `QueryClient` so a test
@@ -509,5 +513,31 @@ describe("StoreInventoryQualityPage", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  // --- PILOT-BLOCKER-009 R2 (row-specific continuation) -------------------
+
+  it("R2.8: a valid incoming cohort id highlights the matching scoped row, never opening or executing an action", async () => {
+    searchParamsValue = new URLSearchParams({ cohortId: "coh-1" });
+    stubFetch([queueRow({ inventory_quantity_cohort_id: "coh-1" }), queueRow({ inventory_quantity_cohort_id: "coh-2", item_name: "Other Item" })]);
+    render(withQueryClient(<StoreInventoryQualityPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    expect(document.getElementById("quality-row-coh-1")).not.toBeNull();
+    expect(document.getElementById("quality-row-coh-1")?.className).toContain("bg-wl-brand-subtle");
+    // Never auto-opens a draft/action panel for the row.
+    expect(screen.queryByLabelText(/Reason \(required\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no longer in the current work queue/i)).not.toBeInTheDocument();
+  });
+
+  it("R2.9: an invalid/stale incoming cohort id selects nothing and never auto-executes anything", async () => {
+    searchParamsValue = new URLSearchParams({ cohortId: "coh-does-not-exist" });
+    stubFetch([queueRow({ inventory_quantity_cohort_id: "coh-1" })]);
+    render(withQueryClient(<StoreInventoryQualityPage />));
+    await waitFor(() =>
+      expect(screen.getByText(/that quality item is no longer in the current work queue/i)).toBeInTheDocument(),
+    );
+    // The only real row must not have been silently substituted/highlighted.
+    expect(document.getElementById("quality-row-coh-1")?.className).not.toContain("bg-wl-brand-subtle");
+    expect(screen.queryByLabelText(/Reason \(required\)/)).not.toBeInTheDocument();
   });
 });

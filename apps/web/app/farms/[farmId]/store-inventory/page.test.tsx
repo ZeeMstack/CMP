@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -6,7 +8,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/farms/farm-1/store-inventory",
 }));
 
-import { withQueryClient } from "@/lib/test-utils";
+import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
+import { queryKeys } from "@/lib/query/keys";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 import StoreInventoryOverviewPage from "./page";
 
@@ -14,7 +18,22 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+/** Like `withQueryClient`, but also hands back the `QueryClient` so a test
+ * can force a refetch against a mock that starts returning errors, to model
+ * a stale-cache-plus-failed-refresh scenario without a second render. */
+function renderWithClient(children: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(queryKeys.authBootstrap(), DEFAULT_TEST_BOOTSTRAP);
+  const utils = render(
+    <QueryClientProvider client={queryClient}>
+      <AuthBootstrapProvider>{children}</AuthBootstrapProvider>
+    </QueryClientProvider>,
+  );
+  return { ...utils, queryClient };
+}
+
 const FARM = { id: "farm-1", tenant_id: "t", code: "F1", name: "Main Farm", country_code: "AE", city_region: null, timezone: "Asia/Dubai", status: "active" };
+const FARM_2 = { id: "farm-2", tenant_id: "t", code: "F2", name: "Second Farm", country_code: "AE", city_region: null, timezone: "Asia/Dubai", status: "active" };
 const RECEIPT = {
   id: "gr-1", tenant_id: "t", farm_id: "farm-1", code: "GR-F1-20260907-001", received_at: "2026-09-07T08:00:00Z",
   recorded_at: "2026-09-07T08:00:00Z", received_by_user_id: "u1", supplier_name: null, external_system: null,
@@ -41,6 +60,7 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
     if (url.endsWith("/quality-work-queue")) return jsonResponse(overrides.queue ?? [QUEUE_ROW]);
     if (url.includes("/inventory-not-put-away-queue")) return jsonResponse(overrides.notPutAway ?? [NOT_PUT_AWAY_ROW]);
     if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
+    if (url.endsWith("/farms")) return jsonResponse(overrides.farms ?? [FARM, FARM_2]);
     return jsonResponse([]);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -59,13 +79,13 @@ describe("StoreInventoryOverviewPage (PILOT-UX-005 Store Operations workbench)",
     expect(screen.getByText("Quality")).toBeInTheDocument();
     expect(screen.getByText("Quarantined")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
-      "href", "/farms/farm-1/store-inventory/quality",
+      "href", "/farms/farm-1/store-inventory/quality?cohortId=coh-1",
     );
 
     expect(screen.getByText("Putaway")).toBeInTheDocument();
     expect(screen.getByText("Awaiting putaway")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Put away" })).toHaveAttribute(
-      "href", "/farms/farm-1/store-inventory/putaway",
+      "href", "/farms/farm-1/store-inventory/putaway?cohortId=coh-2",
     );
 
     // Recent Goods Receipts is a secondary, compact list, not a large card.
@@ -122,6 +142,119 @@ describe("StoreInventoryOverviewPage (PILOT-UX-005 Store Operations workbench)",
     );
     expect(screen.getByRole("link", { name: "Issue Stock" })).toHaveAttribute(
       "href", "/farms/farm-1/store-inventory/issue",
+    );
+  });
+
+  // --- PILOT-BLOCKER-009 R1 -------------------------------------------------
+
+  it("R1.1: Quality fails and Putaway fails (no cache) -- both failures are visible/retryable, never a clean empty state", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/quality-work-queue")) return jsonResponse({ detail: "boom" }, 500);
+      if (url.includes("/inventory-not-put-away-queue")) return jsonResponse({ detail: "boom" }, 500);
+      if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
+      return jsonResponse([]);
+    }));
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText(/could not load the quality queue/i)).toBeInTheDocument());
+    expect(screen.getByText(/could not load the putaway queue/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing currently needs quality or putaway action/i)).not.toBeInTheDocument();
+    // Both are retryable.
+    expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("R1.2: Quality succeeds with work and Putaway fails -- Quality rows stay visible, Putaway error is visible, no global safe-empty state", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/quality-work-queue")) return jsonResponse([QUEUE_ROW]);
+      if (url.includes("/inventory-not-put-away-queue")) return jsonResponse({ detail: "boom" }, 500);
+      if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
+      return jsonResponse([]);
+    }));
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate — Lot LOT-1")).toBeInTheDocument());
+    expect(screen.getByText(/could not load the putaway queue/i)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing currently needs quality or putaway action/i)).not.toBeInTheDocument();
+  });
+
+  it("R1.3: both Quality and Putaway succeed and are genuinely empty -- the clean empty state is allowed", async () => {
+    stubFetch({ queue: [], notPutAway: [] });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() =>
+      expect(screen.getByText(/nothing currently needs quality or putaway action/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/could not load/i)).not.toBeInTheDocument();
+  });
+
+  it("R1.4: a Recent Receipts read failure shows error/retry, never 'no receipts'", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/farms/farm-1/goods-receipts")) return jsonResponse({ detail: "boom" }, 500);
+      if (url.endsWith("/quality-work-queue")) return jsonResponse([]);
+      if (url.includes("/inventory-not-put-away-queue")) return jsonResponse([]);
+      if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
+      return jsonResponse([]);
+    }));
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText(/could not load recent receipts/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no receipts recorded/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("R1.5: cached Quality rows stay visible with a stale indicator when a refresh fails", async () => {
+    let queueCallCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/quality-work-queue")) {
+        queueCallCount += 1;
+        if (queueCallCount === 1) return jsonResponse([QUEUE_ROW]);
+        return jsonResponse({ detail: "boom" }, 500);
+      }
+      if (url.includes("/inventory-not-put-away-queue")) return jsonResponse([]);
+      if (url.endsWith("/farms/farm-1")) return jsonResponse(FARM);
+      return jsonResponse([]);
+    }));
+    const { queryClient } = renderWithClient(<StoreInventoryOverviewPage />);
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate — Lot LOT-1")).toBeInTheDocument());
+
+    await queryClient.refetchQueries({ queryKey: queryKeys.qualityWorkQueue(TEST_TENANT_ID) });
+
+    await waitFor(() => expect(screen.getByText(/could not refresh the quality queue/i)).toBeInTheDocument());
+    expect(screen.getByText("Calcium Nitrate — Lot LOT-1")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing currently needs quality or putaway action/i)).not.toBeInTheDocument();
+  });
+
+  // --- PILOT-BLOCKER-009 R2 -------------------------------------------------
+
+  it("R2.6: Manage Quality remains visible when Action Required has zero Quality rows", async () => {
+    stubFetch({ queue: [] });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText("Store Operations")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Manage Quality" })).toHaveAttribute(
+      "href", "/farms/farm-1/store-inventory/quality",
+    );
+  });
+
+  it("R2.7: a Quality row action carries its stable cohort identifier", async () => {
+    stubFetch();
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByRole("link", { name: "Review" })).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
+      "href", expect.stringContaining("cohortId=coh-1"),
+    );
+  });
+
+  // --- PILOT-BLOCKER-009 R6 -------------------------------------------------
+
+  it("R6.12: a row received at a different Farm than the one being viewed routes to its OWN Farm, never the currently-viewed one, and shows that Farm's name", async () => {
+    stubFetch({
+      queue: [{ ...QUEUE_ROW, received_at_farm_id: "farm-2" }],
+      notPutAway: [],
+    });
+    render(withQueryClient(<StoreInventoryOverviewPage />));
+    await waitFor(() => expect(screen.getByText("Second Farm")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute(
+      "href", "/farms/farm-2/store-inventory/quality?cohortId=coh-1",
     );
   });
 

@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+let searchParamsValue = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
   usePathname: () => "/farms/farm-1/store-inventory/putaway",
+  useSearchParams: () => searchParamsValue,
 }));
 
 import { withQueryClient } from "@/lib/test-utils";
@@ -51,6 +54,7 @@ function stubFetch(postHandler?: (url: string, body: unknown) => Response) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  searchParamsValue = new URLSearchParams();
 });
 
 describe("StoreInventoryPutawayPage", () => {
@@ -169,5 +173,27 @@ describe("StoreInventoryPutawayPage", () => {
     await waitFor(() => expect(posts.length).toBe(2));
     expect(posts[1].client_command_id).toBe(posts[0].client_command_id);
     expect(posts[1]).toEqual(posts[0]);
+  });
+
+  // --- PILOT-BLOCKER-009 R2 (row-specific continuation) -------------------
+
+  it("carries a valid incoming cohort id by auto-expanding the matching row, never submitting a Putaway automatically", async () => {
+    searchParamsValue = new URLSearchParams({ cohortId: "cohort-1" });
+    stubFetch();
+    render(withQueryClient(<StoreInventoryPutawayPage />));
+    await waitFor(() => expect(screen.getByText("Main Store / Bin 01")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /confirm putaway/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no longer in the current work queue/i)).not.toBeInTheDocument();
+  });
+
+  it("an invalid/stale incoming cohort id expands nothing and shows a concise message instead", async () => {
+    searchParamsValue = new URLSearchParams({ cohortId: "cohort-does-not-exist" });
+    stubFetch();
+    render(withQueryClient(<StoreInventoryPutawayPage />));
+    await waitFor(() =>
+      expect(screen.getByText(/that putaway item is no longer in the current work queue/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/main store \/ bin 01/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Put away" })).toBeInTheDocument();
   });
 });

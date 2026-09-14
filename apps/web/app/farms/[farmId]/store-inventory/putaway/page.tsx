@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -24,13 +24,15 @@ function asAppError(error: unknown): AppError {
 }
 
 function PutawayRow({
-  entry, bins, farmId,
+  entry, bins, farmId, initiallyExpanded, highlighted,
 }: {
   entry: NotPutAwayQueueEntryRead;
   bins: { id: string; label: string }[];
   farmId: string;
+  initiallyExpanded?: boolean;
+  highlighted?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(initiallyExpanded));
   const [binId, setBinId] = useState(bins[0]?.id ?? "");
   const [quantity, setQuantity] = useState("");
   const [effectiveTime, setEffectiveTime] = useState(() => nowLocalDateTime());
@@ -59,7 +61,10 @@ function PutawayRow({
   }
 
   return (
-    <li className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+    <li
+      id={`putaway-row-${entry.inventory_quantity_cohort_id}`}
+      className={`rounded-xl border border-wl-border bg-wl-surface-raised p-4 ${highlighted ? "ring-2 ring-wl-brand" : ""}`}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium text-wl-text">{entry.item_name}</p>
@@ -220,6 +225,12 @@ function PutawayRow({
  * + effective time only, no UUIDs shown. */
 export default function StoreInventoryPutawayPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  // PILOT-BLOCKER-009 R2: same row-specific continuation principle as
+  // Quality -- the incoming cohort id is only ever resolved against this
+  // page's own scoped queue read below, never trusted on its own, and it
+  // never submits a Putaway automatically.
+  const continuationCohortId = searchParams.get("cohortId");
   const queueQuery = useNotPutAwayQueue();
   const treeQuery = useLocationsTree(farmId);
 
@@ -234,6 +245,11 @@ export default function StoreInventoryPutawayPage() {
   // yet at all".
   const hasQueueData = queueQuery.data !== undefined;
   const hasTreeData = treeQuery.data !== undefined;
+
+  const continuationEntry = continuationCohortId
+    ? rows.find((entry) => entry.inventory_quantity_cohort_id === continuationCohortId)
+    : undefined;
+  const continuationMissing = Boolean(continuationCohortId) && hasQueueData && !queueQuery.isError && !continuationEntry;
 
   return (
     <div>
@@ -251,6 +267,12 @@ export default function StoreInventoryPutawayPage() {
         }
       />
       <StoreSubNav farmId={farmId} />
+
+      {continuationMissing && (
+        <p className="mb-3 rounded-md border border-wl-border bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
+          That Putaway item is no longer in the current work queue.
+        </p>
+      )}
 
       {treeQuery.isError && !hasTreeData ? (
         <div className="mb-4">
@@ -291,7 +313,14 @@ export default function StoreInventoryPutawayPage() {
           ) : (
             <ul className="flex flex-col gap-3">
               {rows.map((entry) => (
-                <PutawayRow key={entry.inventory_quantity_cohort_id} entry={entry} bins={bins} farmId={farmId} />
+                <PutawayRow
+                  key={entry.inventory_quantity_cohort_id}
+                  entry={entry}
+                  bins={bins}
+                  farmId={farmId}
+                  initiallyExpanded={entry.inventory_quantity_cohort_id === continuationCohortId}
+                  highlighted={entry.inventory_quantity_cohort_id === continuationCohortId}
+                />
               ))}
             </ul>
           )}

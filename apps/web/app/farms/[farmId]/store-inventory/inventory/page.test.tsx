@@ -23,7 +23,7 @@ const ITEM = {
 type PostHandler = (url: string, body: Record<string, unknown>) => Response;
 
 function stubFetch(
-  opts: { provenance?: unknown[]; cohortBuckets?: unknown[]; postHandler?: PostHandler } = {},
+  opts: { provenance?: unknown[]; cohortBuckets?: unknown[]; postHandler?: PostHandler; qualityQueue?: unknown[] } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -32,6 +32,7 @@ function stubFetch(
       if (opts.postHandler) return opts.postHandler(url, body);
       return jsonResponse({});
     }
+    if (url.endsWith("/quality-work-queue")) return jsonResponse(opts.qualityQueue ?? []);
     if (url.includes("/inventory-items?") || url.endsWith("/inventory-items")) return jsonResponse([ITEM]);
     if (url.endsWith("/existence")) return jsonResponse({ inventory_item_id: "item-1", existing_quantity: "500.000" });
     if (url.endsWith("/usable-existence")) return jsonResponse({ inventory_item_id: "item-1", usable_quantity: "450.000" });
@@ -246,5 +247,55 @@ describe("StoreInventoryInventoryPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
     await waitFor(() => expect(provenanceCalls).toBeGreaterThan(0));
+  });
+
+  // --- PILOT-BLOCKER-009 R7 -------------------------------------------------
+
+  it("R7.10: ordinary RELEASED/HOLD_RELEASED stock is NOT marked Attention merely for appearing in the Quality queue", async () => {
+    stubFetch({
+      qualityQueue: [
+        {
+          inventory_quantity_cohort_id: "coh-1", inventory_item_id: "item-1", item_name: "Calcium Nitrate",
+          base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: null, expiry_date: null,
+          received_at_farm_id: "farm-1", source_goods_receipt_line_id: "line-1", receipt_code: "GR-1",
+          receipt_received_at: "2026-09-01T00:00:00Z", balance: "500.000", current_state: "RELEASED",
+          current_event_id: "evt-1", last_actor_user_id: null, last_effective_time: null,
+        },
+        {
+          inventory_quantity_cohort_id: "coh-2", inventory_item_id: "item-1", item_name: "Calcium Nitrate",
+          base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: null, expiry_date: null,
+          received_at_farm_id: "farm-1", source_goods_receipt_line_id: "line-2", receipt_code: "GR-2",
+          receipt_received_at: "2026-09-01T00:00:00Z", balance: "10.000", current_state: "HOLD_RELEASED",
+          current_event_id: "evt-2", last_actor_user_id: null, last_effective_time: null,
+        },
+      ],
+    });
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
+    // "Attention" as a column header is expected; only the header, no badge.
+    expect(screen.getAllByText("Attention")).toHaveLength(1);
+    expect(screen.queryByText(/awaiting quality/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/on hold/i)).not.toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("R7.11: a real authoritative exception (RECEIVED_QUARANTINED) is marked with an actionable reason, not a bare Attention badge", async () => {
+    stubFetch({
+      qualityQueue: [
+        {
+          inventory_quantity_cohort_id: "coh-1", inventory_item_id: "item-1", item_name: "Calcium Nitrate",
+          base_uom_id: "uom-1", inventory_lot_id: null, manufacturer_lot_reference: null, expiry_date: null,
+          received_at_farm_id: "farm-1", source_goods_receipt_line_id: "line-1", receipt_code: "GR-1",
+          receipt_received_at: "2026-09-01T00:00:00Z", balance: "500.000", current_state: "RECEIVED_QUARANTINED",
+          current_event_id: null, last_actor_user_id: null, last_effective_time: null,
+        },
+      ],
+    });
+    render(withQueryClient(<StoreInventoryInventoryPage />));
+    await waitFor(() => expect(screen.getAllByText("Calcium Nitrate")[0]).toBeInTheDocument());
+    expect(screen.getByText("Awaiting Quality")).toBeInTheDocument();
+    // Only the column header says "Attention" -- the badge itself names the
+    // actual reason, never a bare generic label.
+    expect(screen.getAllByText("Attention")).toHaveLength(1);
   });
 });
