@@ -52,6 +52,7 @@ interface RowState {
 export function RecordObservationForm({
   batch,
   definitions,
+  definitionsLoading,
   targets,
   targetsLoading,
   initialTargetId,
@@ -63,6 +64,15 @@ export function RecordObservationForm({
 }: {
   batch: BatchOperationalContext;
   definitions: ObservationDefinitionRead[];
+  /** PILOT-BLOCKER-011: `definitions` is tenant-wide reference data, fetched
+   * independently of (and racing against) `targets` -- while this is
+   * `true`, `definitions` may still be `[]` merely because the query hasn't
+   * resolved yet, never because the tenant genuinely has none configured.
+   * Both this AND `targetsLoading` gate the one-shot carried-target
+   * initialization below (see `initialTargetApplied`), and this alone
+   * gates the "no definitions configured" empty state -- an in-flight read
+   * must never render as a confirmed empty one. */
+  definitionsLoading: boolean;
   targets: ObservationTargetRead[];
   targetsLoading: boolean;
   /** PILOT-UX-006: a Batch Carrier Assignment id carried forward from the
@@ -118,17 +128,28 @@ export function RecordObservationForm({
     [activeDefinitions],
   );
 
-  // Apply a carried-forward target exactly once, only after it actually
-  // resolves against this Batch's own scoped `targets` read -- never assumed
-  // valid just because a caller passed it. Guarded so a later target refetch
-  // (e.g. after recording) never re-applies it over a value the operator has
-  // since changed. Adjusted directly during render (React's own blessed
-  // pattern for reacting to a prop/query settling, mirrors the identical
-  // `prevServerError`/`prevPlateIdsKeyForStaleCheck` guards used elsewhere in
-  // this codebase, e.g. `LeafyHarvestForm.tsx`) rather than in an effect,
-  // which would cause an extra, avoidable cascading render.
+  // PILOT-BLOCKER-011 (Astra R5): apply a carried-forward target exactly
+  // once, only after it actually resolves against this Batch's own scoped
+  // `targets` read -- never assumed valid just because a caller passed it.
+  // Guarded so a later target refetch (e.g. after recording) never
+  // re-applies it over a value the operator has since changed.
+  //
+  // Critically, this must wait for BOTH `targets` AND `definitions` to have
+  // actually loaded -- `definitions` is a separate, independently-racing
+  // tenant-wide query (`useObservationDefinitions`), and `targetableDefinitions`
+  // is derived from it. Applying this before `definitions` arrives would set
+  // the visible Primary target selector (which only depends on `targets`)
+  // while `targetableDefinitions` is still `[]`, so the per-row `targetId`
+  // loop below would silently do nothing -- exactly the defect this fixes:
+  // the Primary target shown as selected while the actual submitted
+  // measurement carries no target at all. Waiting for both, then
+  // initializing once, keeps this a single React-blessed "adjust state
+  // during render" step (mirrors the identical `prevServerError`/
+  // `prevPlateIdsKeyForStaleCheck` guards elsewhere in this codebase, e.g.
+  // `LeafyHarvestForm.tsx`) rather than an effect, which would cost an
+  // extra, avoidable cascading render.
   const [initialTargetApplied, setInitialTargetApplied] = useState(false);
-  if (!initialTargetApplied && initialTargetId && !targetsLoading) {
+  if (!initialTargetApplied && initialTargetId && !targetsLoading && !definitionsLoading) {
     const match = targets.find((t) => t.id === initialTargetId);
     if (match) {
       setPrimaryTargetId(match.id);
@@ -136,8 +157,16 @@ export function RecordObservationForm({
     }
     setInitialTargetApplied(true);
   }
+  // PILOT-BLOCKER-011 (Astra R5 sibling issue): visibility is driven ONLY by
+  // whether the operator actually entered a VALUE -- never by `targetId`
+  // alone. `targetId` gets set on every `targetableDefinitions` row the
+  // moment a Primary target is chosen (including ones beyond the routine
+  // limit the operator never asked to see and hasn't entered a value for);
+  // coupling visibility to it meant picking a Primary target silently
+  // expanded the whole optional-measurement list. Routine stays
+  // routine-first regardless of which target is selected.
   const visibleDefinitions = activeDefinitions.filter(
-    (d, idx) => showAllDefinitions || idx < ROUTINE_DEFINITION_LIMIT || Boolean(rows[d.id]?.raw.trim()) || Boolean(rows[d.id]?.targetId),
+    (d, idx) => showAllDefinitions || idx < ROUTINE_DEFINITION_LIMIT || Boolean(rows[d.id]?.raw.trim()),
   );
   const hiddenCount = activeDefinitions.length - visibleDefinitions.length;
 
@@ -208,7 +237,9 @@ export function RecordObservationForm({
         </Button>
       </div>
 
-      {activeDefinitions.length === 0 ? (
+      {definitionsLoading ? (
+        <p className="text-sm text-wl-text-secondary">Loading Observation Definitions…</p>
+      ) : activeDefinitions.length === 0 ? (
         <p className="text-sm text-wl-text-secondary">
           No active Observation Definitions are configured for this tenant yet.
         </p>
