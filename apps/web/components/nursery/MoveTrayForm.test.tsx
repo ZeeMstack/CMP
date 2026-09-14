@@ -1,7 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { withQueryClient } from "@/lib/test-utils";
+import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
+import { queryKeys } from "@/lib/query/keys";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 import { MoveTrayForm } from "./MoveTrayForm";
 
@@ -38,6 +41,13 @@ const MULTI_BATCH_TRAYS = [
     batch_carrier_assignment_id: "bca-3", seeds_sown: 200, state: "awaiting_placement", placement: null,
   },
 ];
+const THIRD_BATCH_TRAY = {
+  batch_id: "batch-1", batch_code: "CB-0001",
+  seed_lot: { id: "lot-1", code: "LOT-01", supplier_lot_reference: null, crop: { id: "c1", code: "ICE", common_name: "Iceberg" }, variety: { id: "v1", code: "MAM", name: "Mamutik" } },
+  tray: { id: "tray-1c", code: "ST-0004", carrier_type: CARRIER_TYPE },
+  batch_carrier_assignment_id: "bca-4", seeds_sown: 150, state: "awaiting_placement", placement: null,
+};
+const MULTI_BATCH_TRAYS_3 = [...MULTI_BATCH_TRAYS, THIRD_BATCH_TRAY];
 const TROLLEYS = [
   {
     id: "trolley-1", code: "GT-01", name: "Trolley 1", chamber: { id: "chamber-1", code: "GC-01", name: "Chamber 1" },
@@ -329,14 +339,12 @@ describe("MoveTrayForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move All 2 Trays" }));
 
     await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument();
+    // PILOT-BLOCKER-010: the frozen run's own per-tray table (not a
+    // one-line summary) is the truthful record -- confirmed and failed
+    // trays both stay visible by identity.
+    expect(screen.getByText("1 of 2 trays moved")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
     expect(screen.getByText(/tray st-0003 could not be moved/i)).toBeInTheDocument();
-    // PILOT-BLOCKER-008 A4: the failed tray itself is the only one
-    // "remaining" here (targets.length - failedIndex === 1) -- no
-    // additional unattempted trays exist, so no separate "more trays not
-    // yet attempted" line is shown (it would be redundant with the line
-    // above, and worse, imply a phantom extra tray).
-    expect(screen.queryByText(/not yet attempted/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue Remaining" })).toBeInTheDocument();
   });
 
@@ -398,13 +406,24 @@ describe("MoveTrayForm", () => {
     await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
 
     // Truthful state: 1 confirmed, tray 2's result unknown -- never "could
-    // not be moved", and no fabricated "N trays remain" phantom count.
-    expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument();
-    expect(screen.getByText(/tray st-0003: result not confirmed/i)).toBeInTheDocument();
+    // not be moved", shown via the always-visible frozen-run table and a
+    // prominent "RESULT UNKNOWN" banner (PILOT-BLOCKER-010 R4).
+    expect(screen.getByText("1 of 2 trays moved")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/RESULT UNKNOWN — RETRY\/RECONCILE REQUIRED/i);
+    expect(screen.getByText(/tray st-0003: we couldn't confirm whether this move was recorded/i)).toBeInTheDocument();
     expect(screen.queryByText(/could not be moved/i)).not.toBeInTheDocument();
-    // The main "Move All" button is disabled -- resuming must go through
-    // "Retry and Continue", never a fresh restart from tray 1.
-    expect(screen.getByRole("button", { name: /move all 2 trays/i })).toBeDisabled();
+    // Destination is frozen for the run's whole duration, not just while
+    // unknown -- never re-targetable once any tray has been submitted.
+    expect(screen.getByLabelText(/^trolley$/i)).toBeDisabled();
+    // The button that was "Move All" now IS "Retry and Continue" -- never a
+    // fresh restart from tray 1, and never a second, separately-disabled
+    // button sitting alongside it.
+    expect(screen.queryByRole("button", { name: /^move all/i })).not.toBeInTheDocument();
+    // PILOT-BLOCKER-010 R4 test 5: while any tray's result is unknown,
+    // every action that could destroy the recovery state is guarded --
+    // Done, and switching to single-tray mode.
+    expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move a single Seed Tray instead" })).toBeDisabled();
 
     const retryButton = screen.getByRole("button", { name: "Retry and Continue" });
     fireEvent.click(retryButton);
@@ -496,5 +515,66 @@ describe("MoveTrayForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // --- PILOT-BLOCKER-010 R4 (frozen bulk run) -------------------------------
+
+  it("R4.4/7: the board survives a mid-run eligible-tray refetch that shrinks/reorders the live list -- confirmed and unknown status stay tied to stable tray identity, never a shifted index", async () => {
+    stubFetch({ trays: MULTI_BATCH_TRAYS_3 });
+    const { AppError } = await import("@/lib/errors/adapter");
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(queryKeys.authBootstrap(), DEFAULT_TEST_BOOTSTRAP);
+
+    const onSubmitOne = vi.fn()
+      .mockImplementationOnce(async () => {
+        // Simulate the real invalidation-driven refetch: ST-0001 just
+        // confirmed server-side and drops out of the eligible list; the
+        // remaining trays also come back reordered, exactly as a real
+        // refetch could return them.
+        queryClient.setQueryData(
+          queryKeys.germinationTrays(TEST_TENANT_ID, "farm-1"),
+          [THIRD_BATCH_TRAY, MULTI_BATCH_TRAYS_3[1], TRAYS[1]],
+        );
+        return {};
+      })
+      .mockRejectedValueOnce(new AppError("network_error", "Failed to fetch"));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthBootstrapProvider>
+          <MoveTrayForm
+            farmId="farm-1" onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false}
+            initialBatchId="batch-1" onSubmitOne={onSubmitOne}
+          />
+        </AuthBootstrapProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("3 trays ready")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^trolley$/i), { target: { value: "trolley-1" } });
+    await waitFor(() => expect(screen.getByText(/GT-01-L01/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move All 3 Trays" }));
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(2));
+
+    // The board must still be mounted and correct even though the live
+    // eligible-tray query now returns a completely different (shrunk,
+    // reordered) list that no longer even contains the confirmed tray.
+    expect(screen.getByText("1 of 3 trays moved")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/RESULT UNKNOWN/i);
+    // The SECOND tray (ST-0003) is the one marked unknown -- never shifted
+    // onto ST-0004 by an index into the now-reordered live list.
+    expect(screen.getByText(/tray st-0003: we couldn't confirm/i)).toBeInTheDocument();
+    expect(onSubmitOne.mock.calls[1][0]).toMatchObject({ tray_id: "tray-1b" });
+    // The third, not-yet-attempted tray remains visible too.
+    expect(screen.getByText("ST-0004")).toBeInTheDocument();
+
+    const retryButton = screen.getByRole("button", { name: "Retry and Continue" });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(onSubmitOne).toHaveBeenCalledTimes(3));
+    // Exact same command identity/payload replayed for ST-0003.
+    expect(onSubmitOne.mock.calls[2][0]).toEqual(onSubmitOne.mock.calls[1][0]);
+    expect(onSubmitOne.mock.calls[2][0]).toMatchObject({ tray_id: "tray-1b" });
   });
 });

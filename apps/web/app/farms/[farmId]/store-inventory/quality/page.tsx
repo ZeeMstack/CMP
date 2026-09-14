@@ -114,6 +114,68 @@ export default function StoreInventoryQualityPage() {
     element?.scrollIntoView?.({ behavior: "smooth", block: "center" });
   }, [continuationRow]);
 
+  // PILOT-BLOCKER-010 Quality sibling: `draft` (`useQualityCommandDraft`)
+  // already lives at THIS page level, not inside a row -- so the command's
+  // own id/payload/outcome were never at risk of unmounting. The actual gap
+  // was that its *recovery UI* only ever rendered inside
+  // `{isOpenForThisRow && ...}`, itself inside `rows.map(...)` -- if the
+  // queue refetches and this cohort's row is no longer present (put away by
+  // someone else, balance changed, any other reason it drops out of the
+  // company-wide queue), `isOpenForThisRow` is false for every row and the
+  // whole panel -- Retry included -- silently stops rendering anywhere,
+  // even though `draft.outcome` is still genuinely "uncertain"/"conflict".
+  const draftRowStillPresent = draft.context
+    ? rows.some((row) => row.inventory_quantity_cohort_id === draft.context!.cohortId)
+    : true;
+  const showOrphanedRecovery =
+    Boolean(draft.context) && !draftRowStillPresent && (draft.outcome === "uncertain" || draft.outcome === "conflict");
+
+  /** The one place that dispatches a Retry for the open draft -- reused by
+   * both the inline `QualityActionPanel.onRetry` (row still visible) and
+   * the page-level fallback banner below (row no longer visible), so a
+   * retry from either surface is the exact same command, never a
+   * duplicate. `rowContext` is farmId/itemId for targeted cache
+   * invalidation only (`_invalidateQuality` in lib/query/hooks.ts) -- both
+   * optional on every one of these mutations, so omitting them when the
+   * row is gone still submits the correct, unchanged command; only the
+   * extra targeted invalidation is skipped (the broader queue/cohort
+   * invalidations still fire regardless). */
+  function retryDraft(rowContext: { farmId?: string; itemId?: string } = {}) {
+    const context = draft.context;
+    if (!context) return;
+    const frozen = draft.retry();
+    if (!frozen) return;
+    const { payload, generation } = frozen;
+    if (context.kind === "ORDINARY") {
+      dispositionMutation.mutate(
+        { payload: payload as QualityDispositionCreate, ...rowContext },
+        { onSuccess: () => draft.handleSuccess(generation), onError: (err) => draft.handleError(asAppError(err), generation) },
+      );
+    } else if (context.kind === "PARTIAL") {
+      partialMutation.mutate(
+        { payload: payload as QualityPartialDispositionCreate, ...rowContext },
+        { onSuccess: () => draft.handleSuccess(generation), onError: (err) => draft.handleError(asAppError(err), generation) },
+      );
+    } else if (context.kind === "CORRECT") {
+      correctMutation.mutate(
+        { payload: payload as QualityDispositionCorrectionCreate, ...rowContext },
+        { onSuccess: () => draft.handleSuccess(generation), onError: (err) => draft.handleError(asAppError(err), generation) },
+      );
+    } else {
+      partialCorrectMutation.mutate(
+        { payload: payload as QualityPartialCorrectionCreate, ...rowContext },
+        { onSuccess: () => draft.handleSuccess(generation), onError: (err) => draft.handleError(asAppError(err), generation) },
+      );
+    }
+  }
+
+  const ORPHANED_ACTION_LABEL: Record<string, string> = {
+    ORDINARY: "A Quality decision",
+    PARTIAL: "A part-of-quantity Quality decision",
+    CORRECT: "A Quality decision correction",
+    PARTIAL_CORRECT: "A part-of-quantity Quality decision correction",
+  };
+
   return (
     <div>
       <PageHeader
@@ -130,6 +192,37 @@ export default function StoreInventoryQualityPage() {
         }
       />
       <StoreSubNav farmId={farmId} />
+
+      {showOrphanedRecovery && draft.context && (
+        <div
+          role="alert"
+          className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+        >
+          <div>
+            <p className="font-semibold">
+              {draft.outcome === "uncertain"
+                ? "Result unknown for a Quality action -- we couldn't confirm whether it was recorded."
+                : "This Quality action's target changed since it was opened."}
+            </p>
+            <p>
+              {ORPHANED_ACTION_LABEL[draft.context.kind]}
+              {draft.context.disposition ? ` (${draft.context.disposition})` : ""} -- this item is no longer in the
+              current work queue view, but the command itself is still tracked.
+              {draft.outcome === "uncertain" && " Do not repeat this operation as a new transaction."}
+              {draft.outcome === "conflict" && " Close it, then reopen the action once you can see the item again."}
+            </p>
+          </div>
+          {draft.outcome === "uncertain" ? (
+            <Button type="button" variant="primary" onClick={() => retryDraft()}>
+              Retry
+            </Button>
+          ) : (
+            <Button type="button" variant="secondary" onClick={() => draft.close()}>
+              Close
+            </Button>
+          )}
+        </div>
+      )}
 
       {continuationMissing && (
         <p className="mb-3 rounded-md border border-wl-border bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
@@ -326,47 +419,7 @@ export default function StoreInventoryQualityPage() {
                         serverError={draft.error}
                         commandOutcome={draft.outcome}
                         onCancel={draft.close}
-                        onRetry={() => {
-                          const context = draft.context;
-                          if (!context) return;
-                          const frozen = draft.retry();
-                          if (!frozen) return;
-                          const { payload, generation } = frozen;
-                          const variables = { farmId: row.received_at_farm_id, itemId: row.inventory_item_id };
-                          if (context.kind === "ORDINARY") {
-                            dispositionMutation.mutate(
-                              { payload: payload as QualityDispositionCreate, ...variables },
-                              {
-                                onSuccess: () => draft.handleSuccess(generation),
-                                onError: (err) => draft.handleError(asAppError(err), generation),
-                              },
-                            );
-                          } else if (context.kind === "PARTIAL") {
-                            partialMutation.mutate(
-                              { payload: payload as QualityPartialDispositionCreate, ...variables },
-                              {
-                                onSuccess: () => draft.handleSuccess(generation),
-                                onError: (err) => draft.handleError(asAppError(err), generation),
-                              },
-                            );
-                          } else if (context.kind === "CORRECT") {
-                            correctMutation.mutate(
-                              { payload: payload as QualityDispositionCorrectionCreate, ...variables },
-                              {
-                                onSuccess: () => draft.handleSuccess(generation),
-                                onError: (err) => draft.handleError(asAppError(err), generation),
-                              },
-                            );
-                          } else {
-                            partialCorrectMutation.mutate(
-                              { payload: payload as QualityPartialCorrectionCreate, ...variables },
-                              {
-                                onSuccess: () => draft.handleSuccess(generation),
-                                onError: (err) => draft.handleError(asAppError(err), generation),
-                              },
-                            );
-                          }
-                        }}
+                        onRetry={() => retryDraft({ farmId: row.received_at_farm_id, itemId: row.inventory_item_id })}
                         onSubmitOrdinary={({ reason, effectiveTime }) => {
                           if (draft.context?.kind !== "ORDINARY") return;
                           const { payload, generation } = draft.submit({

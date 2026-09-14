@@ -442,8 +442,12 @@ describe("GerminationPage worklist", () => {
     fireEvent.change(screen.getByLabelText(/^level$/i), { target: { value: "level-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Move All 2 Trays" }));
 
-    await waitFor(() => expect(screen.getByText("1 tray moved successfully")).toBeInTheDocument());
-    expect(screen.getByText("1 tray remains")).toBeInTheDocument();
+    // PILOT-BLOCKER-010: truthful per-tray state via the frozen run's own
+    // table -- a one-line "N moved successfully" summary is no longer the
+    // sole record.
+    await waitFor(() => expect(screen.getByText("1 of 2 trays moved")).toBeInTheDocument());
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+    expect(screen.getByText(/tray st-0001b could not be moved/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue Remaining" })).toBeInTheDocument();
   });
 

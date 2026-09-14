@@ -45,6 +45,10 @@ export default function DispatchPage() {
   const [contextInvalid, setContextInvalid] = useState(false);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{ code: string; lotCodes: string[] } | null>(null);
+  // PILOT-BLOCKER-010: mirrors the Leafy/Vines Harvest pages' identical
+  // guard -- true only while a network/server error leaves this Dispatch's
+  // actual outcome unknown, distinct from `recordMutation.isPending`.
+  const [isResultUnknown, setIsResultUnknown] = useState(false);
 
   const lotsQuery = useFinishedGoodsLots(farmId);
   const recallCasesQuery = useRecallCases(farmId);
@@ -134,8 +138,10 @@ export default function DispatchPage() {
                 onRemoveLot={(lotId) => setSelectedIds((ids) => ids.filter((id) => id !== lotId))}
                 isSubmitting={recordMutation.isPending}
                 serverError={recordError}
+                disableRemove={recordMutation.isPending || isResultUnknown}
                 onSubmit={(payload) => {
                   setRecordError(null);
+                  setIsResultUnknown(false);
                   recordMutation.mutate(payload, {
                     onSuccess: (result) => {
                       setRecordSuccess({
@@ -144,7 +150,11 @@ export default function DispatchPage() {
                       });
                       setSelectedIds([]);
                     },
-                    onError: (error) => setRecordError(asAppError(error)),
+                    onError: (error) => {
+                      const appError = asAppError(error);
+                      setRecordError(appError);
+                      setIsResultUnknown(appError.kind === "network_error" || appError.kind === "server_error");
+                    },
                   });
                 }}
               />
@@ -155,6 +165,7 @@ export default function DispatchPage() {
               recallCases={recallCasesQuery.data}
               selectedIds={selectedIds}
               isLoading={lotsQuery.isLoading}
+              disableRemove={recordMutation.isPending || isResultUnknown}
               onAdd={(lot) => setSelectedIds((ids) => [...ids, lot.id])}
               onRemove={(lotId) => setSelectedIds((ids) => ids.filter((id) => id !== lotId))}
             />

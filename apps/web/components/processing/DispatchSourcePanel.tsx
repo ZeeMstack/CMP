@@ -14,6 +14,7 @@ function SourceRow({
   isSelected,
   onAdd,
   onRemove,
+  disableRemove,
 }: {
   lot: FinishedGoodsLotRead;
   farmId: string;
@@ -21,6 +22,7 @@ function SourceRow({
   isSelected: boolean;
   onAdd: () => void;
   onRemove: () => void;
+  disableRemove?: boolean;
 }) {
   const placementQuery = useFinishedGoodsPlacement(farmId, lot.id);
   const recallCase = findOpenRecallCase(recallCases, "finished_goods_lot_id", lot.id);
@@ -47,7 +49,7 @@ function SourceRow({
       </div>
       <div>
         {isSelected ? (
-          <Button type="button" variant="secondary" onClick={onRemove}>
+          <Button type="button" variant="secondary" disabled={disableRemove} onClick={onRemove}>
             Remove
           </Button>
         ) : (
@@ -74,6 +76,7 @@ export function DispatchSourcePanel({
   onAdd,
   onRemove,
   isLoading,
+  disableRemove,
 }: {
   lots: FinishedGoodsLotRead[];
   farmId: string;
@@ -82,6 +85,8 @@ export function DispatchSourcePanel({
   onAdd: (lot: FinishedGoodsLotRead) => void;
   onRemove: (lotId: string) => void;
   isLoading: boolean;
+  // PILOT-BLOCKER-010: see `DispatchForm`'s identical prop.
+  disableRemove?: boolean;
 }) {
   if (isLoading) {
     return <p className="text-sm text-wl-text-secondary">Loading Finished Goods Lots…</p>;
@@ -103,6 +108,7 @@ export function DispatchSourcePanel({
           isSelected={selectedIds.includes(lot.id)}
           onAdd={() => onAdd(lot)}
           onRemove={() => onRemove(lot.id)}
+          disableRemove={disableRemove}
         />
       ))}
     </ul>

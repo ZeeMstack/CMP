@@ -41,6 +41,13 @@ export default function LeafyHarvestPage() {
   } | null>(null);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
+  // PILOT-BLOCKER-010: distinct from `recordMutation.isPending` (which
+  // reverts to `false` the instant ANY response -- success, network
+  // failure, or definitive rejection -- settles) -- this stays `true` only
+  // for a network/server error, where the actual outcome is still unknown,
+  // until the operator explicitly submits again. A definitive rejection
+  // leaves this `false`, matching existing "editable" semantics.
+  const [isResultUnknown, setIsResultUnknown] = useState(false);
 
   const harvestablePlatesQuery = useHarvestablePlates(farmId);
   const harvestsQuery = useLeafyHarvests(farmId);
@@ -144,8 +151,10 @@ export default function LeafyHarvestPage() {
                 }
                 isSubmitting={recordMutation.isPending}
                 serverError={recordError}
+                disableRemove={recordMutation.isPending || isResultUnknown}
                 onSubmit={(payload) => {
                   setRecordError(null);
+                  setIsResultUnknown(false);
                   recordMutation.mutate(payload, {
                     onSuccess: (result) => {
                       setSelectedAssignmentIds([]);
@@ -158,7 +167,11 @@ export default function LeafyHarvestPage() {
                         plateCount: result.source_lines.length,
                       });
                     },
-                    onError: (error) => setRecordError(asAppError(error)),
+                    onError: (error) => {
+                      const appError = asAppError(error);
+                      setRecordError(appError);
+                      setIsResultUnknown(appError.kind === "network_error" || appError.kind === "server_error");
+                    },
                   });
                 }}
               />
@@ -168,6 +181,7 @@ export default function LeafyHarvestPage() {
               selectedAssignmentIds={selectedAssignmentIds}
               lockedBatchId={lockedBatchId}
               isLoading={harvestablePlatesQuery.isLoading}
+              disableRemove={recordMutation.isPending || isResultUnknown}
               onAdd={(plate) =>
                 setSelectedAssignmentIds((ids) => [...ids, plate.current_batch_carrier_assignment_id])
               }

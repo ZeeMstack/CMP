@@ -260,4 +260,52 @@ describe("VinesHarvestPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm correction" }));
     await waitFor(() => expect(screen.queryByText("Review correction")).not.toBeInTheDocument());
   });
+
+  // --- PILOT-BLOCKER-010 (source removal guard) -----------------------------
+
+  it("R10: a network failure (result unknown) blocks removing the source Gutter until resubmission resolves it", async () => {
+    let recordCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/vines-production/harvests") && method === "POST") {
+          recordCalls += 1;
+          if (recordCalls === 1) throw new TypeError("Failed to fetch");
+          return jsonResponse(harvestEvent());
+        }
+        if (url.includes("/vines-production/harvestable-sources")) return jsonResponse([SOURCE_A]);
+        if (url.includes("/vines-production/harvests")) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+
+    render(withQueryClient(<VinesHarvestPage />));
+    await waitFor(() => expect(screen.getByText("GUT-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/raw weight/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/raw weight/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    // Both the form's own row and the picker panel's row for this same
+    // Gutter render a "Remove" button once it's selected -- both must be
+    // guarded.
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Remove" })).toHaveLength(2));
+    for (const button of screen.getAllByRole("button", { name: "Remove" })) {
+      expect(button).toBeDisabled();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+  });
 });

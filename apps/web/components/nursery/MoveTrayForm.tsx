@@ -40,32 +40,67 @@ function nowDateAndTime() {
   };
 }
 
-/** Progress/outcome of a "Move All" run -- a truthful record, not an
- * optimistic one: a mid-run failure is reported exactly where it stopped,
- * never presented as if earlier successful `place_tray` calls could be
- * rolled back (they can't -- each already committed independently).
+/** PILOT-BLOCKER-010 R4: one tray's own status within a frozen bulk run --
+ * a truthful record, not an optimistic one. Identified by `trayId` (stable)
+ * everywhere, never by its position in any array -- the live eligible-tray
+ * query reorders/shrinks as each move commits (its own `onSuccess`
+ * invalidates the same query the board itself reads), so an index would
+ * silently drift out from under a resuming "Continue"/"Retry" click.
  *
- * PILOT-BLOCKER-008 A4: `outcome: "unknown"` (network/timeout/5xx -- the
- * server's response was never received) is a DIFFERENT case from
- * `"failed"` (a definitive domain rejection) -- an unknown outcome must
- * never be labeled "could not be moved", and resuming past it must replay
- * the EXACT frozen command for `failedTrayId`, never a fresh one. */
-type BulkRunState =
-  | { phase: "idle" }
-  | { phase: "running"; total: number; completed: number; currentTrayCode: string }
-  | { phase: "done"; succeeded: number; trolleyCode: string; levelCode: string }
-  | {
-      phase: "partial";
-      succeeded: number;
-      remaining: number;
-      failedIndex: number;
-      failedTrayCode: string;
-      outcome: "unknown" | "failed";
-      failedReason: string;
-    };
+ * `"unknown"` (network/timeout/5xx -- the server's response was never
+ * received) is a DIFFERENT case from `"failed"` (a definitive domain
+ * rejection): an unknown outcome must never be labeled "could not be
+ * moved", and retrying it must replay the EXACT frozen
+ * `client_command_id`/payload, never a fresh one -- `frozenPayload` is kept
+ * only for `"unknown"`, cleared on a definitive `"failed"` (a fresh logical
+ * command is fine there) or `"confirmed"`. */
+type RunEntryStatus = "not_attempted" | "submitting" | "confirmed" | "unknown" | "failed";
+
+interface RunEntry {
+  trayId: string;
+  trayCode: string;
+  seedsSown: number;
+  status: RunEntryStatus;
+  clientCommandId: string | null;
+  frozenPayload: PlaceTrayCreate | null;
+  failedReason: string | null;
+}
+
+/** PILOT-BLOCKER-010 R4: the whole bulk run, frozen the moment the FIRST
+ * tray in it is submitted (via "Move All" or an individual row "Move") --
+ * `entries` is then the sole source of truth for which trays this run
+ * covers and their status; the live `trays` prop (whatever
+ * `useGerminationTrays` currently returns) is used only for validation/
+ * capacity checks and for a NEW run once this one fully resolves, never to
+ * rebuild `entries`. `trolleyId`/`levelId`/`reason` are the run's own frozen
+ * destination context -- fixed once the run starts, so every entry in it
+ * targets the same place regardless of what the (now-disabled) destination
+ * fields might otherwise show. */
+interface FrozenRun {
+  batchCode: string;
+  trolleyId: string;
+  trolleyCode: string;
+  levelId: string;
+  levelCode: string;
+  reason: string;
+  entries: RunEntry[];
+}
 
 function isUncertainSubmitError(err: unknown): boolean {
   return err instanceof AppError && (err.kind === "network_error" || err.kind === "server_error");
+}
+
+/** The destination context a run freezes at start -- passed up from
+ * `BulkMoveBoard`'s own (pre-run) selection state the first time a
+ * submission actually happens, since `MoveTrayForm` doesn't otherwise know
+ * what the board's Trolley/Level/Reason fields currently hold. */
+interface RunDestination {
+  trolleyId: string;
+  trolleyCode: string;
+  levelId: string;
+  levelCode: string;
+  reason: string;
+  batchCode: string;
 }
 
 /** PILOT-UX-001 (CTO correction): a Sowing batch commonly spans 5-50+ Seed
@@ -77,14 +112,32 @@ function isUncertainSubmitError(err: unknown): boolean {
  * "Move All" orchestrates the SAME single-tray command sequentially with
  * its own idempotency key per call; a per-row "Move" stays available as a
  * manual/exception path. A follow-up candidate (reported, not built here):
- * a real bulk placement command if/when the backend adds one. */
+ * a real bulk placement command if/when the backend adds one.
+ *
+ * PILOT-BLOCKER-010 R4: the run itself (`frozenRun`) is owned by the
+ * PARENT (`MoveTrayForm`), not this component -- this board must be able to
+ * survive the live eligible-tray count changing (it does, every time a
+ * `place_tray` call in this very run succeeds and invalidates the query
+ * this board would otherwise be gated on) without losing an unresolved
+ * command. This component itself never unmounts mid-run any more; see
+ * `showBulkBoard` in `MoveTrayForm` below. */
 function BulkMoveBoard({
-  farmId, batchCode, trays, onSubmitOne, onSwitchToSingle, onCancel, onSetUpTrolley,
+  farmId, batchCode, trays, frozenRun, hasUnknownEntry, isRunningAny, onSubmitEntry, onRunAll, onSwitchToSingle,
+  onCancel, onSetUpTrolley,
 }: {
   farmId: string;
   batchCode: string;
+  /** LIVE eligible trays for this Batch -- used only (a) before any run has
+   * started, to browse/select trays to move, and (b) as the entry list a
+   * NEW run freezes from the moment it starts. Once `frozenRun` is non-null,
+   * rendering uses `frozenRun.entries` instead, never this list again, so a
+   * refetch that shrinks/reorders it can never rewrite run history. */
   trays: GerminationTrayRead[];
-  onSubmitOne: (payload: PlaceTrayCreate) => Promise<unknown>;
+  frozenRun: FrozenRun | null;
+  hasUnknownEntry: boolean;
+  isRunningAny: boolean;
+  onSubmitEntry: (trayId: string, destination: RunDestination) => void;
+  onRunAll: (destination: RunDestination) => void;
   onSwitchToSingle: () => void;
   onCancel: () => void;
   onSetUpTrolley?: () => void;
@@ -93,27 +146,6 @@ function BulkMoveBoard({
   const [levelId, setLevelId] = useState("");
   const [reason, setReason] = useState("");
   const [showRowTable, setShowRowTable] = useState(false);
-  const [rowStatus, setRowStatus] = useState<Record<string, "moving" | "error" | "uncertain">>({});
-  const [rowError, setRowError] = useState<Record<string, string>>({});
-  const [bulkRun, setBulkRun] = useState<BulkRunState>({ phase: "idle" });
-  // PILOT-BLOCKER-008 A4: one frozen {client_command_id, payload} per tray,
-  // populated on a tray's first submission attempt and cleared only once
-  // its outcome becomes DEFINITE (success, or a definitive domain
-  // rejection) -- never on an unknown/transport-failure outcome, so a
-  // per-row Retry or a "Continue Remaining" resume always replays the
-  // EXACT command a tray last received, never a fresh id/payload.
-  const frozenCommandsRef = useRef(new Map<string, PlaceTrayCreate>());
-  const hasUncertainRow = Object.values(rowStatus).some((s) => s === "uncertain");
-
-  function getOrCreateFrozenCommand(
-    trayId: string, build: (clientCommandId: string) => PlaceTrayCreate,
-  ): PlaceTrayCreate {
-    const existing = frozenCommandsRef.current.get(trayId);
-    if (existing) return existing;
-    const payload = build(crypto.randomUUID());
-    frozenCommandsRef.current.set(trayId, payload);
-    return payload;
-  }
 
   const trolleysQuery = useAvailableTrolleys(farmId);
   const trolleys = trolleysQuery.data ?? [];
@@ -122,119 +154,65 @@ function BulkMoveBoard({
   const selectedLevel = levels.find((l) => l.id === levelId) ?? null;
   const destinationReady = Boolean(trolleyId && levelId);
   const levelIsFull = selectedLevel !== null && (selectedLevel.available_capacity ?? 0) <= 0;
-  const isRunning = bulkRun.phase === "running";
+  // Once a run exists, its own frozen destination is authoritative for
+  // display -- the live selects below are disabled the moment `frozenRun`
+  // exists (never re-targetable mid-run), so they can never diverge from it.
+  const trolleyCode = trolleys.find((t) => t.id === trolleyId)?.code ?? "";
+  const levelCode = selectedLevel?.code ?? "";
+
+  // PILOT-BLOCKER-010: the display list is the frozen run's own entries once
+  // a run exists -- confirmed trays and not-yet-attempted trays both stay
+  // visible here regardless of what the live `trays` query currently
+  // returns (a confirmed tray legitimately drops out of the live eligible
+  // list once its state flips server-side; it must not also vanish from
+  // this table). Before any run starts, this is simply a live projection of
+  // `trays`, unchanged from the pre-fix behavior.
+  const displayEntries: RunEntry[] = frozenRun
+    ? frozenRun.entries
+    : trays.map((t) => ({
+        trayId: t.tray.id, trayCode: t.tray.code, seedsSown: t.seeds_sown, status: "not_attempted",
+        clientCommandId: null, frozenPayload: null, failedReason: null,
+      }));
+  const confirmedCount = displayEntries.filter((e) => e.status === "confirmed").length;
+  const allConfirmed = displayEntries.length > 0 && confirmedCount === displayEntries.length;
+  const blockingEntry = displayEntries.find((e) => e.status === "unknown" || e.status === "failed");
+  const submittingEntry = displayEntries.find((e) => e.status === "submitting");
+  const remainingCount = displayEntries.filter((e) => e.status !== "confirmed").length;
   // PILOT-UX-001 (CTO correction): use ONLY the already-fetched Level
   // capacity to rule out an obviously-impossible run before starting --
   // never a re-implementation of backend capacity logic, which remains
-  // authoritative for every individual `place_tray` call regardless.
+  // authoritative for every individual `place_tray` call regardless. Once a
+  // run is under way, this revalidates against the LIVE Level capacity
+  // (refetched after every confirmed move) compared to the run's own
+  // REMAINING entries -- never the frozen run's original total, and never
+  // discarding the frozen run to do it.
   const capacityInsufficient =
-    selectedLevel !== null && selectedLevel.mode === "direct" && (selectedLevel.available_capacity ?? 0) < trays.length;
+    selectedLevel !== null && selectedLevel.mode === "direct" && (selectedLevel.available_capacity ?? 0) < remainingCount;
 
-  async function moveTray(trayId: string) {
-    if (!destinationReady) return;
-    setRowStatus((s) => ({ ...s, [trayId]: "moving" }));
-    setRowError((s) => {
-      const next = { ...s };
-      delete next[trayId];
-      return next;
-    });
-    try {
-      // A Retry click re-enters this same function -- reusing the frozen
-      // command (if this tray already has one) rather than minting a new
-      // id is exactly what makes Retry an exact replay, not a new command.
-      const payload = getOrCreateFrozenCommand(trayId, (clientCommandId) => ({
-        client_command_id: clientCommandId,
-        tray_id: trayId,
-        trolley_id: trolleyId,
-        asset_position_id: levelId,
-        effective_time: new Date().toISOString(),
-        reason: reason.trim() || null,
-      }));
-      await onSubmitOne(payload);
-      frozenCommandsRef.current.delete(trayId);
-      setRowStatus((s) => {
-        const next = { ...s };
-        delete next[trayId];
-        return next;
-      });
-    } catch (err) {
-      const uncertain = isUncertainSubmitError(err);
-      // A definitive rejection lets the operator resubmit as a genuinely
-      // new logical command (fresh id next time); an uncertain outcome
-      // keeps the frozen command intact so Retry replays it exactly.
-      if (!uncertain) frozenCommandsRef.current.delete(trayId);
-      setRowStatus((s) => ({ ...s, [trayId]: uncertain ? "uncertain" : "error" }));
-      setRowError((s) => ({
-        ...s,
-        [trayId]: uncertain
-          ? "Result not confirmed -- submitted, but the server's response was never received."
-          : err instanceof AppError ? err.message : "Move failed. Try again.",
-      }));
-    }
-  }
-
-  /** PILOT-UX-001 (CTO correction): "Move All" -- frontend orchestration
-   * over the SAME existing single-tray `place_tray` command, called
-   * sequentially with its own idempotency key each time. No new backend
-   * endpoint. Stops at the first failure and reports exactly how far it
-   * got -- earlier successful calls already committed and are never
-   * pretended to have rolled back.
-   *
-   * PILOT-BLOCKER-008 A4: `startIndex` lets "Continue Remaining"/"Retry and
-   * Continue" resume exactly where a prior run stopped -- the tray at
-   * `startIndex` reuses its frozen command via `getOrCreateFrozenCommand`
-   * (an unknown-outcome tray's frozen entry was deliberately never
-   * cleared), and later trays are genuinely fresh attempts. */
-  async function moveAll(startIndex = 0) {
-    if (!destinationReady || isRunning || capacityInsufficient) return;
-    const targets = trays;
-    const trolleyCode = trolleys.find((t) => t.id === trolleyId)?.code ?? "";
-    const levelCode = selectedLevel?.code ?? "";
-    for (let i = startIndex; i < targets.length; i += 1) {
-      const t = targets[i];
-      setBulkRun({ phase: "running", total: targets.length, completed: i, currentTrayCode: t.tray.code });
-      try {
-        // Deliberately sequential: each call must commit before the next
-        // starts, so a mid-run failure stops cleanly at a known point.
-        const payload = getOrCreateFrozenCommand(t.tray.id, (clientCommandId) => ({
-          client_command_id: clientCommandId,
-          tray_id: t.tray.id,
-          trolley_id: trolleyId,
-          asset_position_id: levelId,
-          effective_time: new Date().toISOString(),
-          reason: reason.trim() || null,
-        }));
-        await onSubmitOne(payload);
-        frozenCommandsRef.current.delete(t.tray.id);
-      } catch (err) {
-        const uncertain = isUncertainSubmitError(err);
-        if (!uncertain) frozenCommandsRef.current.delete(t.tray.id);
-        setBulkRun({
-          phase: "partial",
-          succeeded: i,
-          remaining: targets.length - i,
-          failedIndex: i,
-          failedTrayCode: t.tray.code,
-          outcome: uncertain ? "unknown" : "failed",
-          failedReason: err instanceof AppError ? err.message : "Move failed.",
-        });
-        return;
-      }
-    }
-    setBulkRun({ phase: "done", succeeded: targets.length, trolleyCode, levelCode });
-  }
+  const destination: RunDestination = { trolleyId, trolleyCode, levelId, levelCode, reason, batchCode };
 
   return (
     <div className="flex flex-col gap-6">
       <p className="rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 py-2 text-xs text-wl-brand">
-        Continuing from Sowing — Batch {batchCode}, {trays.length} eligible Seed Tray{trays.length === 1 ? "" : "s"}.{" "}
+        Continuing from Sowing — Batch {batchCode}, {displayEntries.length} eligible Seed Tray
+        {displayEntries.length === 1 ? "" : "s"}.{" "}
         <button
           type="button" className="font-medium underline" onClick={onSwitchToSingle}
-          disabled={isRunning || hasUncertainRow}
+          disabled={isRunningAny || hasUnknownEntry}
         >
           Move a single Seed Tray instead
         </button>
       </p>
+
+      {hasUnknownEntry && (
+        <div role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          <p className="font-semibold">RESULT UNKNOWN — RETRY/RECONCILE REQUIRED</p>
+          <p>
+            Tray {blockingEntry?.trayCode}: we couldn&apos;t confirm whether this Move was recorded. Do not repeat
+            this operation as a new transaction -- Retry sends the exact same submitted values again.
+          </p>
+        </div>
+      )}
 
       <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Destination (applies to every move below)</legend>
@@ -256,7 +234,11 @@ function BulkMoveBoard({
               <select
                 className={inputClass}
                 value={trolleyId}
-                disabled={isRunning || hasUncertainRow}
+                // PILOT-BLOCKER-010: once a run exists, its destination is
+                // frozen -- never re-targetable mid-run, not merely while
+                // uncertain (every entry in the run must go to the same
+                // place, including any not yet attempted).
+                disabled={Boolean(frozenRun) || isRunningAny}
                 onChange={(e) => {
                   setTrolleyId(e.target.value);
                   setLevelId("");
@@ -276,7 +258,7 @@ function BulkMoveBoard({
                 <select
                   className={inputClass}
                   value={levelId}
-                  disabled={isRunning || hasUncertainRow}
+                  disabled={Boolean(frozenRun) || isRunningAny}
                   onChange={(e) => setLevelId(e.target.value)}
                 >
                   <option value="">Select a Level…</option>
@@ -316,7 +298,7 @@ function BulkMoveBoard({
           className={`${inputClass} min-h-16`}
           rows={2}
           value={reason}
-          disabled={isRunning || hasUncertainRow}
+          disabled={Boolean(frozenRun) || isRunningAny}
           onChange={(e) => setReason(e.target.value)}
         />
       </fieldset>
@@ -325,50 +307,52 @@ function BulkMoveBoard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-wl-text">
-              {trays.length} tray{trays.length === 1 ? "" : "s"} ready
+              {confirmedCount > 0 && `${confirmedCount} of `}
+              {displayEntries.length} tray{displayEntries.length === 1 ? "" : "s"}
+              {confirmedCount > 0 ? " moved" : " ready"}
             </p>
-            {!destinationReady && (
+            {!destinationReady && !frozenRun && (
               <p className="text-xs text-wl-text-secondary">Choose a Trolley and Level to enable Move All.</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              // PILOT-BLOCKER-008 A4: disabled while a prior run stopped on
-              // an unresolved tray ("partial") -- resuming must go through
-              // "Continue Remaining"/"Retry and Continue" below, which
-              // replays that tray's exact frozen command and never
-              // restarts from tray 1 (which would re-submit already-
-              // succeeded trays with fresh ids).
-              disabled={!destinationReady || isRunning || capacityInsufficient || bulkRun.phase === "partial" || hasUncertainRow}
-              onClick={() => moveAll()}
-            >
-              {isRunning
-                ? `Moving ${bulkRun.completed + 1} of ${bulkRun.total}…`
-                : `Move All ${trays.length} Tray${trays.length === 1 ? "" : "s"}`}
-            </Button>
-            <Button
-              type="button" variant="secondary" disabled={isRunning || hasUncertainRow}
-              onClick={() => setShowRowTable((v) => !v)}
-            >
-              {showRowTable ? "Hide trays" : "Show trays"}
-            </Button>
-          </div>
+          {!allConfirmed && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                disabled={!destinationReady || isRunningAny || capacityInsufficient}
+                onClick={() => onRunAll(destination)}
+              >
+                {isRunningAny
+                  ? `Moving ${confirmedCount + 1} of ${displayEntries.length}${submittingEntry ? ` (${submittingEntry.trayCode})` : ""}…`
+                  : hasUnknownEntry
+                    ? "Retry and Continue"
+                    : blockingEntry
+                      ? "Continue Remaining"
+                      : `Move All ${displayEntries.length} Tray${displayEntries.length === 1 ? "" : "s"}`}
+              </Button>
+              <Button
+                type="button" variant="secondary" disabled={isRunningAny}
+                onClick={() => setShowRowTable((v) => !v)}
+              >
+                {showRowTable ? "Hide trays" : "Show trays"}
+              </Button>
+            </div>
+          )}
         </div>
         {capacityInsufficient && selectedLevel && (
           <p className="text-xs text-danger-700">
-            This Level only has {selectedLevel.available_capacity} of the {trays.length} needed free positions.
+            This Level only has {selectedLevel.available_capacity} of the {remainingCount} needed free positions.
             Choose a Level with more capacity, or move trays individually below.
           </p>
         )}
       </div>
 
-      {bulkRun.phase === "done" && (
+      {allConfirmed && (
         <div className="flex flex-col gap-2 rounded-lg border border-wl-border-strong bg-wl-grow-bg p-3 text-sm text-wl-grow-fg">
           <p>
-            {bulkRun.succeeded} tray{bulkRun.succeeded === 1 ? "" : "s"} moved to Trolley {bulkRun.trolleyCode} /
-            Level {bulkRun.levelCode}
+            {confirmedCount} tray{confirmedCount === 1 ? "" : "s"} moved to Trolley {frozenRun?.trolleyCode ?? trolleyCode} /
+            Level {frozenRun?.levelCode ?? levelCode}
           </p>
           <Button type="button" variant="secondary" className="self-start" onClick={onCancel}>
             Continue
@@ -376,45 +360,15 @@ function BulkMoveBoard({
         </div>
       )}
 
-      {bulkRun.phase === "partial" && (
-        <div
-          className={`flex flex-col gap-2 rounded-lg border border-wl-border-strong p-3 text-sm ${
-            bulkRun.outcome === "unknown" ? "bg-amber-50 text-amber-900" : "bg-wl-flag-bg text-wl-flag-fg"
-          }`}
-        >
+      {blockingEntry && !hasUnknownEntry && (
+        <div className="flex flex-col gap-2 rounded-lg border border-wl-border-strong bg-wl-flag-bg p-3 text-sm text-wl-flag-fg">
           <p>
-            {bulkRun.succeeded} tray{bulkRun.succeeded === 1 ? "" : "s"} moved successfully
+            Tray {blockingEntry.trayCode} could not be moved: {blockingEntry.failedReason}
           </p>
-          {bulkRun.outcome === "unknown" ? (
-            // PILOT-BLOCKER-008 A4: an unknown outcome is never labeled
-            // "could not be moved" -- the server's response was never
-            // received, so this tray's real result is still unresolved.
-            <p>
-              Tray {bulkRun.failedTrayCode}: result not confirmed -- submitted, but the server&apos;s response was
-              never received.
-            </p>
-          ) : (
-            <p>
-              Tray {bulkRun.failedTrayCode} could not be moved: {bulkRun.failedReason}
-            </p>
-          )}
-          {bulkRun.remaining > 1 && (
-            <p>
-              {bulkRun.remaining - 1} more tray{bulkRun.remaining - 1 === 1 ? "" : "s"} not yet attempted.
-            </p>
-          )}
-          <Button
-            type="button"
-            variant="secondary"
-            className="self-start"
-            onClick={() => moveAll(bulkRun.failedIndex)}
-          >
-            {bulkRun.outcome === "unknown" ? "Retry and Continue" : "Continue Remaining"}
-          </Button>
         </div>
       )}
 
-      {showRowTable && (
+      {(showRowTable || blockingEntry) && (
         <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-wl-border bg-wl-surface-sunken text-xs uppercase text-wl-text-secondary">
@@ -425,40 +379,50 @@ function BulkMoveBoard({
               </tr>
             </thead>
             <tbody className="divide-y divide-wl-border">
-              {trays.map((t) => {
-                const status = rowStatus[t.tray.id];
-                return (
-                  <tr key={t.tray.id}>
-                    <td className="px-4 py-2 font-medium text-wl-text">{t.tray.code}</td>
-                    <td className="px-4 py-2 text-wl-text-secondary">{t.seeds_sown.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right">
-                      {rowError[t.tray.id] && (
-                        <p className={`mb-1 text-xs ${status === "uncertain" ? "text-amber-800" : "text-danger-700"}`}>
-                          {rowError[t.tray.id]}
-                        </p>
-                      )}
-                      <Button
-                        type="button"
-                        variant={status === "error" || status === "uncertain" ? "secondary" : "primary"}
-                        disabled={
-                          !destinationReady || isRunning || status === "moving" ||
-                          (status !== "error" && status !== "uncertain" && levelIsFull)
-                        }
-                        onClick={() => moveTray(t.tray.id)}
-                      >
-                        {status === "moving" ? "Moving…" : status === "error" || status === "uncertain" ? "Retry" : "Move"}
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {displayEntries.map((entry) => (
+                <tr key={entry.trayId}>
+                  <td className="px-4 py-2 font-medium text-wl-text">{entry.trayCode}</td>
+                  <td className="px-4 py-2 text-wl-text-secondary">{entry.seedsSown.toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right">
+                    {entry.status === "confirmed" ? (
+                      <span className="text-xs font-medium text-wl-grow-fg">Confirmed</span>
+                    ) : (
+                      <>
+                        {entry.status === "unknown" && (
+                          <p className="mb-1 text-xs text-amber-800">
+                            Result not confirmed -- submitted, but the server&apos;s response was never received.
+                          </p>
+                        )}
+                        {entry.status === "failed" && entry.failedReason && (
+                          <p className="mb-1 text-xs text-danger-700">{entry.failedReason}</p>
+                        )}
+                        <Button
+                          type="button"
+                          variant={entry.status === "failed" || entry.status === "unknown" ? "secondary" : "primary"}
+                          disabled={
+                            !destinationReady || isRunningAny || entry.status === "submitting" ||
+                            (entry.status === "not_attempted" && levelIsFull)
+                          }
+                          onClick={() => onSubmitEntry(entry.trayId, destination)}
+                        >
+                          {entry.status === "submitting"
+                            ? "Moving…"
+                            : entry.status === "failed" || entry.status === "unknown"
+                              ? "Retry"
+                              : "Move"}
+                        </Button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
       <div>
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isRunning || hasUncertainRow}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isRunningAny || hasUnknownEntry}>
           Done
         </Button>
       </div>
@@ -512,6 +476,117 @@ export function MoveTrayForm({
   const [selectedTrolleyId, setSelectedTrolleyId] = useState("");
   const [selectedLevelId, setSelectedLevelId] = useState("");
   const [forceSingleMode, setForceSingleMode] = useState(false);
+
+  // PILOT-BLOCKER-010 R4: the bulk run's OWN state, owned here -- one level
+  // ABOVE `BulkMoveBoard`, which this fix makes non-disposable for the
+  // duration of a run, but the run state is kept up here regardless so
+  // nothing about its correctness depends on that. `frozenRunRef` is the
+  // synchronous source of truth the sequential `runAll` loop reads/writes
+  // (a `useState` setter's effect isn't visible until the next render,
+  // which would be too late for the very next loop iteration); `frozenRun`
+  // (state) exists purely to trigger re-renders so the board reflects it.
+  const frozenRunRef = useRef<FrozenRun | null>(null);
+  const [frozenRun, setFrozenRunState] = useState<FrozenRun | null>(null);
+  function commitFrozenRun(run: FrozenRun | null) {
+    frozenRunRef.current = run;
+    setFrozenRunState(run);
+  }
+  function updateRunEntry(trayId: string, patch: Partial<RunEntry>) {
+    const run = frozenRunRef.current;
+    if (!run) return;
+    commitFrozenRun({ ...run, entries: run.entries.map((e) => (e.trayId === trayId ? { ...e, ...patch } : e)) });
+  }
+  /** Only ever CREATES the run once, from whatever trays are currently
+   * eligible for this Batch at that exact moment -- every later call is a
+   * no-op returning the existing run untouched. This is what stops a
+   * mid-run query refetch from ever rewriting run history: after this first
+   * call, nothing reads `matchingBatchTrays` to decide run MEMBERSHIP again. */
+  function ensureRunStarted(destination: RunDestination): FrozenRun {
+    if (frozenRunRef.current) return frozenRunRef.current;
+    const run: FrozenRun = {
+      batchCode: destination.batchCode,
+      trolleyId: destination.trolleyId, trolleyCode: destination.trolleyCode,
+      levelId: destination.levelId, levelCode: destination.levelCode,
+      reason: destination.reason,
+      entries: matchingBatchTrays.map((t) => ({
+        trayId: t.tray.id, trayCode: t.tray.code, seedsSown: t.seeds_sown, status: "not_attempted",
+        clientCommandId: null, frozenPayload: null, failedReason: null,
+      })),
+    };
+    commitFrozenRun(run);
+    return run;
+  }
+  /** Submits exactly one run entry -- reused identically by a per-row
+   * "Move"/"Retry" click and by `runAll`'s own loop, so there is only ever
+   * one place that freezes/reuses a tray's `client_command_id`/payload. A
+   * Retry re-enters this with the SAME entry already carrying its frozen
+   * payload (only kept non-null while `"unknown"`), so it replays exactly,
+   * never minting a fresh id. */
+  async function submitRunEntry(trayId: string, destination: RunDestination) {
+    const run = ensureRunStarted(destination);
+    const entry = run.entries.find((e) => e.trayId === trayId) ?? frozenRunRef.current?.entries.find((e) => e.trayId === trayId);
+    if (!entry || entry.status === "submitting" || entry.status === "confirmed" || !onSubmitOne) return;
+    const clientCommandId = entry.clientCommandId ?? crypto.randomUUID();
+    const payload: PlaceTrayCreate = entry.frozenPayload ?? {
+      client_command_id: clientCommandId,
+      tray_id: trayId,
+      trolley_id: run.trolleyId,
+      asset_position_id: run.levelId,
+      effective_time: new Date().toISOString(),
+      reason: run.reason.trim() || null,
+    };
+    updateRunEntry(trayId, { status: "submitting", clientCommandId, frozenPayload: payload });
+    try {
+      await onSubmitOne(payload);
+      updateRunEntry(trayId, { status: "confirmed", frozenPayload: null, clientCommandId: null, failedReason: null });
+    } catch (err) {
+      const uncertain = isUncertainSubmitError(err);
+      updateRunEntry(trayId, {
+        // A definitive rejection lets the operator resubmit as a genuinely
+        // new logical command (fresh id next time); an uncertain outcome
+        // keeps the frozen command intact so Retry replays it exactly.
+        status: uncertain ? "unknown" : "failed",
+        frozenPayload: uncertain ? payload : null,
+        clientCommandId: uncertain ? clientCommandId : null,
+        failedReason:
+          err instanceof AppError
+            ? err.message
+            : uncertain
+              ? "Result not confirmed -- submitted, but the server's response was never received."
+              : "Move failed. Try again.",
+      });
+    }
+  }
+  /** "Move All"/"Continue Remaining"/"Retry and Continue" are all the SAME
+   * call -- it walks the frozen run's own entry order (never the live tray
+   * array/an index into it), skips whatever is already `"confirmed"`, and
+   * stops at the first `"unknown"`/`"failed"` result exactly like the
+   * original sequential behavior (earlier successful calls already
+   * committed and are never pretended to have rolled back). */
+  async function runAll(destination: RunDestination) {
+    const run = ensureRunStarted(destination);
+    for (const entry of run.entries) {
+      const current = frozenRunRef.current?.entries.find((e) => e.trayId === entry.trayId);
+      if (!current || current.status === "confirmed") continue;
+      await submitRunEntry(entry.trayId, destination);
+      const after = frozenRunRef.current?.entries.find((e) => e.trayId === entry.trayId);
+      if (after && (after.status === "unknown" || after.status === "failed")) return;
+    }
+  }
+  const hasUnknownRunEntry = frozenRun?.entries.some((e) => e.status === "unknown") ?? false;
+  const isRunningAny = frozenRun?.entries.some((e) => e.status === "submitting") ?? false;
+  // PILOT-BLOCKER-010: defense in depth (mirrors `useQualityCommandDraft`'s
+  // `close()`) -- even if some other path ever called these directly, an
+  // unresolved run can never be silently abandoned this way.
+  function guardedSwitchToSingle() {
+    if (hasUnknownRunEntry || isRunningAny) return;
+    setForceSingleMode(true);
+  }
+  function guardedDone() {
+    if (hasUnknownRunEntry || isRunningAny) return;
+    commitFrozenRun(null);
+    onCancel();
+  }
 
   const initial = nowDateAndTime();
   const {
@@ -582,17 +657,26 @@ export function MoveTrayForm({
   // the Batch and destination selected once and fires fast sequential
   // single-tray moves, rather than forcing the full configure/review form
   // and Batch/Tray re-selection for every single tray.
+  // PILOT-BLOCKER-010: once a run has actually started, the board stays
+  // shown until that run is fully resolved or safely abandoned via
+  // `guardedDone` -- never re-derived from the live, shrinking
+  // `matchingBatchTrays.length` again (that was the unmount-mid-run bug).
   const showBulkBoard =
-    !initialTrayId && Boolean(initialBatchId) && Boolean(onSubmitOne) && matchingBatchTrays.length > 1 && !forceSingleMode;
+    Boolean(frozenRun) ||
+    (!initialTrayId && Boolean(initialBatchId) && Boolean(onSubmitOne) && matchingBatchTrays.length > 1 && !forceSingleMode);
   if (showBulkBoard) {
     return (
       <BulkMoveBoard
         farmId={farmId}
-        batchCode={matchingBatchTrays[0].batch_code}
+        batchCode={frozenRun?.batchCode ?? matchingBatchTrays[0]?.batch_code ?? ""}
         trays={matchingBatchTrays}
-        onSubmitOne={onSubmitOne!}
-        onSwitchToSingle={() => setForceSingleMode(true)}
-        onCancel={onCancel}
+        frozenRun={frozenRun}
+        hasUnknownEntry={hasUnknownRunEntry}
+        isRunningAny={isRunningAny}
+        onSubmitEntry={(trayId, destination) => { void submitRunEntry(trayId, destination); }}
+        onRunAll={(destination) => { void runAll(destination); }}
+        onSwitchToSingle={guardedSwitchToSingle}
+        onCancel={guardedDone}
         onSetUpTrolley={onSetUpTrolley}
       />
     );

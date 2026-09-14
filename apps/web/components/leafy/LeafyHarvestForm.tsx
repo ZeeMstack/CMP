@@ -57,12 +57,19 @@ export function LeafyHarvestForm({
   onSubmit,
   isSubmitting,
   serverError,
+  disableRemove,
 }: {
   plates: HarvestablePlateRead[];
   onRemovePlate: (assignmentId: string) => void;
   onSubmit: (payload: RecordLeafyHarvestCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  // PILOT-BLOCKER-010: true while this Harvest's submission is pending OR
+  // its result is unknown (network/server error) -- removing a source Plate
+  // in either state would invalidate the very source lines the in-flight/
+  // unresolved command already references. Never set merely for a
+  // definitive rejection, which leaves the operator free to edit.
+  disableRemove?: boolean;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
@@ -318,7 +325,10 @@ export function LeafyHarvestForm({
                     <input className={inputClass} aria-label="Note" {...register(`lines.${index}.note`)} />
                   </td>
                   <td className="px-2.5 py-2 align-top">
-                    <Button type="button" variant="secondary" onClick={() => onRemovePlate(field.batch_carrier_assignment_id)}>
+                    <Button
+                      type="button" variant="secondary" disabled={disableRemove}
+                      onClick={() => onRemovePlate(field.batch_carrier_assignment_id)}
+                    >
                       Remove
                     </Button>
                   </td>

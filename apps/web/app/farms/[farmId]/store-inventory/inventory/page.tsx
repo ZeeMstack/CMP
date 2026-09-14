@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import type { InventoryStorageTransferCreate } from "@/lib/api/client";
-import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
+import { useFrozenSubmission, type UseFrozenSubmissionResult } from "@/lib/commands/frozenSubmission";
 import { nowLocalDateTime } from "@/lib/datetime";
 import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
@@ -40,22 +40,32 @@ function asAppError(error: unknown): AppError {
 
 /** STORE-INV-002B: compact "Move stock" -- From Bin / To Bin / Quantity,
  * scoped to one cohort (a transfer moves one cohort's own custody between
- * two Bins in the same Farm; never a giant form, no UUIDs shown). */
+ * two Bins in the same Farm; never a giant form, no UUIDs shown).
+ *
+ * PILOT-BLOCKER-010 R3: `command` and `transferMutation` are now owned by
+ * the page (`StoreInventoryInventoryPage`), not this form instance --
+ * passed down as props rather than created here with their own
+ * `useFrozenSubmission`/`useRecordInventoryStorageTransfer` calls. This form
+ * is disposable (Hide detail, switching the selected Item, or a query
+ * refresh can all unmount it at any time); the frozen `client_command_id`/
+ * payload/outcome must not live inside something that disposable -- see the
+ * page-level `MoveRecoveryBanner` below, which is what actually keeps an
+ * unresolved command's Retry reachable once this form is gone. */
 function MoveStockForm({
-  cohortId, farmId, fromBins, toBins, onDone,
+  cohortId, farmId, fromBins, toBins, onDone, command, transferMutation,
 }: {
   cohortId: string;
   farmId: string;
   fromBins: { id: string; label: string; balance: string }[];
   toBins: { id: string; label: string }[];
   onDone: () => void;
+  command: UseFrozenSubmissionResult<InventoryStorageTransferCreate>;
+  transferMutation: ReturnType<typeof useRecordInventoryStorageTransfer>;
 }) {
   const [sourceId, setSourceId] = useState(fromBins[0]?.id ?? "");
   const [destId, setDestId] = useState(toBins.find((b) => b.id !== fromBins[0]?.id)?.id ?? toBins[0]?.id ?? "");
   const [quantity, setQuantity] = useState("");
   const [effectiveTime, setEffectiveTime] = useState(() => nowLocalDateTime());
-  const transferMutation = useRecordInventoryStorageTransfer();
-  const command = useFrozenSubmission<InventoryStorageTransferCreate>();
 
   // PILOT-BLOCKER-008 A5: identical fix to Putaway's (A3) -- while
   // uncertain, every control that could alter the payload is disabled and
@@ -82,138 +92,150 @@ function MoveStockForm({
     );
   }
 
+  // PILOT-BLOCKER-010 R3: once uncertain, this row no longer offers its own
+  // Retry -- the page-level `MoveRecoveryBanner` (always visible, survives
+  // this very form unmounting) is the ONE canonical place to retry, so there
+  // is never a moment with two different Retry buttons for the same
+  // command. This row just points there, using the exact same frozen
+  // values it would have shown inline before, computed here only for this
+  // short pointer (not for a second interactive recovery block).
+  if (isUncertain && frozen) {
+    return (
+      <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+        <p className="font-medium">Result unknown for this Move.</p>
+        <p>
+          {frozenSourceLabel} → {frozenDestLabel}, quantity {frozen.quantity}. See the recovery notice at the top of
+          the page to retry -- do not repeat this operation as a new transaction.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-surface p-3">
-      {isUncertain && frozen ? (
-        <dl className="grid grid-cols-1 gap-2 text-[11px] text-wl-text-secondary sm:grid-cols-3">
-          <div>
-            <dt>From Bin</dt>
-            <dd className="font-medium text-wl-text">{frozenSourceLabel}</dd>
-          </div>
-          <div>
-            <dt>To Bin</dt>
-            <dd className="font-medium text-wl-text">{frozenDestLabel}</dd>
-          </div>
-          <div>
-            <dt>Quantity</dt>
-            <dd className="font-medium text-wl-text">{frozen.quantity}</dd>
-          </div>
-        </dl>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>From Bin</span>
-            <select
-              className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)}
-              disabled={fieldsDisabled}
-            >
-              {fromBins.map((b) => (
-                <option key={b.id} value={b.id}>{b.label} ({b.balance})</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>To Bin</span>
-            <select
-              className={inputClass} value={destId} onChange={(e) => setDestId(e.target.value)}
-              disabled={fieldsDisabled}
-            >
-              {toBins.map((b) => (
-                <option key={b.id} value={b.id}>{b.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>Quantity</span>
-            <input
-              className={inputClass}
-              type="number"
-              min="0"
-              step="any"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              disabled={fieldsDisabled}
-            />
-          </label>
-        </div>
-      )}
-      {!(isUncertain && frozen) && (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
-          <span className={labelClass}>Effective time</span>
+          <span className={labelClass}>From Bin</span>
+          <select
+            className={inputClass} value={sourceId} onChange={(e) => setSourceId(e.target.value)}
+            disabled={fieldsDisabled}
+          >
+            {fromBins.map((b) => (
+              <option key={b.id} value={b.id}>{b.label} ({b.balance})</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>To Bin</span>
+          <select
+            className={inputClass} value={destId} onChange={(e) => setDestId(e.target.value)}
+            disabled={fieldsDisabled}
+          >
+            {toBins.map((b) => (
+              <option key={b.id} value={b.id}>{b.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Quantity</span>
           <input
             className={inputClass}
-            type="datetime-local"
-            value={effectiveTime}
-            onChange={(e) => setEffectiveTime(e.target.value)}
+            type="number"
+            min="0"
+            step="any"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
             disabled={fieldsDisabled}
           />
         </label>
-      )}
+      </div>
+      <label className="flex flex-col gap-1">
+        <span className={labelClass}>Effective time</span>
+        <input
+          className={inputClass}
+          type="datetime-local"
+          value={effectiveTime}
+          onChange={(e) => setEffectiveTime(e.target.value)}
+          disabled={fieldsDisabled}
+        />
+      </label>
 
-      {isUncertain && (
-        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
-          Result not confirmed -- this move was submitted but the server&apos;s response was never received. Retry
-          sends the exact same submitted values again; it is safe to press even if the original attempt actually
-          went through.
-        </p>
-      )}
-      {command.error && !isUncertain && (
+      {command.error && (
         <p className="rounded-md border border-wl-border bg-wl-flag-bg p-2 text-xs text-wl-flag-fg">
           {command.error.message}
         </p>
       )}
 
       <div className="flex gap-2">
-        {isUncertain ? (
-          <>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={isSubmitting}
-              onClick={() => {
-                const payload = command.retry();
-                if (!payload) return;
-                handleSettled(payload);
-              }}
-            >
-              {isSubmitting ? "Retrying…" : "Retry"}
-            </Button>
-            {/* Disabled for the whole uncertain state, not just while a
-                retry is in flight. */}
-            <Button type="button" variant="secondary" disabled>
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={
-                fieldsDisabled || !sourceId || !destId || sourceId === destId ||
-                !quantity || Number(quantity) <= 0
-              }
-              onClick={() => {
-                const payload = command.submit((clientCommandId) => ({
-                  client_command_id: clientCommandId,
-                  inventory_quantity_cohort_id: cohortId,
-                  source_location_id: sourceId,
-                  destination_location_id: destId,
-                  quantity,
-                  effective_time: new Date(effectiveTime).toISOString(),
-                  note: null,
-                }));
-                handleSettled(payload);
-              }}
-            >
-              {isSubmitting ? "Submitting…" : "Confirm move"}
-            </Button>
-            <Button type="button" variant="secondary" onClick={onDone} disabled={fieldsDisabled}>
-              Cancel
-            </Button>
-          </>
-        )}
+        <Button
+          type="button"
+          variant="primary"
+          disabled={
+            fieldsDisabled || !sourceId || !destId || sourceId === destId ||
+            !quantity || Number(quantity) <= 0
+          }
+          onClick={() => {
+            const payload = command.submit((clientCommandId) => ({
+              client_command_id: clientCommandId,
+              inventory_quantity_cohort_id: cohortId,
+              source_location_id: sourceId,
+              destination_location_id: destId,
+              quantity,
+              effective_time: new Date(effectiveTime).toISOString(),
+              note: null,
+            }));
+            handleSettled(payload);
+          }}
+        >
+          {isSubmitting ? "Submitting…" : "Confirm move"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onDone} disabled={fieldsDisabled}>
+          Cancel
+        </Button>
       </div>
+    </div>
+  );
+}
+
+/** PILOT-BLOCKER-010 R3: the stable, page-level recovery surface for a Move
+ * whose result is unknown -- rendered regardless of which Item is currently
+ * selected, whether the detail panel is open, or whether the
+ * `CohortCustodyRow`/`MoveStockForm` instance that originally submitted it
+ * is even mounted right now. Always visible near the top of the page (never
+ * scoped inside the disposable detail panel) for exactly as long as
+ * `moveCommand.outcome !== "editing"`. Bin labels are looked up against
+ * `activeBins` (the page's own Farm-wide, always-fetched active Bin list),
+ * never against the per-cohort `fromBins` list that only exists while the
+ * originating row happens to be mounted -- that per-cohort list is what
+ * would have disappeared with the row. */
+function MoveRecoveryBanner({
+  frozenPayload, activeBins, onRetry,
+}: {
+  frozenPayload: InventoryStorageTransferCreate;
+  activeBins: { id: string; label: string }[];
+  onRetry: () => void;
+}) {
+  const sourceLabel = activeBins.find((b) => b.id === frozenPayload.source_location_id)?.label ?? frozenPayload.source_location_id;
+  const destLabel = activeBins.find((b) => b.id === frozenPayload.destination_location_id)?.label ?? frozenPayload.destination_location_id;
+  return (
+    <div
+      role="alert"
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+    >
+      <div>
+        <p className="font-semibold">Result unknown -- we couldn&apos;t confirm whether this Move was recorded.</p>
+        <p>
+          {sourceLabel} → {destLabel}, quantity {frozenPayload.quantity}. Do not repeat this operation as a new
+          transaction.
+        </p>
+      </div>
+      {/* This banner only ever renders while `outcome === "uncertain"` (never
+          while a retry is actually in flight, since that flips the outcome
+          to "submitting" and this banner away) -- so Retry here is never
+          itself in a disabled/pending state to represent. */}
+      <Button type="button" variant="primary" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
@@ -298,19 +320,37 @@ function ScrapForm({
 /** One cohort's own physical custody -- Not put away / per-Bin balances --
  * plus its Move stock / Scrap actions. Rendered as one flat row inside the
  * single selected-stock panel (PILOT-UX-003), never as a further nested
- * `<table>` inside a table row. */
+ * `<table>` inside a table row.
+ *
+ * PILOT-BLOCKER-010 R3: `moveCommand`/`transferMutation` are page-level and
+ * shared across every cohort row on the page -- only one Move can be
+ * in-flight/unresolved at a time. `showMoveForm` re-derives "is this row's
+ * form the one an unresolved command belongs to" from the frozen payload's
+ * own `inventory_quantity_cohort_id`, not from local `moving` state alone --
+ * local state resets to `false` on remount (e.g. the operator switched to a
+ * different Item and back), but the frozen command must still reappear here
+ * if this is the cohort it belongs to. */
 function CohortCustodyRow({
-  cohortId, farmId, activeBins,
+  cohortId, farmId, activeBins, moveCommand, transferMutation,
 }: {
   cohortId: string;
   farmId: string;
   activeBins: { id: string; label: string }[];
+  moveCommand: UseFrozenSubmissionResult<InventoryStorageTransferCreate>;
+  transferMutation: ReturnType<typeof useRecordInventoryStorageTransfer>;
 }) {
   const breakdownQuery = useCohortStorageBreakdown(cohortId);
   const [moving, setMoving] = useState(false);
   const [scrapping, setScrapping] = useState(false);
   const buckets = breakdownQuery.data?.buckets ?? [];
   const binBuckets = buckets.filter((b) => b.location_id !== null) as { location_id: string; label: string; balance: string }[];
+
+  const ownsUnresolvedMove = moveCommand.frozenPayload?.inventory_quantity_cohort_id === cohortId;
+  const showMoveForm = (moving || ownsUnresolvedMove) && binBuckets.length > 0;
+  // A second Move must never be opened while one is still in-flight/unknown
+  // elsewhere -- `moveCommand`/`transferMutation` are shared, single-slot
+  // page state, not a queue.
+  const moveBlockedByOtherCommand = moveCommand.outcome !== "editing" && !ownsUnresolvedMove;
 
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-wl-border bg-wl-surface-raised p-2.5">
@@ -326,8 +366,14 @@ function CohortCustodyRow({
         </span>
         {!breakdownQuery.isLoading && !breakdownQuery.isError && (
           <div className="flex gap-2">
-            {binBuckets.length > 0 && !moving && (
-              <button type="button" className="text-xs font-medium text-wl-brand hover:underline" onClick={() => setMoving(true)}>
+            {binBuckets.length > 0 && !showMoveForm && (
+              <button
+                type="button"
+                className="text-xs font-medium text-wl-brand hover:underline disabled:cursor-not-allowed disabled:text-wl-text-tertiary disabled:no-underline"
+                onClick={() => setMoving(true)}
+                disabled={moveBlockedByOtherCommand}
+                title={moveBlockedByOtherCommand ? "Finish or retry the in-progress Move first" : undefined}
+              >
                 Move stock
               </button>
             )}
@@ -339,13 +385,15 @@ function CohortCustodyRow({
           </div>
         )}
       </div>
-      {moving && binBuckets.length > 0 && (
+      {showMoveForm && (
         <MoveStockForm
           cohortId={cohortId}
           farmId={farmId}
           fromBins={binBuckets.map((b) => ({ id: b.location_id, label: b.label, balance: b.balance }))}
           toBins={activeBins}
           onDone={() => setMoving(false)}
+          command={moveCommand}
+          transferMutation={transferMutation}
         />
       )}
       {scrapping && buckets.length > 0 && (
@@ -364,7 +412,7 @@ function CohortCustodyRow({
  * only for its own cohorts (`useCohortStorageBreakdown`, one per cohort
  * actually shown here) -- never eagerly across the whole Inventory list. */
 function SelectedStockPanel({
-  itemId, itemName, farmId, uomCode, activeBins, farmNameById, exceptionStateByCohortId,
+  itemId, itemName, farmId, uomCode, activeBins, farmNameById, exceptionStateByCohortId, moveCommand, transferMutation,
 }: {
   itemId: string;
   itemName: string;
@@ -373,6 +421,8 @@ function SelectedStockPanel({
   activeBins: { id: string; label: string }[];
   farmNameById: Map<string, string>;
   exceptionStateByCohortId: Map<string, string>;
+  moveCommand: UseFrozenSubmissionResult<InventoryStorageTransferCreate>;
+  transferMutation: ReturnType<typeof useRecordInventoryStorageTransfer>;
 }) {
   const availabilityQuery = useItemFarmAvailability(farmId, itemId);
   const notPutAwayQuery = useItemStorageBreakdown(itemId);
@@ -427,7 +477,13 @@ function SelectedStockPanel({
                     </span>
                     <span className="font-medium tabular-nums text-wl-text">{row.balance}{uomCode ? ` ${uomCode}` : ""}</span>
                   </div>
-                  <CohortCustodyRow cohortId={row.inventory_quantity_cohort_id} farmId={farmId} activeBins={activeBins} />
+                  <CohortCustodyRow
+                    cohortId={row.inventory_quantity_cohort_id}
+                    farmId={farmId}
+                    activeBins={activeBins}
+                    moveCommand={moveCommand}
+                    transferMutation={transferMutation}
+                  />
                 </li>
               );
             })}
@@ -493,6 +549,14 @@ export default function StoreInventoryInventoryPage() {
   const farmsQuery = useFarms();
   const farmNameById = new Map((farmsQuery.data ?? []).map((f) => [f.id, f.name]));
 
+  // PILOT-BLOCKER-010 R3: owned HERE, above every disposable per-Item detail
+  // panel/form instance, so an unresolved Move survives Hide detail,
+  // switching the selected Item, or any query refresh that would otherwise
+  // unmount `MoveStockForm`/`CohortCustodyRow`. See `MoveRecoveryBanner`
+  // below, the stable recovery surface this ownership move makes possible.
+  const transferMutation = useRecordInventoryStorageTransfer();
+  const moveCommand = useFrozenSubmission<InventoryStorageTransferCreate>();
+
   // ONE company-wide read for the whole page (never per-item/per-cohort) --
   // an Item has "Attention" here only if one of its cohorts received at
   // THIS Farm carries a real authoritative exception state (R7). The
@@ -550,6 +614,24 @@ export default function StoreInventoryInventoryPage() {
         }
       />
       <StoreSubNav farmId={farmId} />
+
+      {moveCommand.outcome === "uncertain" && moveCommand.frozenPayload && (
+        <MoveRecoveryBanner
+          frozenPayload={moveCommand.frozenPayload}
+          activeBins={activeBins}
+          onRetry={() => {
+            const payload = moveCommand.retry();
+            if (!payload) return;
+            transferMutation.mutate(
+              { farmId, payload },
+              {
+                onSuccess: () => moveCommand.handleSuccess(),
+                onError: (err) => moveCommand.handleError(err instanceof AppError ? err : new AppError("server_error", "Something went wrong. Please try again.")),
+              },
+            );
+          }}
+        />
+      )}
 
       {itemsQuery.isLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading…</p>
@@ -637,6 +719,8 @@ export default function StoreInventoryInventoryPage() {
               activeBins={activeBins}
               farmNameById={farmNameById}
               exceptionStateByCohortId={exceptionStateByCohortId}
+              moveCommand={moveCommand}
+              transferMutation={transferMutation}
             />
           )}
 
