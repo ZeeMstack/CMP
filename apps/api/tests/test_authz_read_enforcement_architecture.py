@@ -37,6 +37,20 @@ EXEMPT_PATHS = {
         "exist. Uses require_authenticated_principal, never "
         "require_tenant_context/require_permission."
     ),
+    "/qr/{token}": (
+        "PILOT-SCAN-001: a generic QR scan resolver -- the token alone (by "
+        "design; that is the entire point of scanning an unknown physical "
+        "label) does not reveal which Permission applies until the row is "
+        "read, since each supported entity_type carries a different read "
+        "Permission (app.api.qr.ENTITY_PERMISSIONS). require_tenant_context "
+        "still runs (real authentication + an active tenant membership); "
+        "the exact per-entity-type Permission is then enforced by "
+        "has_permission() one layer later, inside the route body, before "
+        "any content is returned. See app.api.qr's own module docstring and "
+        "tests/test_qr_authz.py, which structurally + behaviorally proves "
+        "this dynamic gate holds for every one of the eight supported "
+        "entity types."
+    ),
 }
 EXEMPT_PREFIXES = {
     "/dev/bootstrap": (

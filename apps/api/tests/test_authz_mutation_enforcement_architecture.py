@@ -36,6 +36,23 @@ EXEMPT_PATHS = {
         "membership (and therefore any permission) can exist for that tenant. Requires no active membership; "
         "that is the whole point of a bootstrap route."
     ),
+    "/farms/{farm_id}/qr/{entity_type}/{entity_id}/generate": (
+        "PILOT-SCAN-001: entity_type is a wildcard string path segment, not "
+        "one of eight literal routes, so its Permission cannot be a fixed "
+        "closure value the way every other mutation route's can. "
+        "require_tenant_context still runs; the exact per-entity-type "
+        "`.manage` Permission (app.api.qr.ENTITY_PERMISSIONS) is enforced by "
+        "has_permission() inside the route body before any write happens. "
+        "See app.api.qr's own module docstring and tests/test_qr_authz.py."
+    ),
+    "/qr/{token}/print": (
+        "PILOT-SCAN-001: same reasoning as the generate route above -- the "
+        "token's entity_type (and therefore its `.manage` Permission) is "
+        "only known after resolving it, enforced dynamically via "
+        "has_permission() rather than a fixed require_permission(...) "
+        "closure. See app.api.qr's own module docstring and "
+        "tests/test_qr_authz.py."
+    ),
 }
 EXEMPT_PREFIXES: dict[str, str] = {
     "/platform/tenants": (

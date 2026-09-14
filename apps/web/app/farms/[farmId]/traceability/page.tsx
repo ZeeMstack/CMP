@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -168,10 +168,23 @@ function FglResult({ farmId, fgLotId, locationLabelById }: { farmId: string; fgL
  * connected to it, forward or backward, using only reads the backend
  * already exposed (see `lib/api/client.ts`'s traceability functions).
  * No mutation controls anywhere on this page. */
+const ENTRY_TYPE_IDS = ENTRY_TABS.map((t) => t.id);
+
+function isEntryType(value: string | null): value is EntryType {
+  return value !== null && (ENTRY_TYPE_IDS as readonly string[]).includes(value);
+}
+
 export default function TraceabilityPage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const [entryType, setEntryType] = useState<EntryType>("crop-batch");
-  const [selectedId, setSelectedId] = useState("");
+  // PILOT-SCAN-001: a QR scan's "View traceability" action link deep-links
+  // here via `?entryType=<tab>&id=<uuid>` -- read once, on mount, as the
+  // initial selection (never re-synced on further query-string changes,
+  // matching every other entry point on this page, which are plain local
+  // `useState` the user then drives by hand).
+  const searchParams = useSearchParams();
+  const initialEntryType = isEntryType(searchParams.get("entryType")) ? searchParams.get("entryType") : null;
+  const [entryType, setEntryType] = useState<EntryType>((initialEntryType as EntryType) ?? "crop-batch");
+  const [selectedId, setSelectedId] = useState(initialEntryType ? (searchParams.get("id") ?? "") : "");
 
   const batchesQuery = useOperationalSummary(farmId, "all");
   const hplsQuery = useHarvestedProduceLots(farmId);

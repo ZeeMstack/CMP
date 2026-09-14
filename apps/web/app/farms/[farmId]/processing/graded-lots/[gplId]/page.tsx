@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -46,6 +47,14 @@ export default function GradedProduceLotDetailPage() {
     <div>
       <PageHeader
         title={lot.code}
+        actions={
+          <Link
+            href={`/farms/${farmId}/labels/graded_produce_lot/${lot.id}`}
+            className="flex min-h-11 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-sm font-medium text-ink hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          >
+            Print Label
+          </Link>
+        }
         breadcrumbs={
           <Breadcrumbs
             items={[

@@ -5,8 +5,10 @@ import { withQueryClient } from "@/lib/test-utils";
 
 import TraceabilityPage from "./page";
 
+const searchParams = { current: new URLSearchParams() };
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => searchParams.current,
 }));
 
 function jsonResponse(body: unknown, status = 200) {
@@ -98,6 +100,7 @@ function stubFetch() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  searchParams.current = new URLSearchParams();
 });
 
 describe("TraceabilityPage", () => {
@@ -127,6 +130,15 @@ describe("TraceabilityPage", () => {
 
     // Read-only: no button anywhere offers to record/edit/reverse anything.
     expect(screen.queryByRole("button", { name: /record|reverse|confirm|delete|edit/i })).not.toBeInTheDocument();
+  });
+
+  it("PILOT-SCAN-001: a QR scan's ?entryType=&id= deep link pre-selects that exact trace on load", async () => {
+    searchParams.current = new URLSearchParams({ entryType: "crop-batch", id: "batch-1" });
+    stubFetch();
+    render(withQueryClient(<TraceabilityPage />));
+
+    await waitFor(() => expect(screen.getByText("Harvested Produce Lots (1)")).toBeInTheDocument());
+    expect(screen.getByText("HPL-001")).toBeInTheDocument();
   });
 
   it("traces from a Finished Goods Lot and reuses the real Packing reconciliation", async () => {

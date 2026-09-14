@@ -2495,3 +2495,71 @@ export function createShiftHandover(
 ): Promise<ShiftHandoverRead> {
   return postJson<ShiftHandoverRead>(`/farms/${farmId}/shift-handovers`, payload, signal);
 }
+
+// --- PILOT-SCAN-001: QR identifiers, scan context, and label printing ------
+
+export type QrIdentifierRead = components["schemas"]["QrIdentifierRead"];
+export type CropBatchScanContext = components["schemas"]["CropBatchScanContext"];
+export type LocationScanContext = components["schemas"]["LocationScanContext"];
+export type CarrierScanContext = components["schemas"]["CarrierScanContext"];
+export type AssetScanContext = components["schemas"]["AssetScanContext"];
+export type BatchCarrierAssignmentScanContext = components["schemas"]["BatchCarrierAssignmentScanContext"];
+export type HarvestedProduceLotScanContext = components["schemas"]["HarvestedProduceLotScanContext"];
+export type GradedProduceLotScanContext = components["schemas"]["GradedProduceLotScanContext"];
+export type FinishedGoodsLotScanContext = components["schemas"]["FinishedGoodsLotScanContext"];
+/** The backend returns this as a bare discriminated-union response body
+ * (FastAPI/OpenAPI has no single named "ScanContext" component for it --
+ * each entity's own schema is listed inline on the operation), so this
+ * union is assembled here rather than referenced from `components`. */
+export type ScanContext =
+  | CropBatchScanContext
+  | LocationScanContext
+  | CarrierScanContext
+  | AssetScanContext
+  | BatchCarrierAssignmentScanContext
+  | HarvestedProduceLotScanContext
+  | GradedProduceLotScanContext
+  | FinishedGoodsLotScanContext;
+export type PrintLabelRequest = components["schemas"]["PrintLabelRequest"];
+export type PrintLabelResponse = components["schemas"]["PrintLabelResponse"];
+
+/** The pilot's eight eligible QR entity kinds -- exact current entity
+ * names (never a fabricated "lot"/"placement" concept), matching
+ * `app.models.qr_identifier.QR_IDENTIFIER_ENTITY_TYPES` one-for-one. */
+export type QrEntityType =
+  | "crop_batch"
+  | "location"
+  | "carrier"
+  | "asset"
+  | "batch_carrier_assignment"
+  | "harvested_produce_lot"
+  | "graded_produce_lot"
+  | "finished_goods_lot";
+
+/** Idempotent: repeated calls for the same entity return the SAME active
+ * QR identity (never mint a second one) -- safe to call on every "Print
+ * Label" click without checking whether one already exists first. */
+export function generateQrIdentifier(
+  farmId: string,
+  entityType: QrEntityType,
+  entityId: string,
+  signal?: AbortSignal,
+): Promise<QrIdentifierRead> {
+  return postJson<QrIdentifierRead>(`/farms/${farmId}/qr/${entityType}/${entityId}/generate`, {}, signal);
+}
+
+/** No `farmId` in the path -- resolving a scanned token deliberately does
+ * not require the caller to already know which Farm it belongs to (that
+ * is the whole point of scanning an unknown physical label); the backend
+ * resolves farm/tenant context from the token itself. */
+export function resolveQr(token: string, signal?: AbortSignal): Promise<ScanContext> {
+  return getJson<ScanContext>(`/qr/${encodeURIComponent(token)}`, signal);
+}
+
+export function printQrLabel(
+  token: string,
+  payload: PrintLabelRequest,
+  signal?: AbortSignal,
+): Promise<PrintLabelResponse> {
+  return postJson<PrintLabelResponse>(`/qr/${encodeURIComponent(token)}/print`, payload, signal);
+}

@@ -191,6 +191,16 @@
 | Blocked | A Work Item's active-but-stalled state; requires a reason; Unblock/Resume always returns it to `IN_PROGRESS` |
 | Shift Handover | A small, immutable, insert-only note a user finishing a shift leaves for the farm; may reference unresolved Work Items but never closes or clones them |
 
+## QR labels and scan context (`docs/adr/006-scan-identity-tokens.md`, `docs/domain/QR_SCAN_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| QR Identifier | This ticket's concrete implementation of ADR 006's `scan_identity` concept (`qr_identifiers` table/`QrIdentifier` model) — links an opaque public token to exactly one of eight supported entities; one active identifier per entity, reused on reprint, never regenerated |
+| Scan Context | The typed, discriminated-by-`entity_type` response a resolved QR token returns — current authoritative facts read fresh at scan time, never stored on the QR row itself |
+| Permanent identity | Carrier/Asset/Location — the QR label stays with the physical object/place for its life; never prints a mutable fact (current Batch/location/status) |
+| Operational identity | Crop Batch/Batch Carrier Assignment ("placement")/Harvested Produce Lot/Graded Produce Lot/Finished Goods Lot — identifies an operational record; may print stable creation-time metadata (crop/variety), never current stage/status |
+| Batch Carrier Assignment ("Placement") QR | The stable identity of ONE physical portion of a Batch (one Carrier's worth) — deliberately independent of both the Carrier's own permanent identity and the parent Batch's identity, since a Batch may occupy several Carriers/Locations at once |
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

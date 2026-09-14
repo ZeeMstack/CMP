@@ -40,6 +40,7 @@ from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.platform_admin import PlatformAdmin
 from app.models.production_system import ProductionSystem
+from app.models.qr_identifier import QrIdentifier
 from app.models.quality_disposition_event import QualityDispositionEvent
 from app.models.quality_hold import QualityHold
 from app.models.quality_hold_release import QualityHoldRelease
@@ -121,6 +122,7 @@ __all__ = [
     "OccupancyCompatibilityRule",
     "PlatformAdmin",
     "ProductionSystem",
+    "QrIdentifier",
     "QualityDispositionEvent",
     "QualityHold",
     "QualityHoldRelease",
