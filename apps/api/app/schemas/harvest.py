@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
@@ -121,6 +122,10 @@ class HarvestEventCreate(BaseModel):
     produce_lot_code: str
     note: str | None = None
     source_lines: list[HarvestSourceLineIn] = Field(min_length=1, max_length=500)
+    # PILOT-OPS-001: optional Farm Work Item to complete on success. Never
+    # required -- a Harvest recorded outside "Today on the Farm" (no Work
+    # Item involved at all) is unaffected.
+    work_item_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod
@@ -203,6 +208,10 @@ class HarvestEventRead(BaseModel):
     source_lines: list[HarvestSourceLineRead]
     total_harvested_weight_kg: Decimal
     total_whole_unit_count: int | None
+    # PILOT-OPS-001: set only when `work_item_id` was supplied on create --
+    # see `ObservationEventRead.work_item_link_status`'s identical
+    # docstring for the "authoritative and successful either way" contract.
+    work_item_link_status: Literal["linked", "failed"] | None = None
 
     @field_serializer("total_harvested_weight_kg")
     def serialize_total_weight(self, v: Decimal) -> str:

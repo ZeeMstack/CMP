@@ -15,6 +15,14 @@ import type {
   CropCreate,
   DispatchEventCreate,
   FarmCreate,
+  FarmWorkItemBlockIn,
+  FarmWorkItemCancelIn,
+  FarmWorkItemCompleteIn,
+  FarmWorkItemCreate,
+  FarmWorkItemLinkResultIn,
+  FarmWorkItemStartIn,
+  FarmWorkItemUnblockIn,
+  FarmWorkItemUpdateIn,
   FinishedGoodsStorageMovementCreate,
   GerminationOutcomeBatchAggregateRead,
   GerminationOutcomeCommandCreate,
@@ -94,6 +102,7 @@ import type {
   SeedlingCandidateTrayRead,
   SeedlingEntryCreate,
   SeedLotCreate,
+  ShiftHandoverCreate,
   SowNewBatchCreate,
   VarietyCreate,
   VinesProductionTransferCreate,
@@ -125,6 +134,15 @@ const STALE_DETAIL_MS = 30_000;
 function useSelectedTenantId(): string | undefined {
   const { bootstrap } = useAuthBootstrap();
   return bootstrap?.selectedTenantId ?? undefined;
+}
+
+/** PILOT-OPS-001: the current CMP user's own id, from the same bootstrap
+ * context every other tenant-scoped hook already reads -- no new network
+ * call. Used to bucket "My Work" on Today on the Farm without threading a
+ * userId prop through every page. */
+export function useCurrentUserId(): string | undefined {
+  const { bootstrap } = useAuthBootstrap();
+  return bootstrap?.user?.id ?? undefined;
 }
 
 /** UX-IA-001: the selected Tenant's display name, for scope-communication
@@ -3622,5 +3640,164 @@ export function useReactivateMembership() {
   return useMutation({
     mutationFn: (membershipId: string) => api.reactivateMembership(membershipId),
     onSuccess: () => invalidateMemberships(queryClient, tenantId),
+  });
+}
+
+// --- PILOT-OPS-001: Farm Work Item / Shift Handover ("Today on the Farm") ----
+
+/** Today on the Farm's one board read -- see `api.listWorkItems`'s own
+ * doc comment. `includeCompleted` defaults false (board sections never
+ * need completed items); pass true only for a future "recently
+ * completed" view. */
+export function useWorkItems(farmId: string, includeCompleted = false) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workItems(tenantId ?? "", farmId, includeCompleted),
+    queryFn: ({ signal }) => api.listWorkItems(farmId, { includeCompleted }, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useWorkItem(farmId: string, workItemId: string, enabled = true) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workItem(tenantId ?? "", farmId, workItemId),
+    queryFn: ({ signal }) => api.getWorkItem(farmId, workItemId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && enabled,
+  });
+}
+
+export function useWorkItemHistory(farmId: string, workItemId: string, enabled = true) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.workItemHistory(tenantId ?? "", farmId, workItemId),
+    queryFn: ({ signal }) => api.getWorkItemHistory(farmId, workItemId, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && enabled,
+  });
+}
+
+/** Every Farm Work Item mutation below invalidates the same board list
+ * (both include-completed variants) plus the item's own detail/history
+ * keys -- mirroring the Location maintenance hooks' single-invalidation-
+ * target convention exactly. */
+function useInvalidateWorkItems(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (workItemId?: string) => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.workItems(tenantId, farmId, false) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.workItems(tenantId, farmId, true) });
+    if (workItemId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.workItem(tenantId, farmId, workItemId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.workItemHistory(tenantId, farmId, workItemId) });
+    }
+  };
+}
+
+export function useCreateWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: (payload: FarmWorkItemCreate) => api.createWorkItem(farmId, payload),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useUpdateWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemUpdateIn }) =>
+      api.updateWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useStartWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemStartIn }) =>
+      api.startWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useBlockWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemBlockIn }) =>
+      api.blockWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useUnblockWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemUnblockIn }) =>
+      api.unblockWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useCompleteWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemCompleteIn }) =>
+      api.completeWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useCancelWorkItem(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemCancelIn }) =>
+      api.cancelWorkItem(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+/** Reconciliation only -- see `api.linkWorkItemResult`'s doc comment. */
+export function useLinkWorkItemResult(farmId: string) {
+  const invalidate = useInvalidateWorkItems(farmId);
+  return useMutation({
+    mutationFn: ({ workItemId, payload }: { workItemId: string; payload: FarmWorkItemLinkResultIn }) =>
+      api.linkWorkItemResult(farmId, workItemId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.workItemId),
+  });
+}
+
+export function useLatestShiftHandover(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.latestShiftHandover(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getLatestShiftHandover(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useShiftHandovers(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.shiftHandovers(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listShiftHandovers(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCreateShiftHandover(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ShiftHandoverCreate) => api.createShiftHandover(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.latestShiftHandover(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.shiftHandovers(tenantId, farmId) });
+    },
   });
 }

@@ -12,7 +12,7 @@ from app.schemas.vines_harvest import (
     VinesHarvestableSourceRead,
     VinesHarvestEventRead,
 )
-from app.services import harvest_service
+from app.services import farm_work_item_service, harvest_service
 from app.services.errors import (
     CropBatchClosedError,
     CropBatchNotFoundError,
@@ -125,9 +125,19 @@ def record_vines_harvest(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_conflict_detail(exc)) from exc
     except _INVALID as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return harvest_service.get_vines_harvest_event(
+
+    result = harvest_service.get_vines_harvest_event(
         db, tenant_id=ctx.tenant_id, farm_id=farm_id, harvest_event_id=event.id
     )
+    # PILOT-OPS-001: mirrors the identical Leafy Harvest wiring exactly --
+    # see app/api/leafy_harvest.py's own comment for the full rationale.
+    if payload.work_item_id is not None:
+        result.work_item_link_status = farm_work_item_service.link_operational_result_best_effort(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            work_item_id=payload.work_item_id, client_command_id=payload.client_command_id,
+            result_entity_type="harvest_event", result_entity_id=event.id, effective_time=payload.effective_time,
+        )
+    return result
 
 
 @router.get(

@@ -266,6 +266,22 @@ class Permission(StrEnum):
     PLANNING_READ = "planning.read"
     PLANNING_MANAGE = "planning.manage"
 
+    # PILOT-OPS-001: Farm Work Item / Shift Handover ("Today on the Farm").
+    # Three tiers, not two -- `.manage` (supervisory: create work,
+    # assign/reassign, change priority/due window, cancel) is deliberately
+    # separate from `.execute` (floor: start/block/unblock assigned or
+    # available work, and complete permitted work), mirroring this
+    # catalog's own entry-vs-definition split precedent
+    # (OBSERVATION_ENTRY_MANAGE/OBSERVATION_DEFINITION_MANAGE) -- a role
+    # trusted to execute routine floor work should not automatically gain
+    # the power to create/assign/cancel it, and vice versa. Shift Handover
+    # reuses this same pair (`.execute` to author one, `.read` to view) --
+    # it is a small communication artifact of the same domain, not a
+    # separate permission domain.
+    FARM_WORK_ITEM_READ = "farm_work_item.read"
+    FARM_WORK_ITEM_MANAGE = "farm_work_item.manage"
+    FARM_WORK_ITEM_EXECUTE = "farm_work_item.execute"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -362,6 +378,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PLANNING-OPS-001: farm_manager has full planning authority
         # alongside its existing infrastructure/master-data ownership.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-OPS-001: farm_manager creates/assigns/cancels Work Items
+        # (supervisory oversight of "Today on the Farm") but does not
+        # execute routine floor work itself.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
     }),
     # Agronomic planning/master-data authority (25): crop/production-system
     # /workflow catalog, observation definitions, crop-batch lifecycle
@@ -396,6 +416,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # Seeding Program, the same agronomic-planning tier as its existing
         # crop/workflow/batch-lifecycle authority above.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-OPS-001: head_grower creates/assigns crop-care Work Items,
+        # the same supervisory tier as farm_manager for this domain.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
     }),
     # Production-floor execution oversight (24): the same transactional
     # commands operators perform, plus supervisory-level authority
@@ -431,6 +454,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # -- no planning.manage, matching this role's "no master-data
         # configuration" ceiling above.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: production_supervisor both creates/assigns Work
+        # Items (floor oversight) and executes them -- the same "does the
+        # same transactional commands operators perform, plus supervisory
+        # authority" character as its other grants above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Restricted transactional execution (16): routine, single-purpose
     # floor commands only -- sowing, transplant, movement, harvest
@@ -457,6 +485,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        # PILOT-OPS-001: operator executes assigned/available floor Work
+        # Items (start/block/unblock/complete) -- no create/assign/cancel
+        # authority, matching this role's "restricted transactional
+        # execution only" ceiling.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Input/equipment receiving (6) -- intentionally narrow: the only
     # genuine "input receiving" action the current permission catalog
@@ -499,6 +532,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # same tier as Issue above.
         Permission.INVENTORY_RETURN_MANAGE, Permission.INVENTORY_SCRAP_MANAGE,
         Permission.INVENTORY_CONSUMPTION_MANAGE,
+        # PILOT-OPS-001: storekeeper executes its own store/cleaning/
+        # putaway Work Items -- same routine execution tier as its other
+        # grants above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy
@@ -537,6 +574,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: qc_officer executes its own quality Work Items --
+        # same routine execution tier as its other grants above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Packing execution (12): owns its own stage only. Upstream
     # harvest.read (what's available to pack), downstream
@@ -560,6 +600,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: packing_supervisor executes its own post-harvest
+        # Work Items -- same routine execution tier as its other grants
+        # above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Finished-goods storage execution (11): owns its own stage only.
     # Upstream packing.read, downstream dispatch.read -- never
@@ -580,6 +624,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: cold_store_supervisor executes its own store Work
+        # Items -- same routine execution tier as its other grants above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Dispatch execution (11): owns its own stage only. Upstream
     # finished_goods_storage.read and packing.read (lot provenance for
@@ -601,6 +648,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: dispatch_officer executes its own dispatch Work
+        # Items -- same routine execution tier as its other grants above.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     # Broad compliance/traceability visibility (20) -- every `.read`
     # permission, zero `.manage`. Technically identical to `read_only`
@@ -638,6 +688,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # module too, matching this role's "every `.read` permission"
         # character -- zero `.manage`.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: read-only visibility into Work Items, matching
+        # this role's "every `.read` permission, zero mutations" character.
+        Permission.FARM_WORK_ITEM_READ,
     }),
     # Broad operational visibility (20), zero mutations -- identical set
     # to `auditor` today, by design (see that role's comment above).
@@ -670,6 +723,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PLANNING-OPS-001: identical to `auditor`'s own addition above, by
         # the same "zero mutations" design.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: identical to `auditor`'s own addition above, by
+        # the same "zero mutations" design.
+        Permission.FARM_WORK_ITEM_READ,
     }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)

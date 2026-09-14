@@ -28,12 +28,14 @@ const batches = [
   {
     id: "b1",
     code: "B-001",
+    crop: { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" },
     current_stage: { name: "Growing", stage_category: "production" },
     open_quality_hold_count: 0,
   },
   {
     id: "b2",
     code: "B-002",
+    crop: { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" },
     current_stage: { name: "Ready to Harvest", stage_category: "harvest_ready" },
     open_quality_hold_count: 1,
   },
@@ -46,6 +48,19 @@ function stubFetch() {
       const url = String(input);
       if (url.includes("/operational-summary")) return jsonResponse(batches);
       if (url.endsWith("/farms/farm-1")) return jsonResponse(farm);
+      // PILOT-OPS-001: Today on the Farm's own board/aggregation reads --
+      // empty by default so these tests stay focused on the KPI/stage
+      // content they were written to prove; dedicated Work Item behavior
+      // is covered by lib/format/workItemBoard.test.ts and the
+      // component-level work-item tests.
+      if (url.includes("/work-items")) return jsonResponse([]);
+      if (url.includes("/shift-handovers/latest")) return jsonResponse(null);
+      if (url.includes("/harvestable-plates")) return jsonResponse([]);
+      // PILOT-OPS-001 closure: manual Work Item structured-context option
+      // sources -- empty by default, same reasoning as above.
+      if (url.includes("/locations/tree")) return jsonResponse([]);
+      if (url.includes("/assets")) return jsonResponse([]);
+      if (url.includes("/carriers")) return jsonResponse([]);
       return jsonResponse({});
     }),
   );
@@ -63,7 +78,11 @@ describe("FarmHomePage", () => {
     stubFetch();
     render(withQueryClient(<FarmHomePage />));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "North Farm" })).toBeInTheDocument());
+    // PILOT-OPS-001: the page's own H1 is now "Today on the Farm" (the
+    // ticket's explicit page title); the farm name is shown as descriptive
+    // text under it rather than as the heading itself.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Today on the Farm" })).toBeInTheDocument());
+    expect(screen.getByText("North Farm")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Active batches/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
     // PILOT-UX-003: now deep-links to the Batch register pre-filtered to the
     // same authoritative field the count itself was computed from -- the

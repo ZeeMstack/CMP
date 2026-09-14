@@ -10,6 +10,7 @@ from app.api.crops import router as crops_router
 from app.api.dispatch import router as dispatch_router
 from app.api.farm_setup import router as farm_setup_router
 from app.api.farm_setup_readiness import router as farm_setup_readiness_router
+from app.api.farm_work_items import router as farm_work_items_router
 from app.api.farms import router as farms_router
 from app.api.finished_goods_storage import router as finished_goods_storage_router
 from app.api.germination import router as germination_router
@@ -56,6 +57,7 @@ from app.api.nursery import router as nursery_router
 from app.api.planning import router as planning_router
 from app.api.seed_lots import router as seed_lots_router
 from app.api.seedling import router as seedling_router
+from app.api.shift_handovers import router as shift_handovers_router
 from app.api.sowings import router as sowings_router
 from app.api.transplants import router as transplants_router
 from app.api.users import router as users_router
@@ -129,6 +131,8 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(finished_goods_storage_router)
     api.include_router(traceability_router)
     api.include_router(recall_router)
+    api.include_router(farm_work_items_router)
+    api.include_router(shift_handovers_router)
 
     if cfg.enable_dev_auth:
         from app.api.dev_bootstrap import router as dev_bootstrap_router

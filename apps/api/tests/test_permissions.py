@@ -129,6 +129,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # has full planning authority alongside its existing infrastructure/
         # master-data ownership.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-OPS-001: farm_manager creates/assigns/cancels Farm Work
+        # Items (supervisory) but does not execute routine floor work.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
     }),
     "head_grower": frozenset({
         Permission.FARM_READ,
@@ -159,6 +162,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # agronomic-planning tier as its existing crop/workflow/batch-
         # lifecycle authority above.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-OPS-001: head_grower creates/assigns crop-care Work Items,
+        # the same supervisory tier as farm_manager for this domain.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
     }),
     "production_supervisor": frozenset({
         Permission.FARM_READ,
@@ -190,6 +196,10 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # planning.manage, matching this role's "no master-data
         # configuration" ceiling.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: production_supervisor both creates/assigns and
+        # executes Work Items -- floor oversight plus its own transactional
+        # execution tier.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "operator": frozenset({
         Permission.FARM_READ,
@@ -209,6 +219,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.BIOLOGICAL_DISPOSITION_MANAGE,
         Permission.QUALITY_HOLD_READ,
         Permission.HARVEST_READ, Permission.HARVEST_MANAGE,
+        # PILOT-OPS-001: operator executes assigned/available floor Work
+        # Items -- no create/assign/cancel authority.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "storekeeper": frozenset({
         Permission.FARM_READ,
@@ -235,6 +248,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # routine execution tier as Issue above.
         Permission.INVENTORY_RETURN_MANAGE, Permission.INVENTORY_SCRAP_MANAGE,
         Permission.INVENTORY_CONSUMPTION_MANAGE,
+        # PILOT-OPS-001: storekeeper executes its own store/cleaning/
+        # putaway Work Items.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "qc_officer": frozenset({
         Permission.FARM_READ,
@@ -267,6 +283,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: qc_officer executes its own quality Work Items.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "packing_supervisor": frozenset({
         Permission.FARM_READ,
@@ -285,6 +303,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.FINISHED_GOODS_STORAGE_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: packing_supervisor executes its own post-harvest
+        # Work Items.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "cold_store_supervisor": frozenset({
         Permission.FARM_READ,
@@ -302,6 +323,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: cold_store_supervisor executes its own store Work
+        # Items.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "dispatch_officer": frozenset({
         Permission.FARM_READ,
@@ -319,6 +343,9 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.DISPATCH_READ, Permission.DISPATCH_MANAGE,
         Permission.RECALL_READ,
         Permission.TRACEABILITY_READ,
+        # PILOT-OPS-001: dispatch_officer executes its own dispatch Work
+        # Items.
+        Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
     }),
     "auditor": frozenset({
         Permission.FARM_READ,
@@ -350,6 +377,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # visibility extends to the Planning module too, matching this
         # role's "every `.read` permission" character -- zero `.manage`.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: read-only visibility into Work Items.
+        Permission.FARM_WORK_ITEM_READ,
     }),
     "read_only": frozenset({
         Permission.FARM_READ,
@@ -381,6 +410,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # `auditor`'s own addition above, by the same "zero mutations"
         # design.
         Permission.PLANNING_READ,
+        # PILOT-OPS-001: identical to `auditor`'s own addition above.
+        Permission.FARM_WORK_ITEM_READ,
     }),
 }
 
@@ -393,9 +424,14 @@ _EXPECTED_COUNTS = {
     # PLANNING-OPS-001 (PILOT-BLOCKER-006 reconciliation): +2
     # (planning.read + planning.manage) for farm_manager/head_grower, +1
     # (planning.read only) for production_supervisor/auditor/read_only.
-    "farm_manager": 45, "head_grower": 33, "production_supervisor": 32, "operator": 21,
-    "storekeeper": 20, "qc_officer": 26, "packing_supervisor": 18, "cold_store_supervisor": 16,
-    "dispatch_officer": 16, "auditor": 26, "read_only": 26,
+    # PILOT-OPS-001: +2 (farm_work_item.read + .manage) for farm_manager/
+    # head_grower, +3 (read + manage + execute) for production_supervisor,
+    # +2 (read + execute) for operator/storekeeper/qc_officer/
+    # packing_supervisor/cold_store_supervisor/dispatch_officer, +1
+    # (read only) for auditor/read_only.
+    "farm_manager": 47, "head_grower": 35, "production_supervisor": 35, "operator": 23,
+    "storekeeper": 22, "qc_officer": 28, "packing_supervisor": 20, "cold_store_supervisor": 18,
+    "dispatch_officer": 18, "auditor": 27, "read_only": 27,
 }
 
 
@@ -411,9 +447,11 @@ def test_tenant_admin_has_every_currently_defined_permission() -> None:
     # already drifted further out of sync with reality by the time
     # AUTHZ-OPS-001 started (pre-existing, unrelated to this ticket -- not
     # re-traced here); AUTHZ-OPS-001 adds one more (TENANT_MEMBERS_READ) on
-    # top of that, for an actual current size of 67 (verified directly via
-    # `len(list(Permission))`, not hand-traced).
-    assert len(_ALL_PERMISSIONS) == 67
+    # top of that, for a size of 67 as of that ticket. PILOT-OPS-001 adds
+    # 3 more (farm_work_item.read/.manage/.execute) for an actual current
+    # size of 70 (verified directly via `len(list(Permission))`, not
+    # hand-traced).
+    assert len(_ALL_PERMISSIONS) == 70
 
 
 def test_expected_role_grants_covers_every_non_admin_approved_role() -> None:
@@ -632,10 +670,10 @@ def test_storekeeper_and_head_grower_and_production_supervisor_and_operator_hold
 def test_tenant_admin_has_all_43() -> None:
     """Name kept as `_all_43` for history/diff-friendliness (matches the
     original AUTHZ-001A test name); the assertion itself checks the current
-    catalog size (67 as of AUTHZ-OPS-001's TENANT_MEMBERS_READ addition),
-    not the literal number 43."""
+    catalog size (70 as of PILOT-OPS-001's three farm_work_item.*
+    additions), not the literal number 43."""
     granted = get_permissions_for_role("tenant_admin")
-    assert len(granted) == 67
+    assert len(granted) == 70
     assert granted == _ALL_PERMISSIONS
 
 

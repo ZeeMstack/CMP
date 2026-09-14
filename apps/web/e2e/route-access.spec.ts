@@ -100,9 +100,17 @@ test("D: a business 401/session_expired after a protected page loaded clears dat
   await page.route(`**/api/farms/${fixtures.farm.id}/crop-batches/operational-summary?state=active`, (route) =>
     route.fulfill({ json: [] }),
   );
+  // PILOT-OPS-001: Today on the Farm's own board/aggregation reads.
+  await page.route(`**/api/farms/${fixtures.farm.id}/work-items*`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/farms/${fixtures.farm.id}/shift-handovers/latest`, (route) => route.fulfill({ json: null }));
+  await page.route(`**/api/farms/${fixtures.farm.id}/leafy-production/harvestable-plates*`, (route) =>
+    route.fulfill({ json: [] }),
+  );
 
   await page.goto(`/farms/${fixtures.farm.id}`);
-  await expect(page.getByRole("heading", { name: fixtures.farm.name })).toBeVisible();
+  // PILOT-OPS-001: the page's own H1 is now "Today on the Farm"; the farm
+  // name is shown as descriptive text under it instead.
+  await expect(page.getByRole("heading", { name: "Today on the Farm" })).toBeVisible();
 
   // The session "expires": the very next business request comes back
   // with the BFF's stable session_expired body, and any subsequent

@@ -18,6 +18,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
@@ -107,6 +108,10 @@ class RecordVinesHarvestCreate(BaseModel):
     source_lines: list[RecordVinesHarvestSourceLineIn] = Field(
         min_length=1, max_length=MAX_VINES_HARVEST_SOURCE_LINES
     )
+    # PILOT-OPS-001: optional Farm Work Item to complete on success. Never
+    # required -- a Vines Harvest recorded outside "Today on the Farm" (no
+    # Work Item involved at all) is unaffected.
+    work_item_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod
@@ -257,6 +262,11 @@ class VinesHarvestEventRead(BaseModel):
     current_total_harvested_weight_kg: Decimal
     available_balance_weight_kg: Decimal
     source_lines: list[VinesHarvestSourceLineRead]
+    # PILOT-OPS-001: set only when `work_item_id` was supplied on create --
+    # see `app.schemas.harvest.HarvestEventRead.work_item_link_status`'s
+    # identical docstring for the "authoritative and successful either
+    # way" contract.
+    work_item_link_status: Literal["linked", "failed"] | None = None
 
     @field_serializer(
         "original_total_harvested_weight_kg", "current_total_harvested_weight_kg", "available_balance_weight_kg"

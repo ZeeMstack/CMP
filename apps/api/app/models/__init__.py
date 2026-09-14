@@ -14,6 +14,7 @@ from app.models.crop_batch import CropBatch
 from app.models.dispatch_event import DispatchEvent
 from app.models.dispatch_line import DispatchLine
 from app.models.farm import Farm
+from app.models.farm_work_item import FarmWorkItem
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
 from app.models.finished_goods_storage_movement import FinishedGoodsStorageMovement
 from app.models.germination_check import GerminationCheck
@@ -62,6 +63,7 @@ from app.models.seedling_disposition_event import SeedlingDispositionEvent
 from app.models.seedling_disposition_reason import SeedlingDispositionReason
 from app.models.seedling_entry import SeedlingEntry
 from app.models.seedling_source_checkpoint import SeedlingSourceCheckpoint
+from app.models.shift_handover import ShiftHandover, ShiftHandoverItem
 from app.models.sowing_event import SowingEvent
 from app.models.sowing_event_line import SowingEventLine
 from app.models.tenant import Tenant
@@ -132,6 +134,9 @@ __all__ = [
     "ProductionDispositionEvent",
     "ProductionDispositionEventGrowCube",
     "ProductionDispositionReason",
+    "FarmWorkItem",
+    "ShiftHandover",
+    "ShiftHandoverItem",
     "SeedLot",
     "SeedlingDispositionCommand",
     "SeedlingDispositionEvent",

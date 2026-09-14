@@ -216,20 +216,44 @@ export interface paths {
         };
         /**
          * Lookup User By Email
-         * @description AUTHZ-OPS-001 section 8: the "Add Existing User" prerequisite step.
-         *     CMP has no self-service signup and no invitation mechanism -- a User
-         *     row is only ever created by a real Auth0 login binding to an already-
-         *     provisioned identity, or by Platform Admin tenant onboarding (see
-         *     `docs/domain/AUTHORIZATION_MODEL.md`, "Identity binding"). A Tenant
-         *     Admin cannot create a brand-new identity here; this endpoint only
-         *     resolves whether one already exists, so the Add User flow can tell the
-         *     admin to ask the person to sign in first when it does not.
+         * @description AUTHZ-OPS-001 section 8 (CTO correction pass): the "Add Existing
+         *     User" prerequisite step. CMP has no self-service signup, no invitation
+         *     mechanism, and -- critically -- **no auto-provisioning on first Auth0
+         *     login either**: `app.core.auth._resolve_cmp_user_for_identity` returns
+         *     a plain 403 when no matching User row exists; it never creates one. The
+         *     only paths that ever create a User are `/dev/bootstrap/users` (dev-only)
+         *     and Platform Admin tenant onboarding (`platform_tenant_service.
+         *     onboard_tenant`, which requires the Platform Admin to already know the
+         *     target's `oidc_issuer`/`oidc_subject` -- not just an email). A Tenant
+         *     Admin therefore cannot provision a brand-new identity by any means, and
+         *     telling them to "ask the person to sign in" would be false: signing in
+         *     with no existing User row still ends in a 403, not a new account.
+         *
+         *     `users.email` has no uniqueness constraint -- exactly one match is the
+         *     only case this endpoint can safely resolve on the caller's behalf:
+         *
+         *     - 0 matches: truthful "not provisioned yet" guidance (404).
+         *     - 1 match: resolved (200).
+         *     - 2+ matches: refuses to guess which identity was meant -- an
+         *       operator-facing ambiguity error (409) naming the Platform Admin as
+         *       the one who must resolve it, never silently picking one (the prior
+         *       version of this endpoint's underlying lookup took "the first match",
+         *       which could have attached the wrong identity to a tenant).
          *
          *     Deliberately tenant-unscoped (Users are not tenant-owned records --
          *     `tenant_id` lives on TenantMembership, not User) -- still gated by
          *     `TENANT_MEMBERS_READ` so only a caller already trusted to administer
          *     this tenant's membership can probe whether an email is a known CMP
-         *     identity at all.
+         *     identity at all. Exact-match only (no partial/fuzzy search, no listing)
+         *     -- this is a single-identity resolution step for the Add User flow, not
+         *     a general User directory. Returns only `id`/`email`/`display_name`
+         *     (`UserLookupRead`) -- never `oidc_issuer`/`oidc_subject`/`status`, and
+         *     never any other tenant's membership/role information for this User.
+         *     `id` stays in the API contract because the subsequent `POST
+         *     /memberships` call needs it, but the frontend never renders it -- and
+         *     that endpoint independently re-resolves `ctx.tenant_id`/permission from
+         *     the caller's own request, never trusting anything about tenant context
+         *     from this lookup.
          */
         get: operations["lookup_user_by_email_users_lookup_get"];
         put?: never;
@@ -4429,6 +4453,276 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Items */
+        get: operations["list_work_items_farms__farm_id__work_items_get"];
+        put?: never;
+        /** Create Work Item */
+        post: operations["create_work_item_farms__farm_id__work_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Work Item */
+        get: operations["get_work_item_farms__farm_id__work_items__work_item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Work Item History */
+        get: operations["get_work_item_history_farms__farm_id__work_items__work_item_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Work Item */
+        post: operations["update_work_item_farms__farm_id__work_items__work_item_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Work Item */
+        post: operations["start_work_item_farms__farm_id__work_items__work_item_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block Work Item */
+        post: operations["block_work_item_farms__farm_id__work_items__work_item_id__block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unblock Work Item */
+        post: operations["unblock_work_item_farms__farm_id__work_items__work_item_id__unblock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Work Item */
+        post: operations["complete_work_item_farms__farm_id__work_items__work_item_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Work Item */
+        post: operations["cancel_work_item_farms__farm_id__work_items__work_item_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/work-items/{work_item_id}/link-result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Work Item Result
+         * @description Reconciliation endpoint: links an OPERATIONAL_RECORD Work Item to an
+         *     already-committed authoritative record. The same underlying service
+         *     function is called automatically by Harvest/Observation on success
+         *     (best-effort, never blocking); this endpoint exists so a UI can retry a
+         *     failed automatic link without repeating the operation itself.
+         */
+        post: operations["link_work_item_result_farms__farm_id__work_items__work_item_id__link_result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/shift-handovers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Shift Handovers */
+        get: operations["list_shift_handovers_farms__farm_id__shift_handovers_get"];
+        put?: never;
+        /** Create Shift Handover */
+        post: operations["create_shift_handover_farms__farm_id__shift_handovers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/shift-handovers/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Latest Shift Handover */
+        get: operations["get_latest_shift_handover_farms__farm_id__shift_handovers_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap Tenant */
+        post: operations["bootstrap_tenant_dev_bootstrap_tenants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap User */
+        post: operations["bootstrap_user_dev_bootstrap_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dev/bootstrap/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bootstrap Membership
+         * @description Development-only: creates a tenant's first membership. No active
+         *     membership is required to call this — that's the whole point of a
+         *     bootstrap route. `POST /memberships` (not under /dev/bootstrap) is for
+         *     an already-active member to add further members.
+         */
+        post: operations["bootstrap_membership_dev_bootstrap_memberships_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -5189,6 +5483,25 @@ export interface components {
             /** Code */
             code: string;
         };
+        /**
+         * BootstrapMembershipCreate
+         * @description Development-only: creates a membership without requiring an existing
+         *     active membership, to bootstrap a tenant's first member.
+         */
+        BootstrapMembershipCreate: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Role Code */
+            role_code: string;
+        };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
             /** Carrier Type Code */
@@ -5892,6 +6205,286 @@ export interface components {
             overall: "ready" | "incomplete";
             /** Milestones */
             milestones: components["schemas"]["FarmSetupReadinessMilestone"][];
+        };
+        /** FarmWorkItemBlockIn */
+        FarmWorkItemBlockIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** FarmWorkItemCancelIn */
+        FarmWorkItemCancelIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * FarmWorkItemCompleteIn
+         * @description MANUAL_RECORD completion only -- rejected outright for an
+         *     OPERATIONAL_RECORD item (see `FarmWorkItemCreate`'s docstring).
+         */
+        FarmWorkItemCompleteIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Completion Note */
+            completion_note?: string | null;
+        };
+        /**
+         * FarmWorkItemCreate
+         * @description Creates a manual or operational-record Work Item. `completion_mode`
+         *     is fixed at creation -- an OPERATIONAL_RECORD item can only ever be
+         *     completed by linking the authoritative GrowCMP record
+         *     (`link_operational_result`), never a checkbox; a MANUAL_RECORD item can
+         *     only ever be completed via `complete`.
+         */
+        FarmWorkItemCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Work Type */
+            work_type: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "nursery" | "production" | "crop_care" | "harvest" | "post_harvest" | "store" | "quality" | "dispatch" | "cleaning" | "maintenance";
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions?: string | null;
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "normal" | "high" | "critical";
+            /** Due At */
+            due_at?: string | null;
+            /** Assigned To User Id */
+            assigned_to_user_id?: string | null;
+            /** Crop Batch Id */
+            crop_batch_id?: string | null;
+            /** Location Id */
+            location_id?: string | null;
+            /** Carrier Id */
+            carrier_id?: string | null;
+            /** Asset Id */
+            asset_id?: string | null;
+            /** Quantity */
+            quantity?: number | string | null;
+            /** Quantity Uom Id */
+            quantity_uom_id?: string | null;
+            /**
+             * Completion Mode
+             * @enum {string}
+             */
+            completion_mode: "operational_record" | "manual_record";
+        };
+        /**
+         * FarmWorkItemHistoryEntryRead
+         * @description One operator-facing lifecycle-history row, read back from the
+         *     existing `audit_events` table (`docs/domain/AUDIT_MODEL.md`) -- Farm
+         *     Work Item history is deliberately not duplicated into a second event
+         *     model.
+         */
+        FarmWorkItemHistoryEntryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Action */
+            action: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Event Data */
+            event_data: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FarmWorkItemLinkResultIn
+         * @description OPERATIONAL_RECORD completion only. Called after the authoritative
+         *     GrowCMP command (Harvest, Observation, ...) has already committed --
+         *     never before. `effective_time` is the authoritative operation's own
+         *     effective time, recorded here as `result_recorded_at`.
+         */
+        FarmWorkItemLinkResultIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Result Entity Type
+             * @enum {string}
+             */
+            result_entity_type: "harvest_event" | "observation_event";
+            /**
+             * Result Entity Id
+             * Format: uuid
+             */
+            result_entity_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+        };
+        /** FarmWorkItemRead */
+        FarmWorkItemRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Work Type */
+            work_type: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "nursery" | "production" | "crop_care" | "harvest" | "post_harvest" | "store" | "quality" | "dispatch" | "cleaning" | "maintenance";
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "in_progress" | "blocked" | "completed" | "cancelled";
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "normal" | "high" | "critical";
+            /** Due At */
+            due_at: string | null;
+            /** Assigned To User Id */
+            assigned_to_user_id: string | null;
+            crop_batch: components["schemas"]["WorkItemCropBatchSummary"] | null;
+            location: components["schemas"]["WorkItemLocationSummary"] | null;
+            carrier: components["schemas"]["WorkItemCarrierSummary"] | null;
+            asset: components["schemas"]["WorkItemAssetSummary"] | null;
+            /** Quantity */
+            quantity: string | null;
+            quantity_uom: components["schemas"]["WorkItemUomSummary"] | null;
+            /**
+             * Completion Mode
+             * @enum {string}
+             */
+            completion_mode: "operational_record" | "manual_record";
+            /** Result Entity Type */
+            result_entity_type: ("harvest_event" | "observation_event") | null;
+            /** Result Entity Id */
+            result_entity_id: string | null;
+            /** Result Recorded At */
+            result_recorded_at: string | null;
+            /** Completed By User Id */
+            completed_by_user_id: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Completion Note */
+            completion_note: string | null;
+            /** Blocked Reason */
+            blocked_reason: string | null;
+            /** Blocked At */
+            blocked_at: string | null;
+            /** Blocked By User Id */
+            blocked_by_user_id: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Cancelled By User Id */
+            cancelled_by_user_id: string | null;
+            /** Cancel Reason */
+            cancel_reason: string | null;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FarmWorkItemStartIn */
+        FarmWorkItemStartIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** FarmWorkItemUnblockIn */
+        FarmWorkItemUnblockIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /**
+         * FarmWorkItemUpdateIn
+         * @description The one supervisory command covering reassignment, priority change,
+         *     and due-window change -- a real domain command with explicit, fully-
+         *     specified target fields, never a generic PATCH (CLAUDE.md "API and
+         *     Offline Rules"). Every field is the item's complete new value (not a
+         *     partial patch) -- e.g. `assigned_to_user_id=None` explicitly unassigns.
+         */
+        FarmWorkItemUpdateIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Assigned To User Id */
+            assigned_to_user_id?: string | null;
+            /**
+             * Priority
+             * @default normal
+             * @enum {string}
+             */
+            priority: "normal" | "high" | "critical";
+            /** Due At */
+            due_at?: string | null;
         };
         /** FinishedGoodsBalanceRead */
         FinishedGoodsBalanceRead: {
@@ -7160,6 +7753,8 @@ export interface components {
             note?: string | null;
             /** Source Lines */
             source_lines: components["schemas"]["HarvestSourceLineIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** HarvestSourceLineIn */
         HarvestSourceLineIn: {
@@ -8793,6 +9388,8 @@ export interface components {
             available_balance_whole_unit_count: number | null;
             /** Source Lines */
             source_lines: components["schemas"]["LeafyHarvestSourceLineRead"][];
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /**
          * LeafyHarvestLocationRead
@@ -9688,6 +10285,8 @@ export interface components {
             values?: components["schemas"]["ObservationValueIn"][];
             /** Germination Checks */
             germination_checks?: components["schemas"]["GerminationCheckIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** ObservationEventRead */
         ObservationEventRead: {
@@ -9745,6 +10344,8 @@ export interface components {
             values: components["schemas"]["ObservationValueRead"][];
             /** Germination Checks */
             germination_checks: components["schemas"]["GerminationCheckRead"][];
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /**
          * ObservationTargetRead
@@ -11364,6 +11965,8 @@ export interface components {
             note?: string | null;
             /** Source Lines */
             source_lines: components["schemas"]["RecordLeafyHarvestSourceLineIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** RecordLeafyHarvestSourceLineIn */
         RecordLeafyHarvestSourceLineIn: {
@@ -11489,6 +12092,8 @@ export interface components {
             note?: string | null;
             /** Source Lines */
             source_lines: components["schemas"]["RecordVinesHarvestSourceLineIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** RecordVinesHarvestSourceLineIn */
         RecordVinesHarvestSourceLineIn: {
@@ -12307,6 +12912,60 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** ShiftHandoverCreate */
+        ShiftHandoverCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Note */
+            note: string;
+            /** Work Item Ids */
+            work_item_ids?: string[];
+        };
+        /** ShiftHandoverRead */
+        ShiftHandoverRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Author User Id
+             * Format: uuid
+             */
+            author_user_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Note */
+            note: string;
+            /** Work Item Ids */
+            work_item_ids: string[];
         };
         /**
          * SowNewBatchCreate
@@ -13259,6 +13918,17 @@ export interface components {
             /** Quantity Kind */
             quantity_kind: string;
         };
+        /** UserCreate */
+        UserCreate: {
+            /** Oidc Issuer */
+            oidc_issuer: string;
+            /** Oidc Subject */
+            oidc_subject: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+        };
         /**
          * UserLookupRead
          * @description AUTHZ-OPS-001: the minimal, administrative-only shape returned by
@@ -13543,6 +14213,8 @@ export interface components {
             available_balance_weight_kg: string;
             /** Source Lines */
             source_lines: components["schemas"]["VinesHarvestSourceLineRead"][];
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /**
          * VinesHarvestLocationRead
@@ -13959,6 +14631,60 @@ export interface components {
         VinesSetupConfig: {
             /** Zones */
             zones: components["schemas"]["ZoneSetupConfig"][];
+        };
+        /** WorkItemAssetSummary */
+        WorkItemAssetSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** WorkItemCarrierSummary */
+        WorkItemCarrierSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+        };
+        /** WorkItemCropBatchSummary */
+        WorkItemCropBatchSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+        };
+        /** WorkItemLocationSummary */
+        WorkItemLocationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** WorkItemUomSummary */
+        WorkItemUomSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
         };
         /** WorkflowCreate */
         WorkflowCreate: {
@@ -14435,6 +15161,8 @@ export interface components {
             total_harvested_weight_kg: string;
             /** Total Whole Unit Count */
             total_whole_unit_count: number | null;
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /** HarvestedProduceLotRead */
         app__schemas__harvest__HarvestedProduceLotRead: {
@@ -25969,6 +26697,658 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecallCaseDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_work_items_farms__farm_id__work_items_get: {
+        parameters: {
+            query?: {
+                status?: string[] | null;
+                assigned_to_me?: boolean;
+                include_completed?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_work_item_farms__farm_id__work_items_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_work_item_farms__farm_id__work_items__work_item_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_work_item_history_farms__farm_id__work_items__work_item_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemHistoryEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_work_item_farms__farm_id__work_items__work_item_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_work_item_farms__farm_id__work_items__work_item_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_work_item_farms__farm_id__work_items__work_item_id__block_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemBlockIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unblock_work_item_farms__farm_id__work_items__work_item_id__unblock_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemUnblockIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_work_item_farms__farm_id__work_items__work_item_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemCompleteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_work_item_farms__farm_id__work_items__work_item_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemCancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_work_item_result_farms__farm_id__work_items__work_item_id__link_result_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FarmWorkItemLinkResultIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shift_handovers_farms__farm_id__shift_handovers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftHandoverRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_shift_handover_farms__farm_id__shift_handovers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftHandoverCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftHandoverRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_shift_handover_farms__farm_id__shift_handovers_latest_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftHandoverRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_tenant_dev_bootstrap_tenants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_user_dev_bootstrap_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_membership_dev_bootstrap_memberships_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BootstrapMembershipCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRead"];
                 };
             };
             /** @description Validation Error */

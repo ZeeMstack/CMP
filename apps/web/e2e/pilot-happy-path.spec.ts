@@ -48,12 +48,22 @@ test.beforeEach(async ({ page }) => {
       route.fulfill({ json: response }),
     );
   }
+
+  // PILOT-OPS-001: Today on the Farm's own board/aggregation reads.
+  await page.route(`**/api/farms/${fixtures.farm.id}/work-items*`, (route) => route.fulfill({ json: [] }));
+  await page.route(`**/api/farms/${fixtures.farm.id}/shift-handovers/latest`, (route) => route.fulfill({ json: null }));
+  await page.route(`**/api/farms/${fixtures.farm.id}/leafy-production/harvestable-plates*`, (route) =>
+    route.fulfill({ json: [] }),
+  );
 });
 
 test("Home shows active/harvest-ready/open-hold KPIs without superseded inflation", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(`/farms/${fixtures.farm.id}`);
-  await expect(page.getByRole("heading", { name: fixtures.farm.name })).toBeVisible();
+  // PILOT-OPS-001: the page's own H1 is now "Today on the Farm"; the farm
+  // name is shown as descriptive text under it instead.
+  await expect(page.getByRole("heading", { name: "Today on the Farm" })).toBeVisible();
+  await expect(page.getByText(fixtures.farm.name)).toBeVisible();
 
   // 3 active batches (LOT-006, LOT-007A, LOT-007B) -- LOT-007 (superseded)
   // must never be counted here.

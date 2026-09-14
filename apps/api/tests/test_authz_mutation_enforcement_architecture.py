@@ -182,6 +182,18 @@ _NON_MANAGE_SUFFIX_EXEMPT_PATHS = {
     "/farms/{farm_id}/nursery/seedling/dispositions/{event_id}/correct",
     "/farms/{farm_id}/leafy-production/dispositions/{event_id}/correct",
     "/farms/{farm_id}/vines-production/dispositions/{event_id}/correct",
+    # PILOT-OPS-001: Farm Work Item floor-execution commands (start/block/
+    # unblock/complete/link-result) and authoring a Shift Handover are
+    # deliberately gated by farm_work_item.execute, not .manage -- the same
+    # kind of authority split as the .correct exemptions above (a
+    # materially different, lower-tier authority than the supervisory
+    # create/assign/cancel commands, which remain .manage-gated).
+    "/farms/{farm_id}/work-items/{work_item_id}/start",
+    "/farms/{farm_id}/work-items/{work_item_id}/block",
+    "/farms/{farm_id}/work-items/{work_item_id}/unblock",
+    "/farms/{farm_id}/work-items/{work_item_id}/complete",
+    "/farms/{farm_id}/work-items/{work_item_id}/link-result",
+    "/farms/{farm_id}/shift-handovers",
 }
 
 

@@ -44,11 +44,17 @@ export default function ObservationsPage() {
   const searchParams = useSearchParams();
   const prefillBatchId = searchParams.get("batchId");
   const prefillAssignmentId = searchParams.get("assignmentId");
+  // PILOT-OPS-001: a Today-on-the-Farm Work Item's "Open Observation"
+  // action carries its own id through so the resulting Observation can
+  // complete it -- see WorkItemRow.tsx. Never required; absent for every
+  // other entry point into this page.
+  const prefillWorkItemId = searchParams.get("workItemId");
 
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(prefillBatchId);
   const [showRecordForm, setShowRecordForm] = useState(Boolean(prefillBatchId));
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordedCount, setRecordedCount] = useState<number | null>(null);
+  const [workItemLinkStatus, setWorkItemLinkStatus] = useState<"linked" | "failed" | null>(null);
   const [formDirty, setFormDirty] = useState(false);
 
   const farmQuery = useFarm(farmId);
@@ -165,6 +171,17 @@ export default function ObservationsPage() {
           {recordedCount !== null && !showRecordForm && (
             <div className="rounded-lg border border-wl-border bg-wl-grow-bg px-3 py-2 text-sm text-wl-grow-fg">
               Recorded {recordedCount} observation{recordedCount === 1 ? "" : "s"} for {selectedBatch.code}.
+              {/* The Observation itself is always authoritative and
+                  successful here -- a failed Work Item link is never an
+                  Observation failure, and the Observation is never
+                  repeated to retry it (CLAUDE.md "Transaction-backed
+                  completion"). */}
+              {workItemLinkStatus === "failed" && (
+                <span className="mt-1 block text-wl-hold-fg">
+                  The linked work item couldn&apos;t be marked complete automatically — reopen it from Today on the
+                  Farm to reconcile.
+                </span>
+              )}
             </div>
           )}
 
@@ -186,12 +203,17 @@ export default function ObservationsPage() {
               }}
               onSubmit={(payload: ObservationEventCreate) => {
                 setRecordError(null);
+                const isForPrefilledWorkItem = selectedBatchId === prefillBatchId && Boolean(prefillWorkItemId);
                 recordMutation.mutate(
-                  { batchId: selectedBatch.id, payload },
+                  {
+                    batchId: selectedBatch.id,
+                    payload: isForPrefilledWorkItem ? { ...payload, work_item_id: prefillWorkItemId } : payload,
+                  },
                   {
                     onSuccess: (result) => {
                       setShowRecordForm(false);
                       setRecordedCount(result.values.length);
+                      setWorkItemLinkStatus(result.work_item_link_status ?? null);
                       setFormDirty(false);
                     },
                     onError: (error) => setRecordError(asAppError(error)),
