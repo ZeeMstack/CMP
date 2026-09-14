@@ -81,6 +81,15 @@ def test_downgrade_blocked_by_reservation_history(test_engine, alembic_head_rest
     with pytest.raises(RuntimeError, match="inventory_reservations row"):
         command.downgrade(_cfg(), _PRE_003_REVISION)
     _assert_at_head(test_engine)
+    # PILOT-SCAN-001D closure: this test's own committed reservation row was
+    # never cleaned up here before -- a pre-existing gap (unrelated to QR)
+    # that left it permanently in cmp_test, tripping this exact migration's
+    # own bare table-wide-count guard for every OTHER downgrade test that
+    # runs later in the same session and downgrades below a9c3e71fd2b4
+    # (STORE-INV-003), regardless of what THAT test is actually about.
+    # Resetting again (the same hermetic mechanism already used to start
+    # this test clean) leaves cmp_test clean for whoever runs next.
+    scripts.reset_test_database.main()
 
 
 @pytest.mark.integration
@@ -112,6 +121,11 @@ def test_downgrade_blocked_by_issue_movement_history(test_engine, alembic_head_r
     with pytest.raises(RuntimeError, match="inventory_issues row"):
         command.downgrade(_cfg(), _PRE_003_REVISION)
     _assert_at_head(test_engine)
+    # PILOT-SCAN-001D closure: same rationale as the reservation-history
+    # test above -- this test's own committed issue row was never cleaned
+    # up here before, permanently tripping every later downgrade test's
+    # own a9c3e71fd2b4 (STORE-INV-003) guard for the rest of the session.
+    scripts.reset_test_database.main()
 
 
 @pytest.mark.integration
@@ -179,3 +193,11 @@ def test_clean_downgrade_with_no_003_history_reupgrade_restores_head(test_engine
     finally:
         session.close()
         conn.close()
+    # PILOT-SCAN-001D closure: this post-reupgrade smoke-test issue row was
+    # never cleaned up here either -- same pre-existing, unrelated-to-QR gap
+    # as the two tests above, and the actual source of the "1
+    # inventory_issues row(s) exist" pollution that kept tripping every
+    # later downgrade test's own a9c3e71fd2b4 (STORE-INV-003) guard for the
+    # rest of the session, since this is the LAST test in this file to
+    # commit one.
+    scripts.reset_test_database.main()

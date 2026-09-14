@@ -319,6 +319,21 @@ def test_migration_downgrade_blocked_when_table_non_empty(test_engine, alembic_h
         built = _build_chained_nursery_plate_checkpoint(session, tenant, user, farm, suffix=suffix)
         checkpoint_id = built["checkpoint_row"].id
 
+        # PILOT-SCAN-001D closure: commit and release this scenario-building
+        # connection before invoking the downgrade below -- mirrors the
+        # PILOT-BLOCKER-007/008 fix already applied to
+        # test_nursery_ops_downgrade_guard.py/test_batch_derivation_
+        # downgrade_guard.py. Left open, its still-open transaction (the
+        # last statement `_build_chained_nursery_plate_checkpoint` runs is a
+        # bare SELECT, never committed) holds a lock relevant to `carriers`
+        # that the downgrade's own `DROP TABLE qr_identifiers` step (its FK
+        # to `carriers` requires a lock on that table too) must wait on --
+        # the test process self-deadlocking against its own still-open
+        # transaction.
+        session.commit()
+        session.close()
+        conn.close()
+
         with pytest.raises(RuntimeError, match="batch_carrier_population_checkpoints"):
             command.downgrade(_cfg(), _PRE_005A_REVISION)
 

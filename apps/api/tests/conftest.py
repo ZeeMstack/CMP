@@ -150,9 +150,61 @@ def alembic_head_restore(test_engine):
     exception. It cannot run, and therefore cannot help, if the whole
     process is killed (crash, Ctrl+C, machine sleep) mid-downgrade -- see
     docs/testing/TEST_DATABASE_RELIABILITY.md for that case and the manual
-    recovery procedure (`scripts/reset_test_database.py`)."""
+    recovery procedure (`scripts/reset_test_database.py`).
+
+    PILOT-SCAN-001D: also wraps `alembic.command.downgrade` for the
+    duration of the test so that every downgrade call first clears
+    `qr_identifiers`. Since automatic creation-time QR provisioning was
+    wired into Carrier/Location/Asset creation, EVERY downgrade below
+    `29d6697de6d5` (PILOT-SCAN-001's own qr_identifiers migration, the
+    current sole Alembic head) passes through that migration's own
+    downgrade() guard first, which raises if ANY qr_identifiers row exists
+    ANYWHERE in the database -- a genuine, correct safety check for a real
+    deployment. Two distinct sources make that count non-zero for a test
+    that has nothing to do with QR: (1) cross-test pollution left behind by
+    an earlier test in the same pytest run (`apply_test_migrations` is
+    deliberately not a destructive reset, so committed qr_identifiers rows
+    persist across the whole session), and (2) the failing test's OWN
+    scenario-building code legitimately registering a Carrier/Location/
+    Asset (directly, or transitively -- e.g. sowing a batch registers a
+    carrier) via the current, head-shaped service layer as part of setting
+    up the very history its own guard is supposed to react to. A single
+    clear before the test body starts only ever addresses (1); the guard
+    still fires on (2) because the test's own commits happen after that
+    point and before its own `command.downgrade()` call. Intercepting the
+    call itself (rather than editing every test's own body) addresses both
+    uniformly, for every current and future test that depends on this
+    fixture, with no change to the ~34 migration/downgrade-guard test files
+    themselves. TRUNCATE (rather than DELETE) is used deliberately: it
+    fires no row-level trigger, so it bypasses `qr_identifiers_no_delete`
+    (which exists specifically to protect real production label history)
+    without touching that trigger's definition -- safe here because
+    `assert_cmp_test_database` above already proves this is exclusively
+    `cmp_test`, and only fixture rows this test run does not care about are
+    being cleared, never production data. This can never remove state a
+    test depends on: every qr_identifiers row that could matter to a test
+    using this fixture was created before its own `command.downgrade()`
+    call and is examined (via the test's own assertions on the *other*
+    tables the guard being tested actually cares about) before that call,
+    never after. `test_qr_identifier_migration.py` -- the one file that
+    positively tests qr_identifiers content/constraints -- does not use
+    this fixture and is therefore untouched by this wrapping."""
     assert_cmp_test_database(test_engine)
-    yield
+
+    real_downgrade = command.downgrade
+
+    def _downgrade_after_clearing_qr_identifiers(cfg, *args, **kwargs):
+        with test_engine.begin() as conn:
+            if conn.execute(text("SELECT to_regclass('qr_identifiers')")).scalar() is not None:
+                conn.execute(text("TRUNCATE TABLE qr_identifiers"))
+        return real_downgrade(cfg, *args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(command, "downgrade", _downgrade_after_clearing_qr_identifiers)
+        yield
+    finally:
+        mp.undo()
     restore_cmp_test_to_head(test_engine)
 
 
