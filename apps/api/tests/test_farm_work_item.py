@@ -7,13 +7,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.services import farm_work_item_service, membership_service, tenant_service, user_service
+from app.services import farm_service, farm_work_item_service, location_service, membership_service, tenant_service, user_service
 from app.services.errors import (
     FarmWorkItemCommandReusedWithDifferentPayloadError,
     FarmWorkItemInvalidTransitionError,
     FarmWorkItemManualCompletionNotAllowedError,
     FarmWorkItemNotAssignableError,
     FarmWorkItemNotFoundError,
+    LocationNotFoundError,
     UserNotFoundError,
 )
 
@@ -266,3 +267,66 @@ def test_list_work_items_scoped_to_farm_and_assignee(db_session, active_context_
         db_session, tenant_id=tenant.id, farm_id=farm.id, assigned_to_user_id=user.id
     )
     assert [i.id for i in items] == [mine.id]
+
+
+# --- PILOT-OPS-001 closure: structured Location/Batch context -----------------------
+
+
+@pytest.mark.integration
+def test_create_accepts_valid_location_context(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    location = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        location_type_code="store", code=f"store-{uuid.uuid4().hex[:8]}", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
+    )
+    item = _create_manual_item(
+        db_session, tenant, farm, user, title="Inspect GH-01 cooling pad", location_id=location.id,
+    )
+    fetched = farm_work_item_service.get_work_item(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, work_item_id=item.id
+    )
+    assert fetched.location_id == location.id
+
+
+@pytest.mark.integration
+def test_create_rejects_foreign_farm_location_context(db_session, active_context_with_farm) -> None:
+    """The closure requirement: invalid/foreign-farm context is rejected by
+    EXISTING backend scoping -- `location_service.get_location`'s own
+    tenant+farm-filtered lookup, the same mechanism every other domain in
+    this codebase already relies on, not a Work-Item-specific check."""
+    tenant, user, _headers, farm = active_context_with_farm
+    other_farm = farm_service.create_farm(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"other-farm-{uuid.uuid4().hex[:8]}",
+        name="Other Farm", country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    foreign_location = location_service.create_location(
+        db_session, tenant_id=tenant.id, farm_id=other_farm.id, actor_user_id=user.id,
+        location_type_code="store", code=f"store-{uuid.uuid4().hex[:8]}", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
+    )
+    with pytest.raises(LocationNotFoundError):
+        _create_manual_item(db_session, tenant, farm, user, location_id=foreign_location.id)
+
+
+@pytest.mark.integration
+def test_create_rejects_cross_tenant_location_context(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    tenant_b = tenant_service.create_tenant(db_session, code=f"fwi-ctx-b-{uuid.uuid4().hex[:8]}", name="Tenant B")
+    user_b = user_service.create_user(
+        db_session, oidc_issuer="iss", oidc_subject=uuid.uuid4().hex, email="ctxb@example.com", display_name="B"
+    )
+    membership_service.add_membership(
+        db_session, tenant_id=tenant_b.id, user_id=user_b.id, role_code="tenant_admin", actor_user_id=None
+    )
+    farm_b = farm_service.create_farm(
+        db_session, tenant_id=tenant_b.id, actor_user_id=user_b.id, code=f"farm-b-{uuid.uuid4().hex[:8]}",
+        name="Farm B", country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    location_b = location_service.create_location(
+        db_session, tenant_id=tenant_b.id, farm_id=farm_b.id, actor_user_id=user_b.id,
+        location_type_code="store", code=f"store-{uuid.uuid4().hex[:8]}", name="Store",
+        parent_location_id=None, greenhouse_classification=None, occupiable=None,
+    )
+    with pytest.raises(LocationNotFoundError):
+        _create_manual_item(db_session, tenant, farm, user, location_id=location_b.id)

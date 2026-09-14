@@ -9388,6 +9388,8 @@ export interface components {
             available_balance_whole_unit_count: number | null;
             /** Source Lines */
             source_lines: components["schemas"]["LeafyHarvestSourceLineRead"][];
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /**
          * LeafyHarvestLocationRead
@@ -11963,6 +11965,8 @@ export interface components {
             note?: string | null;
             /** Source Lines */
             source_lines: components["schemas"]["RecordLeafyHarvestSourceLineIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** RecordLeafyHarvestSourceLineIn */
         RecordLeafyHarvestSourceLineIn: {
@@ -12088,6 +12092,8 @@ export interface components {
             note?: string | null;
             /** Source Lines */
             source_lines: components["schemas"]["RecordVinesHarvestSourceLineIn"][];
+            /** Work Item Id */
+            work_item_id?: string | null;
         };
         /** RecordVinesHarvestSourceLineIn */
         RecordVinesHarvestSourceLineIn: {
@@ -14207,6 +14213,8 @@ export interface components {
             available_balance_weight_kg: string;
             /** Source Lines */
             source_lines: components["schemas"]["VinesHarvestSourceLineRead"][];
+            /** Work Item Link Status */
+            work_item_link_status?: ("linked" | "failed") | null;
         };
         /**
          * VinesHarvestLocationRead

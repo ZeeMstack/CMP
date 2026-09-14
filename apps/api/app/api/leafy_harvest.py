@@ -12,7 +12,7 @@ from app.schemas.leafy_harvest import (
     LeafyHarvestEventRead,
     RecordLeafyHarvestCreate,
 )
-from app.services import harvest_service
+from app.services import farm_work_item_service, harvest_service
 from app.services.errors import (
     CarrierNotFoundError,
     CropBatchClosedError,
@@ -150,9 +150,24 @@ def record_leafy_harvest(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_conflict_detail(exc)) from exc
     except _INVALID as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return harvest_service.get_leafy_harvest_event(
+
+    result = harvest_service.get_leafy_harvest_event(
         db, tenant_id=ctx.tenant_id, farm_id=farm_id, harvest_event_id=event.id
     )
+    # PILOT-OPS-001: the Leafy Harvest is already authoritative and
+    # committed above -- linking the optional Work Item is best-effort and
+    # never repeats or invalidates this result on failure (CLAUDE.md
+    # "Transaction-backed completion"). The Work Item is resolved and
+    # authorized independently here (tenant/farm-scoped lookup + its own
+    # `farm_work_item.execute` permission on this very request) -- nothing
+    # about it is trusted from the URL/payload alone.
+    if payload.work_item_id is not None:
+        result.work_item_link_status = farm_work_item_service.link_operational_result_best_effort(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            work_item_id=payload.work_item_id, client_command_id=payload.client_command_id,
+            result_entity_type="harvest_event", result_entity_id=event.id, effective_time=payload.effective_time,
+        )
+    return result
 
 
 @router.get(

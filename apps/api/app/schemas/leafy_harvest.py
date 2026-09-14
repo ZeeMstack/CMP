@@ -115,6 +115,10 @@ class RecordLeafyHarvestCreate(BaseModel):
     source_lines: list[RecordLeafyHarvestSourceLineIn] = Field(
         min_length=1, max_length=MAX_LEAFY_HARVEST_SOURCE_LINES
     )
+    # PILOT-OPS-001: optional Farm Work Item to complete on success. Never
+    # required -- a Leafy Harvest recorded outside "Today on the Farm" (no
+    # Work Item involved at all) is unaffected.
+    work_item_id: uuid.UUID | None = None
 
     @field_validator("effective_time")
     @classmethod
@@ -286,6 +290,11 @@ class LeafyHarvestEventRead(BaseModel):
     available_balance_weight_kg: Decimal
     available_balance_whole_unit_count: int | None
     source_lines: list[LeafyHarvestSourceLineRead]
+    # PILOT-OPS-001: set only when `work_item_id` was supplied on create --
+    # see `app.schemas.harvest.HarvestEventRead.work_item_link_status`'s
+    # identical docstring for the "authoritative and successful either
+    # way" contract.
+    work_item_link_status: Literal["linked", "failed"] | None = None
 
     @field_serializer(
         "original_total_harvested_weight_kg", "current_total_harvested_weight_kg", "available_balance_weight_kg"

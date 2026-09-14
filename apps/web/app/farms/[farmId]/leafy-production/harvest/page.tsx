@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { LinkButton } from "@/components/admin/LinkButton";
@@ -14,7 +14,8 @@ import { Tabs } from "@/components/ui/Tabs";
 import type { CorrectLeafyHarvestSourceLineCreate, HarvestablePlateRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import {
-  useCorrectLeafyHarvestSourceLine, useHarvestablePlates, useLeafyHarvests, useRecordLeafyHarvest,
+  useCorrectLeafyHarvestSourceLine, useHarvestablePlates, useLeafyHarvests, useLinkWorkItemResult,
+  useRecordLeafyHarvest,
 } from "@/lib/query/hooks";
 
 const TABS = [
@@ -33,12 +34,27 @@ function asAppError(error: unknown): AppError {
  * their own nav entries. */
 export default function LeafyHarvestPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  // PILOT-OPS-001: a Today-on-the-Farm operational Work Item's "Open
+  // Harvest" action carries its own Batch and Work Item id through --
+  // see WorkItemRow.tsx. Never required for every other entry point into
+  // this page (the harvestable-plates panel).
+  const prefillBatchId = searchParams.get("batchId");
+  const prefillWorkItemId = searchParams.get("workItemId");
+
   const [tab, setTab] = useState<"harvestable" | "history">("harvestable");
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
     lotId: string; lotCode: string; batchCode: string; totalHeads: number; totalWeight: string; plateCount: number;
+    workItemLinkStatus: "linked" | "failed" | null;
+    // Present only when a Work Item was involved -- lets a failed link be
+    // retried right here, against the exact Harvest result that already
+    // succeeded, without the operator ever handling a raw id.
+    workItemReconciliation: { workItemId: string; harvestEventId: string; effectiveTime: string } | null;
   } | null>(null);
+  const [reconcileError, setReconcileError] = useState<AppError | null>(null);
+  const linkWorkItemResultMutation = useLinkWorkItemResult(farmId);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
   // PILOT-BLOCKER-010: distinct from `recordMutation.isPending` (which
@@ -49,7 +65,10 @@ export default function LeafyHarvestPage() {
   // leaves this `false`, matching existing "editable" semantics.
   const [isResultUnknown, setIsResultUnknown] = useState(false);
 
-  const harvestablePlatesQuery = useHarvestablePlates(farmId);
+  // PILOT-OPS-001: pre-filtered to the Work Item's own Batch when opened
+  // with context -- still just the existing farm-wide read, narrowed by
+  // its own already-supported `batchId` param, never a second endpoint.
+  const harvestablePlatesQuery = useHarvestablePlates(farmId, prefillBatchId ?? undefined);
   const harvestsQuery = useLeafyHarvests(farmId);
   const recordMutation = useRecordLeafyHarvest(farmId);
   const correctMutation = useCorrectLeafyHarvestSourceLine(farmId);
@@ -62,6 +81,12 @@ export default function LeafyHarvestPage() {
     .map((id) => allPlates.find((p) => p.current_batch_carrier_assignment_id === id))
     .filter((p): p is HarvestablePlateRead => Boolean(p));
   const lockedBatchId = selectedPlates[0]?.batch_id ?? null;
+  // Only forward the Work Item id when the Harvest being recorded is
+  // genuinely for the Batch that Work Item names -- never blindly attach
+  // it to an unrelated Harvest the operator happened to record on this
+  // same page visit.
+  const workItemIdForSubmit =
+    prefillWorkItemId && lockedBatchId && lockedBatchId === prefillBatchId ? prefillWorkItemId : null;
 
   return (
     <div>
@@ -117,6 +142,48 @@ export default function LeafyHarvestPage() {
                 <dd className="tabular-nums font-medium text-wl-text">{recordSuccess.plateCount}</dd>
               </div>
             </dl>
+            {/* PILOT-OPS-001: the Harvest above is already authoritative and
+                successful -- a failed Work Item link is never a Harvest
+                failure, and this Harvest is never repeated to retry it
+                (CLAUDE.md "Transaction-backed completion"). */}
+            {recordSuccess.workItemLinkStatus === "failed" && recordSuccess.workItemReconciliation && (
+              <div className="flex flex-col gap-2 rounded-lg border border-wl-border bg-wl-hold-bg px-3 py-2 text-sm text-wl-hold-fg">
+                <p>The linked work item couldn&apos;t be marked complete automatically.</p>
+                {reconcileError && <p>{reconcileError.message}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={linkWorkItemResultMutation.isPending}
+                    onClick={() => {
+                      const reconciliation = recordSuccess.workItemReconciliation;
+                      if (!reconciliation) return;
+                      setReconcileError(null);
+                      linkWorkItemResultMutation.mutate(
+                        {
+                          workItemId: reconciliation.workItemId,
+                          payload: {
+                            client_command_id: crypto.randomUUID(),
+                            result_entity_type: "harvest_event",
+                            result_entity_id: reconciliation.harvestEventId,
+                            effective_time: reconciliation.effectiveTime,
+                          },
+                        },
+                        {
+                          onSuccess: () => setRecordSuccess((prev) => (prev ? { ...prev, workItemLinkStatus: "linked" } : prev)),
+                          onError: (error) => setReconcileError(asAppError(error)),
+                        },
+                      );
+                    }}
+                  >
+                    {linkWorkItemResultMutation.isPending ? "Retrying…" : "Retry linking work item"}
+                  </Button>
+                  <LinkButton variant="secondary" href={`/farms/${farmId}`}>
+                    Open Today on the Farm
+                  </LinkButton>
+                </div>
+              </div>
+            )}
             <div className="flex flex-wrap gap-3">
               <Button
                 type="button"
@@ -155,24 +222,32 @@ export default function LeafyHarvestPage() {
                 onSubmit={(payload) => {
                   setRecordError(null);
                   setIsResultUnknown(false);
-                  recordMutation.mutate(payload, {
-                    onSuccess: (result) => {
-                      setSelectedAssignmentIds([]);
-                      setRecordSuccess({
-                        lotId: result.produce_lot_id,
-                        lotCode: result.produce_lot_code,
-                        batchCode: result.batch_code,
-                        totalHeads: result.current_total_whole_unit_count,
-                        totalWeight: result.current_total_harvested_weight_kg,
-                        plateCount: result.source_lines.length,
-                      });
+                  recordMutation.mutate(
+                    workItemIdForSubmit ? { ...payload, work_item_id: workItemIdForSubmit } : payload,
+                    {
+                      onSuccess: (result) => {
+                        setSelectedAssignmentIds([]);
+                        setReconcileError(null);
+                        setRecordSuccess({
+                          lotId: result.produce_lot_id,
+                          lotCode: result.produce_lot_code,
+                          batchCode: result.batch_code,
+                          totalHeads: result.current_total_whole_unit_count,
+                          totalWeight: result.current_total_harvested_weight_kg,
+                          plateCount: result.source_lines.length,
+                          workItemLinkStatus: result.work_item_link_status ?? null,
+                          workItemReconciliation: workItemIdForSubmit
+                            ? { workItemId: workItemIdForSubmit, harvestEventId: result.id, effectiveTime: result.effective_time }
+                            : null,
+                        });
+                      },
+                      onError: (error) => {
+                        const appError = asAppError(error);
+                        setRecordError(appError);
+                        setIsResultUnknown(appError.kind === "network_error" || appError.kind === "server_error");
+                      },
                     },
-                    onError: (error) => {
-                      const appError = asAppError(error);
-                      setRecordError(appError);
-                      setIsResultUnknown(appError.kind === "network_error" || appError.kind === "server_error");
-                    },
-                  });
+                  );
                 }}
               />
             )}

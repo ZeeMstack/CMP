@@ -8,21 +8,25 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
-import { CreateWorkItemForm } from "@/components/work-items/CreateWorkItemForm";
+import { CreateWorkItemForm, type WorkItemContextOption } from "@/components/work-items/CreateWorkItemForm";
 import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
 import { WorkItemSection } from "@/components/work-items/WorkItemSection";
 import type { FarmWorkItemCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { computeHomeKpis } from "@/lib/format/homeKpis";
 import { humanizeEnumCode } from "@/lib/format/humanize";
+import { flattenLocationTree } from "@/lib/format/locationTree";
 import { groupBatchesByStage } from "@/lib/format/stageOrder";
 import { bucketWorkItems } from "@/lib/format/workItemBoard";
 import {
+  useAssets,
+  useCarriers,
   useCreateWorkItem,
   useCurrentUserId,
   useFarm,
   useHarvestablePlates,
   useLatestShiftHandover,
+  useLocationsTree,
   useOperationalSummary,
   useWorkItems,
 } from "@/lib/query/hooks";
@@ -93,10 +97,34 @@ export default function FarmHomePage() {
   const handoverQuery = useLatestShiftHandover(farmId);
   const harvestableQuery = useHarvestablePlates(farmId);
   const summaryQuery = useOperationalSummary(farmId, "active");
+  // PILOT-OPS-001 closure: structured context option sources for manual
+  // Work Item creation -- each reuses an existing farm-scoped read
+  // (Locations tree, Batch summary already fetched above, Assets,
+  // Carriers), never a new picker or a new endpoint.
+  const locationsTreeQuery = useLocationsTree(farmId);
+  const assetsQuery = useAssets(farmId, "");
+  const carriersQuery = useCarriers(farmId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const createMutation = useCreateWorkItem(farmId);
+
+  const locationOptions: WorkItemContextOption[] = useMemo(
+    () => flattenLocationTree(locationsTreeQuery.data ?? []).map((o) => ({ id: o.id, label: o.label })),
+    [locationsTreeQuery.data],
+  );
+  const batchOptions: WorkItemContextOption[] = useMemo(
+    () => (summaryQuery.data ?? []).map((b) => ({ id: b.id, label: `${b.code} · ${b.crop.common_name}` })),
+    [summaryQuery.data],
+  );
+  const assetOptions: WorkItemContextOption[] = useMemo(
+    () => (assetsQuery.data ?? []).map((a) => ({ id: a.id, label: `${a.name} (${a.code})` })),
+    [assetsQuery.data],
+  );
+  const carrierOptions: WorkItemContextOption[] = useMemo(
+    () => (carriersQuery.data ?? []).map((c) => ({ id: c.id, label: c.code })),
+    [carriersQuery.data],
+  );
 
   const board = useMemo(
     () =>
@@ -160,6 +188,10 @@ export default function FarmHomePage() {
             isSubmitting={createMutation.isPending}
             serverError={createError}
             currentUserId={currentUserId}
+            locationOptions={locationOptions}
+            batchOptions={batchOptions}
+            assetOptions={assetOptions}
+            carrierOptions={carrierOptions}
             onCancel={() => {
               setCreating(false);
               setCreateError(null);

@@ -28,12 +28,14 @@ const batches = [
   {
     id: "b1",
     code: "B-001",
+    crop: { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" },
     current_stage: { name: "Growing", stage_category: "production" },
     open_quality_hold_count: 0,
   },
   {
     id: "b2",
     code: "B-002",
+    crop: { id: "crop-1", code: "LETTUCE", common_name: "Lettuce" },
     current_stage: { name: "Ready to Harvest", stage_category: "harvest_ready" },
     open_quality_hold_count: 1,
   },
@@ -54,6 +56,11 @@ function stubFetch() {
       if (url.includes("/work-items")) return jsonResponse([]);
       if (url.includes("/shift-handovers/latest")) return jsonResponse(null);
       if (url.includes("/harvestable-plates")) return jsonResponse([]);
+      // PILOT-OPS-001 closure: manual Work Item structured-context option
+      // sources -- empty by default, same reasoning as above.
+      if (url.includes("/locations/tree")) return jsonResponse([]);
+      if (url.includes("/assets")) return jsonResponse([]);
+      if (url.includes("/carriers")) return jsonResponse([]);
       return jsonResponse({});
     }),
   );

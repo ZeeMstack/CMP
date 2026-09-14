@@ -44,4 +44,81 @@ describe("CreateWorkItemForm", () => {
     render(<CreateWorkItemForm onSubmit={vi.fn()} onCancel={vi.fn()} isSubmitting={false} />);
     expect(screen.getByLabelText("Assign to me")).toBeDisabled();
   });
+
+  it("context selects are hidden by default and appear behind 'Add context'", () => {
+    render(
+      <CreateWorkItemForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        isSubmitting={false}
+        locationOptions={[{ id: "loc-1", label: "GH-01 cooling pad" }]}
+      />,
+    );
+    expect(screen.queryByLabelText("Location")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("+ Add context (location, batch, asset, carrier)"));
+    expect(screen.getByLabelText("Location")).toBeInTheDocument();
+  });
+
+  it("submits with the selected Location's real id, never a display string", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <CreateWorkItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        isSubmitting={false}
+        locationOptions={[{ id: "loc-uuid-1", label: "GH-01 cooling pad" }]}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Clean Germination Trolley 03"), {
+      target: { value: "Inspect GH-01 cooling pad" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("cleaning"), { target: { value: "inspection" } });
+    fireEvent.click(screen.getByText("+ Add context (location, batch, asset, carrier)"));
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "loc-uuid-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create work item" }));
+
+    await screen.findByRole("button", { name: "Create work item" });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.location_id).toBe("loc-uuid-1");
+    expect(payload.crop_batch_id).toBeNull();
+  });
+
+  it("submits with the selected Batch's real id", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <CreateWorkItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        isSubmitting={false}
+        batchOptions={[{ id: "batch-uuid-1", label: "B-LET-2026-014 · Lettuce" }]}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Clean Germination Trolley 03"), {
+      target: { value: "Check Batch after transfer" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("cleaning"), { target: { value: "inspection" } });
+    fireEvent.click(screen.getByText("+ Add context (location, batch, asset, carrier)"));
+    fireEvent.change(screen.getByLabelText("Batch"), { target: { value: "batch-uuid-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create work item" }));
+
+    await screen.findByRole("button", { name: "Create work item" });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].crop_batch_id).toBe("batch-uuid-1");
+  });
+
+  it("omitted context fields are submitted as null, never an empty string placeholder", async () => {
+    const onSubmit = vi.fn();
+    render(<CreateWorkItemForm onSubmit={onSubmit} onCancel={vi.fn()} isSubmitting={false} />);
+    fireEvent.change(screen.getByPlaceholderText("Clean Germination Trolley 03"), { target: { value: "Clean" } });
+    fireEvent.change(screen.getByPlaceholderText("cleaning"), { target: { value: "cleaning" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create work item" }));
+
+    await screen.findByRole("button", { name: "Create work item" });
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.location_id).toBeNull();
+    expect(payload.crop_batch_id).toBeNull();
+    expect(payload.asset_id).toBeNull();
+    expect(payload.carrier_id).toBeNull();
+  });
 });

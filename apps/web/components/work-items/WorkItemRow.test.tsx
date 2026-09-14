@@ -167,4 +167,41 @@ describe("WorkItemRow", () => {
     const link = screen.getByRole("link", { name: "Open Observation" });
     expect(link).toHaveAttribute("href", "/farms/farm-1/observations?batchId=batch-1&workItemId=wi-1");
   });
+
+  it("shows an Open Harvest link for an operational_record harvest item with batch context", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
+    renderRow(
+      makeItem({
+        completion_mode: "operational_record",
+        work_type: "harvest",
+        crop_batch: { id: "batch-2", code: "B-002" },
+      }),
+    );
+    const link = screen.getByRole("link", { name: "Open Harvest" });
+    expect(link).toHaveAttribute("href", "/farms/farm-1/leafy-production/harvest?batchId=batch-2&workItemId=wi-1");
+  });
+
+  it("displays every structured context piece the item carries, never a placeholder for one that doesn't apply", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
+    renderRow(
+      makeItem({
+        crop_batch: { id: "batch-3", code: "B-LET-2026-014" },
+        location: { id: "loc-1", code: "GH-01", name: "Table 07" },
+      }),
+    );
+    expect(screen.getByText("Batch B-LET-2026-014")).toBeInTheDocument();
+    expect(screen.getByText("GH-01 Table 07")).toBeInTheDocument();
+    // No asset/carrier context on this item -- the Context cell (index 1)
+    // renders nothing for them, and no fallback "—" either since real
+    // context IS present (the Due column's own, unrelated "—" is fine).
+    const contextCell = screen.getAllByRole("cell")[1];
+    expect(contextCell.textContent).not.toContain("—");
+  });
+
+  it("shows a plain em dash in the Context cell only when no structured context applies at all", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
+    renderRow(makeItem());
+    const contextCell = screen.getAllByRole("cell")[1];
+    expect(contextCell.textContent).toBe("—");
+  });
 });

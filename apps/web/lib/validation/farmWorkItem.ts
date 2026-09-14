@@ -4,11 +4,12 @@ import type { FarmWorkItemCreate } from "@/lib/api/client";
 
 /** PILOT-OPS-001: the manual Work Item creation form. Scoped to the
  * ticket's own "Manual Work Items" examples (cleaning/inspection/
- * preparation) -- location/asset/carrier/batch context pickers do not
- * exist yet for this form (see docs/product/OPEN_QUESTIONS.md); creating
- * an OPERATIONAL_RECORD Work Item with real batch/context is currently a
- * backend-only capability (proven by the Harvest/Observation integration
- * tests), not yet exposed through this compact manual form. */
+ * preparation), plus optional structured Location/Batch/Asset/Carrier
+ * context (PILOT-OPS-001 closure) -- reuses the same authoritative
+ * entity ids PILOT-SCAN-001 will later resolve from a QR scan, never a
+ * display-string-only field. Creating an OPERATIONAL_RECORD Work Item is
+ * still backend-only (proven by the Harvest/Observation integration
+ * tests) -- this form always creates MANUAL_RECORD items. */
 export const workItemCategoryOptions = [
   "nursery", "production", "crop_care", "harvest", "post_harvest",
   "store", "quality", "dispatch", "cleaning", "maintenance",
@@ -24,6 +25,10 @@ export const farmWorkItemFormSchema = z.object({
   priority: z.enum(workItemPriorityOptions),
   dueAt: z.string().nullable(), // datetime-local string, or null
   assignToMe: z.boolean(),
+  locationId: z.string().nullable(),
+  cropBatchId: z.string().nullable(),
+  assetId: z.string().nullable(),
+  carrierId: z.string().nullable(),
 });
 export type FarmWorkItemFormValues = z.infer<typeof farmWorkItemFormSchema>;
 
@@ -35,6 +40,10 @@ export const DEFAULT_FARM_WORK_ITEM_FORM_VALUES: FarmWorkItemFormValues = {
   priority: "normal",
   dueAt: null,
   assignToMe: false,
+  locationId: null,
+  cropBatchId: null,
+  assetId: null,
+  carrierId: null,
 };
 
 export function buildFarmWorkItemCreatePayload(
@@ -54,6 +63,10 @@ export function buildFarmWorkItemCreatePayload(
     // other `datetime-local` input in this app (see lib/datetime.ts).
     due_at: values.dueAt ? new Date(values.dueAt).toISOString() : null,
     assigned_to_user_id: values.assignToMe ? (options.currentUserId ?? null) : null,
+    location_id: values.locationId || null,
+    crop_batch_id: values.cropBatchId || null,
+    asset_id: values.assetId || null,
+    carrier_id: values.carrierId || null,
     completion_mode: "manual_record",
   };
 }

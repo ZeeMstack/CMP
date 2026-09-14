@@ -51,16 +51,13 @@ export function WorkItemRow({ item, farmId, currentUserId }: { item: FarmWorkIte
   const isAvailable = item.assigned_to_user_id == null;
   const canOperate = isMine || isAvailable;
 
-  const context = item.crop_batch
-    ? `Batch ${item.crop_batch.code}`
-    : item.location
-      ? `${item.location.code} ${item.location.name}`
-      : item.asset
-        ? item.asset.name
-        : item.carrier
-          ? item.carrier.code
-          : "—";
   const quantity = item.quantity && item.quantity_uom ? `${item.quantity} ${item.quantity_uom.code}` : null;
+  // PILOT-OPS-001 closure: every structured context piece the Work Item
+  // actually carries is shown, never just the first one -- e.g. a Batch
+  // AND a Location together (ticket example: "Check Batch B-... after
+  // transfer"). A context kind that doesn't apply renders no placeholder
+  // at all, never an empty "—" line for it specifically.
+  const hasContext = Boolean(item.crop_batch || item.location || item.asset || item.carrier || quantity);
 
   function reset() {
     setMode("idle");
@@ -76,9 +73,16 @@ export function WorkItemRow({ item, farmId, currentUserId }: { item: FarmWorkIte
         <div className="text-xs font-normal text-wl-text-secondary">{item.code}</div>
       </td>
       <td className={`${tableTdClass} text-wl-text-secondary`}>
-        {context}
+        {item.crop_batch && <div>Batch {item.crop_batch.code}</div>}
+        {item.location && (
+          <div className={item.crop_batch ? "text-xs" : undefined}>
+            {item.location.code} {item.location.name}
+          </div>
+        )}
+        {item.asset && <div className="text-xs">{item.asset.name}</div>}
+        {item.carrier && <div className="text-xs">{item.carrier.code}</div>}
         {quantity && <div className="text-xs">{quantity}</div>}
-        {item.location && item.crop_batch && <div className="text-xs">{item.location.code}</div>}
+        {!hasContext && "—"}
       </td>
       <td className={`${tableTdClass} text-wl-text-secondary`}>
         {isMine ? "You" : item.assigned_to_user_id ? "Assigned" : "Unassigned"}
@@ -207,6 +211,21 @@ export function WorkItemRow({ item, farmId, currentUserId }: { item: FarmWorkIte
                   className="text-sm font-medium text-wl-brand hover:underline"
                 >
                   Open Observation
+                </Link>
+              )}
+            {/* PILOT-OPS-001 closure: routes to the real Leafy Harvest
+                operator UI only -- Vines Harvest is wired on the backend
+                but a Work Item carries no crop-classification signal to
+                safely route Leafy vs. Vines, so it is not linked from
+                here (see docs/domain/FARM_WORK_ITEM_MODEL.md). */}
+            {item.completion_mode === "operational_record" &&
+              item.work_type === "harvest" &&
+              item.crop_batch && (
+                <Link
+                  href={`/farms/${farmId}/leafy-production/harvest?batchId=${item.crop_batch.id}&workItemId=${item.id}`}
+                  className="text-sm font-medium text-wl-brand hover:underline"
+                >
+                  Open Harvest
                 </Link>
               )}
             {actionError && <span className="text-xs text-danger-700">{actionError}</span>}

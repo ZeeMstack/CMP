@@ -5,8 +5,11 @@ import { withQueryClient } from "@/lib/test-utils";
 
 import LeafyHarvestPage from "./page";
 
+let searchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => searchParams,
 }));
 
 function jsonResponse(body: unknown, status = 200) {
@@ -103,6 +106,7 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  searchParams = new URLSearchParams();
 });
 
 describe("LeafyHarvestPage", () => {
@@ -575,5 +579,128 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+  });
+});
+
+describe("LeafyHarvestPage PILOT-OPS-001 closure: Work Item linkage", () => {
+  it("carries workItemId through to the Harvest command when opened for the matching Batch, and reports a successful link", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&workItemId=wi-1");
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/leafy-production/harvests") && method === "POST") {
+          capturedBody = JSON.parse(String(init?.body));
+          return jsonResponse(harvestEvent({ work_item_link_status: "linked" }));
+        }
+        if (url.includes("/leafy-production/harvestable-plates")) return jsonResponse([PLATE_A]);
+        if (url.includes("/leafy-production/harvests")) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+    expect(capturedBody).not.toBeNull();
+    expect((capturedBody as unknown as { work_item_id: string }).work_item_id).toBe("wi-1");
+    // A successful link shows no reconciliation UI at all.
+    expect(screen.queryByRole("button", { name: /retry linking/i })).not.toBeInTheDocument();
+  });
+
+  it("never attaches workItemId when the recorded Batch does not match the prefilled context", async () => {
+    searchParams = new URLSearchParams("batchId=batch-999&workItemId=wi-1");
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/leafy-production/harvests") && method === "POST") {
+          capturedBody = JSON.parse(String(init?.body));
+          return jsonResponse(harvestEvent());
+        }
+        if (url.includes("/leafy-production/harvestable-plates")) return jsonResponse([PLATE_A]);
+        if (url.includes("/leafy-production/harvests")) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+    expect(capturedBody).not.toBeNull();
+    expect((capturedBody as unknown as { work_item_id?: string }).work_item_id).toBeUndefined();
+  });
+
+  it("when the work-item link fails, the Harvest is still shown as successful with a retry action, and the Harvest is not repeated", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&workItemId=wi-1");
+    let recordCalls = 0;
+    let linkCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/leafy-production/harvests") && method === "POST") {
+          recordCalls += 1;
+          return jsonResponse(harvestEvent({ id: "evt-known", work_item_link_status: "failed" }));
+        }
+        if (url.includes("/work-items/wi-1/link-result") && method === "POST") {
+          linkCalls += 1;
+          return jsonResponse({ id: "wi-1", status: "completed" });
+        }
+        if (url.includes("/leafy-production/harvestable-plates")) return jsonResponse([PLATE_A]);
+        if (url.includes("/leafy-production/harvests")) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    // The Harvest is authoritative and successful -- shown exactly as any
+    // other successful Harvest, never rolled back or hidden.
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+    expect(screen.getByText("HL-ABC12345")).toBeInTheDocument();
+    expect(recordCalls).toBe(1);
+
+    const retryButton = await screen.findByRole("button", { name: "Retry linking work item" });
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(linkCalls).toBe(1));
+
+    // Retrying the link never re-submits the Harvest command.
+    expect(recordCalls).toBe(1);
   });
 });
