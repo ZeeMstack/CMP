@@ -189,6 +189,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("GerminationPage worklist", () => {
@@ -259,9 +260,13 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(OUTCOMES_BY_BATCH[batchId] ?? emptyOutcomes(batchId, ""));
         }
         if (url.includes("/nursery/seedling/trays")) return jsonResponse(SEEDLING_TRAYS);
+        if (init?.method === "POST" && url.includes("/qr/carrier/tray-1/generate")) {
+          return jsonResponse({ id: "qr-tray-1", entity_type: "carrier", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
+        }
         return jsonResponse([]);
       }),
     );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
 
@@ -282,6 +287,23 @@ describe("GerminationPage worklist", () => {
     );
     // Bca-1 is now placed and unobserved -- the truthful next step is offered directly.
     expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument();
+
+    // PILOT-SCAN-001B: "Print Tray Label" -- the QR token is prepared in the
+    // background as soon as the receipt renders, so by the time the operator
+    // clicks it, the print window opens synchronously with the Chamber/
+    // Trolley/Level context this exact placement just recorded.
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [openedUrl] = openSpy.mock.calls[0];
+    const encodedItems = new URL(String(openedUrl), "http://localhost").searchParams.get("items") ?? "[]";
+    const printedLabels = JSON.parse(encodedItems) as Array<{ token: string; code: string; lines: string[] }>;
+    expect(printedLabels).toHaveLength(1);
+    expect(printedLabels[0].token).toBe("tok-tray-1");
+    expect(printedLabels[0].code).toBe("ST-0001");
+    expect(printedLabels[0].lines.join(" ")).toContain("GC-01");
+    expect(printedLabels[0].lines.join(" ")).toContain("GT-01");
+    expect(printedLabels[0].lines.join(" ")).toContain("GT-01-L01");
   });
 
   it("clicking a row's Record outcome opens with that exact assignment frozen -- no reselection", async () => {
@@ -353,9 +375,13 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(SEEDLING_TRAYS);
         }
         if (url.includes("/nursery/seedling/tables/available")) return jsonResponse([{ id: "table-1", code: "ST01", name: "Table 1", capacity: 4, active_tray_count: 0, remaining_capacity: 4, seedling_area: { id: "area-1", code: "SA", name: "Seedling Area" }, greenhouse: { id: "gh-1", code: "NUR", name: "Nursery" } }]);
+        if (init?.method === "POST" && url.includes("/qr/carrier/tray-2/generate")) {
+          return jsonResponse({ id: "qr-tray-2", entity_type: "carrier", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
+        }
         return jsonResponse([]);
       }),
     );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0002")).toBeInTheDocument());
@@ -389,6 +415,18 @@ describe("GerminationPage worklist", () => {
     await waitFor(() =>
       expect(screen.getByText(/Seed Tray ST-0002 \(CB-0002\) moved to Seedling Table ST01 — 196 living seedlings/)).toBeInTheDocument(),
     );
+
+    // PILOT-SCAN-001B: same physical Seed Tray identity carries into the
+    // Seedling-stage label -- Seedling entry never swaps carriers.
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [openedUrl] = openSpy.mock.calls[0];
+    const encodedItems = new URL(String(openedUrl), "http://localhost").searchParams.get("items") ?? "[]";
+    const printedLabels = JSON.parse(encodedItems) as Array<{ token: string; code: string; lines: string[] }>;
+    expect(printedLabels[0].token).toBe("tok-tray-2");
+    expect(printedLabels[0].code).toBe("ST-0002");
+    expect(printedLabels[0].lines.join(" ")).toContain("ST01");
   });
 
   it("seeds the Batch filter from the incoming URL context and keeps it editable", async () => {

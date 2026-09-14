@@ -25,6 +25,9 @@ import {
 } from "@/components/ui/table";
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { germinationPlacementLabel, seedlingEntryLabel } from "@/lib/labels/operationalLabel";
+import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import {
   useGerminationWorklist,
   usePlaceTray,
@@ -112,13 +115,14 @@ type Receipt =
   | {
       kind: "placement";
       batchCode: string;
+      trayId: string;
       trayCode: string;
       trolleyCode: string;
       chamberCode: string;
       positionCode: string;
     }
   | ({ kind: "outcome" } & RecordOutcomeSuccessInfo)
-  | { kind: "seedling"; batchCode: string; trayCode: string; tableCode: string; livingCount: number }
+  | { kind: "seedling"; batchCode: string; trayId: string; trayCode: string; tableCode: string; livingCount: number }
   | null;
 
 export default function GerminationPage() {
@@ -250,6 +254,7 @@ export default function GerminationPage() {
                 setReceipt({
                   kind: "placement",
                   batchCode: result.batch_code,
+                  trayId: result.tray.id,
                   trayCode: result.tray.code,
                   trolleyCode: result.trolley.code,
                   chamberCode: result.chamber.code,
@@ -296,6 +301,7 @@ export default function GerminationPage() {
                 setReceipt({
                   kind: "seedling",
                   batchCode: result.batch_code,
+                  trayId: result.tray.id,
                   trayCode: result.tray.code,
                   tableCode: result.seedling_table.code,
                   livingCount: result.starting_living_seedling_count,
@@ -309,6 +315,7 @@ export default function GerminationPage() {
 
       {activeAction === null && receipt && (
         <GerminationReceiptCard
+          farmId={farmId}
           receipt={receipt}
           rows={rows}
           onDismiss={() => setReceipt(null)}
@@ -494,18 +501,49 @@ export default function GerminationPage() {
 }
 
 function GerminationReceiptCard({
+  farmId,
   receipt,
   rows,
   onDismiss,
   onOpenOutcome,
   onOpenSeedling,
 }: {
+  farmId: string;
   receipt: NonNullable<Receipt>;
   rows: GerminationWorklistRow[];
   onDismiss: () => void;
   onOpenOutcome: (assignmentId: string) => void;
   onOpenSeedling: (assignmentId: string) => void;
 }) {
+  // Hooks must run unconditionally on every render of this component --
+  // an empty spec list for receipt kinds with no printable label ("outcome"
+  // records no physical placement change) is a no-op for the hook.
+  const trayLabelSpecs =
+    receipt.kind === "placement"
+      ? [
+          {
+            entityType: "carrier" as const,
+            entityId: receipt.trayId,
+            ...germinationPlacementLabel({
+              batchCode: receipt.batchCode,
+              trayCode: receipt.trayCode,
+              chamberCode: receipt.chamberCode,
+              trolleyCode: receipt.trolleyCode,
+              positionCode: receipt.positionCode,
+            }),
+          },
+        ]
+      : receipt.kind === "seedling"
+        ? [
+            {
+              entityType: "carrier" as const,
+              entityId: receipt.trayId,
+              ...seedlingEntryLabel({ batchCode: receipt.batchCode, trayCode: receipt.trayCode, tableCode: receipt.tableCode }),
+            },
+          ]
+        : [];
+  const trayLabels = usePreparedPrintLabels(farmId, trayLabelSpecs);
+
   if (receipt.kind === "placement") {
     // PILOT-UX-002B section 10: only the truthful, current next action for
     // this exact Tray/assignment is offered -- read live from the worklist
@@ -518,6 +556,14 @@ function GerminationReceiptCard({
           {receipt.chamberCode} / {receipt.positionCode}.
         </p>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!trayLabels.labels || trayLabels.labels.length === 0}
+            onClick={() => trayLabels.labels && openLabelPrintWindow(trayLabels.labels)}
+          >
+            {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
+          </Button>
           {row?.nextAction.kind === "record_outcome" && (
             <Button type="button" variant="primary" onClick={() => onOpenOutcome(row.assignmentId)}>
               Record outcome
@@ -562,9 +608,19 @@ function GerminationReceiptCard({
         Seed Tray {receipt.trayCode} ({receipt.batchCode}) moved to Seedling Table {receipt.tableCode} —{" "}
         {receipt.livingCount.toLocaleString()} living seedlings.
       </p>
-      <Button type="button" variant="secondary" className="self-start" onClick={onDismiss}>
-        Continue
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!trayLabels.labels || trayLabels.labels.length === 0}
+          onClick={() => trayLabels.labels && openLabelPrintWindow(trayLabels.labels)}
+        >
+          {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onDismiss}>
+          Continue
+        </Button>
+      </div>
     </div>
   );
 }

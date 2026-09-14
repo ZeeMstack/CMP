@@ -5,11 +5,13 @@ import { useState } from "react";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { LabelCard, LabelPrintSheet, LABEL_TEMPLATE_VERSION, type LabelSize } from "@/components/labels/LabelCard";
+import { LabelCard, LabelPrintSheet, LABEL_TEMPLATE_VERSION } from "@/components/labels/LabelCard";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
-import type { QrEntityType, ScanContext } from "@/lib/api/client";
+import type { QrEntityType } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { labelContentFor } from "@/lib/labels/labelContent";
+import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
 import { usePrintQrLabel, useQrIdentifierFor, useResolveQr } from "@/lib/query/hooks";
 
 const ELIGIBLE_ENTITY_TYPES: readonly QrEntityType[] = [
@@ -25,62 +27,6 @@ const ELIGIBLE_ENTITY_TYPES: readonly QrEntityType[] = [
 
 function isEligibleEntityType(value: string): value is QrEntityType {
   return (ELIGIBLE_ENTITY_TYPES as readonly string[]).includes(value);
-}
-
-/** PILOT-SCAN-001: label content derived per entity type. Permanent
- * identities (Carrier/Asset/Location) never surface a mutable fact here
- * (current Batch/location/status) -- only their own stable code/name; the
- * scan page (`/q/[token]`) is where those resolve dynamically. Operational
- * identities (Batch/placement/lots) may show stable creation metadata
- * (crop/variety), never current stage/status. */
-function labelContentFor(ctx: ScanContext): { size: LabelSize; entityTypeLabel: string; code: string; secondaryLine?: string } {
-  switch (ctx.entity_type) {
-    case "carrier":
-      return { size: "small", entityTypeLabel: "Carrier", code: ctx.code, secondaryLine: ctx.carrier_type_name };
-    case "asset":
-      return { size: "small", entityTypeLabel: "Asset", code: ctx.code, secondaryLine: ctx.asset_type_name };
-    case "location":
-      return { size: "small", entityTypeLabel: "Location", code: ctx.location.path_string };
-    case "crop_batch":
-      return {
-        size: "standard",
-        entityTypeLabel: "Batch",
-        code: ctx.code,
-        secondaryLine: ctx.variety ? `${ctx.crop.common_name} · ${ctx.variety.name}` : ctx.crop.common_name,
-      };
-    case "batch_carrier_assignment":
-      return {
-        size: "standard",
-        entityTypeLabel: "Placement",
-        code: ctx.code,
-        secondaryLine: ctx.batch.variety
-          ? `${ctx.batch.crop.common_name} · ${ctx.batch.variety.name}`
-          : ctx.batch.crop.common_name,
-      };
-    case "harvested_produce_lot":
-      return {
-        size: "standard",
-        entityTypeLabel: "Harvest Lot",
-        code: ctx.code,
-        secondaryLine: ctx.batch.variety
-          ? `${ctx.batch.crop.common_name} · ${ctx.batch.variety.name}`
-          : ctx.batch.crop.common_name,
-      };
-    case "graded_produce_lot":
-      return {
-        size: "standard",
-        entityTypeLabel: "Graded Lot",
-        code: ctx.code,
-        secondaryLine: ctx.variety ? `${ctx.crop.common_name} · ${ctx.variety.name}` : ctx.crop.common_name,
-      };
-    case "finished_goods_lot":
-      return {
-        size: "standard",
-        entityTypeLabel: "Finished Goods Lot",
-        code: ctx.code,
-        secondaryLine: ctx.variety ? `${ctx.crop.common_name} · ${ctx.variety.name}` : ctx.crop.common_name,
-      };
-  }
 }
 
 function errorMessage(error: unknown): string {
@@ -188,7 +134,21 @@ export function LabelPreviewClient({
                   {
                     onSuccess: (result) => {
                       setLastPrinted({ isReprint: result.is_reprint });
-                      window.print();
+                      // PILOT-SCAN-001B: label-only printing -- open the
+                      // dedicated print-only document (`/print/labels`)
+                      // rather than `window.print()`-ing this page itself,
+                      // which would print the surrounding nav/breadcrumbs/
+                      // controls along with the label.
+                      const content = labelContentFor(scanQuery.data);
+                      openLabelPrintWindow([
+                        {
+                          token,
+                          size: content.size,
+                          entityTypeLabel: content.entityTypeLabel,
+                          code: content.code,
+                          lines: content.secondaryLine ? [content.secondaryLine] : [],
+                        },
+                      ]);
                     },
                     onError: (error) => setPrintError(errorMessage(error)),
                   },

@@ -71,6 +71,11 @@ export function classifyRoute(pathname: string): RouteClass {
   // on the exact scanned token after signing in, never on a second,
   // QR-specific authentication mechanism.
   if (pathname === "/q" || pathname.startsWith("/q/")) return "protected";
+  // PILOT-SCAN-001B: the label-only print document -- same "protected"
+  // class as /farms/* and /q/*, so it requires an authenticated tenant
+  // context (it calls the same authenticated QR-generate/resolve APIs)
+  // and is never reachable as an anonymous/unauthenticated route.
+  if (pathname === "/print" || pathname.startsWith("/print/")) return "protected";
   return "unclassified";
 }
 

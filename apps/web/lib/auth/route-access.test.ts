@@ -74,6 +74,13 @@ describe("classifyRoute", () => {
     expect(classifyRoute("/farms/abc/crop-batches/xyz")).toBe("protected");
   });
 
+  it("classifies the QR scan and label-only print routes as protected (PILOT-SCAN-001, PILOT-SCAN-001B)", () => {
+    expect(classifyRoute("/q")).toBe("protected");
+    expect(classifyRoute("/q/abc123")).toBe("protected");
+    expect(classifyRoute("/print")).toBe("protected");
+    expect(classifyRoute("/print/labels")).toBe("protected");
+  });
+
   it("classifies /admin routes as platform-admin, never protected (PILOT-SETUP-001B3)", () => {
     expect(classifyRoute("/admin/tenants")).toBe("platform-admin");
     expect(classifyRoute("/admin/tenants/new")).toBe("platform-admin");

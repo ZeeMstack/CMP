@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { VinesProductionTransferForm } from "@/components/vines/VinesProductionTransferForm";
 import type { VinesProductionTransferRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { vinesProductionPlacementLabel } from "@/lib/labels/operationalLabel";
+import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordVinesProductionTransfer } from "@/lib/query/hooks";
 
 function asAppError(error: unknown): AppError {
@@ -29,6 +32,26 @@ export default function VinesProductionTransferPage() {
   const [success, setSuccess] = useState<SuccessResult | null>(null);
 
   const mutation = useRecordVinesProductionTransfer(farmId);
+
+  // PILOT-SCAN-001B: `gutterCode` is the only destination-location fact
+  // this command's own response exposes (no Greenhouse/Zone/Span
+  // breakdown, and no per-bag link back to a specific source Grow Cube --
+  // see docs/product/OPEN_QUESTIONS.md) -- the label uses exactly what is
+  // authoritatively available (Batch, Grow Bag, Gutter, plant count),
+  // never a guessed/invented location breadcrumb.
+  const placementLabelSpecs = success
+    ? success.transfer.grow_bags.map((gb) => ({
+        entityType: "carrier" as const,
+        entityId: gb.grow_bag.id,
+        ...vinesProductionPlacementLabel({
+          batchCode: success.transfer.batch_code,
+          carrierCode: gb.grow_bag.code,
+          gutterCode: success.gutterCode,
+          plantCount: gb.assigned_plant_count,
+        }),
+      }))
+    : [];
+  const placementLabels = usePreparedPrintLabels(farmId, placementLabelSpecs);
 
   function startNew() {
     setSuccess(null);
@@ -91,6 +114,14 @@ export default function VinesProductionTransferPage() {
           </details>
 
           <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!placementLabels.labels || placementLabels.labels.length === 0}
+              onClick={() => placementLabels.labels && openLabelPrintWindow(placementLabels.labels)}
+            >
+              {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
+            </Button>
             <Button type="button" variant="primary" onClick={startNew}>
               Start new transfer
             </Button>

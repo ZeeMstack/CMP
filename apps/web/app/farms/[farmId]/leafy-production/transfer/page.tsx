@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { leafyProductionPlacementLabel } from "@/lib/labels/operationalLabel";
+import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordLeafyProductionTransfer } from "@/lib/query/hooks";
 
 function asAppError(error: unknown): AppError {
@@ -49,6 +52,22 @@ export default function ProductionTransferPage() {
   const [success, setSuccess] = useState<SuccessResult | null>(null);
 
   const mutation = useRecordLeafyProductionTransfer(farmId);
+
+  // PILOT-SCAN-001B: destination Production Cultivation Plates only -- the
+  // source Nursery Cultivation Plates never move into Production, so their
+  // identity is never carried into these labels.
+  const placementLabelSpecs = success
+    ? success.transfer.destination_lines.map((line) => ({
+        entityType: "carrier" as const,
+        entityId: line.carrier.id,
+        ...leafyProductionPlacementLabel({
+          batchCode: success.transfer.batch_code,
+          carrierCode: line.carrier.code,
+          tableCode: success.tableLabelById[line.destination_location_id] ?? "—",
+        }),
+      }))
+    : [];
+  const placementLabels = usePreparedPrintLabels(farmId, placementLabelSpecs);
 
   function startNew(batchId?: string) {
     setSuccess(null);
@@ -121,6 +140,14 @@ export default function ProductionTransferPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!placementLabels.labels || placementLabels.labels.length === 0}
+              onClick={() => placementLabels.labels && openLabelPrintWindow(placementLabels.labels)}
+            >
+              {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
+            </Button>
             <Button type="button" variant="primary" onClick={() => startNew(success.transfer.batch_id)}>
               Continue this Batch
             </Button>
