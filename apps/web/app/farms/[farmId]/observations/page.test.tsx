@@ -1,7 +1,11 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { withQueryClient } from "@/lib/test-utils";
+import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
+import { queryKeys } from "@/lib/query/keys";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 let searchParams = new URLSearchParams();
 
@@ -14,6 +18,33 @@ import ObservationsPage from "./page";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/** Like `withQueryClient`, but also hands back the `QueryClient` so a test
+ * can directly manipulate/refetch cache entries (e.g. simulate a background
+ * target refresh landing after the operator has already made a manual
+ * choice) without a second network round trip. */
+function renderWithClient(children: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(queryKeys.authBootstrap(), DEFAULT_TEST_BOOTSTRAP);
+  const utils = render(
+    <QueryClientProvider client={queryClient}>
+      <AuthBootstrapProvider>{children}</AuthBootstrapProvider>
+    </QueryClientProvider>,
+  );
+  return { ...utils, queryClient };
+}
+
+/** A promise this test controls the resolution of -- used to force the
+ * `/observation-definitions` fetch to stay pending while other queries
+ * (targets, batches, history) resolve normally, reproducing the exact race
+ * PILOT-BLOCKER-011 fixes: targets ready before definitions. */
+function deferredResponse() {
+  let resolve!: (body: unknown) => void;
+  const promise = new Promise<Response>((res) => {
+    resolve = (body: unknown) => res(jsonResponse(body));
+  });
+  return { promise, resolve };
 }
 
 const BATCH = {
@@ -54,6 +85,15 @@ const DEFINITIONS = [
 ];
 
 const TARGETS = [{ id: "bca-1", carrier: { id: "carrier-1", code: "PP-001", carrier_type: { id: "ct-1", code: "plate", name: "Plate" } }, location_label: "GH-01 / Z01 / S02 / T04" }];
+const TARGET_B = { id: "bca-2", carrier: { id: "carrier-2", code: "PP-002", carrier_type: { id: "ct-1", code: "plate", name: "Plate" } }, location_label: "GH-01 / Z01 / S02 / T05" };
+
+function manyTargetableDefinitions(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `def-${i}`, tenant_id: "t-1", code: `MEASURE-${i}`, name: `Measure ${i}`, description: null,
+    value_type: "decimal", unit: "cm", target_scope: "either", min_value: null, max_value: null,
+    status: "active", created_by_user_id: "u-1", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+  }));
+}
 
 const HISTORY_EVENT = {
   id: "evt-1", tenant_id: "t-1", farm_id: "farm-1", batch_id: "batch-1", batch_code: "LET-001",
@@ -238,5 +278,109 @@ describe("ObservationsPage", () => {
     fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-2" } });
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+
+  // --- PILOT-BLOCKER-011 (Astra R5: carried Observation target initialization) ---
+
+  it("R5.1/2/5/7: targets resolve before definitions -- the carried assignment is still applied to a compatible (assignment-only) measurement once both are ready, and submission matches what was shown", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-1");
+    const definitionsDeferred = deferredResponse();
+    const postedBodies: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/observation-definitions")) return definitionsDeferred.promise;
+        if (url.includes("/crop-batches/operational-summary")) return jsonResponse([BATCH]);
+        if (url.includes("/observation-targets")) return jsonResponse(TARGETS);
+        if (url.match(/\/crop-batches\/[^/]+\/observations$/) && method === "POST") {
+          postedBodies.push(JSON.parse(String(init?.body)));
+          return jsonResponse(HISTORY_EVENT, 201);
+        }
+        if (url.includes("/observations")) return jsonResponse([]);
+        if (url.match(/\/farms\/farm-1$/)) return jsonResponse({ id: "farm-1", timezone: "Asia/Dubai" });
+        return jsonResponse([]);
+      }),
+    );
+
+    render(withQueryClient(<ObservationsPage />));
+
+    // The form opens immediately (batchId prefilled); targets/batches
+    // resolve, but definitions are still in flight -- the exact race.
+    await waitFor(() => expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/loading observation definitions/i)).toBeInTheDocument());
+    // An in-flight read must never render as a confirmed "nothing configured".
+    expect(screen.queryByText(/no active observation definitions/i)).not.toBeInTheDocument();
+
+    definitionsDeferred.resolve(DEFINITIONS);
+
+    // Once both are ready, the Primary target selector shows the carried
+    // assignment.
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /primary target/i })).toHaveValue("bca-1"));
+    // The actual defect: the compatible (carrier_assignment-scoped)
+    // measurement's own row target must ALSO be initialized -- a correct
+    // Primary selector alone was never enough.
+    expect(screen.getByRole("combobox", { name: /target \(required\)/i })).toHaveValue("bca-1");
+    // The inline "Review" summary already reflects the same effective target.
+    expect(screen.getByText(/applies to: pp-001/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: /^pest signs$/i }), { target: { value: "true" } });
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+
+    // No false "requires a target" validation error.
+    expect(screen.queryByText(/requires a target/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    const body = postedBodies[0] as { values: Array<Record<string, unknown>> };
+    expect(body.values).toEqual([
+      { observation_definition_id: "def-pest", batch_carrier_assignment_id: "bca-1", value_boolean: true },
+    ]);
+  });
+
+  it("R5.4: an invalid/stale initial target does not silently select a different target", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=does-not-exist");
+    stubFetch();
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /primary target/i })).toBeInTheDocument());
+    expect(screen.getByRole("combobox", { name: /primary target/i })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: /target \(required\)/i })).toHaveValue("");
+  });
+
+  it("R5.3: a manual per-row target override survives a later targets refetch -- never overwritten by default initialization", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-1");
+    stubFetch({ targets: [TARGETS[0], TARGET_B] });
+    const { queryClient } = renderWithClient(<ObservationsPage />);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /primary target/i })).toHaveValue("bca-1"));
+    expect(screen.getByRole("combobox", { name: /target \(required\)/i })).toHaveValue("bca-1");
+
+    // The operator deliberately overrides just this one measurement's target.
+    fireEvent.change(screen.getByRole("combobox", { name: /target \(required\)/i }), { target: { value: "bca-2" } });
+    expect(screen.getByRole("combobox", { name: /target \(required\)/i })).toHaveValue("bca-2");
+
+    // A later background refetch of the targets query must not reset it.
+    await queryClient.refetchQueries({ queryKey: queryKeys.observationTargets(TEST_TENANT_ID, "farm-1", "batch-1") });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /target \(required\)/i })).toHaveValue("bca-2"));
+    expect(screen.getByRole("combobox", { name: /primary target/i })).toHaveValue("bca-1");
+  });
+
+  it("R5.6: choosing a Primary target does not reveal optional measurements beyond the routine limit", async () => {
+    stubFetch({ definitions: manyTargetableDefinitions(8) });
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/LET-001/)).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ record observation/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ record observation/i }));
+
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /primary target/i })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /show 2 more measurement/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(6);
+
+    fireEvent.change(screen.getByRole("combobox", { name: /primary target/i }), { target: { value: "bca-1" } });
+
+    // Still only the routine 6 -- picking a target never silently expands
+    // the optional-measurement list.
+    expect(screen.getByRole("button", { name: /show 2 more measurement/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(6);
   });
 });

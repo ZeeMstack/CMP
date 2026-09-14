@@ -172,6 +172,7 @@ export default function ObservationsPage() {
             <RecordObservationForm
               batch={selectedBatch}
               definitions={definitionsQuery.data ?? []}
+              definitionsLoading={definitionsQuery.isLoading}
               targets={targetsQuery.data ?? []}
               targetsLoading={targetsQuery.isLoading}
               initialTargetId={selectedBatchId === prefillBatchId ? prefillAssignmentId : null}
