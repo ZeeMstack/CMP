@@ -74,7 +74,8 @@ const SOWING_RESULT: SowingEventRead = {
 } as unknown as SowingEventRead;
 
 describe("SowingReceipt (PILOT-SCAN-001B Print Batch Label + Print Tray Labels)", () => {
-  it("prepares a Batch Master Label and one Tray label per sown tray, and prints each on its own click", async () => {
+  it("prepares a Batch Master Label and one Tray label per sown tray, prints each on its own click, and records one print-request audit PER label (never one page-level event)", async () => {
+    const printRequestCalls: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -82,11 +83,15 @@ describe("SowingReceipt (PILOT-SCAN-001B Print Batch Label + Print Tray Labels)"
         if (init?.method === "POST" && url.includes("/qr/crop_batch/batch-1/generate")) {
           return jsonResponse({ id: "qr-batch-1", entity_type: "crop_batch", token: "tok-batch-1", created_at: "2026-01-01T00:00:00Z" });
         }
-        if (init?.method === "POST" && url.includes("/qr/carrier/tray-1/generate")) {
-          return jsonResponse({ id: "qr-tray-1", entity_type: "carrier", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-1/generate")) {
+          return jsonResponse({ id: "qr-tray-1", entity_type: "batch_carrier_assignment", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
         }
-        if (init?.method === "POST" && url.includes("/qr/carrier/tray-2/generate")) {
-          return jsonResponse({ id: "qr-tray-2", entity_type: "carrier", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-2/generate")) {
+          return jsonResponse({ id: "qr-tray-2", entity_type: "batch_carrier_assignment", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
+        }
+        if (init?.method === "POST" && url.includes("/print")) {
+          printRequestCalls.push(url);
+          return jsonResponse({ qr_identifier_id: "qr-x", requested_at: "2026-01-01T00:00:00Z", is_reprint: false });
         }
         return jsonResponse({});
       }),
@@ -120,6 +125,15 @@ describe("SowingReceipt (PILOT-SCAN-001B Print Batch Label + Print Tray Labels)"
     expect(trayItems).toHaveLength(2);
     expect(trayItems.map((i) => i.token).sort()).toEqual(["tok-tray-1", "tok-tray-2"]);
     expect(trayItems.map((i) => i.code).sort()).toEqual(["ST-0001", "ST-0002"]);
+
+    // PILOT-SCAN-001B FINAL CLOSURE: one "Print Batch Label" click (1
+    // label) + one "Print Tray Labels (2)" click (2 labels) = 3
+    // independent, entity-specific qr_label_print_requested audit calls --
+    // never one generic page-level audit event.
+    await vi.waitFor(() => expect(printRequestCalls).toHaveLength(3));
+    expect(printRequestCalls.some((u) => u.includes("/qr/tok-batch-1/print"))).toBe(true);
+    expect(printRequestCalls.some((u) => u.includes("/qr/tok-tray-1/print"))).toBe(true);
+    expect(printRequestCalls.some((u) => u.includes("/qr/tok-tray-2/print"))).toBe(true);
   });
 
   it("a print-token failure never affects the already-successful Sowing -- the receipt stays shown, only labels are unavailable", async () => {

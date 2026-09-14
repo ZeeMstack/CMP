@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { intersaladsPlacementLabel } from "@/lib/labels/operationalLabel";
-import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordIntersaladsTransplant } from "@/lib/query/hooks";
 
@@ -37,10 +37,14 @@ export default function IntersaladsTransplantPage() {
 
   const mutation = useRecordIntersaladsTransplant(farmId);
 
+  // PILOT-SCAN-001B FINAL CLOSURE: the destination Batch Carrier
+  // Assignment this transplant line itself just opened, not the
+  // destination Carrier's own permanent identity -- see the identical
+  // rationale in `sowings/new/page.tsx`.
   const placementLabelSpecs = success
     ? success.transplant.destination_lines.map((line) => ({
-        entityType: "carrier" as const,
-        entityId: line.carrier.id,
+        entityType: "batch_carrier_assignment" as const,
+        entityId: line.destination_batch_carrier_assignment_id,
         ...intersaladsPlacementLabel({
           batchCode: success.transplant.batch_code,
           carrierCode: line.carrier.code,
@@ -155,7 +159,7 @@ export default function IntersaladsTransplantPage() {
                   type="button"
                   variant="secondary"
                   disabled={!placementLabels.labels || placementLabels.labels.length === 0}
-                  onClick={() => placementLabels.labels && openLabelPrintWindow(placementLabels.labels)}
+                  onClick={() => placementLabels.labels && printLabels(placementLabels.labels)}
                 >
                   {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
                 </Button>

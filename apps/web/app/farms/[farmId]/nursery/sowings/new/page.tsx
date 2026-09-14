@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import type { SowingEventRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { batchMasterLabel, sowingTrayLabel } from "@/lib/labels/operationalLabel";
-import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useSowNewBatch } from "@/lib/query/hooks";
 
@@ -26,9 +26,17 @@ export function SowingReceipt({ farmId, result }: { farmId: string; result: Sowi
   const batchLabelSpecs = [
     { entityType: "crop_batch" as const, entityId: result.batch_id, ...batchMasterLabel({ batchCode: result.batch_code }) },
   ];
+  // PILOT-SCAN-001B FINAL CLOSURE: the Operational Placement Label's QR
+  // identifies the stable Batch Carrier Assignment ("placement") this
+  // Sowing line itself just opened -- never the Carrier's own permanent
+  // identity. That Carrier (Seed Tray) can later be reused for a different
+  // Batch; a placement QR must keep resolving THIS Batch's original
+  // placement even after that reuse, never silently become the new
+  // occupant. `SowingEventLineRead.batch_carrier_assignment_id` is the
+  // exact stable identity this event's own result already returns.
   const trayLabelSpecs = result.lines.map((line) => ({
-    entityType: "carrier" as const,
-    entityId: line.carrier.id,
+    entityType: "batch_carrier_assignment" as const,
+    entityId: line.batch_carrier_assignment_id,
     ...sowingTrayLabel({ batchCode: result.batch_code, trayCode: line.carrier.code }),
   }));
 
@@ -49,14 +57,14 @@ export function SowingReceipt({ farmId, result }: { farmId: string; result: Sowi
         <Button
           variant="secondary"
           disabled={!batchLabels.labels || batchLabels.labels.length === 0}
-          onClick={() => batchLabels.labels && openLabelPrintWindow(batchLabels.labels)}
+          onClick={() => batchLabels.labels && printLabels(batchLabels.labels)}
         >
           {batchLabels.labels ? "Print Batch Label" : "Preparing Batch Label…"}
         </Button>
         <Button
           variant="secondary"
           disabled={!trayLabels.labels || trayLabels.labels.length === 0}
-          onClick={() => trayLabels.labels && openLabelPrintWindow(trayLabels.labels)}
+          onClick={() => trayLabels.labels && printLabels(trayLabels.labels)}
         >
           {trayLabels.labels ? `Print Tray Labels (${trayLabels.labels.length})` : "Preparing Tray Labels…"}
         </Button>

@@ -338,6 +338,17 @@ export default function LeafyProductionPage() {
                                   >
                                     Record observation
                                   </Link>
+                                  {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
+                                      reuses the existing generic Placement label/reprint route,
+                                      which re-resolves current authoritative Batch/Carrier/
+                                      Location fresh every time -- never this row's own
+                                      possibly-stale snapshot. */}
+                                  <Link
+                                    href={`/farms/${farmId}/labels/batch_carrier_assignment/${plate.batch_carrier_assignment_id}`}
+                                    className="inline-flex h-9 items-center text-xs font-medium text-ink-muted underline hover:text-ink"
+                                  >
+                                    Reprint label
+                                  </Link>
                                 </div>
                               </td>
                             </tr>

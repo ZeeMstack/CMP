@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
 
 import { withQueryClient } from "@/lib/test-utils";
 
-import GerminationPage from "./page";
+import GerminationPage, { GerminationReceiptCard } from "./page";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -260,8 +260,8 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(OUTCOMES_BY_BATCH[batchId] ?? emptyOutcomes(batchId, ""));
         }
         if (url.includes("/nursery/seedling/trays")) return jsonResponse(SEEDLING_TRAYS);
-        if (init?.method === "POST" && url.includes("/qr/carrier/tray-1/generate")) {
-          return jsonResponse({ id: "qr-tray-1", entity_type: "carrier", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-1/generate")) {
+          return jsonResponse({ id: "qr-tray-1", entity_type: "batch_carrier_assignment", token: "tok-tray-1", created_at: "2026-01-01T00:00:00Z" });
         }
         return jsonResponse([]);
       }),
@@ -375,8 +375,8 @@ describe("GerminationPage worklist", () => {
           return jsonResponse(SEEDLING_TRAYS);
         }
         if (url.includes("/nursery/seedling/tables/available")) return jsonResponse([{ id: "table-1", code: "ST01", name: "Table 1", capacity: 4, active_tray_count: 0, remaining_capacity: 4, seedling_area: { id: "area-1", code: "SA", name: "Seedling Area" }, greenhouse: { id: "gh-1", code: "NUR", name: "Nursery" } }]);
-        if (init?.method === "POST" && url.includes("/qr/carrier/tray-2/generate")) {
-          return jsonResponse({ id: "qr-tray-2", entity_type: "carrier", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-2/generate")) {
+          return jsonResponse({ id: "qr-tray-2", entity_type: "batch_carrier_assignment", token: "tok-tray-2", created_at: "2026-01-01T00:00:00Z" });
         }
         return jsonResponse([]);
       }),
@@ -512,5 +512,86 @@ describe("GerminationPage worklist", () => {
     await waitFor(() => expect(screen.getByLabelText(/^trolley$/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+  });
+});
+
+describe("GerminationReceiptCard (PILOT-SCAN-001B FINAL CLOSURE: placement QR entity selection)", () => {
+  const placementReceipt = {
+    kind: "placement" as const,
+    batchCode: "CB-0001",
+    trayId: "tray-1",
+    trayCode: "ST-0001",
+    trolleyCode: "GT-01",
+    chamberCode: "GC-01",
+    positionCode: "GT-01-L01",
+  };
+
+  it("uses the batch_carrier_assignment QR when the worklist already has a stable assignment id for this tray", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment/bca-1/generate")) {
+          return jsonResponse({ id: "qr-1", entity_type: "batch_carrier_assignment", token: "tok-1", created_at: "2026-01-01T00:00:00Z" });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[{ ...TRAYS[0], assignmentId: "bca-1", trayId: "tray-1" } as never]}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to the Carrier's own permanent QR ONLY when no matching worklist row/assignment id is found for this tray", async () => {
+    let requestedEntityType: string | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST" && url.includes("/qr/carrier/tray-1/generate")) {
+          requestedEntityType = "carrier";
+          return jsonResponse({ id: "qr-1", entity_type: "carrier", token: "tok-1", created_at: "2026-01-01T00:00:00Z" });
+        }
+        if (init?.method === "POST" && url.includes("/qr/batch_carrier_assignment")) {
+          requestedEntityType = "batch_carrier_assignment";
+        }
+        return jsonResponse({});
+      }),
+    );
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    // Empty `rows` -- simulates the one bounded, documented case where this
+    // tray genuinely cannot be found in the currently-loaded worklist
+    // snapshot, so no assignment id is available to this component.
+    render(
+      <GerminationReceiptCard
+        farmId="farm-1"
+        receipt={placementReceipt}
+        rows={[]}
+        onDismiss={() => {}}
+        onOpenOutcome={() => {}}
+        onOpenSeedling={() => {}}
+      />,
+    );
+
+    const printButton = await screen.findByRole("button", { name: "Print Tray Label" });
+    fireEvent.click(printButton);
+    await waitFor(() => expect(openSpy).toHaveBeenCalledTimes(1));
+    expect(requestedEntityType).toBe("carrier");
+    vi.unstubAllGlobals();
   });
 });

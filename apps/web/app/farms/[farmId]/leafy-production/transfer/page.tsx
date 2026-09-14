@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { leafyProductionPlacementLabel } from "@/lib/labels/operationalLabel";
-import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordLeafyProductionTransfer } from "@/lib/query/hooks";
 
@@ -56,10 +56,16 @@ export default function ProductionTransferPage() {
   // PILOT-SCAN-001B: destination Production Cultivation Plates only -- the
   // source Nursery Cultivation Plates never move into Production, so their
   // identity is never carried into these labels.
+  //
+  // PILOT-SCAN-001B FINAL CLOSURE: the QR identifies the destination Batch
+  // Carrier Assignment this transfer line itself just opened, not the
+  // destination Carrier's own permanent identity -- a Production
+  // Cultivation Plate can later be reused for a different Batch, and this
+  // label's QR must keep resolving THIS placement, never the new occupant.
   const placementLabelSpecs = success
     ? success.transfer.destination_lines.map((line) => ({
-        entityType: "carrier" as const,
-        entityId: line.carrier.id,
+        entityType: "batch_carrier_assignment" as const,
+        entityId: line.destination_batch_carrier_assignment_id,
         ...leafyProductionPlacementLabel({
           batchCode: success.transfer.batch_code,
           carrierCode: line.carrier.code,
@@ -144,7 +150,7 @@ export default function ProductionTransferPage() {
               type="button"
               variant="secondary"
               disabled={!placementLabels.labels || placementLabels.labels.length === 0}
-              onClick={() => placementLabels.labels && openLabelPrintWindow(placementLabels.labels)}
+              onClick={() => placementLabels.labels && printLabels(placementLabels.labels)}
             >
               {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
             </Button>

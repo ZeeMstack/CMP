@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
@@ -135,7 +136,7 @@ export default function SeedlingPage() {
                           <StatusBadge label={label} tone={tone} />
                         </td>
                         <td className="px-4 py-2">
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             {row.assignment_active && !row.is_depleted && (
                               <Button
                                 type="button"
@@ -149,6 +150,20 @@ export default function SeedlingPage() {
                               <Button type="button" variant="secondary" onClick={() => setHistoryEntryId(row.seedling_entry_id)}>
                                 History
                               </Button>
+                            )}
+                            {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
+                                reuses the existing generic Placement label/reprint route,
+                                which re-resolves current authoritative Batch/Carrier/
+                                Location fresh every time. Offered only while the
+                                placement is still active -- a released assignment's
+                                label is no longer this Tray's current identity. */}
+                            {row.assignment_active && (
+                              <Link
+                                href={`/farms/${farmId}/labels/batch_carrier_assignment/${row.batch_carrier_assignment_id}`}
+                                className="inline-flex h-9 items-center text-xs font-medium text-ink-muted underline hover:text-ink"
+                              >
+                                Reprint label
+                              </Link>
                             )}
                           </div>
                         </td>

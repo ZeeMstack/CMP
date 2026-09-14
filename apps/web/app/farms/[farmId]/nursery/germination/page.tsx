@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Fragment, useMemo, useState } from "react";
 
@@ -26,7 +27,7 @@ import {
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { germinationPlacementLabel, seedlingEntryLabel } from "@/lib/labels/operationalLabel";
-import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import {
   useGerminationWorklist,
@@ -122,7 +123,15 @@ type Receipt =
       positionCode: string;
     }
   | ({ kind: "outcome" } & RecordOutcomeSuccessInfo)
-  | { kind: "seedling"; batchCode: string; trayId: string; trayCode: string; tableCode: string; livingCount: number }
+  | {
+      kind: "seedling";
+      batchCode: string;
+      trayId: string;
+      trayCode: string;
+      assignmentId: string;
+      tableCode: string;
+      livingCount: number;
+    }
   | null;
 
 export default function GerminationPage() {
@@ -303,6 +312,7 @@ export default function GerminationPage() {
                   batchCode: result.batch_code,
                   trayId: result.tray.id,
                   trayCode: result.tray.code,
+                  assignmentId: result.batch_carrier_assignment_id,
                   tableCode: result.seedling_table.code,
                   livingCount: result.starting_living_seedling_count,
                 });
@@ -445,13 +455,29 @@ export default function GerminationPage() {
                                 </div>
                               </td>
                               <td className={tableTdClass}>
-                                {actionLabel ? (
-                                  <Button type="button" variant="primary" onClick={() => openRowAction(row)}>
-                                    {actionLabel}
-                                  </Button>
-                                ) : (
-                                  <span className="text-xs text-wl-text-secondary">—</span>
-                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {actionLabel ? (
+                                    <Button type="button" variant="primary" onClick={() => openRowAction(row)}>
+                                      {actionLabel}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-wl-text-secondary">—</span>
+                                  )}
+                                  {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
+                                      only once this Tray is actually placed (a stable placement
+                                      exists to relabel); reuses the existing generic Placement
+                                      label/reprint route, which re-resolves current authoritative
+                                      Batch/Carrier/Location fresh every time, never this row's
+                                      own possibly-stale snapshot. */}
+                                  {row.placementState === "in_germination" && (
+                                    <Link
+                                      href={`/farms/${farmId}/labels/batch_carrier_assignment/${row.assignmentId}`}
+                                      className="text-xs font-medium text-wl-text-secondary underline hover:text-wl-text"
+                                    >
+                                      Reprint label
+                                    </Link>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                             {expanded && (
@@ -500,7 +526,7 @@ export default function GerminationPage() {
   );
 }
 
-function GerminationReceiptCard({
+export function GerminationReceiptCard({
   farmId,
   receipt,
   rows,
@@ -518,12 +544,30 @@ function GerminationReceiptCard({
   // Hooks must run unconditionally on every render of this component --
   // an empty spec list for receipt kinds with no printable label ("outcome"
   // records no physical placement change) is a no-op for the hook.
+  //
+  // PILOT-SCAN-001B FINAL CLOSURE: `place_tray`'s own response
+  // (`TrayPlacementRead`) does not return a `batch_carrier_assignment_id`
+  // -- unlike every other stage's command result. That stable identity
+  // already exists (it was opened at Sowing and simply continues through
+  // this Movement, unchanged) and is already loaded on this exact page: the
+  // Germination worklist read (`useGerminationWorklist` ->
+  // `GerminationTrayRead.batch_carrier_assignment_id`) carries it per tray.
+  // Looking it up here is using an already-authoritative, already-fetched
+  // value -- never inventing one. The bounded fallback to the Carrier's own
+  // permanent QR applies ONLY if that lookup genuinely fails (the tray is
+  // for some reason absent from the currently-loaded worklist snapshot) --
+  // documented in docs/domain/QR_SCAN_MODEL.md.
+  const placementAssignmentId =
+    receipt.kind === "placement" ? rows.find((r) => r.trayId === receipt.trayId)?.assignmentId : undefined;
+  const placementEntityType: "batch_carrier_assignment" | "carrier" = placementAssignmentId
+    ? "batch_carrier_assignment"
+    : "carrier";
   const trayLabelSpecs =
     receipt.kind === "placement"
       ? [
           {
-            entityType: "carrier" as const,
-            entityId: receipt.trayId,
+            entityType: placementEntityType,
+            entityId: placementAssignmentId ?? receipt.trayId,
             ...germinationPlacementLabel({
               batchCode: receipt.batchCode,
               trayCode: receipt.trayCode,
@@ -536,8 +580,8 @@ function GerminationReceiptCard({
       : receipt.kind === "seedling"
         ? [
             {
-              entityType: "carrier" as const,
-              entityId: receipt.trayId,
+              entityType: "batch_carrier_assignment" as const,
+              entityId: receipt.assignmentId,
               ...seedlingEntryLabel({ batchCode: receipt.batchCode, trayCode: receipt.trayCode, tableCode: receipt.tableCode }),
             },
           ]
@@ -560,7 +604,7 @@ function GerminationReceiptCard({
             type="button"
             variant="secondary"
             disabled={!trayLabels.labels || trayLabels.labels.length === 0}
-            onClick={() => trayLabels.labels && openLabelPrintWindow(trayLabels.labels)}
+            onClick={() => trayLabels.labels && printLabels(trayLabels.labels)}
           >
             {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
           </Button>
@@ -613,7 +657,7 @@ function GerminationReceiptCard({
           type="button"
           variant="secondary"
           disabled={!trayLabels.labels || trayLabels.labels.length === 0}
-          onClick={() => trayLabels.labels && openLabelPrintWindow(trayLabels.labels)}
+          onClick={() => trayLabels.labels && printLabels(trayLabels.labels)}
         >
           {trayLabels.labels ? "Print Tray Label" : "Preparing label…"}
         </Button>

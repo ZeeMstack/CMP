@@ -103,6 +103,26 @@ describe("classifyRoute", () => {
   });
 });
 
+describe("PILOT-SCAN-001B FINAL CLOSURE: /print/labels is a normal protected route, never an unauthenticated information-disclosure route", () => {
+  it("an unauthenticated visit to /print/labels redirects to /login with returnTo preserved -- the print-only document never renders unauthenticated", () => {
+    const pathname = "/print/labels";
+    const search = '?items=[{"token":"tok-1"}]';
+    expect(classifyRoute(pathname)).toBe("protected");
+    const decision = decideRouteAccess({ routeClass: classifyRoute(pathname), phase: "unauthenticated", pathname, search });
+    expect(decision).toEqual({
+      kind: "redirect",
+      to: `/login?returnTo=${encodeURIComponent(`${pathname}${search}`)}`,
+    });
+  });
+
+  it("a ready, authenticated session is allowed through -- no second/weaker auth mechanism for this route", () => {
+    const pathname = "/print/labels";
+    expect(
+      decideRouteAccess({ routeClass: classifyRoute(pathname), phase: "ready", pathname, search: "" }),
+    ).toEqual({ kind: "allow" });
+  });
+});
+
 describe("decideRouteAccess: protected routes", () => {
   const base = { routeClass: "protected" as const, pathname: "/farms/abc/crop-batches/xyz", search: "?view=quality" };
 

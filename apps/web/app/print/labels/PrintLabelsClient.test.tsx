@@ -29,6 +29,7 @@ afterEach(() => {
 const trayLabel: PrintableLabel = {
   token: "tok-tray-1",
   size: "standard",
+  entityType: "batch_carrier_assignment",
   entityTypeLabel: "Seed Tray",
   code: "TR-001",
   lines: ["Batch B-2026-014", "Germination"],
@@ -36,6 +37,7 @@ const trayLabel: PrintableLabel = {
 const batchLabel: PrintableLabel = {
   token: "tok-batch-1",
   size: "standard",
+  entityType: "crop_batch",
   entityTypeLabel: "Batch",
   code: "B-2026-014",
   lines: [],
@@ -74,7 +76,7 @@ describe("PrintLabelsClient (PILOT-SCAN-001B label-only print document)", () => 
   it("mixed STANDARD and SMALL labels each get their own physical page size (named @page rules)", () => {
     setItems([
       batchLabel,
-      { token: "tok-carrier-1", size: "small", entityTypeLabel: "Carrier", code: "PP-0147", lines: [] },
+      { token: "tok-carrier-1", size: "small", entityType: "carrier", entityTypeLabel: "Carrier", code: "PP-0147", lines: [] },
     ]);
     const { container } = render(<PrintLabelsClient canonicalAppOrigin="https://growcmp.com" />);
 

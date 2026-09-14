@@ -33,6 +33,23 @@ function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
 }
 
+/** `labelContentFor` returns plain `lines: string[]` (so it also feeds
+ * `openLabelPrintWindow`'s serializable `PrintableLabel.lines`) -- this
+ * on-screen preview renders them stacked, same visual as the print-only
+ * document's own multi-line rendering. */
+function LabelSecondaryLines({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <>
+      {lines.map((line, i) => (
+        <span key={i} className="block truncate">
+          {line}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function LabelPreviewClient({
   farmId,
   entityType,
@@ -103,7 +120,14 @@ export function LabelPreviewClient({
         <div className="flex flex-col gap-6">
           <div className="rounded-xl border border-wl-border bg-wl-surface-sunken p-6">
             <LabelPrintSheet size={labelContentFor(scanQuery.data).size}>
-              <LabelCard token={token} canonicalAppOrigin={canonicalAppOrigin} {...labelContentFor(scanQuery.data)} />
+              <LabelCard
+                token={token}
+                canonicalAppOrigin={canonicalAppOrigin}
+                size={labelContentFor(scanQuery.data).size}
+                entityTypeLabel={labelContentFor(scanQuery.data).entityTypeLabel}
+                code={labelContentFor(scanQuery.data).code}
+                secondaryLine={<LabelSecondaryLines lines={labelContentFor(scanQuery.data).lines} />}
+              />
             </LabelPrintSheet>
           </div>
 
@@ -144,9 +168,10 @@ export function LabelPreviewClient({
                         {
                           token,
                           size: content.size,
+                          entityType: scanQuery.data.entity_type,
                           entityTypeLabel: content.entityTypeLabel,
                           code: content.code,
-                          lines: content.secondaryLine ? [content.secondaryLine] : [],
+                          lines: content.lines,
                         },
                       ]);
                     },

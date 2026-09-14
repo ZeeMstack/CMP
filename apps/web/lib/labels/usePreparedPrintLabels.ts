@@ -49,6 +49,7 @@ export function usePreparedPrintLabels(farmId: string, specs: PreparedLabelSpec[
           identifiers.map((identifier, index) => ({
             token: identifier.token,
             size: specs[index].size,
+            entityType: specs[index].entityType,
             entityTypeLabel: specs[index].entityTypeLabel,
             code: specs[index].code,
             lines: specs[index].lines,

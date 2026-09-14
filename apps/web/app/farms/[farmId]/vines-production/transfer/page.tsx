@@ -10,7 +10,7 @@ import { VinesProductionTransferForm } from "@/components/vines/VinesProductionT
 import type { VinesProductionTransferRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { vinesProductionPlacementLabel } from "@/lib/labels/operationalLabel";
-import { openLabelPrintWindow } from "@/lib/labels/printableLabel";
+import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
 import { useRecordVinesProductionTransfer } from "@/lib/query/hooks";
 
@@ -39,10 +39,14 @@ export default function VinesProductionTransferPage() {
   // see docs/product/OPEN_QUESTIONS.md) -- the label uses exactly what is
   // authoritatively available (Batch, Grow Bag, Gutter, plant count),
   // never a guessed/invented location breadcrumb.
+  // PILOT-SCAN-001B FINAL CLOSURE: QR identifies the destination Batch
+  // Carrier Assignment this transfer line itself just opened, not the
+  // Grow Bag's own permanent identity -- see the identical rationale in
+  // `sowings/new/page.tsx`.
   const placementLabelSpecs = success
     ? success.transfer.grow_bags.map((gb) => ({
-        entityType: "carrier" as const,
-        entityId: gb.grow_bag.id,
+        entityType: "batch_carrier_assignment" as const,
+        entityId: gb.destination_batch_carrier_assignment_id,
         ...vinesProductionPlacementLabel({
           batchCode: success.transfer.batch_code,
           carrierCode: gb.grow_bag.code,
@@ -118,7 +122,7 @@ export default function VinesProductionTransferPage() {
               type="button"
               variant="secondary"
               disabled={!placementLabels.labels || placementLabels.labels.length === 0}
-              onClick={() => placementLabels.labels && openLabelPrintWindow(placementLabels.labels)}
+              onClick={() => placementLabels.labels && printLabels(placementLabels.labels)}
             >
               {placementLabels.labels ? `Print Labels (${placementLabels.labels.length})` : "Preparing labels…"}
             </Button>
