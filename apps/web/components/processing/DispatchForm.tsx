@@ -57,6 +57,7 @@ export function DispatchForm({
   onSubmit,
   isSubmitting,
   serverError,
+  disableRemove,
 }: {
   farmId: string;
   lots: FinishedGoodsLotRead[];
@@ -64,6 +65,12 @@ export function DispatchForm({
   onSubmit: (payload: DispatchEventCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  // PILOT-BLOCKER-010: true while this Dispatch's submission is pending OR
+  // its result is unknown -- removing a selected Lot in either state would
+  // invalidate the very sources the in-flight/unresolved command already
+  // references. Never set for a definitive rejection, which leaves the
+  // operator free to edit.
+  disableRemove?: boolean;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
@@ -272,7 +279,7 @@ export function DispatchForm({
             return (
               <DispatchLineRow
                 key={field.id} farmId={farmId} lot={lot} index={index} register={register} setValue={setValue}
-                errors={errors} onRemove={() => onRemoveLot(lot.id)}
+                errors={errors} onRemove={() => onRemoveLot(lot.id)} disableRemove={disableRemove}
               />
             );
           })}

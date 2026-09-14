@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StoreSubNav } from "@/components/store-inventory/StoreSubNav";
 import { Button } from "@/components/ui/Button";
 import type { InventoryPutawayCreate, NotPutAwayQueueEntryRead } from "@/lib/api/client";
-import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
+import { useFrozenSubmission, type UseFrozenSubmissionResult } from "@/lib/commands/frozenSubmission";
 import { nowLocalDateTime } from "@/lib/datetime";
 import { AppError } from "@/lib/errors/adapter";
 import { activeBinsWithPaths } from "@/lib/locations/bins";
@@ -23,21 +23,29 @@ function asAppError(error: unknown): AppError {
   return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
 }
 
+/** PILOT-BLOCKER-010 sibling fix: `command`/`putawayMutation` are now owned
+ * by the page, not this row -- passed as props. A queue refetch can drop
+ * this exact `entry` out of `rows` at any time (the item got put away by
+ * someone else, or simply left the company-wide "not put away" set), which
+ * would unmount this row and, before this fix, destroy its frozen
+ * `client_command_id`/payload along with it. See `PutawayRecoveryBanner` on
+ * the page below, the stable surface that survives that unmount. */
 function PutawayRow({
-  entry, bins, farmId, initiallyExpanded, highlighted,
+  entry, bins, farmId, initiallyExpanded, highlighted, command, putawayMutation, blockedByOtherCommand,
 }: {
   entry: NotPutAwayQueueEntryRead;
   bins: { id: string; label: string }[];
   farmId: string;
   initiallyExpanded?: boolean;
   highlighted?: boolean;
+  command: UseFrozenSubmissionResult<InventoryPutawayCreate>;
+  putawayMutation: ReturnType<typeof useRecordInventoryPutaway>;
+  blockedByOtherCommand: boolean;
 }) {
   const [expanded, setExpanded] = useState(Boolean(initiallyExpanded));
   const [binId, setBinId] = useState(bins[0]?.id ?? "");
   const [quantity, setQuantity] = useState("");
   const [effectiveTime, setEffectiveTime] = useState(() => nowLocalDateTime());
-  const putawayMutation = useRecordInventoryPutaway();
-  const command = useFrozenSubmission<InventoryPutawayCreate>();
 
   // PILOT-BLOCKER-008 A3: while the outcome is uncertain, every control
   // that could alter the payload must be disabled -- not just Cancel/reset.
@@ -45,7 +53,12 @@ function PutawayRow({
   const isSubmitting = command.outcome === "submitting";
   const fieldsDisabled = isSubmitting || isUncertain;
   const frozen = command.frozenPayload;
-  const frozenBinLabel = frozen ? bins.find((b) => b.id === frozen.destination_location_id)?.label ?? frozen.destination_location_id : null;
+  // Re-derived from the frozen payload itself, not local `expanded` state --
+  // `expanded` resets to `false` on remount (e.g. this row temporarily
+  // dropped out of `rows` and came back), but the form must still reappear
+  // here if this row is the one an unresolved command actually belongs to.
+  const ownsUnresolvedCommand = frozen?.inventory_quantity_cohort_id === entry.inventory_quantity_cohort_id;
+  const showForm = expanded || ownsUnresolvedCommand;
 
   function handleSettled(
     result: Parameters<typeof putawayMutation.mutate>[0],
@@ -58,6 +71,26 @@ function PutawayRow({
       },
       onError: (err) => command.handleError(asAppError(err)),
     });
+  }
+
+  // PILOT-BLOCKER-010: once uncertain, this row no longer offers its own
+  // Retry -- the page-level `PutawayRecoveryBanner` (always visible,
+  // survives this row unmounting entirely) is the ONE canonical place to
+  // retry, so there is never a moment with two different Retry buttons for
+  // the same command.
+  if (isUncertain && frozen) {
+    return (
+      <li
+        id={`putaway-row-${entry.inventory_quantity_cohort_id}`}
+        className={`rounded-xl border border-wl-border bg-wl-surface-raised p-4 ${highlighted ? "ring-2 ring-wl-brand" : ""}`}
+      >
+        <p className="font-medium text-wl-text">{entry.item_name}</p>
+        <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          Result unknown for this Putaway. See the recovery notice at the top of the page to retry -- do not repeat
+          this operation as a new transaction.
+        </p>
+      </li>
+    );
   }
 
   return (
@@ -74,148 +107,131 @@ function PutawayRow({
             {` · Receipt ${entry.receipt_code}`}
           </p>
         </div>
-        {!expanded && (
+        {!showForm && (
           <button
             type="button"
-            className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover"
+            className="rounded-md border border-wl-border-strong bg-wl-surface px-3 py-1.5 text-xs font-medium text-wl-text hover:bg-wl-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => setExpanded(true)}
-            disabled={bins.length === 0}
-            title={bins.length === 0 ? "No active Bins configured for this Farm yet" : undefined}
+            disabled={bins.length === 0 || blockedByOtherCommand}
+            title={
+              bins.length === 0
+                ? "No active Bins configured for this Farm yet"
+                : blockedByOtherCommand
+                  ? "Finish or retry the in-progress Putaway first"
+                  : undefined
+            }
           >
             Put away
           </button>
         )}
       </div>
 
-      {expanded && (
+      {showForm && (
         <div className="mt-3 flex flex-col gap-3 rounded-lg border border-wl-border bg-wl-surface p-3">
-          {/* PILOT-BLOCKER-008 A3 (CTO correction): while uncertain, render
-              the unresolved command's DISPLAYED values from the frozen
-              submitted payload itself, never from live form/query state --
-              a background queue/tree refetch must never make the screen
-              show values different from what Retry will actually resend. */}
-          {isUncertain && frozen ? (
-            <dl className="grid grid-cols-1 gap-2 text-xs text-wl-text-secondary sm:grid-cols-3">
-              <div>
-                <dt>Destination Bin</dt>
-                <dd className="font-medium text-wl-text">{frozenBinLabel}</dd>
-              </div>
-              <div>
-                <dt>Quantity</dt>
-                <dd className="font-medium text-wl-text">{frozen.quantity}</dd>
-              </div>
-              <div>
-                <dt>Effective time</dt>
-                <dd className="font-medium text-wl-text">{new Date(frozen.effective_time).toLocaleString()}</dd>
-              </div>
-            </dl>
-          ) : (
-            <>
-              <label className="flex flex-col gap-1">
-                <span className={labelClass}>Destination Bin</span>
-                <select
-                  className={inputClass} value={binId} onChange={(e) => setBinId(e.target.value)}
-                  disabled={fieldsDisabled}
-                >
-                  {bins.map((b) => (
-                    <option key={b.id} value={b.id}>{b.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={labelClass}>Quantity (of {entry.not_put_away_quantity} not put away)</span>
-                <input
-                  className={inputClass}
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  disabled={fieldsDisabled}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className={labelClass}>Effective time</span>
-                <input
-                  className={inputClass}
-                  type="datetime-local"
-                  value={effectiveTime}
-                  onChange={(e) => setEffectiveTime(e.target.value)}
-                  disabled={fieldsDisabled}
-                />
-              </label>
-            </>
-          )}
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>Destination Bin</span>
+            <select
+              className={inputClass} value={binId} onChange={(e) => setBinId(e.target.value)}
+              disabled={fieldsDisabled}
+            >
+              {bins.map((b) => (
+                <option key={b.id} value={b.id}>{b.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>Quantity (of {entry.not_put_away_quantity} not put away)</span>
+            <input
+              className={inputClass}
+              type="number"
+              min="0"
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              disabled={fieldsDisabled}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={labelClass}>Effective time</span>
+            <input
+              className={inputClass}
+              type="datetime-local"
+              value={effectiveTime}
+              onChange={(e) => setEffectiveTime(e.target.value)}
+              disabled={fieldsDisabled}
+            />
+          </label>
 
-          {isUncertain && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
-              Result not confirmed -- this putaway was submitted but the server&apos;s response was never received.
-              Retry sends the exact same submitted values again; it is safe to press even if the original attempt
-              actually went through.
-            </p>
-          )}
-          {command.error && !isUncertain && (
+          {command.error && (
             <p className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
               {command.error.message}
             </p>
           )}
 
           <div className="flex gap-2">
-            {isUncertain ? (
-              <>
-                <Button
-                  type="button"
-                  variant="primary"
-                  disabled={isSubmitting}
-                  onClick={() => {
-                    const payload = command.retry();
-                    if (!payload) return;
-                    handleSettled({ farmId, payload });
-                  }}
-                >
-                  {isSubmitting ? "Retrying…" : "Retry"}
-                </Button>
-                {/* Disabled for the whole uncertain state, not just while a
-                    retry is in flight -- the frozen command must remain
-                    recoverable until its outcome is actually resolved. */}
-                <Button type="button" variant="secondary" disabled>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="primary"
-                  disabled={fieldsDisabled || !binId || !quantity || Number(quantity) <= 0}
-                  onClick={() => {
-                    const payload = command.submit((clientCommandId) => ({
-                      client_command_id: clientCommandId,
-                      inventory_quantity_cohort_id: entry.inventory_quantity_cohort_id,
-                      destination_location_id: binId,
-                      quantity,
-                      effective_time: new Date(effectiveTime).toISOString(),
-                      note: null,
-                    }));
-                    handleSettled({ farmId, payload });
-                  }}
-                >
-                  {isSubmitting ? "Submitting…" : "Confirm putaway"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setExpanded(false)}
-                  disabled={fieldsDisabled}
-                >
-                  Cancel
-                </Button>
-              </>
-            )}
+            <Button
+              type="button"
+              variant="primary"
+              disabled={fieldsDisabled || !binId || !quantity || Number(quantity) <= 0}
+              onClick={() => {
+                const payload = command.submit((clientCommandId) => ({
+                  client_command_id: clientCommandId,
+                  inventory_quantity_cohort_id: entry.inventory_quantity_cohort_id,
+                  destination_location_id: binId,
+                  quantity,
+                  effective_time: new Date(effectiveTime).toISOString(),
+                  note: null,
+                }));
+                handleSettled({ farmId, payload });
+              }}
+            >
+              {isSubmitting ? "Submitting…" : "Confirm putaway"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setExpanded(false)}
+              disabled={fieldsDisabled}
+            >
+              Cancel
+            </Button>
           </div>
         </div>
       )}
     </li>
+  );
+}
+
+/** PILOT-BLOCKER-010: the stable, page-level recovery surface for a Putaway
+ * whose result is unknown -- visible regardless of whether the originating
+ * `PutawayRow` is still present in the current (possibly refetched) queue.
+ * Bin labels come from `bins` (the page's own Farm-wide active Bin list,
+ * always fetched independently of the queue), never from a per-row list
+ * that could have disappeared along with the row. */
+function PutawayRecoveryBanner({
+  frozenPayload, bins, onRetry,
+}: {
+  frozenPayload: InventoryPutawayCreate;
+  bins: { id: string; label: string }[];
+  onRetry: () => void;
+}) {
+  const binLabel = bins.find((b) => b.id === frozenPayload.destination_location_id)?.label ?? frozenPayload.destination_location_id;
+  return (
+    <div
+      role="alert"
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+    >
+      <div>
+        <p className="font-semibold">Result unknown -- we couldn&apos;t confirm whether this Putaway was recorded.</p>
+        <p>
+          Destination {binLabel}, quantity {frozenPayload.quantity}. Do not repeat this operation as a new
+          transaction.
+        </p>
+      </div>
+      <Button type="button" variant="primary" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
   );
 }
 
@@ -233,6 +249,11 @@ export default function StoreInventoryPutawayPage() {
   const continuationCohortId = searchParams.get("cohortId");
   const queueQuery = useNotPutAwayQueue();
   const treeQuery = useLocationsTree(farmId);
+  // PILOT-BLOCKER-010: owned HERE, above every disposable `PutawayRow`
+  // instance, so an unresolved Putaway survives that row dropping out of a
+  // refetched queue. See `PutawayRecoveryBanner` below.
+  const putawayMutation = useRecordInventoryPutaway();
+  const putawayCommand = useFrozenSubmission<InventoryPutawayCreate>();
 
   const rows = [...(queueQuery.data ?? [])].sort(
     (a, b) => new Date(b.receipt_received_at).getTime() - new Date(a.receipt_received_at).getTime(),
@@ -267,6 +288,24 @@ export default function StoreInventoryPutawayPage() {
         }
       />
       <StoreSubNav farmId={farmId} />
+
+      {putawayCommand.outcome === "uncertain" && putawayCommand.frozenPayload && (
+        <PutawayRecoveryBanner
+          frozenPayload={putawayCommand.frozenPayload}
+          bins={bins}
+          onRetry={() => {
+            const payload = putawayCommand.retry();
+            if (!payload) return;
+            putawayMutation.mutate(
+              { farmId, payload },
+              {
+                onSuccess: () => putawayCommand.handleSuccess(),
+                onError: (err) => putawayCommand.handleError(err instanceof AppError ? err : new AppError("server_error", "Something went wrong. Please try again.")),
+              },
+            );
+          }}
+        />
+      )}
 
       {continuationMissing && (
         <p className="mb-3 rounded-md border border-wl-border bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
@@ -320,6 +359,12 @@ export default function StoreInventoryPutawayPage() {
                   farmId={farmId}
                   initiallyExpanded={entry.inventory_quantity_cohort_id === continuationCohortId}
                   highlighted={entry.inventory_quantity_cohort_id === continuationCohortId}
+                  command={putawayCommand}
+                  putawayMutation={putawayMutation}
+                  blockedByOtherCommand={
+                    putawayCommand.outcome !== "editing" &&
+                    putawayCommand.frozenPayload?.inventory_quantity_cohort_id !== entry.inventory_quantity_cohort_id
+                  }
                 />
               ))}
             </ul>

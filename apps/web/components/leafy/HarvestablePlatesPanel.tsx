@@ -30,6 +30,7 @@ export function HarvestablePlatesPanel({
   onAdd,
   onRemove,
   isLoading,
+  disableRemove,
 }: {
   plates: HarvestablePlateRead[];
   selectedAssignmentIds: string[];
@@ -37,6 +38,9 @@ export function HarvestablePlatesPanel({
   onAdd: (plate: HarvestablePlateRead) => void;
   onRemove: (assignmentId: string) => void;
   isLoading: boolean;
+  // PILOT-BLOCKER-010: see `LeafyHarvestForm`'s identical prop -- true while
+  // the open Harvest's submission is pending or its result is unknown.
+  disableRemove?: boolean;
 }) {
   if (isLoading) {
     return <p className="text-sm text-wl-text-secondary">Loading harvestable Plates…</p>;
@@ -91,6 +95,7 @@ export function HarvestablePlatesPanel({
                   type="button"
                   variant="secondary"
                   className="self-start sm:self-center"
+                  disabled={disableRemove}
                   onClick={() => onRemove(plate.current_batch_carrier_assignment_id)}
                 >
                   Remove from Harvest

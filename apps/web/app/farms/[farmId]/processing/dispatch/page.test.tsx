@@ -234,4 +234,56 @@ describe("DispatchPage", () => {
     expect(screen.getByLabelText(/dispatch code/i)).toHaveValue("DISP-001");
     expect(screen.getByLabelText(/dispatch temperature/i)).toHaveValue(-18.5);
   });
+
+  // --- PILOT-BLOCKER-010 (source removal guard) -----------------------------
+
+  it("R11: a network failure (result unknown) blocks removing the selected Lot until resubmission resolves it", async () => {
+    let dispatchCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/dispatches") && method === "POST") {
+          dispatchCalls += 1;
+          if (dispatchCalls === 1) throw new TypeError("Failed to fetch");
+          return jsonResponse(dispatchEventResult(), 201);
+        }
+        if (url.includes("/dispatches")) return jsonResponse([]);
+        if (url.includes("/placements")) return jsonResponse(PLACEMENT_UNPLACED);
+        if (url.includes("/recall-cases")) return jsonResponse([]);
+        if (url.includes("/finished-goods-lots")) return jsonResponse([FG_LOT]);
+        return jsonResponse([]);
+      }),
+    );
+
+    render(withQueryClient(<DispatchPage />));
+    await waitFor(() => expect(screen.getByText("FG-001")).toBeInTheDocument());
+    const row = screen.getByText("FG-001").closest("li") as HTMLElement;
+    await waitFor(() => expect(within(row).getByRole("button", { name: /add to dispatch/i })).toBeEnabled());
+    fireEvent.click(within(row).getByRole("button", { name: /add to dispatch/i }));
+
+    await waitFor(() => expect(screen.getByText(/Dispatch FG-001/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText(/dispatched weight/i)).toHaveValue(100));
+    fireEvent.change(screen.getByLabelText(/dispatch code/i), { target: { value: "DISP-001" } });
+    fireEvent.change(screen.getByLabelText(/dispatch temperature/i), { target: { value: "-18.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    // Both the form's own line row and the source picker panel's row for
+    // this same Lot render a "Remove" button once it's selected -- both
+    // must be guarded while the outcome is unknown.
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Remove" })).toHaveLength(2));
+    for (const button of screen.getAllByRole("button", { name: "Remove" })) {
+      expect(button).toBeDisabled();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByText("Dispatch recorded")).toBeInTheDocument());
+  });
 });

@@ -515,6 +515,48 @@ describe("StoreInventoryQualityPage", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 
+  // --- PILOT-BLOCKER-010 (Quality sibling) ---------------------------------
+
+  it("an unresolved Quality command survives its row disappearing from a refetched queue -- page-level recovery remains reachable with the exact same replay identity", async () => {
+    let callCount = 0;
+    const posts: Array<Record<string, unknown>> = [];
+    stubFetch([queueRow()], (url, body) => {
+      if (url.endsWith("/quality-dispositions")) {
+        callCount += 1;
+        posts.push(body as Record<string, unknown>);
+        if (callCount === 1) throw new TypeError("Failed to fetch");
+        return jsonResponse({
+          id: "evt-new", inventory_quantity_cohort_id: "coh-1", event_kind: "HELD", reverses_event_id: null,
+          effective_time: "2026-09-07T09:00:00Z", recorded_time: "2026-09-07T09:00:00Z", actor_user_id: "u1",
+          reason: null,
+        });
+      }
+      return jsonResponse({});
+    });
+    const { queryClient } = renderWithClient(<StoreInventoryQualityPage />);
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+
+    // The row disappears entirely from a refetched queue -- as if it was
+    // already actioned elsewhere, or simply dropped out of the company-wide
+    // result set -- while the command is still genuinely unresolved.
+    queryClient.setQueryData(queryKeys.qualityWorkQueue(TEST_TENANT_ID), []);
+    await waitFor(() => expect(screen.queryByText("Calcium Nitrate")).not.toBeInTheDocument());
+
+    // The page-level recovery banner must still show it and offer Retry.
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/result unknown/i);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(posts.length).toBe(2));
+    expect(posts[1].client_command_id).toBe(posts[0].client_command_id);
+    expect(posts[1]).toEqual(posts[0]);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
   // --- PILOT-BLOCKER-009 R2 (row-specific continuation) -------------------
 
   it("R2.8: a valid incoming cohort id highlights the matching scoped row, never opening or executing an action", async () => {

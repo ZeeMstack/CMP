@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 let searchParamsValue = new URLSearchParams();
@@ -9,12 +11,28 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParamsValue,
 }));
 
-import { withQueryClient } from "@/lib/test-utils";
+import { AuthBootstrapProvider } from "@/lib/auth/AuthBootstrapProvider";
+import { queryKeys } from "@/lib/query/keys";
+import { DEFAULT_TEST_BOOTSTRAP, TEST_TENANT_ID, withQueryClient } from "@/lib/test-utils";
 
 import StoreInventoryPutawayPage from "./page";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/** Like `withQueryClient`, but also hands back the `QueryClient` so a test
+ * can force a refetch (e.g. to model a queue row disappearing mid-recovery)
+ * without a second render. */
+function renderWithClient(children: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(queryKeys.authBootstrap(), DEFAULT_TEST_BOOTSTRAP);
+  const utils = render(
+    <QueryClientProvider client={queryClient}>
+      <AuthBootstrapProvider>{children}</AuthBootstrapProvider>
+    </QueryClientProvider>,
+  );
+  return { ...utils, queryClient };
 }
 
 const QUEUE_ENTRY = {
@@ -129,7 +147,7 @@ describe("StoreInventoryPutawayPage", () => {
     expect(screen.queryByText(/no active bins are configured/i)).not.toBeInTheDocument();
   });
 
-  it("A3: a network failure on Confirm shows an unresolved-result state (not 'Putaway failed'), and Retry resends the exact frozen payload", async () => {
+  it("PILOT-BLOCKER-010: a network failure on Confirm shows an unresolved-result state via the page-level recovery banner (not 'Putaway failed'), and Retry resends the exact frozen payload", async () => {
     const posts: Array<Record<string, unknown>> = [];
     let callCount = 0;
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -158,17 +176,71 @@ describe("StoreInventoryPutawayPage", () => {
     fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /confirm putaway/i }));
 
-    // Unresolved-result state, never a definitive "failed" message.
-    await waitFor(() => expect(screen.getByText(/result not confirmed/i)).toBeInTheDocument());
+    // Unresolved-result state, never a definitive "failed" message -- shown
+    // via the page-level recovery banner.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent(/result unknown/i);
     expect(screen.queryByText(/putaway failed/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm putaway/i })).not.toBeInTheDocument();
 
-    // The frozen submitted values are displayed (not a live editable
-    // field), and Cancel is disabled for the whole uncertain state.
-    expect(screen.getByText("Main Store / Bin 01")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    // The frozen submitted values are shown in the banner, not a live
+    // editable field, and there is exactly one Retry -- never two.
+    expect(screen.getByRole("alert")).toHaveTextContent(/Main Store \/ Bin 01/);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(posts.length).toBe(2));
+    expect(posts[1].client_command_id).toBe(posts[0].client_command_id);
+    expect(posts[1]).toEqual(posts[0]);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("PILOT-BLOCKER-010: an unresolved Putaway survives its row disappearing from a refetched queue -- recovery remains reachable with the exact same replay identity", async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    let callCount = 0;
+    let queueCallCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.includes("/inventory-putaways")) {
+        callCount += 1;
+        const body = init.body ? JSON.parse(String(init.body)) : {};
+        posts.push(body);
+        if (callCount === 1) throw new TypeError("Failed to fetch");
+        return jsonResponse({
+          id: "mv-1", tenant_id: "t", farm_id: "farm-1", inventory_quantity_cohort_id: "cohort-1",
+          movement_kind: "putaway", source_location_id: null, destination_location_id: "bin-1",
+          moved_quantity_base: "10.000", effective_time: "2026-09-01T00:00:00Z",
+          recorded_time: "2026-09-01T00:00:00Z", actor_user_id: "u1", client_command_id: "cc-1", note: null,
+        }, 201);
+      }
+      if (url.includes("/inventory-not-put-away-queue")) {
+        queueCallCount += 1;
+        // The row disappears from the queue entirely on the next fetch --
+        // as if someone else already put it away, or it simply fell out of
+        // the company-wide "not put away" set -- while the command is still
+        // unresolved.
+        return jsonResponse(queueCallCount === 1 ? [QUEUE_ENTRY] : []);
+      }
+      if (url.includes("/locations/tree")) return jsonResponse(BIN_TREE);
+      return jsonResponse([]);
+    }));
+    const { queryClient } = renderWithClient(<StoreInventoryPutawayPage />);
+
+    await waitFor(() => expect(screen.getByText("Calcium Nitrate")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Put away" }));
+    await waitFor(() => expect(screen.getByText("Main Store / Bin 01")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm putaway/i }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    // Force the queue refetch that drops the row.
+    await queryClient.refetchQueries({ queryKey: queryKeys.notPutAwayQueue(TEST_TENANT_ID) });
+    await waitFor(() => expect(screen.queryByText("Calcium Nitrate")).not.toBeInTheDocument());
+
+    // The frozen command must still be visible/recoverable via the banner.
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/result unknown/i);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(posts.length).toBe(2));
     expect(posts[1].client_command_id).toBe(posts[0].client_command_id);

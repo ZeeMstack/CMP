@@ -95,3 +95,13 @@ export function useFrozenSubmission<TPayload extends Record<string, unknown>>() 
     submit, retry, handleSuccess, handleError,
   };
 }
+
+/** PILOT-BLOCKER-010: the object shape returned by `useFrozenSubmission` --
+ * exported so a page that lifts ownership of a command ABOVE a disposable
+ * detail panel/form instance (so the frozen id/payload/outcome survives that
+ * panel unmounting -- panel close, row removal, selection change, query
+ * refresh) can type the prop it hands back down without re-deriving the
+ * shape by hand. */
+export type UseFrozenSubmissionResult<TPayload extends Record<string, unknown>> = ReturnType<
+  typeof useFrozenSubmission<TPayload>
+>;

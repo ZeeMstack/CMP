@@ -56,12 +56,16 @@ export function RecordVinesHarvestForm({
   onSubmit,
   isSubmitting,
   serverError,
+  disableRemove,
 }: {
   sources: VinesHarvestableSourceRead[];
   onRemoveSource: (gutterId: string) => void;
   onSubmit: (payload: RecordVinesHarvestCreate) => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  // PILOT-BLOCKER-010: true while this Harvest's submission is pending OR
+  // its result is unknown -- mirrors LeafyHarvestForm's identical prop.
+  disableRemove?: boolean;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
@@ -248,7 +252,7 @@ export function RecordVinesHarvestForm({
                   </span>
                 </p>
                 <Button
-                  type="button" variant="secondary"
+                  type="button" variant="secondary" disabled={disableRemove}
                   onClick={() => onRemoveSource(field.gutter_id)}
                 >
                   Remove

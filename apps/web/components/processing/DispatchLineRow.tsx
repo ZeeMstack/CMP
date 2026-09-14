@@ -29,6 +29,7 @@ export function DispatchLineRow({
   setValue,
   errors,
   onRemove,
+  disableRemove,
 }: {
   lot: FinishedGoodsLotRead;
   farmId: string;
@@ -37,6 +38,9 @@ export function DispatchLineRow({
   setValue: UseFormSetValue<RecordDispatchFormValues>;
   errors: FieldErrors<RecordDispatchFormValues>;
   onRemove: () => void;
+  // PILOT-BLOCKER-010: true while the open Dispatch's submission is pending
+  // OR its result is unknown -- mirrors LeafyHarvestForm's identical prop.
+  disableRemove?: boolean;
 }) {
   const placementQuery = useFinishedGoodsPlacement(farmId, lot.id);
   const hasSeeded = useRef(false);
@@ -62,7 +66,7 @@ export function DispatchLineRow({
               ? `${placementQuery.data.unplaced_weight_kg} kg / ${placementQuery.data.unplaced_package_count} pkg`
               : "Loading…"}
           </span>
-          <Button type="button" variant="secondary" onClick={onRemove}>
+          <Button type="button" variant="secondary" disabled={disableRemove} onClick={onRemove}>
             Remove
           </Button>
         </div>

@@ -41,6 +41,11 @@ export default function VinesHarvestPage() {
   } | null>(null);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
+  // PILOT-BLOCKER-010: mirrors leafy-production/harvest/page.tsx's identical
+  // guard exactly -- distinct from `recordMutation.isPending`, this stays
+  // `true` only while a network/server error leaves the actual outcome
+  // unknown, never for a definitive rejection.
+  const [isResultUnknown, setIsResultUnknown] = useState(false);
 
   const harvestableSourcesQuery = useVinesHarvestableSources(farmId);
   const harvestsQuery = useVinesHarvests(farmId);
@@ -141,8 +146,10 @@ export default function VinesHarvestPage() {
                   onRemoveSource={(gutterId) => setSelectedGutterIds((ids) => ids.filter((id) => id !== gutterId))}
                   isSubmitting={recordMutation.isPending}
                   serverError={recordError}
+                  disableRemove={recordMutation.isPending || isResultUnknown}
                   onSubmit={(payload) => {
                     setRecordError(null);
+                    setIsResultUnknown(false);
                     recordMutation.mutate(payload, {
                       onSuccess: (result) => {
                         setSelectedGutterIds([]);
@@ -154,7 +161,11 @@ export default function VinesHarvestPage() {
                           gutterCount: result.source_lines.length,
                         });
                       },
-                      onError: (error) => setRecordError(asAppError(error)),
+                      onError: (error) => {
+                        const appError = asAppError(error);
+                        setRecordError(appError);
+                        setIsResultUnknown(appError.kind === "network_error" || appError.kind === "server_error");
+                      },
                     });
                   }}
                 />
@@ -164,6 +175,7 @@ export default function VinesHarvestPage() {
                 selectedGutterIds={selectedGutterIds}
                 lockedBatchId={lockedBatchId}
                 isLoading={harvestableSourcesQuery.isLoading}
+                disableRemove={recordMutation.isPending || isResultUnknown}
                 onAdd={(source) => setSelectedGutterIds((ids) => [...ids, source.gutter_id])}
                 onRemove={(gutterId) => setSelectedGutterIds((ids) => ids.filter((id) => id !== gutterId))}
               />

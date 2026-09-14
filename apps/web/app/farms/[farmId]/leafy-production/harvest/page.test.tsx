@@ -527,4 +527,53 @@ describe("LeafyHarvestPage", () => {
       "/farms/farm-1/processing/grading?harvestLotId=lot-abc-123",
     );
   });
+
+  // --- PILOT-BLOCKER-010 (source removal guard) -----------------------------
+
+  it("R10: a network failure (result unknown) blocks removing the source Plate until resubmission resolves it", async () => {
+    let recordCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/leafy-production/harvests") && method === "POST") {
+          recordCalls += 1;
+          if (recordCalls === 1) throw new TypeError("Failed to fetch");
+          return jsonResponse(harvestEvent());
+        }
+        if (url.includes("/leafy-production/harvestable-plates")) return jsonResponse([PLATE_A]);
+        if (url.includes("/leafy-production/harvests")) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+
+    render(withQueryClient(<LeafyHarvestPage />));
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add to harvest/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    // Navigate back to the source table while the result is still unknown --
+    // the operator must not be able to strip the very source line the
+    // in-flight/unresolved command already references.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /remove from harvest/i })).toBeDisabled();
+
+    // Once the operator explicitly resubmits and it succeeds, the guard lifts.
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByText("Harvest recorded")).toBeInTheDocument());
+  });
 });

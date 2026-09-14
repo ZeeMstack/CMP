@@ -20,6 +20,7 @@ export function VinesHarvestableSourcesPanel({
   onAdd,
   onRemove,
   isLoading,
+  disableRemove,
 }: {
   sources: VinesHarvestableSourceRead[];
   selectedGutterIds: string[];
@@ -27,6 +28,8 @@ export function VinesHarvestableSourcesPanel({
   onAdd: (source: VinesHarvestableSourceRead) => void;
   onRemove: (gutterId: string) => void;
   isLoading: boolean;
+  // PILOT-BLOCKER-010: see `RecordVinesHarvestForm`'s identical prop.
+  disableRemove?: boolean;
 }) {
   if (isLoading) {
     return <p className="text-sm text-ink-muted">Loading harvestable Gutters…</p>;
@@ -74,7 +77,7 @@ export function VinesHarvestableSourcesPanel({
                 </td>
                 <td className="p-3">
                   {isSelected ? (
-                    <Button type="button" variant="secondary" onClick={() => onRemove(s.gutter_id)}>
+                    <Button type="button" variant="secondary" disabled={disableRemove} onClick={() => onRemove(s.gutter_id)}>
                       Remove
                     </Button>
                   ) : (
