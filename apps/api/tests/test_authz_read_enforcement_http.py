@@ -167,18 +167,18 @@ def test_cross_tenant_resource_is_404_after_permission_succeeds_for_a_non_farm_d
     belongs to a different tenant -- proves the permission layer and the
     tenant-scoped resource lookup are independent controls (AUTHZ-001A's
     own principle), for a domain beyond the farms proof slice."""
+    _tenant, _user, headers, farm = active_context_with_farm  # tenant_admin -- has LOCATION_READ
+
     other_tenant = tenant_service.create_tenant(db_session, code="t-rd-foreign", name="RD Foreign Tenant")
     other_farm = farm_service.create_farm(
         db_session, tenant_id=other_tenant.id, actor_user_id=None, code="rd-foreign-farm", name="RD Foreign Farm",
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
     foreign_location = location_service.create_location(
-        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
+        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=_user.id,
         location_type_code="greenhouse", code="rd-foreign-gh", name="RD Foreign Greenhouse",
         parent_location_id=None, greenhouse_classification="leafy_greens", occupiable=None,
     )
-
-    _tenant, _user, headers, farm = active_context_with_farm  # tenant_admin -- has LOCATION_READ
 
     response = client.get(f"/farms/{farm.id}/locations/{foreign_location.id}", headers=headers)
     assert response.status_code == 404

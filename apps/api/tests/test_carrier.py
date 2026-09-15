@@ -102,7 +102,7 @@ def test_same_carrier_code_allowed_in_different_tenants(db_session, active_conte
     )
     other_spec = ensure_seed_tray_specification(db_session, tenant_id=other_tenant.id, actor_user_id=None)
     carrier_b = carrier_service.register_carrier(
-        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
+        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=user.id,
         specification_id=other_spec.id, code="ST-00001", issued_date=None,
     )
     assert carrier_a.code == carrier_b.code

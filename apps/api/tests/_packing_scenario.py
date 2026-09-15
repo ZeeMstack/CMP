@@ -328,6 +328,14 @@ def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        # PILOT-SCAN-001D: qr_identifiers has only outbound FKs (to the
+        # entity tables below, never the reverse), so it is always safe to
+        # delete first. Without this, leftover rows from this scenario's
+        # own Carrier/Location/crop_batch/lot creation survive into later
+        # tests in the same session and trip PILOT-SCAN-001's downgrade
+        # guard for every subsequent migration-downgrade test.
+        if conn.execute(text("SELECT to_regclass('qr_identifiers')")).scalar() is not None:
+            conn.execute(text("DELETE FROM qr_identifiers WHERE tenant_id = :tid"), {"tid": tenant_id})
         # POSTHARVEST-OPS-001H: reversal tables, existence-guarded the same
         # way as every other post-CMP-013 table in this cleanup so it keeps
         # working for the downgrade-guard scenario that runs it while

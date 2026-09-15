@@ -28,7 +28,7 @@ from sqlalchemy import text
 
 from app.core.db import get_db, get_engine
 from app.main import app
-from app.services import location_service, movement_service
+from app.services import batch_derivation_service, location_service, movement_service, sowing_service
 from tests._traceability_scenario import (
     build_batch_with_assignments,
     build_committed_tenant_farm,
@@ -279,5 +279,187 @@ def test_qr_scan_acceptance_flow(test_engine) -> None:
     finally:
         if other_tenant_id is not None:
             cleanup_traceability_scenario(test_engine, other_tenant_id)
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_batch_qr_shows_every_simultaneous_active_placement_separately(test_engine) -> None:
+    """PILOT-SCAN-001D proof 10: a Batch occupying more than one physical
+    Carrier at once (the same shape a CMP-012 split produces -- several
+    simultaneously active `BatchCarrierAssignment`s under one Batch) must
+    show each one as its own distinct placement on the Batch's own QR scan
+    -- never collapsed into a single ambiguous "the batch is somewhere"
+    fact. Uses `resolve_scan_context`'s unchanged `crop_batch` branch
+    (`qr_service.py`), which already aggregates one `PlacementSummary` per
+    active assignment -- this proves that existing aggregation actually
+    surfaces >1 placement end-to-end through the real API, not just that
+    the code path exists."""
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as db:
+            tenant, user, farm = build_committed_tenant_farm(db)
+            tenant_id = tenant.id
+            scaffold = build_batch_with_assignments(
+                db, tenant, user, farm, carrier_count=2, carrier_type_code="cultivation_plate"
+            )
+            batch_id = scaffold["batch"].id
+            carrier_codes = {c.code for c in scaffold["carriers"]}
+            db.commit()
+
+            headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+            app.dependency_overrides[get_db] = lambda: db
+            app.dependency_overrides[get_engine] = lambda: test_engine
+            client = TestClient(app)
+            client.__enter__()
+            try:
+                resp = client.post(f"/farms/{farm.id}/qr/crop_batch/{batch_id}/generate", headers=headers)
+                assert resp.status_code == 200, resp.text
+                token = resp.json()["token"]
+
+                resp = client.get(f"/qr/{token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                body = resp.json()
+                assert body["entity_type"] == "crop_batch"
+                placements = body["placements"]
+                assert len(placements) == 2
+                assert {p["carrier_code"] for p in placements} == carrier_codes
+                # Two distinct placement identities, never collapsed into one.
+                assert len({p["batch_carrier_assignment_id"] for p in placements}) == 2
+            finally:
+                client.__exit__(None, None, None)
+                app.dependency_overrides.pop(get_db, None)
+                app.dependency_overrides.pop(get_engine, None)
+    finally:
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+@pytest.mark.integration
+def test_carrier_reused_by_a_later_batch_shows_new_current_occupant_while_old_placement_qr_stays_historical(
+    test_engine,
+) -> None:
+    """PILOT-SCAN-001D-CLOSURE proof 9: the permanent Carrier QR always
+    resolves the CURRENT occupant, and an ended placement's own QR
+    (`batch_carrier_assignment`) permanently resolves that historical
+    relationship -- it must never later resolve a different, newer
+    occupant of the same physical Carrier. Uses only real domain commands
+    (`sow_batch`, then `batch_derivation_service.split_batch`, an existing
+    CMP-012 command already proven -- see `_write_derivation` -- to release
+    the source assignment and open a brand-new one on the SAME `carrier_id`
+    for its output batch): the source assignment's `released_effective_
+    time` is set and a new `BatchCarrierAssignment` row is created for the
+    split's output batch, on the identical physical Carrier. No assignment
+    row is constructed directly by this test."""
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as db:
+            tenant, user, farm = build_committed_tenant_farm(db)
+            tenant_id = tenant.id
+            # grow_bag: no carrier_specifications row needed for this proof.
+            # Two carriers, so `split_batch` (which requires >=2 outputs)
+            # can send the traced carrier to output Batch B while the
+            # other carrier goes to an unrelated, otherwise-unused output.
+            scaffold = build_batch_with_assignments(
+                db, tenant, user, farm, carrier_count=2, carrier_type_code="grow_bag"
+            )
+            batch_a = scaffold["batch"]
+            carrier = scaffold["carriers"][0]
+            other_carrier = scaffold["carriers"][1]
+            assignment_a_id = scaffold["assignment_ids"][0]
+            other_assignment_id = scaffold["assignment_ids"][1]
+            db.commit()
+
+            headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+            app.dependency_overrides[get_db] = lambda: db
+            app.dependency_overrides[get_engine] = lambda: test_engine
+            client = TestClient(app)
+            client.__enter__()
+            try:
+                # 1-2. Carrier STR-001 assigned to Batch A; permanent Carrier
+                # QR exists and shows Batch A as the current occupant.
+                resp = client.post(f"/farms/{farm.id}/qr/carrier/{carrier.id}/generate", headers=headers)
+                assert resp.status_code == 200, resp.text
+                carrier_token = resp.json()["token"]
+
+                resp = client.get(f"/qr/{carrier_token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                assert resp.json()["current_batch"]["code"] == batch_a.code
+
+                # 3-4. Generate/resolve the Batch A assignment's own QR.
+                resp = client.post(
+                    f"/farms/{farm.id}/qr/batch_carrier_assignment/{assignment_a_id}/generate", headers=headers
+                )
+                assert resp.status_code == 200, resp.text
+                assignment_a_token = resp.json()["token"]
+
+                resp = client.get(f"/qr/{assignment_a_token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                assignment_a_body = resp.json()
+                assert assignment_a_body["batch"]["code"] == batch_a.code
+                assert assignment_a_body["carrier_code"] == carrier.code
+                assert assignment_a_body["released"] is False
+
+                # 5-6. End Batch A's relationship with this Carrier and
+                # assign the SAME physical Carrier to a new Batch B, purely
+                # via the existing split_batch command (never by directly
+                # writing to batch_carrier_assignments).
+                suffix = uuid.uuid4().hex[:8]
+                split_event = batch_derivation_service.split_batch(
+                    db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch_a.id,
+                    client_command_id=uuid.uuid4(), effective_time=now(), note=None,
+                    outputs=[
+                        {"output_batch_code": f"BATCH-B-{suffix}", "source_assignment_ids": [assignment_a_id]},
+                        # Required by split_batch's own >=2-outputs rule;
+                        # this output and its carrier are otherwise
+                        # irrelevant to this proof.
+                        {"output_batch_code": f"BATCH-REST-{suffix}", "source_assignment_ids": [other_assignment_id]},
+                    ],
+                )
+                db.commit()
+                assert split_event.id is not None
+
+                batch_b_id = db.execute(
+                    text(
+                        "SELECT bca.batch_id FROM batch_carrier_assignments bca "
+                        "WHERE bca.carrier_id = :carrier_id AND bca.released_effective_time IS NULL"
+                    ),
+                    {"carrier_id": carrier.id},
+                ).scalar_one()
+                batch_b_assignments = sowing_service.list_batch_carriers(
+                    db, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch_b_id,
+                )
+                assert len(batch_b_assignments) == 1
+                batch_b_assignment = batch_b_assignments[0]
+                assert batch_b_assignment.carrier.code == carrier.code, "the split output must reuse the SAME physical carrier"
+                batch_b_code = f"BATCH-B-{suffix}"
+
+                # 7-8-10. Permanent Carrier QR: SAME token, now resolves
+                # Batch B as the current occupant -- never Batch A.
+                resp = client.get(f"/qr/{carrier_token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                carrier_body_after = resp.json()
+                assert carrier_body_after["current_batch"]["code"] == batch_b_code
+                assert carrier_body_after["current_batch"]["code"] != batch_a.code
+
+                resp = client.post(f"/farms/{farm.id}/qr/carrier/{carrier.id}/generate", headers=headers)
+                assert resp.status_code == 200, resp.text
+                assert resp.json()["token"] == carrier_token, "reprinting must reuse the exact same permanent QR token"
+
+                # 9. The OLD Batch A assignment QR still resolves that exact
+                # historical relationship -- Batch A, this Carrier, marked
+                # released -- and never Batch B.
+                resp = client.get(f"/qr/{assignment_a_token}", headers=headers)
+                assert resp.status_code == 200, resp.text
+                assignment_a_body_after = resp.json()
+                assert assignment_a_body_after["batch"]["code"] == batch_a.code
+                assert assignment_a_body_after["batch"]["code"] != batch_b_code
+                assert assignment_a_body_after["carrier_code"] == carrier.code
+                assert assignment_a_body_after["released"] is True
+            finally:
+                client.__exit__(None, None, None)
+                app.dependency_overrides.pop(get_db, None)
+                app.dependency_overrides.pop(get_engine, None)
+    finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)

@@ -211,6 +211,11 @@ def cleanup_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        # PILOT-SCAN-001D: qr_identifiers has only outbound FKs, so it is
+        # always safe to delete first -- see _traceability_scenario.py's
+        # identical comment for the full rationale.
+        if conn.execute(text("SELECT to_regclass('qr_identifiers')")).scalar() is not None:
+            conn.execute(text("DELETE FROM qr_identifiers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})

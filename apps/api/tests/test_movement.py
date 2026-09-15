@@ -493,7 +493,7 @@ def test_occupancy_cannot_be_inserted_already_closed(db_session, placed_trolley_
     scenario = placed_trolley_and_tray
     tenant, farm = scenario["tenant"], scenario["farm"]
     other_trolley = asset_service.register_asset(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=None,
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=scenario["user"].id,
         asset_type_code="germination_trolley", code="GT-0004", name="Trolley 4", commissioned_date=None,
     )
     with pytest.raises(DBAPIError):
@@ -517,7 +517,7 @@ def test_opening_movement_destination_mismatch_rejected(db_session, placed_troll
     scenario = placed_trolley_and_tray
     tenant, farm = scenario["tenant"], scenario["farm"]
     other_trolley = asset_service.register_asset(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=None,
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=scenario["user"].id,
         asset_type_code="germination_trolley", code="GT-0005", name="Trolley 5", commissioned_date=None,
     )
     # trolley_movement's destination is P12, but we try to open an occupancy at P13.

@@ -10,7 +10,7 @@ from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.schemas.carrier import CarrierRead
 from app.schemas.carrier_specification import CarrierSpecificationSummary
-from app.services import farm_service
+from app.services import farm_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -151,6 +151,15 @@ def register_carrier(
             "specification_id": str(specification.id) if specification is not None else None,
         },
     )
+    # PILOT-SCAN-001D: every permanent Carrier gets its permanent QR
+    # identity automatically at creation -- never a manual "Generate QR"
+    # step. Same transaction/commit as the Carrier row itself (see
+    # `qr_provisioning.ensure_qr_identifier_for_new_entity`'s own
+    # docstring for why this is safe and atomic).
+    qr_provisioning.ensure_qr_identifier_for_new_entity(
+        db, tenant_id=tenant_id, farm_id=farm_id, entity_type="carrier", entity_id=carrier.id,
+        actor_user_id=actor_user_id,
+    )
     db.commit()
     db.refresh(carrier)
     return carrier
@@ -221,6 +230,13 @@ def bulk_register_carriers(
             "count": len(created),
         },
     )
+    # PILOT-SCAN-001D: one permanent QR per bulk-registered Carrier, same
+    # transaction as the whole batch.
+    for carrier in created:
+        qr_provisioning.ensure_qr_identifier_for_new_entity(
+            db, tenant_id=tenant_id, farm_id=farm_id, entity_type="carrier", entity_id=carrier.id,
+            actor_user_id=actor_user_id,
+        )
     db.commit()
     for carrier in created:
         db.refresh(carrier)

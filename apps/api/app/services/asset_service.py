@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.asset import Asset
 from app.models.asset_position import AssetPosition
 from app.models.asset_type import AssetType
-from app.services import farm_service
+from app.services import farm_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.services.errors import (
     AssetNotFoundError,
@@ -104,6 +104,13 @@ def register_asset(
         entity_type="asset",
         entity_id=asset.id,
         event_data={"code": asset.code, "asset_type_code": asset_type_code},
+    )
+    # PILOT-SCAN-001D: every permanent Asset gets its permanent QR
+    # identity automatically at creation -- never a manual "Generate QR"
+    # step. Same transaction/commit as the Asset row itself.
+    qr_provisioning.ensure_qr_identifier_for_new_entity(
+        db, tenant_id=tenant_id, farm_id=farm_id, entity_type="asset", entity_id=asset.id,
+        actor_user_id=actor_user_id,
     )
     db.commit()
     db.refresh(asset)

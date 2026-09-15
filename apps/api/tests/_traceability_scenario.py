@@ -387,6 +387,20 @@ def cleanup_traceability_scenario(test_engine, tenant_id: uuid.UUID) -> None:
     trans = conn.begin()
     try:
         conn.execute(text("SET session_replication_role = replica"))
+        # PILOT-SCAN-001D: automatic creation-time QR provisioning means
+        # every Carrier/Location/Asset/crop_batch/lot this scenario commits
+        # also commits a permanent qr_identifiers row as a side effect.
+        # qr_identifiers has only outbound FKs (to the entity tables below,
+        # never the reverse), so it is always safe to delete first,
+        # regardless of what else in this scenario still exists. Without
+        # this delete, leftover rows survive into later tests in the same
+        # session and trip PILOT-SCAN-001's own downgrade guard (which
+        # counts live qr_identifiers rows, oblivious to which test created
+        # them) for every subsequent migration-downgrade test -- exactly
+        # the same class of leak this cleanup already prevents for every
+        # other append-only table it lists.
+        if conn.execute(text("SELECT to_regclass('qr_identifiers')")).scalar() is not None:
+            conn.execute(text("DELETE FROM qr_identifiers WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM produce_lot_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_ledger_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
         conn.execute(text("DELETE FROM finished_goods_storage_movements WHERE tenant_id = :tid"), {"tid": tenant_id})

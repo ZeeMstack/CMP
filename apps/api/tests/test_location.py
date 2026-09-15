@@ -190,7 +190,7 @@ def test_cross_tenant_parent_rejected(db_session, active_context_with_farm) -> N
         db_session,
         tenant_id=other_tenant.id,
         farm_id=other_farm.id,
-        actor_user_id=None,
+        actor_user_id=user.id,
         location_type_code="greenhouse",
         code="gh-other",
         name="Other GH",

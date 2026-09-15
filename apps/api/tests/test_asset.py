@@ -92,7 +92,7 @@ def test_same_asset_code_allowed_in_different_tenants(db_session, active_context
         country_code="AE", city_region=None, timezone="Asia/Dubai",
     )
     asset_b = asset_service.register_asset(
-        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=None,
+        db_session, tenant_id=other_tenant.id, farm_id=other_farm.id, actor_user_id=user.id,
         asset_type_code="weighing_scale", code="WS-01", name="Scale 1", commissioned_date=None,
     )
     assert asset_a.code == asset_b.code

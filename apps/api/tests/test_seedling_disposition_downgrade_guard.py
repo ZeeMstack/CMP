@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.settings import settings
+from tests._traceability_scenario import cleanup_traceability_scenario
 
 API_ROOT = Path(__file__).resolve().parent.parent
 _PRE_MIGRATION_REVISION = "f4a8c1e93d27"
@@ -41,6 +42,27 @@ def _assert_at_head(test_engine) -> None:
 
 
 def _cleanup(test_engine, tenant_id: uuid.UUID) -> None:
+    """PILOT-SCAN-001D closure: delegates entirely to the shared
+    `cleanup_traceability_scenario` (`tests/_traceability_scenario.py`),
+    which already covers every table this file's own `build_transplant_
+    ready_scenario` scenario can populate (Germination/SeedlingEntry/
+    Nursery-Farm-Setup Locations+Assets/carrier_specifications/qr_
+    identifiers/seedling_disposition_events+commands included). The
+    bespoke, table-by-table version this function used to inline here was
+    missing several of those -- `carrier_specifications`,
+    `germination_outcome_snapshots`, Farm-Setup `locations`/`assets` --
+    silently orphaning them (tenant deleted, FK checks bypassed by replica
+    mode) and permanently tripping unrelated downgrade guards for every
+    later test in the same session. The `latest_batch_carrier_assignment_id`
+    nulling step is no longer needed: `cleanup_traceability_scenario`
+    deletes the whole `carriers` row shortly after `batch_carrier_
+    assignments` anyway (both under the same replica-mode FK-check bypass),
+    so no dangling self-reference can outlive this cleanup."""
+    _require_cleanup_target_is_cmp_test(test_engine)
+    cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+def _require_cleanup_target_is_cmp_test(test_engine) -> None:
     with test_engine.connect() as guard_conn:
         current_db = guard_conn.execute(text("SELECT current_database()")).scalar_one()
     if current_db != "cmp_test":
@@ -48,40 +70,6 @@ def _cleanup(test_engine, tenant_id: uuid.UUID) -> None:
             f"refusing to run privileged test cleanup against database {current_db!r}; "
             "this cleanup is only permitted against 'cmp_test'"
         )
-
-    conn = test_engine.connect()
-    trans = conn.begin()
-    try:
-        conn.execute(text("SET session_replication_role = replica"))
-        conn.execute(text("DELETE FROM seedling_disposition_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM seedling_disposition_commands WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM seedling_source_checkpoints WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_allocations WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_destination_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_source_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("UPDATE carriers SET latest_batch_carrier_assignment_id = NULL WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM batch_carrier_assignments WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM transplant_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM seedling_entries WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM sowing_event_lines WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM sowing_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM batch_stage_runs WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM crop_batches WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM carriers WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM audit_events WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM farms WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM tenant_memberships WHERE tenant_id = :tid"), {"tid": tenant_id})
-        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
-    except Exception:
-        trans.rollback()
-        conn.execute(text("SET session_replication_role = DEFAULT"))
-        conn.commit()
-        raise
-    else:
-        conn.execute(text("SET session_replication_role = DEFAULT"))
-        trans.commit()
-    finally:
-        conn.close()
 
 
 def _create_minimal_tenant(session, *, code_suffix: str):
