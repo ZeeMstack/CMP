@@ -184,40 +184,71 @@ describe("LabelPreviewClient reprint reason UX (PILOT-SCAN-001E)", () => {
     expect(screen.getByText(/Reprint reason \(optional\)/)).toBeInTheDocument();
   });
 
-  it("shows the label as (required for a reprint) for an operational entity type (Batch), never (optional)", async () => {
+  it("shows the label as (required) for an operational entity type (Batch), never (optional) -- even before this session has seen any print", async () => {
     stubBatchFetch();
     renderBatchPreview();
     await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
-    expect(screen.getByText(/Reprint reason \(required for a reprint\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Reprint reason \(required\)/)).toBeInTheDocument();
     expect(screen.queryByText(/Reprint reason \(optional\)/)).not.toBeInTheDocument();
   });
 
-  it("allows a genuinely first print of an operational entity with a blank reason -- the backend itself would not require one", async () => {
+  it("PILOT-SCAN-001E FINAL CLOSURE: blocks a blank-reason print of an operational entity on the very first request of a fresh session -- never relies on this session having already observed a prior print", async () => {
     const calls = stubBatchFetch();
     renderBatchPreview();
     await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
 
+    // No print has happened yet in this render/session at all -- this is
+    // exactly the "label printed yesterday, fresh browser session today"
+    // case: the backend may already consider the NEXT request a reprint,
+    // so the UI must not assume optional just because it has not itself
+    // witnessed a prior print.
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText("A reason is required to reprint this label.")).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(0);
+  });
+
+  it("allows the print once a reason is supplied, as the very first request of the session", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "label damaged" } });
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
     await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
     expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
   });
 
-  it("blocks a blank-reason reprint of an operational entity client-side, without an extra round-trip", async () => {
+  it("continues to require a non-blank reason on a second request in the same session, and succeeds once one is given", async () => {
     const calls = stubBatchFetch();
     renderBatchPreview();
     await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
 
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "first print" } });
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
     await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
 
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
     await waitFor(() => expect(screen.getByText("A reason is required to reprint this label.")).toBeInTheDocument());
-    // Still exactly one print request -- the second click never reached the network.
     expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
 
     fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "label damaged" } });
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
     await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(2);
+  });
+
+  it("never blocks a blank reason for a permanent entity type (Carrier), regardless of session print history", async () => {
+    const calls = stubFetch();
+    renderPreview();
+    await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
+
+    expect(screen.queryByText("A reason is required to reprint this label.")).not.toBeInTheDocument();
     expect(calls.filter((c) => c.url.includes("/print")).length).toBe(2);
   });
 });

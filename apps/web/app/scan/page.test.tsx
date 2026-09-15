@@ -24,10 +24,24 @@ describe("ScanEntryPage (PILOT-SCAN-001E manual scan fallback)", () => {
     expect(pushMock).toHaveBeenCalledWith("/q/tok-abc123");
   });
 
-  it("routes a full valid GrowCMP scan URL to the same /q/[token] resolver", () => {
+  it("routes a full valid GrowCMP production scan URL to the same /q/[token] resolver", () => {
     render(<ScanEntryPage />);
     submit("https://growcmp.com/q/tok-abc123");
     expect(pushMock).toHaveBeenCalledWith("/q/tok-abc123");
+  });
+
+  it("routes a scan URL on the current application origin (dev/test) to the same /q/[token] resolver", () => {
+    expect(window.location.origin).toBe("http://localhost:3000");
+    render(<ScanEntryPage />);
+    submit("http://localhost:3000/q/tok-abc123");
+    expect(pushMock).toHaveBeenCalledWith("/q/tok-abc123");
+  });
+
+  it("rejects a third-party absolute URL even though its path is exactly /q/<token>, and never navigates", () => {
+    render(<ScanEntryPage />);
+    submit("https://evil.example/q/tok-abc123");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("rejects blank input and never navigates", () => {

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
-import { normalizeScanInput } from "@/lib/scan/normalizeScanInput";
+import { GROWCMP_PRODUCTION_ORIGIN, normalizeScanInput } from "@/lib/scan/normalizeScanInput";
 
 /** PILOT-SCAN-001E: the manual fallback entry point into the existing scan
  * flow, for an operator whose device camera can't read a damaged/dirty
@@ -22,7 +22,12 @@ export default function ScanEntryPage() {
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = normalizeScanInput(value);
+    // The current application origin (accurate in every environment --
+    // production, preview, local dev -- without hardcoding any of them)
+    // plus the one fixed production origin every printed label's QR is
+    // built against, so a token copied from a genuine printed label is
+    // still accepted while testing against a different deployment.
+    const result = normalizeScanInput(value, [window.location.origin, GROWCMP_PRODUCTION_ORIGIN]);
     if ("error" in result) {
       setError(result.error);
       return;
