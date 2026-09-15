@@ -5,8 +5,13 @@ import { useParams } from "next/navigation";
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { LocationValidationBanner } from "@/components/scan/LocationValidationBanner";
+import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
+import { WorkingLocationEstablishPanel } from "@/components/scan/WorkingLocationEstablishPanel";
 import type { ScanContext } from "@/lib/api/client";
 import { useResolveQr } from "@/lib/query/hooks";
+import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
+import { filterActionsForLocationValidation, validateScanAgainstWorkingLocation } from "@/lib/scan/validateScanAgainstWorkingLocation";
 
 const ENTITY_TYPE_LABELS: Record<ScanContext["entity_type"], string> = {
   crop_batch: "Batch",
@@ -159,9 +164,19 @@ function WhatItRelatesToNow({ ctx }: { ctx: ScanContext }) {
 export default function ScanPage() {
   const { token } = useParams<{ token: string }>();
   const scanQuery = useResolveQr(token);
+  const { workingLocation, setWorkingLocation, clearWorkingLocation } = useWorkingLocation();
+
+  const ctx = scanQuery.data;
+  // PILOT-SCAN-001F: pure, side-effect-free comparison of two already-
+  // authoritative facts -- never itself a farm transaction, never a second
+  // resolver. See lib/scan/validateScanAgainstWorkingLocation.ts.
+  const validation = ctx ? validateScanAgainstWorkingLocation(workingLocation, ctx) : { kind: "NO_WORKING_LOCATION" as const };
+  const visibleActions = ctx ? filterActionsForLocationValidation(ctx.actions ?? [], validation) : [];
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6 px-4 py-8">
+      {workingLocation && <WorkingLocationBar workingLocation={workingLocation} onClear={clearWorkingLocation} />}
+
       <div className="text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-wl-text-tertiary">growCMP</p>
       </div>
@@ -173,23 +188,50 @@ export default function ScanPage() {
        * network/permission failure for a genuinely empty entity. */}
       {scanQuery.error && <ErrorState error={scanQuery.error} onRetry={() => scanQuery.refetch()} />}
 
-      {!scanQuery.isLoading && !scanQuery.error && scanQuery.data && (
+      {!scanQuery.isLoading && !scanQuery.error && ctx && (
         <div className="flex flex-col gap-6">
           <div className="rounded-xl border border-wl-border bg-wl-surface-raised p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-wl-text-tertiary">
-              {ENTITY_TYPE_LABELS[scanQuery.data.entity_type]}
+              {ENTITY_TYPE_LABELS[ctx.entity_type]}
             </p>
-            <h1 className="font-mono text-2xl font-bold leading-tight text-wl-text">{scanQuery.data.code}</h1>
+            <h1 className="font-mono text-2xl font-bold leading-tight text-wl-text">{ctx.code}</h1>
             <div className="mt-3 border-t border-wl-border pt-3">
-              <WhatItRelatesToNow ctx={scanQuery.data} />
+              <WhatItRelatesToNow ctx={ctx} />
             </div>
           </div>
 
-          {(scanQuery.data.work_items ?? []).length > 0 && (
+          {/* PILOT-SCAN-001F: the deliberate establish/replace action --
+              only ever offered on a Location's own scan, and only ever
+              taken on an explicit click (never auto-replaces an already-
+              active working location just because another Location QR was
+              opened). */}
+          {ctx.entity_type === "location" && (
+            <WorkingLocationEstablishPanel
+              workingLocation={workingLocation}
+              scanned={{
+                locationId: ctx.location.ids[ctx.location.ids.length - 1],
+                farmId: ctx.farm_id,
+                code: ctx.code,
+                pathString: ctx.location.path_string,
+              }}
+              onUse={() =>
+                setWorkingLocation({
+                  locationId: ctx.location.ids[ctx.location.ids.length - 1],
+                  farmId: ctx.farm_id,
+                  code: ctx.code,
+                  pathString: ctx.location.path_string,
+                })
+              }
+            />
+          )}
+
+          <LocationValidationBanner result={validation} />
+
+          {(ctx.work_items ?? []).length > 0 && (
             <div className="rounded-xl border border-wl-border bg-wl-surface-raised p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-wl-text-tertiary">Related work</p>
               <ul className="mt-2 flex flex-col gap-2">
-                {(scanQuery.data.work_items ?? []).map((item) => (
+                {(ctx.work_items ?? []).map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
                     <span className="min-w-0 truncate text-wl-text">{item.title}</span>
                     <span className="shrink-0 text-xs uppercase text-wl-text-tertiary">{item.status}</span>
@@ -199,9 +241,9 @@ export default function ScanPage() {
             </div>
           )}
 
-          {(scanQuery.data.actions ?? []).length > 0 && (
+          {visibleActions.length > 0 && (
             <div className="flex flex-col gap-2">
-              {(scanQuery.data.actions ?? []).map((action) => (
+              {visibleActions.map((action) => (
                 <Link
                   key={action.href}
                   href={action.href}

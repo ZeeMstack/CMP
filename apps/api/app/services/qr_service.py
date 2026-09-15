@@ -400,7 +400,8 @@ def _get_harvested_lot_row(
 def _location_path_summary(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, location_id: uuid.UUID) -> LocationPathSummary:
     path = location_service.get_path(db, tenant_id=tenant_id, farm_id=farm_id, location_id=location_id)
     codes = [entry["code"] for entry in path]
-    return LocationPathSummary(path_string=" / ".join(codes), codes=codes)
+    ids = [entry["id"] for entry in path]
+    return LocationPathSummary(path_string=" / ".join(codes), codes=codes, ids=ids)
 
 
 def _resolved_location_summary(
@@ -411,10 +412,10 @@ def _resolved_location_summary(
     )
     if resolved["path_string"] is None:
         return None, resolved["unresolved_reason"]
-    codes = (
-        [e["code"] for e in resolved["fixed_location_path"]] if resolved["fixed_location_path"] else []
-    )
-    return LocationPathSummary(path_string=resolved["path_string"], codes=codes), None
+    fixed_path = resolved["fixed_location_path"] or []
+    codes = [e["code"] for e in fixed_path]
+    ids = [e["id"] for e in fixed_path]
+    return LocationPathSummary(path_string=resolved["path_string"], codes=codes, ids=ids), None
 
 
 def _work_item_summaries(items) -> list[ScanWorkItemSummary]:

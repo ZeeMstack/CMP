@@ -5,6 +5,7 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
 }));
 
+import { writeWorkingLocation } from "@/lib/scan/workingLocation";
 import { withQueryClient } from "@/lib/test-utils";
 
 import FarmHomePage from "./page";
@@ -68,6 +69,7 @@ function stubFetch() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 /** UI-OPT-001 Batch B restyles this page but must not change its data
@@ -108,5 +110,24 @@ describe("FarmHomePage", () => {
     render(withQueryClient(<FarmHomePage />));
     await waitFor(() => expect(screen.getByText("Growing")).toBeInTheDocument());
     expect(screen.getByText("Ready to Harvest")).toBeInTheDocument();
+  });
+});
+
+describe("FarmHomePage PILOT-SCAN-001F: working-location indicator", () => {
+  it("shows a compact working-location indicator when one is active, low-cost and non-dominant", async () => {
+    writeWorkingLocation({ locationId: "table-07", farmId: "farm-1", code: "T07", pathString: "GH-01 / Table 07" });
+    stubFetch();
+    render(withQueryClient(<FarmHomePage />));
+
+    await waitFor(() => expect(screen.getByText("Working location")).toBeInTheDocument());
+    expect(screen.getByText("GH-01 / Table 07")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /scan next/i })).toHaveAttribute("href", "/scan");
+  });
+
+  it("shows nothing extra when no working location is active", async () => {
+    stubFetch();
+    render(withQueryClient(<FarmHomePage />));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Today on the Farm" })).toBeInTheDocument());
+    expect(screen.queryByText("Working location")).not.toBeInTheDocument();
   });
 });

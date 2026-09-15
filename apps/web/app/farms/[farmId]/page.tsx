@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
 import { Button } from "@/components/ui/Button";
 import { CreateWorkItemForm, type WorkItemContextOption } from "@/components/work-items/CreateWorkItemForm";
 import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
@@ -30,6 +31,7 @@ import {
   useOperationalSummary,
   useWorkItems,
 } from "@/lib/query/hooks";
+import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
 
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
@@ -108,6 +110,7 @@ export default function FarmHomePage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const createMutation = useCreateWorkItem(farmId);
+  const { workingLocation, clearWorkingLocation } = useWorkingLocation();
 
   const locationOptions: WorkItemContextOption[] = useMemo(
     () => flattenLocationTree(locationsTreeQuery.data ?? []).map((o) => ({ id: o.id, label: o.label })),
@@ -195,6 +198,15 @@ export default function FarmHomePage() {
           )
         }
       />
+
+      {/* PILOT-SCAN-001F: low-cost indicator only -- no dashboard, no new
+          section of the page's own logic; identical component to /q and
+          /scan, reused rather than duplicated. */}
+      {workingLocation && (
+        <div className="mb-4">
+          <WorkingLocationBar workingLocation={workingLocation} onClear={clearWorkingLocation} scanLinkLabel="Scan next" />
+        </div>
+      )}
 
       {creating && (
         <div className="mb-6">

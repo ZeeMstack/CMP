@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
 import { Button } from "@/components/ui/Button";
 import { GROWCMP_PRODUCTION_ORIGIN, normalizeScanInput } from "@/lib/scan/normalizeScanInput";
+import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
 
 /** PILOT-SCAN-001E: the manual fallback entry point into the existing scan
  * flow, for an operator whose device camera can't read a damaged/dirty
@@ -19,6 +21,7 @@ export default function ScanEntryPage() {
   const router = useRouter();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const { workingLocation, clearWorkingLocation } = useWorkingLocation();
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,6 +41,13 @@ export default function ScanEntryPage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-6 px-4 py-12">
+      {/* PILOT-SCAN-001F: shown here too (never a separate comparison --
+          this is display-only), so an operator opening the manual fallback
+          mid-session still sees their active working location. */}
+      {workingLocation && (
+        <WorkingLocationBar workingLocation={workingLocation} onClear={clearWorkingLocation} showScanLink={false} />
+      )}
+
       <div className="text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-wl-text-tertiary">growCMP</p>
         <h1 className="mt-1 font-serif text-xl font-semibold text-wl-text">Scan / Enter QR</h1>
