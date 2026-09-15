@@ -10178,6 +10178,8 @@ export interface components {
             path_string: string;
             /** Codes */
             codes: string[];
+            /** Ids */
+            ids: string[];
         };
         /** LocationReactivate */
         LocationReactivate: {

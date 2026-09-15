@@ -43,6 +43,14 @@ class ScanWorkItemSummary(BaseModel):
 class LocationPathSummary(BaseModel):
     path_string: str
     codes: list[str]
+    # PILOT-SCAN-001F: stable Location ids for the same ancestor chain
+    # `codes` already describes, root-first, ending with the leaf/current
+    # Location itself -- `ids[-1]` is the authoritative current Location
+    # id, and every other entry is one of its ancestors. Location-first
+    # scan validation compares these ids, never `codes`/`path_string`
+    # (CLAUDE.md rule 3: locations are UUID-based; never string-prefix
+    # matching on a display path).
+    ids: list[uuid.UUID]
 
 
 class QrCropSummary(BaseModel):

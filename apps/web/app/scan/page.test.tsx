@@ -6,10 +6,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
+import { writeWorkingLocation } from "@/lib/scan/workingLocation";
+
 import ScanEntryPage from "./page";
 
 afterEach(() => {
   pushMock.mockClear();
+  window.localStorage.clear();
 });
 
 function submit(value: string) {
@@ -64,5 +67,29 @@ describe("ScanEntryPage (PILOT-SCAN-001E manual scan fallback)", () => {
     for (const call of pushMock.mock.calls) {
       expect(String(call[0])).toMatch(/^\/q\//);
     }
+  });
+});
+
+describe("ScanEntryPage PILOT-SCAN-001F: working-location display", () => {
+  it("shows the active working location when one is set, with no separate comparison logic", async () => {
+    writeWorkingLocation({ locationId: "table-07", farmId: "farm-1", code: "T07", pathString: "GH-01 / Table 07" });
+    render(<ScanEntryPage />);
+
+    expect(await screen.findByText("Working location")).toBeInTheDocument();
+    expect(screen.getByText("GH-01 / Table 07")).toBeInTheDocument();
+  });
+
+  it("shows nothing extra when no working location is active", () => {
+    render(<ScanEntryPage />);
+    expect(screen.queryByText("Working location")).not.toBeInTheDocument();
+  });
+
+  it("Clear removes the working location from this page too", async () => {
+    writeWorkingLocation({ locationId: "table-07", farmId: "farm-1", code: "T07", pathString: "GH-01 / Table 07" });
+    render(<ScanEntryPage />);
+
+    await screen.findByText("Working location");
+    fireEvent.click(screen.getByRole("button", { name: /clear/i }));
+    expect(screen.queryByText("Working location")).not.toBeInTheDocument();
   });
 });
