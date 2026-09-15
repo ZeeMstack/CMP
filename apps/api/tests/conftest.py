@@ -209,6 +209,29 @@ def alembic_head_restore(test_engine):
 
 
 @pytest.fixture
+def alembic_head_restore_real_downgrade(test_engine):
+    """PILOT-SCAN-001D closure (FINAL DOWNGRADE-GUARD TEST CORRECTION): the
+    opt-out sibling of `alembic_head_restore`, for the one test whose whole
+    point is proving PILOT-SCAN-001's own qr_identifiers downgrade guard
+    actually blocks. `alembic_head_restore` intercepts every `alembic.
+    command.downgrade` call and clears `qr_identifiers` first -- correct
+    for the ~34 migration/downgrade-guard tests that have nothing to do
+    with QR, but it would make it structurally impossible to ever prove the
+    QR guard itself fires, since the very state that guard reacts to would
+    always be wiped immediately before the call under test. This fixture
+    provides the exact same head-restore guarantee (start verified at
+    `cmp_test`, unconditionally re-upgrade to head at teardown regardless
+    of pass/fail) with NO monkeypatching of `command.downgrade` at all --
+    the real, unwrapped alembic entry point, so a real qr_identifiers row
+    a test committed is still there when its own downgrade call runs. The
+    `cmp_test`-only safety check (`assert_cmp_test_database`) is identical
+    and never skipped."""
+    assert_cmp_test_database(test_engine)
+    yield
+    restore_cmp_test_to_head(test_engine)
+
+
+@pytest.fixture
 def db_session(test_engine, apply_test_migrations):
     connection = test_engine.connect()
     trans = connection.begin()
