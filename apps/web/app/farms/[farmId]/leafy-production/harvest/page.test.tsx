@@ -582,6 +582,55 @@ describe("LeafyHarvestPage", () => {
   });
 });
 
+describe("LeafyHarvestPage PILOT-SCAN-001E: placement-scan (assignmentId) context", () => {
+  it("pre-selects ONLY the exact scanned placement, never the whole Batch, when Batch A has multiple simultaneous Plates", async () => {
+    // PP-001 (bca-1) and PP-002 (bca-2) are both Batch A -- scanning the
+    // PP-002 placement specifically must select ONLY PP-002, never both,
+    // and never fall back to "pick any Plate from Batch A".
+    searchParams = new URLSearchParams("assignmentId=bca-2&batchId=batch-1");
+    stubFetch({ plates: [PLATE_A, PLATE_B] });
+    render(withQueryClient(<LeafyHarvestPage />));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    // Exactly one Plate pre-selected into the draft -- PP-002, not PP-001.
+    expect(screen.getAllByLabelText(/heads harvested/i)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /remove from harvest/i })).toBeInTheDocument();
+    // PP-001 remains merely addable, never itself pre-selected.
+    const otherPlateRow = screen.getByText("PP-001 — ICE-0142").closest("li");
+    expect(otherPlateRow).not.toBeNull();
+    expect((otherPlateRow as HTMLElement).querySelector("button")?.textContent).toMatch(/add to harvest/i);
+  });
+
+  it("shows an explicit stale-context message and does NOT widen to the whole Batch when the scanned assignment is no longer harvestable", async () => {
+    // bca-999 is not present in the current harvestable-source read at
+    // all (released, already harvested, foreign farm/tenant, or simply
+    // invalid -- all collapse to "not found here").
+    searchParams = new URLSearchParams("assignmentId=bca-999&batchId=batch-1");
+    stubFetch({ plates: [PLATE_A, PLATE_B] });
+    render(withQueryClient(<LeafyHarvestPage />));
+
+    await waitFor(() => expect(screen.getByText("PP-001 — ICE-0142")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent(/no longer available for Harvest/i);
+    // Nothing pre-selected -- never a fabricated substitute placement.
+    expect(screen.queryByLabelText(/heads harvested/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /add to harvest/i })).toHaveLength(2);
+  });
+
+  it("does not re-apply the assignment context after the operator removes the pre-selected Plate", async () => {
+    searchParams = new URLSearchParams("assignmentId=bca-1");
+    stubFetch({ plates: [PLATE_A] });
+    render(withQueryClient(<LeafyHarvestPage />));
+
+    await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /remove from harvest/i }));
+
+    await waitFor(() => expect(screen.queryByLabelText(/heads harvested/i)).not.toBeInTheDocument());
+    // A later refetch (e.g. plates list invalidation) must never silently
+    // re-add the Plate the operator deliberately removed.
+    expect(screen.getAllByRole("button", { name: /add to harvest/i })).toHaveLength(1);
+  });
+});
+
 describe("LeafyHarvestPage PILOT-OPS-001 closure: Work Item linkage", () => {
   it("carries workItemId through to the Harvest command when opened for the matching Batch, and reports a successful link", async () => {
     searchParams = new URLSearchParams("batchId=batch-1&workItemId=wi-1");

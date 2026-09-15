@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+let searchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ farmId: "farm-1" }),
+  useSearchParams: () => searchParams,
 }));
 
 import { withQueryClient } from "@/lib/test-utils";
@@ -61,6 +64,7 @@ function stubFetch(overrides: { onPost?: (call: FetchCall) => Response | undefin
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  searchParams = new URLSearchParams();
 });
 
 describe("LocationsPage", () => {
@@ -247,5 +251,73 @@ describe("LocationsPage", () => {
 
     await waitFor(() => expect(screen.queryByText("Placement")).not.toBeInTheDocument());
     expect(calls.some((c) => /\/movements|\/occupanc|\/transformations/i.test(c.url))).toBe(false);
+  });
+
+  describe("PILOT-SCAN-001E: highlight query param (scanned Location -> View occupants)", () => {
+    const nestedTree = [
+      {
+        id: "gh-1",
+        code: "GH1",
+        name: "Greenhouse 1",
+        location_type_id: "type-gh",
+        status: "active",
+        occupiable: false,
+        capacity: null,
+        children: [
+          {
+            id: "zone-a",
+            code: "ZA",
+            name: "Zone A",
+            location_type_id: "type-zone",
+            status: "active",
+            occupiable: false,
+            capacity: null,
+            children: [
+              {
+                id: "table-1-pos-1",
+                code: "T1-P1",
+                name: "Position 1",
+                location_type_id: "type-position",
+                status: "active",
+                occupiable: true,
+                capacity: null,
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    function stubNestedFetch() {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/subtree-occupancy")) {
+            return jsonResponse({ root_location_id: "gh-1", aggregate_counts: [], occupied_locations: [] });
+          }
+          if (url.includes("/locations/tree")) return jsonResponse(nestedTree);
+          return jsonResponse({});
+        }),
+      );
+    }
+
+    it("visibly lands on the scanned Location -- auto-expanded and highlighted with no manual clicks", async () => {
+      searchParams = new URLSearchParams("highlight=table-1-pos-1");
+      stubNestedFetch();
+      render(withQueryClient(<LocationsPage />));
+
+      await waitFor(() => expect(screen.getByText("Position 1")).toBeInTheDocument());
+      expect(document.getElementById("location-node-table-1-pos-1")?.className).toMatch(/ring-2/);
+    });
+
+    it("renders normally with no highlight when the query param is absent", async () => {
+      stubFetch();
+      render(withQueryClient(<LocationsPage />));
+
+      await waitFor(() => expect(screen.getByText("Greenhouse 1")).toBeInTheDocument());
+      expect(document.querySelector(".ring-2")).not.toBeInTheDocument();
+    });
   });
 });

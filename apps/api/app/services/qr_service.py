@@ -459,10 +459,15 @@ def resolve_scan_context(
                 PlacementSummary(batch_carrier_assignment_id=a.id, carrier_code=a.carrier.code, location=loc)
             )
         actions = [ScanAction(label="View Batch", href=f"/farms/{farm_id}/crop-batches/{entity_id}")]
+        # PILOT-SCAN-001E: `batchId` is the actual param `observations/
+        # page.tsx` and `leafy-production/harvest/page.tsx` already read
+        # (`searchParams.get("batchId")`) -- not `crop_batch_id`, which
+        # neither page has ever consumed. Verified against each page's own
+        # source before this change (see docs/domain/QR_SCAN_MODEL.md).
         if may("observation_entry.manage"):
-            actions.append(ScanAction(label="Record Observation", href=f"/farms/{farm_id}/observations?crop_batch_id={entity_id}"))
+            actions.append(ScanAction(label="Record Observation", href=f"/farms/{farm_id}/observations?batchId={entity_id}"))
         if may("harvest.manage"):
-            actions.append(ScanAction(label="Harvest", href=f"/farms/{farm_id}/leafy-production/harvest?crop_batch_id={entity_id}"))
+            actions.append(ScanAction(label="Harvest", href=f"/farms/{farm_id}/leafy-production/harvest?batchId={entity_id}"))
         if may("traceability.read"):
             actions.append(ScanAction(label="View traceability", href=f"/farms/{farm_id}/traceability?entryType=crop-batch&id={entity_id}"))
         return CropBatchScanContext(
@@ -491,6 +496,9 @@ def resolve_scan_context(
             elif occ.occupant_asset_id is not None:
                 asset = db.get(Asset, occ.occupant_asset_id)
                 occupants.append(LocationOccupantSummary(kind="asset", code=asset.code))
+        # PILOT-SCAN-001E: `?highlight=` is now genuinely consumed by
+        # `LocationsPage`/`LocationTree` -- auto-expands the tree down to
+        # this exact Location and visually highlights/scrolls to it.
         actions = [ScanAction(label="View occupants", href=f"/farms/{farm_id}/locations?highlight={entity_id}")]
         return LocationScanContext(
             **common,
@@ -519,7 +527,16 @@ def resolve_scan_context(
             )
         actions = []
         if current_batch is not None and may("observation_entry.manage"):
-            actions.append(ScanAction(label="Record Observation", href=f"/farms/{farm_id}/observations?crop_batch_id={current_batch.id}"))
+            # PILOT-SCAN-001E: `batchId` (not `crop_batch_id`) is the actual
+            # param the Observations page reads; `assignmentId` additionally
+            # narrows the pre-selected target to this exact placement --
+            # `assignment` is already resolved above, so this is free.
+            actions.append(
+                ScanAction(
+                    label="Record Observation",
+                    href=f"/farms/{farm_id}/observations?batchId={current_batch.id}&assignmentId={assignment.id}",
+                )
+            )
         actions.append(ScanAction(label="View current occupancy", href=f"/farms/{farm_id}/carriers"))
         return CarrierScanContext(
             **common,
@@ -560,7 +577,20 @@ def resolve_scan_context(
         )
         actions = [ScanAction(label="View Batch", href=f"/farms/{farm_id}/crop-batches/{batch.id}")]
         if assignment.released_effective_time is None and may("harvest.manage"):
-            actions.append(ScanAction(label="Harvest", href=f"/farms/{farm_id}/leafy-production/harvest?assignment_id={entity_id}"))
+            # PILOT-SCAN-001E: `assignmentId` is the exact physical
+            # placement this QR identifies -- never widen this to a bare
+            # `batchId` link, which would let the operator pick ANY of the
+            # Batch's other simultaneous placements at the Harvest page,
+            # defeating the whole reason a placement has its own QR.
+            # `batchId` is included too, purely to scope the Harvest page's
+            # own `useHarvestablePlates` read efficiently; the page itself
+            # still resolves and locks onto `assignmentId` specifically.
+            actions.append(
+                ScanAction(
+                    label="Harvest",
+                    href=f"/farms/{farm_id}/leafy-production/harvest?assignmentId={entity_id}&batchId={batch.id}",
+                )
+            )
         return BatchCarrierAssignmentScanContext(
             **common,
             code=f"{batch.code} @ {carrier.code}",
@@ -581,8 +611,12 @@ def resolve_scan_context(
         lot = _get_harvested_lot_row(db, tenant_id=tenant_id, farm_id=farm_id, lot_id=entity_id)
         batch = crop_batch_service.get_batch(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=lot.batch_id)
         actions = [ScanAction(label="View Batch", href=f"/farms/{farm_id}/crop-batches/{batch.id}")]
+        # PILOT-SCAN-001E: `harvestLotId` is the actual param GradingPage
+        # reads (`searchParams.get("harvestLotId")`), matching the same
+        # param name its own Harvest-success "Grade this lot" link already
+        # uses -- not `harvested_produce_lot_id`, which it never read.
         if may("grading.manage"):
-            actions.append(ScanAction(label="Grade this lot", href=f"/farms/{farm_id}/processing/grading?harvested_produce_lot_id={entity_id}"))
+            actions.append(ScanAction(label="Grade this lot", href=f"/farms/{farm_id}/processing/grading?harvestLotId={entity_id}"))
         if may("traceability.read"):
             actions.append(ScanAction(label="View traceability", href=f"/farms/{farm_id}/traceability?entryType=hpl&id={entity_id}"))
         return HarvestedProduceLotScanContext(
@@ -605,8 +639,12 @@ def resolve_scan_context(
         event = db.get(GradingEvent, lot.grading_event_id)
         source_lot = db.get(HarvestedProduceLot, event.source_harvested_produce_lot_id)
         actions = []
+        # PILOT-SCAN-001E: `gradedLotIds` (comma-separated, PackingPage's
+        # own `contextGradedLotIds.split(",")`) is the actual param it
+        # reads -- a single id is a valid one-element list. Not
+        # `graded_produce_lot_id`, which it never read.
         if may("packing.manage"):
-            actions.append(ScanAction(label="Pack", href=f"/farms/{farm_id}/processing/packing?graded_produce_lot_id={entity_id}"))
+            actions.append(ScanAction(label="Pack", href=f"/farms/{farm_id}/processing/packing?gradedLotIds={entity_id}"))
         if may("traceability.read"):
             actions.append(ScanAction(label="View traceability", href=f"/farms/{farm_id}/traceability?entryType=gpl&id={entity_id}"))
         return GradedProduceLotScanContext(
@@ -626,8 +664,11 @@ def resolve_scan_context(
         actions = []
         if may("finished_goods_storage.manage"):
             actions.append(ScanAction(label="Cold Storage", href=f"/farms/{farm_id}/processing/finished-goods/{entity_id}"))
+        # PILOT-SCAN-001E: `finishedGoodsLotId` is the actual param
+        # DispatchPage reads (`searchParams.get("finishedGoodsLotId")`) --
+        # not `finished_goods_lot_id`, which it never read.
         if may("dispatch.manage"):
-            actions.append(ScanAction(label="Dispatch", href=f"/farms/{farm_id}/processing/dispatch?finished_goods_lot_id={entity_id}"))
+            actions.append(ScanAction(label="Dispatch", href=f"/farms/{farm_id}/processing/dispatch?finishedGoodsLotId={entity_id}"))
         if may("traceability.read"):
             actions.append(ScanAction(label="View traceability", href=f"/farms/{farm_id}/traceability?entryType=fgl&id={entity_id}"))
         return FinishedGoodsLotScanContext(

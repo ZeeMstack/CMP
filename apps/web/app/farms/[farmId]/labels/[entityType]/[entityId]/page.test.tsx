@@ -33,6 +33,21 @@ const carrierScanContext = {
   work_items: [],
 };
 
+const batchQrIdentifier = { id: "qr-2", entity_type: "crop_batch", token: "tok-batch", created_at: "2026-01-01T00:00:00Z" };
+const cropBatchScanContext = {
+  entity_type: "crop_batch",
+  qr_identifier_id: "qr-2",
+  farm_id: "farm-1",
+  code: "B-LET-2026-014",
+  crop: { code: "ICE", common_name: "Iceberg" },
+  variety: null,
+  state: "active",
+  current_stage_name: "Growing",
+  placements: [],
+  actions: [],
+  work_items: [],
+};
+
 function stubFetch(onPost?: (call: FetchCall) => Response | undefined) {
   const calls: FetchCall[] = [];
   vi.stubGlobal(
@@ -128,5 +143,81 @@ describe("LabelPreviewClient", () => {
     const encoded = screen.getByTestId("qr-value").textContent ?? "";
     expect(encoded).toBe("https://growcmp.com/q/tok-abc");
     expect(encoded).not.toContain("localhost");
+  });
+});
+
+describe("LabelPreviewClient reprint reason UX (PILOT-SCAN-001E)", () => {
+  function stubBatchFetch() {
+    const calls: FetchCall[] = [];
+    let printRequestCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (init?.method === "POST") {
+          if (url.includes("/api/farms/farm-1/qr/crop_batch/batch-1/generate")) return jsonResponse(batchQrIdentifier);
+          if (url.includes("/api/qr/tok-batch/print")) {
+            printRequestCount += 1;
+            return jsonResponse({ qr_identifier_id: "qr-2", printed_at: "2026-01-01T00:00:00Z", is_reprint: printRequestCount > 1 });
+          }
+        }
+        if (url.includes("/api/qr/tok-batch")) return jsonResponse(cropBatchScanContext);
+        return jsonResponse({});
+      }),
+    );
+    return calls;
+  }
+
+  function renderBatchPreview() {
+    return render(
+      withQueryClient(
+        <LabelPreviewClient farmId="farm-1" entityType="crop_batch" entityId="batch-1" canonicalAppOrigin="https://growcmp.com" />,
+      ),
+    );
+  }
+
+  it("shows the label as (optional) for a permanent entity type (Carrier)", async () => {
+    stubFetch();
+    renderPreview();
+    await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
+    expect(screen.getByText(/Reprint reason \(optional\)/)).toBeInTheDocument();
+  });
+
+  it("shows the label as (required for a reprint) for an operational entity type (Batch), never (optional)", async () => {
+    stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+    expect(screen.getByText(/Reprint reason \(required for a reprint\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reprint reason \(optional\)/)).not.toBeInTheDocument();
+  });
+
+  it("allows a genuinely first print of an operational entity with a blank reason -- the backend itself would not require one", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
+  });
+
+  it("blocks a blank-reason reprint of an operational entity client-side, without an extra round-trip", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText("A reason is required to reprint this label.")).toBeInTheDocument());
+    // Still exactly one print request -- the second click never reached the network.
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "label damaged" } });
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(2);
   });
 });

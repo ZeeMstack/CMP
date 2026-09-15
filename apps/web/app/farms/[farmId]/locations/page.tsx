@@ -2,7 +2,7 @@
 
 import { Package, PlusCircle, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -23,6 +23,13 @@ function errorMessage(error: unknown): string {
 
 export default function LocationsPage() {
   const { farmId } = useParams<{ farmId: string }>();
+  const searchParams = useSearchParams();
+  // PILOT-SCAN-001E: a scanned Location's "View occupants" action --
+  // resolved and applied entirely client-side against this page's own
+  // already-loaded tree (`LocationTree` auto-expands/highlights/scrolls to
+  // it); never a second fetch, never trusted for anything but locating an
+  // already-authoritative node in already-authoritative data.
+  const highlightedLocationId = searchParams.get("highlight");
   const { data, isLoading, error, refetch } = useLocationsTree(farmId);
   const [showAddForm, setShowAddForm] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -113,7 +120,7 @@ export default function LocationsPage() {
           )}
           {data && data.length > 0 && (
             <div className="rounded-xl border border-border-subtle bg-surface p-2">
-              <LocationTree nodes={data} farmId={farmId} />
+              <LocationTree nodes={data} farmId={farmId} highlightedLocationId={highlightedLocationId} />
             </div>
           )}
         </>

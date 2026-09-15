@@ -175,9 +175,23 @@ export default function FarmHomePage() {
         description={farm ? farm.name : undefined}
         actions={
           !creating && (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              New work item
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* PILOT-SCAN-001E: a compact fallback for an operator whose
+                  device camera can't read a damaged/dirty label -- the
+                  physical QR itself already opens `/q/{token}` directly via
+                  the device's own native camera app, so this deliberately
+                  stays small and secondary next to "New work item", never a
+                  dominant feature of this page. */}
+              <Link
+                href="/scan"
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+              >
+                Scan / Enter QR
+              </Link>
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                New work item
+              </Button>
+            </div>
           )
         }
       />

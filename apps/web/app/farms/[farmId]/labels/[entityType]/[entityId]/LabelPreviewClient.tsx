@@ -29,6 +29,12 @@ function isEligibleEntityType(value: string): value is QrEntityType {
   return (ELIGIBLE_ENTITY_TYPES as readonly string[]).includes(value);
 }
 
+/** PILOT-SCAN-001E: mirrors `qr_service.record_label_print`'s own
+ * `_PERMANENT_ENTITY_TYPES` exactly (backend policy, unchanged) -- a
+ * reprint reason is required for every OTHER (operational/lot) entity
+ * type, never for these three. */
+const PERMANENT_ENTITY_TYPES: readonly QrEntityType[] = ["carrier", "asset", "location"];
+
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
 }
@@ -134,7 +140,11 @@ export function LabelPreviewClient({
           <div className="flex flex-wrap items-end gap-3 print:hidden">
             <div className="flex flex-col gap-1">
               <label htmlFor="reprint-reason" className="text-sm font-medium text-wl-text">
-                Reprint reason (optional)
+                {/* PILOT-SCAN-001E: reflects the actual backend rule
+                    (`record_label_print`'s own `_PERMANENT_ENTITY_TYPES`
+                    check) instead of unconditionally saying "(optional)" --
+                    never changes when that rule is actually enforced. */}
+                Reprint reason {PERMANENT_ENTITY_TYPES.includes(scanQuery.data.entity_type) ? "(optional)" : "(required for a reprint)"}
               </label>
               <input
                 id="reprint-reason"
@@ -149,6 +159,23 @@ export function LabelPreviewClient({
               variant="primary"
               onClick={() => {
                 setPrintError(null);
+                // PILOT-SCAN-001E: once this session has already printed
+                // this identity once, the NEXT print is guaranteed a
+                // reprint server-side -- block a known-required blank
+                // reason client-side rather than round-tripping to the
+                // 400 the backend would return anyway. A genuinely first
+                // print of an operational entity is never blocked here:
+                // the backend itself does not require a reason for it
+                // (`is_reprint` is false), and this UI must not be
+                // stricter than the actual backend policy.
+                if (
+                  lastPrinted !== null &&
+                  !PERMANENT_ENTITY_TYPES.includes(scanQuery.data.entity_type) &&
+                  !reprintReason.trim()
+                ) {
+                  setPrintError("A reason is required to reprint this label.");
+                  return;
+                }
                 printMutation.mutate(
                   {
                     template: `${scanQuery.data.entity_type}_${labelContentFor(scanQuery.data).size}`,

@@ -41,9 +41,25 @@ export default function LeafyHarvestPage() {
   // this page (the harvestable-plates panel).
   const prefillBatchId = searchParams.get("batchId");
   const prefillWorkItemId = searchParams.get("workItemId");
+  // PILOT-SCAN-001E: a scanned `batch_carrier_assignment` (Placement) QR
+  // identifies ONE specific physical portion of a Batch -- if that Batch is
+  // simultaneously split across GH1 and GH2, scanning the GH1 placement
+  // must select ONLY that exact source, never "the whole Batch, pick any
+  // Plate." `batchId` may also be present (sent alongside, purely to scope
+  // the `useHarvestablePlates` read below); `assignmentId` is always the
+  // narrower, authoritative context when both are present.
+  const prefillAssignmentId = searchParams.get("assignmentId");
 
   const [tab, setTab] = useState<"harvestable" | "history">("harvestable");
   const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
+  // Resolved exactly once against this page's own scoped `useHarvestablePlates`
+  // read, mirroring GradingPage's/DispatchPage's identical `?...Id=`
+  // resolve-once pattern exactly. Never silently falls back to the whole
+  // Batch: a released/harvested/foreign/invalid assignment id (anything not
+  // present in the CURRENT harvestable-source read, for any reason) is
+  // reported via `assignmentContextInvalid`, never guessed or substituted.
+  const [assignmentContextResolved, setAssignmentContextResolved] = useState(!prefillAssignmentId);
+  const [assignmentContextInvalid, setAssignmentContextInvalid] = useState(false);
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
     lotId: string; lotCode: string; batchCode: string; totalHeads: number; totalWeight: string; plateCount: number;
@@ -77,6 +93,26 @@ export default function LeafyHarvestPage() {
   // just-invalidated) query data, mirroring leafy-production/page.tsx's
   // own `selectedPlate` derivation exactly.
   const allPlates = harvestablePlatesQuery.data ?? [];
+
+  // Resolve the `?assignmentId=` context exactly once, against this page's
+  // own scoped read -- never before the list has actually loaded, and
+  // never more than once, so a later refetch (e.g. after recording) can't
+  // re-fire this and silently swap the operator's already-selected source.
+  // Reusing this SAME read for the safety check is deliberate: it is the
+  // authoritative, current-state list of what is actually still harvestable
+  // right now, so "not found here" already means released, harvested, on a
+  // different farm/tenant, or simply invalid -- no separate lookup, no
+  // fabricated distinction between those cases.
+  if (!assignmentContextResolved && !harvestablePlatesQuery.isLoading && !harvestablePlatesQuery.isError) {
+    const match = allPlates.find((p) => p.current_batch_carrier_assignment_id === prefillAssignmentId);
+    if (match) {
+      setSelectedAssignmentIds((ids) => (ids.includes(match.current_batch_carrier_assignment_id) ? ids : [...ids, match.current_batch_carrier_assignment_id]));
+    } else {
+      setAssignmentContextInvalid(true);
+    }
+    setAssignmentContextResolved(true);
+  }
+
   const selectedPlates: HarvestablePlateRead[] = selectedAssignmentIds
     .map((id) => allPlates.find((p) => p.current_batch_carrier_assignment_id === id))
     .filter((p): p is HarvestablePlateRead => Boolean(p));
@@ -117,6 +153,17 @@ export default function LeafyHarvestPage() {
           History" and back never wipes an in-progress Harvest draft --
           mirrors PackingPage/GradingPage's identical `hidden` convention. */}
       <div hidden={tab !== "harvestable"} className="flex flex-col gap-4">
+        {assignmentContextInvalid && !recordSuccess && (
+          <div role="alert" className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              The scanned placement is no longer available for Harvest here -- it may have been released, already
+              harvested, or belongs to a different farm. Re-scan its current label, or select a source below.
+            </span>
+            <LinkButton variant="secondary" href={`/farms/${farmId}`}>
+              Open Today on the Farm
+            </LinkButton>
+          </div>
+        )}
         {recordSuccess ? (
           <div className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
             <h2 className="font-serif text-base font-semibold text-wl-text">Harvest recorded</h2>
