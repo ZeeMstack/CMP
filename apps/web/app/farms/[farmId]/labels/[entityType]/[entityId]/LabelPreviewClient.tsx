@@ -29,6 +29,31 @@ function isEligibleEntityType(value: string): value is QrEntityType {
   return (ELIGIBLE_ENTITY_TYPES as readonly string[]).includes(value);
 }
 
+/** PILOT-SCAN-001E: mirrors `qr_service.record_label_print`'s own
+ * `_PERMANENT_ENTITY_TYPES` exactly (backend policy, unchanged) -- a
+ * reprint reason is required for every OTHER (operational/lot) entity
+ * type, never for these three.
+ *
+ * FINAL CLOSURE: the backend only knows whether THIS particular print is a
+ * reprint at print-request time (it counts prior `qr_label_print_requested`
+ * audit events server-side) -- neither `ScanContext` nor `QrIdentifierRead`
+ * exposes that fact on a plain read, and there is no existing audit-read
+ * endpoint the frontend could call cheaply to learn it in advance. Tracking
+ * "have I personally seen this print before" in browser-session state (this
+ * component's own earlier revision) is therefore never truthful: a label
+ * printed yesterday, reopened in a fresh browser session today, would still
+ * report itself as "optional" even though the very next print request the
+ * backend receives is a genuine reprint it will reject over a blank reason.
+ * Rather than build a new backend read just to answer "has this ever been
+ * printed" (out of scope -- no new QR architecture), every print request
+ * for a non-permanent entity type requires a non-blank reason client-side,
+ * unconditionally -- never dependent on this session's own print history.
+ * This can never contradict the backend: a genuine first print accepts a
+ * non-blank `reason` exactly as readily as it accepts `null`, so requiring
+ * one client-side here is strictly more cautious than the backend, never
+ * stricter in a way the backend would reject. */
+const PERMANENT_ENTITY_TYPES: readonly QrEntityType[] = ["carrier", "asset", "location"];
+
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
 }
@@ -134,7 +159,14 @@ export function LabelPreviewClient({
           <div className="flex flex-wrap items-end gap-3 print:hidden">
             <div className="flex flex-col gap-1">
               <label htmlFor="reprint-reason" className="text-sm font-medium text-wl-text">
-                Reprint reason (optional)
+                {/* PILOT-SCAN-001E FINAL CLOSURE: never claims "(optional)"
+                    for an entity type whose backend reprint policy can
+                    reject a blank reason -- since the frontend cannot
+                    truthfully know in advance whether THIS request is a
+                    reprint (see PERMANENT_ENTITY_TYPES doc comment above),
+                    it says "(required)" for every non-permanent entity
+                    type unconditionally, never only "for a reprint". */}
+                Reprint reason {PERMANENT_ENTITY_TYPES.includes(scanQuery.data.entity_type) ? "(optional)" : "(required)"}
               </label>
               <input
                 id="reprint-reason"
@@ -149,6 +181,17 @@ export function LabelPreviewClient({
               variant="primary"
               onClick={() => {
                 setPrintError(null);
+                // PILOT-SCAN-001E FINAL CLOSURE: blocks a blank reason for
+                // every non-permanent entity type on every request, never
+                // only after this session has itself observed a prior
+                // print -- see PERMANENT_ENTITY_TYPES doc comment above for
+                // why session-observed history can never be trusted here
+                // (a label printed in an earlier session is still a
+                // reprint the backend will reject a blank reason for).
+                if (!PERMANENT_ENTITY_TYPES.includes(scanQuery.data.entity_type) && !reprintReason.trim()) {
+                  setPrintError("A reason is required to reprint this label.");
+                  return;
+                }
                 printMutation.mutate(
                   {
                     template: `${scanQuery.data.entity_type}_${labelContentFor(scanQuery.data).size}`,

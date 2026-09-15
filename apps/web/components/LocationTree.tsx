@@ -2,7 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import type { LocationAggregateCount, LocationTreeNode as LocationTreeNodeType, OccupiedLocation } from "@/lib/api/client";
@@ -12,6 +12,20 @@ type OccupancyLookup = {
   aggregateByLocationId: Map<string, LocationAggregateCount>;
   occupiedByLocationId: Map<string, OccupiedLocation>;
 };
+
+/** PILOT-SCAN-001E: every ancestor id (INCLUDING the target itself) on the
+ * path from a root node down to `targetId`, or `null` if it isn't in this
+ * tree at all -- used only to force those ancestors' branches open so a
+ * scanned Location's "View occupants" action actually lands on something
+ * visible, never a collapsed, buried row. */
+function findAncestorPath(nodes: LocationTreeNodeType[], targetId: string): string[] | null {
+  for (const node of nodes) {
+    if (node.id === targetId) return [node.id];
+    const childPath = findAncestorPath(node.children, targetId);
+    if (childPath) return [node.id, ...childPath];
+  }
+  return null;
+}
 
 function AggregateCountLabel({ aggregate }: { aggregate: LocationAggregateCount | undefined }) {
   if (!aggregate) return null;
@@ -63,14 +77,19 @@ function TreeNode({
   farmId,
   depth,
   occupancy,
+  autoExpandIds,
+  highlightedLocationId,
 }: {
   node: LocationTreeNodeType;
   farmId: string;
   depth: number;
   occupancy: OccupancyLookup | null;
+  autoExpandIds: Set<string> | null;
+  highlightedLocationId?: string | null;
 }) {
-  const [expanded, setExpanded] = useState(depth < 1);
+  const [expanded, setExpanded] = useState(depth < 1 || (autoExpandIds?.has(node.id) ?? false));
   const hasChildren = node.children.length > 0;
+  const isHighlighted = highlightedLocationId != null && node.id === highlightedLocationId;
 
   // Only a genuine root branch (depth 0, no ancestor already providing
   // occupancy) issues its own subtree-occupancy request -- one request per
@@ -95,7 +114,10 @@ function TreeNode({
   return (
     <li>
       <div
-        className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1 hover:bg-surface-subtle"
+        id={`location-node-${node.id}`}
+        className={`flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1 hover:bg-surface-subtle ${
+          isHighlighted ? "ring-2 ring-brand-600 bg-brand-50" : ""
+        }`}
         style={{ paddingLeft: depth * 16 }}
       >
         {hasChildren ? (
@@ -141,7 +163,15 @@ function TreeNode({
       {hasChildren && expanded && (
         <ul>
           {node.children.map((child) => (
-            <TreeNode key={child.id} node={child} farmId={farmId} depth={depth + 1} occupancy={resolvedOccupancy} />
+            <TreeNode
+              key={child.id}
+              node={child}
+              farmId={farmId}
+              depth={depth + 1}
+              occupancy={resolvedOccupancy}
+              autoExpandIds={autoExpandIds}
+              highlightedLocationId={highlightedLocationId}
+            />
           ))}
         </ul>
       )}
@@ -153,12 +183,45 @@ function TreeNode({
  * fixed depth (greenhouse/zone/span/table). Occupancy facts are fetched
  * once per expanded top-level branch (see TreeNode) and merged onto this
  * already-loaded structure client-side; there is no per-leaf "check
- * occupancy" interaction. */
-export function LocationTree({ nodes, farmId }: { nodes: LocationTreeNodeType[]; farmId: string }) {
+ * occupancy" interaction.
+ *
+ * PILOT-SCAN-001E: `highlightedLocationId` (from a scanned Location's own
+ * "View occupants" action, `?highlight=`) auto-expands every ancestor
+ * branch down to that exact node and highlights + scrolls to it -- a
+ * scanned Location action must visibly land on the scanned Location, never
+ * just open the generic list with nothing selected. */
+export function LocationTree({
+  nodes,
+  farmId,
+  highlightedLocationId,
+}: {
+  nodes: LocationTreeNodeType[];
+  farmId: string;
+  highlightedLocationId?: string | null;
+}) {
+  const autoExpandIds = useMemo(() => {
+    if (!highlightedLocationId) return null;
+    const path = findAncestorPath(nodes, highlightedLocationId);
+    return path ? new Set(path) : null;
+  }, [nodes, highlightedLocationId]);
+
+  useEffect(() => {
+    if (!highlightedLocationId) return;
+    document.getElementById(`location-node-${highlightedLocationId}`)?.scrollIntoView({ block: "center" });
+  }, [highlightedLocationId, autoExpandIds]);
+
   return (
     <ul role="tree" aria-label="Locations" className="divide-y divide-border-subtle">
       {nodes.map((node) => (
-        <TreeNode key={node.id} node={node} farmId={farmId} depth={0} occupancy={null} />
+        <TreeNode
+          key={node.id}
+          node={node}
+          farmId={farmId}
+          depth={0}
+          occupancy={null}
+          autoExpandIds={autoExpandIds}
+          highlightedLocationId={highlightedLocationId}
+        />
       ))}
     </ul>
   );

@@ -159,4 +159,43 @@ describe("LocationTree", () => {
 
     await waitFor(() => expect(screen.getAllByText("Empty").length).toBe(2));
   });
+
+  describe("PILOT-SCAN-001E: highlightedLocationId (scanned Location -> View occupants)", () => {
+    it("auto-expands every ancestor branch and reveals a deeply-nested highlighted node with no manual clicks", () => {
+      stubFetchWithSubtreeOccupancy({ root_location_id: "gh-1", aggregate_counts: [], occupied_locations: [] });
+      render(withQueryClient(<LocationTree nodes={tree} farmId="farm-1" highlightedLocationId="table-1-pos-2" />));
+
+      // Zone A is NOT a depth<1 auto-expanded node on its own -- only the
+      // ancestor-path forcing (because it leads to the highlighted node)
+      // reveals Position 2 with zero clicks.
+      expect(screen.getByText("Position 2")).toBeInTheDocument();
+    });
+
+    it("visibly marks the exact highlighted node, never a different one", () => {
+      stubFetchWithSubtreeOccupancy({ root_location_id: "gh-1", aggregate_counts: [], occupied_locations: [] });
+      render(withQueryClient(<LocationTree nodes={tree} farmId="farm-1" highlightedLocationId="table-1-pos-1" />));
+
+      const highlightedRow = document.getElementById("location-node-table-1-pos-1");
+      const otherRow = document.getElementById("location-node-table-1-pos-2");
+      expect(highlightedRow?.className).toMatch(/ring-2/);
+      expect(otherRow?.className).not.toMatch(/ring-2/);
+    });
+
+    it("scrolls the highlighted node into view", () => {
+      const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+      stubFetchWithSubtreeOccupancy({ root_location_id: "gh-1", aggregate_counts: [], occupied_locations: [] });
+      render(withQueryClient(<LocationTree nodes={tree} farmId="farm-1" highlightedLocationId="table-1-pos-1" />));
+
+      expect(scrollIntoView).toHaveBeenCalled();
+      scrollIntoView.mockRestore();
+    });
+
+    it("renders normally (root-only auto-expand, no highlight) when highlightedLocationId is absent", () => {
+      stubFetchWithSubtreeOccupancy({ root_location_id: "gh-1", aggregate_counts: [], occupied_locations: [] });
+      render(withQueryClient(<LocationTree nodes={tree} farmId="farm-1" />));
+
+      expect(screen.queryByText("Position 1")).not.toBeInTheDocument();
+      expect(document.querySelector(".ring-2")).not.toBeInTheDocument();
+    });
+  });
 });

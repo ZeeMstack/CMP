@@ -33,6 +33,21 @@ const carrierScanContext = {
   work_items: [],
 };
 
+const batchQrIdentifier = { id: "qr-2", entity_type: "crop_batch", token: "tok-batch", created_at: "2026-01-01T00:00:00Z" };
+const cropBatchScanContext = {
+  entity_type: "crop_batch",
+  qr_identifier_id: "qr-2",
+  farm_id: "farm-1",
+  code: "B-LET-2026-014",
+  crop: { code: "ICE", common_name: "Iceberg" },
+  variety: null,
+  state: "active",
+  current_stage_name: "Growing",
+  placements: [],
+  actions: [],
+  work_items: [],
+};
+
 function stubFetch(onPost?: (call: FetchCall) => Response | undefined) {
   const calls: FetchCall[] = [];
   vi.stubGlobal(
@@ -128,5 +143,112 @@ describe("LabelPreviewClient", () => {
     const encoded = screen.getByTestId("qr-value").textContent ?? "";
     expect(encoded).toBe("https://growcmp.com/q/tok-abc");
     expect(encoded).not.toContain("localhost");
+  });
+});
+
+describe("LabelPreviewClient reprint reason UX (PILOT-SCAN-001E)", () => {
+  function stubBatchFetch() {
+    const calls: FetchCall[] = [];
+    let printRequestCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (init?.method === "POST") {
+          if (url.includes("/api/farms/farm-1/qr/crop_batch/batch-1/generate")) return jsonResponse(batchQrIdentifier);
+          if (url.includes("/api/qr/tok-batch/print")) {
+            printRequestCount += 1;
+            return jsonResponse({ qr_identifier_id: "qr-2", printed_at: "2026-01-01T00:00:00Z", is_reprint: printRequestCount > 1 });
+          }
+        }
+        if (url.includes("/api/qr/tok-batch")) return jsonResponse(cropBatchScanContext);
+        return jsonResponse({});
+      }),
+    );
+    return calls;
+  }
+
+  function renderBatchPreview() {
+    return render(
+      withQueryClient(
+        <LabelPreviewClient farmId="farm-1" entityType="crop_batch" entityId="batch-1" canonicalAppOrigin="https://growcmp.com" />,
+      ),
+    );
+  }
+
+  it("shows the label as (optional) for a permanent entity type (Carrier)", async () => {
+    stubFetch();
+    renderPreview();
+    await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
+    expect(screen.getByText(/Reprint reason \(optional\)/)).toBeInTheDocument();
+  });
+
+  it("shows the label as (required) for an operational entity type (Batch), never (optional) -- even before this session has seen any print", async () => {
+    stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+    expect(screen.getByText(/Reprint reason \(required\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reprint reason \(optional\)/)).not.toBeInTheDocument();
+  });
+
+  it("PILOT-SCAN-001E FINAL CLOSURE: blocks a blank-reason print of an operational entity on the very first request of a fresh session -- never relies on this session having already observed a prior print", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    // No print has happened yet in this render/session at all -- this is
+    // exactly the "label printed yesterday, fresh browser session today"
+    // case: the backend may already consider the NEXT request a reprint,
+    // so the UI must not assume optional just because it has not itself
+    // witnessed a prior print.
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText("A reason is required to reprint this label.")).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(0);
+  });
+
+  it("allows the print once a reason is supplied, as the very first request of the session", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "label damaged" } });
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
+  });
+
+  it("continues to require a non-blank reason on a second request in the same session, and succeeds once one is given", async () => {
+    const calls = stubBatchFetch();
+    renderBatchPreview();
+    await waitFor(() => expect(screen.getByText("B-LET-2026-014")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "first print" } });
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText("A reason is required to reprint this label.")).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(1);
+
+    fireEvent.change(screen.getByLabelText(/reprint reason/i), { target: { value: "label damaged" } });
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(2);
+  });
+
+  it("never blocks a blank reason for a permanent entity type (Carrier), regardless of session print history", async () => {
+    const calls = stubFetch();
+    renderPreview();
+    await waitFor(() => expect(screen.getByText("PP-0147")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/print requested/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /print label/i }));
+    await waitFor(() => expect(screen.getByText(/reprint requested/i)).toBeInTheDocument());
+
+    expect(screen.queryByText("A reason is required to reprint this label.")).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.url.includes("/print")).length).toBe(2);
   });
 });

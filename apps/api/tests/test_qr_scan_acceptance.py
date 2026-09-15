@@ -463,3 +463,134 @@ def test_carrier_reused_by_a_later_batch_shows_new_current_occupant_while_old_pl
     finally:
         if tenant_id is not None:
             cleanup_traceability_scenario(test_engine, tenant_id)
+
+
+def _action_href(body: dict, label: str) -> str:
+    for action in body.get("actions", []):
+        if action["label"] == label:
+            return action["href"]
+    raise AssertionError(f"no action labelled {label!r} in {body.get('actions')!r}")
+
+
+@pytest.mark.integration
+def test_prepared_action_hrefs_use_the_actual_destination_page_query_params(test_engine) -> None:
+    """PILOT-SCAN-001E: every prepared `actions[].href` this module
+    generates must use the query parameter name its destination page
+    actually reads via `useSearchParams().get(...)` -- verified directly
+    against each page's own source before this ticket
+    (`observations/page.tsx` -> `batchId`/`assignmentId`; `leafy-production/
+    harvest/page.tsx` -> `batchId`/`assignmentId`; `processing/grading/
+    page.tsx` -> `harvestLotId`; `processing/packing/page.tsx` ->
+    `gradedLotIds`; `processing/dispatch/page.tsx` -> `finishedGoodsLotId`;
+    `locations/page.tsx` -> `highlight`). Proof-by-href-content, not by
+    re-implementing each frontend page's own logic here -- the frontend's
+    own page tests (added alongside this one) prove the receiving end
+    actually consumes it."""
+    tenant_id = None
+    try:
+        with committed_connection(test_engine) as db:
+            tenant, user, farm = build_committed_tenant_farm(db)
+            tenant_id = tenant.id
+            scaffold = build_batch_with_assignments(
+                db, tenant, user, farm, carrier_count=1, carrier_type_code="cultivation_plate"
+            )
+            batch_id = scaffold["batch"].id
+            carrier = scaffold["carriers"][0]
+            assignment_id = scaffold["assignment_ids"][0]
+
+            table_a, _table_b = _make_grow_tables(db, tenant, user, farm, suffix="href", count=2)
+            movement_service.execute_movement(
+                db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+                effective_time=now(), occupant_kind="carrier", occupant_id=carrier.id, destination_kind="location",
+                destination_id=table_a.id, reason=None,
+            )
+
+            _, hpl_id = harvest_all(
+                db, tenant, user, farm, batch_id=batch_id, assignment_ids=[assignment_id],
+                weight_per_line=Decimal("5.000"),
+            )
+            fg_lot_id, packing_event_id = pack_lot(
+                db, tenant, user, farm, produce_lot_id=hpl_id, weight=Decimal("5.000"), package_count=5,
+            )
+            gpl_id = db.execute(
+                text("SELECT graded_produce_lot_id FROM packing_input_lines WHERE packing_event_id = :eid"),
+                {"eid": packing_event_id},
+            ).scalar_one()
+            db.commit()
+            farm_id, carrier_id, table_a_id = farm.id, carrier.id, table_a.id
+
+            headers = {"X-Dev-Tenant-Id": str(tenant.id), "X-Dev-User-Id": str(user.id)}
+            app.dependency_overrides[get_db] = lambda: db
+            app.dependency_overrides[get_engine] = lambda: test_engine
+            client = TestClient(app)
+            client.__enter__()
+            try:
+
+                def resolve(entity_type: str, entity_id) -> dict:
+                    resp = client.post(f"/farms/{farm_id}/qr/{entity_type}/{entity_id}/generate", headers=headers)
+                    assert resp.status_code == 200, resp.text
+                    token = resp.json()["token"]
+                    resp = client.get(f"/qr/{token}", headers=headers)
+                    assert resp.status_code == 200, resp.text
+                    return resp.json()
+
+                # crop_batch -> Observation / Harvest use `batchId`, never
+                # the backend's own internal `crop_batch_id` naming.
+                batch_body = resolve("crop_batch", batch_id)
+                assert _action_href(batch_body, "Record Observation") == f"/farms/{farm_id}/observations?batchId={batch_id}"
+                assert _action_href(batch_body, "Harvest") == f"/farms/{farm_id}/leafy-production/harvest?batchId={batch_id}"
+                # Traceability deep-links are untouched by this ticket.
+                assert (
+                    _action_href(batch_body, "View traceability")
+                    == f"/farms/{farm_id}/traceability?entryType=crop-batch&id={batch_id}"
+                )
+
+                # carrier -> Observation carries both the current Batch and
+                # the exact current placement (assignment), never only the
+                # Batch.
+                carrier_body = resolve("carrier", carrier_id)
+                assert (
+                    _action_href(carrier_body, "Record Observation")
+                    == f"/farms/{farm_id}/observations?batchId={batch_id}&assignmentId={assignment_id}"
+                )
+
+                # batch_carrier_assignment -> Harvest carries the exact
+                # placement as `assignmentId` (never widened to `batchId`
+                # alone), plus `batchId` only to scope the read.
+                assignment_body = resolve("batch_carrier_assignment", assignment_id)
+                assert (
+                    _action_href(assignment_body, "Harvest")
+                    == f"/farms/{farm_id}/leafy-production/harvest?assignmentId={assignment_id}&batchId={batch_id}"
+                )
+
+                # location -> View occupants carries `highlight`.
+                location_body = resolve("location", table_a_id)
+                assert (
+                    _action_href(location_body, "View occupants")
+                    == f"/farms/{farm_id}/locations?highlight={table_a_id}"
+                )
+
+                # harvested_produce_lot -> Grading uses `harvestLotId`.
+                hpl_body = resolve("harvested_produce_lot", hpl_id)
+                assert (
+                    _action_href(hpl_body, "Grade this lot")
+                    == f"/farms/{farm_id}/processing/grading?harvestLotId={hpl_id}"
+                )
+
+                # graded_produce_lot -> Packing uses `gradedLotIds`.
+                gpl_body = resolve("graded_produce_lot", gpl_id)
+                assert _action_href(gpl_body, "Pack") == f"/farms/{farm_id}/processing/packing?gradedLotIds={gpl_id}"
+
+                # finished_goods_lot -> Dispatch uses `finishedGoodsLotId`.
+                fgl_body = resolve("finished_goods_lot", fg_lot_id)
+                assert (
+                    _action_href(fgl_body, "Dispatch")
+                    == f"/farms/{farm_id}/processing/dispatch?finishedGoodsLotId={fg_lot_id}"
+                )
+            finally:
+                client.__exit__(None, None, None)
+                app.dependency_overrides.pop(get_db, None)
+                app.dependency_overrides.pop(get_engine, None)
+    finally:
+        if tenant_id is not None:
+            cleanup_traceability_scenario(test_engine, tenant_id)
