@@ -11,6 +11,8 @@ from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
+from app.models.crop_issue import CropIssue
+from app.models.crop_issue_follow_up import CropIssueFollowUp
 from app.models.dispatch_event import DispatchEvent
 from app.models.dispatch_line import DispatchLine
 from app.models.farm import Farm
@@ -21,6 +23,9 @@ from app.models.germination_check import GerminationCheck
 from app.models.germination_outcome_snapshot import GerminationOutcomeSnapshot
 from app.models.goods_receipt import GoodsReceipt
 from app.models.goods_receipt_line import GoodsReceiptLine
+from app.models.grower_inspection import GrowerInspection
+from app.models.growing_protocol import GrowingProtocol
+from app.models.growing_protocol_version import GrowingProtocolVersion
 from app.models.inventory_category import InventoryCategory
 from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_item import InventoryItem
@@ -39,7 +44,11 @@ from app.models.observation_value import ObservationValue
 from app.models.occupancy import Occupancy
 from app.models.occupancy_compatibility_rule import OccupancyCompatibilityRule
 from app.models.platform_admin import PlatformAdmin
+from app.models.batch_protocol_assignment import BatchProtocolAssignment
+from app.models.inspection_finding import InspectionFinding
 from app.models.production_system import ProductionSystem
+from app.models.protocol_care_activity import ProtocolCareActivity
+from app.models.protocol_observation_requirement import ProtocolObservationRequirement
 from app.models.qr_identifier import QrIdentifier
 from app.models.quality_disposition_event import QualityDispositionEvent
 from app.models.quality_hold import QualityHold

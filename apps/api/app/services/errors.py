@@ -2446,3 +2446,78 @@ class QrReprintReasonRequiredError(DomainError):
     Carrier/Asset/Location label reprint never requires one."""
 
     pass
+
+
+# --- PILOT-AGRO-001: Growing Protocol / Grower Inspection / Crop Issue -----------
+
+
+class GrowingProtocolNotFoundError(DomainError):
+    pass
+
+
+class DuplicateGrowingProtocolCodeError(DomainError):
+    pass
+
+
+class GrowingProtocolVersionNotFoundError(DomainError):
+    pass
+
+
+class GrowingProtocolVersionNotDraftError(DomainError):
+    """Raised when a mutation that requires a DRAFT version (adding an
+    observation requirement/care activity, or activating) targets a
+    version that is already ACTIVE or RETIRED -- agronomic content is
+    immutable once a version leaves DRAFT; the only path forward is a new
+    version (PILOT-AGRO-001 section 2)."""
+
+    pass
+
+
+class GrowingProtocolVersionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class BatchProtocolAssignmentCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class BatchProtocolVersionNotActiveError(DomainError):
+    """Raised when a Batch is assigned a `GrowingProtocolVersion` that is
+    not currently ACTIVE (PILOT-AGRO-001 section 6/19 -- only an ACTIVE
+    version may be assigned)."""
+
+    pass
+
+
+class GrowerInspectionNotFoundError(DomainError):
+    pass
+
+
+class GrowerInspectionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class GrowerInspectionValidationError(DomainError):
+    """Raised for inspection-shape violations this codebase validates at
+    the service layer rather than a DB CHECK, mirroring `Observation
+    ValidationError`'s own established convention -- in particular a
+    Finding's `affected_count` exceeding its parent Inspection's
+    `inspected_count` (PILOT-AGRO-001 section 8)."""
+
+    pass
+
+
+class CropIssueNotFoundError(DomainError):
+    pass
+
+
+class CropIssueCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class CropIssueInvalidTransitionError(DomainError):
+    pass
+
+
+class CropIssueFollowUpCommandReusedWithDifferentPayloadError(DomainError):
+    pass

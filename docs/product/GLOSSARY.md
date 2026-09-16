@@ -212,6 +212,24 @@
 
 **QR identity != printed mutable context.** A QR token (`qr_identifiers` row) never stores or encodes a Batch's stage, a Carrier's current occupant, a location, or any quantity — it is a permanent, opaque pointer to one entity, resolved fresh on every scan (`docs/domain/QR_SCAN_MODEL.md`). The human-readable TEXT printed alongside that same QR on a Stage Label may show a snapshot of current context taken at print time (Batch code, stage name, Chamber/Trolley/Level, destination table/gutter) — but that snapshot is presentation only, printed once, and immediately goes stale as soon as the entity moves again; it is never written back into the QR identifier row, and reprinting always re-resolves fresh authoritative context rather than reusing the old snapshot.
 
+## Growing Protocol and Crop Inspection (`docs/domain/GROWING_PROTOCOL_INSPECTION_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Growing Protocol | The versioned identity of one agronomic program (e.g. "Iceberg Lettuce — DWC — Summer Standard"), scoped by Crop/Variety/ProductionSystem — what SHOULD happen, never proof anything did |
+| Growing Protocol Version | One immutable-once-ACTIVE set of agronomic content (`DRAFT -> ACTIVE -> RETIRED`, never edited in place once ACTIVE — a new version is created instead) |
+| Protocol Observation Requirement | A protocol-version's expectation that a given, EXISTING `ObservationDefinition` be recorded during a given `stage_category` — required/recommended, with an optional frequency/due window; never a second Observation architecture |
+| Protocol Care Activity | A small, non-agronomic-dosing structured crop-care expectation (inspect roots, scout pests, prune, ...) a protocol stage carries; never a nutrient recipe, dosing, or irrigation instruction (PILOT-WATER-001 territory) |
+| Batch Protocol Assignment | Which `GrowingProtocolVersion` a Batch is actually following, with full history — one current (open-ended) row per Batch, closed and replaced (never rewritten) when the assignment changes |
+| Grower Inspection | A structured, immutable, ACTUAL floor check a grower recorded — never proof a protocol requirement was followed. May reference (never duplicate) an `ObservationEvent` recorded in the same command |
+| Inspection Finding | One practical observation category (vigor, roots, pest evidence, ...) recorded within a Grower Inspection, with `affected_count` (descriptive only — never reduces living inventory) and a `suspected_cause` |
+| Crop Issue | A persistent crop problem opened from a significant Inspection Finding — `OPEN -> RESOLVED -> CLOSED`, never auto-created, never auto-resolved, never a Loss by itself |
+| Suspected Cause / Confirmed Diagnosis | Two permanently distinct fields on a Crop Issue — the system never promotes one into the other; confirming a diagnosis is always its own deliberate, authorized command |
+| Crop Issue Follow-up | A recorded IMPROVED/UNCHANGED/WORSENED/RESOLVED outcome against an open Crop Issue — descriptive only; a RESOLVED outcome never silently closes the Issue |
+| Due / Overdue / Outside Expected Window | Deterministic, read-only labels computed from actual Batch timestamps, actual current stage, the assigned Protocol Version, and the most recent relevant Inspection/Observation — never persisted, never a trigger for an automatic stage change, movement, or farm event |
+
+**Protocol != Operation. Age != Stage. Issue != Loss. Suspected Cause != Confirmed Diagnosis. Work Item Complete != Issue Resolved. Abnormal/Weak Living Plant != Loss.** These six frozen distinctions (`docs/domain/GROWING_PROTOCOL_INSPECTION_MODEL.md`) govern every command in this domain.
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

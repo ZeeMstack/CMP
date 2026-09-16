@@ -104,12 +104,26 @@ def test_downgrade_refuses_once_a_farm_work_item_exists(test_engine, alembic_hea
         "and that 3a278fa65f80 (PILOT-OPS-001) is that head"
     )
     info = _build_committed_work_item(test_engine)
+    starting_head = _resolve_current_head(cfg)
 
     try:
         with pytest.raises(RuntimeError, match="Cannot downgrade past PILOT-OPS-001"):
             command.downgrade(cfg, _parent_revision(cfg))
 
-        assert _current_version(test_engine) == NEW_REVISION
+        # PILOT-AGRO-001: `env.py` runs a whole multi-revision `command.
+        # downgrade(...)` call inside ONE transaction (no `transaction_per_
+        # migration=True`), so an aborted downgrade rolls the ENTIRE batch
+        # back to wherever it started -- never to the hardcoded `NEW_
+        # REVISION` this test used to assert, which only happened to equal
+        # the starting point while 3a278fa65f80 was itself still the
+        # Alembic head. A later ticket's migration(s) stacking on top of
+        # this one (as PILOT-AGRO-001's own 203d62ed9e9f now does) makes
+        # `starting_head` something further downstream -- the guard still
+        # fires at the same point in the chain (crossing 3a278fa65f80), so
+        # asserting the dynamically-resolved starting head is what actually
+        # stays correct for every future ticket, matching this file's own
+        # docstring intent.
+        assert _current_version(test_engine) == starting_head
 
         with test_engine.connect() as conn:
             row = conn.execute(

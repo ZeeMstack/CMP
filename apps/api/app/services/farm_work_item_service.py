@@ -28,6 +28,7 @@ from app.models.asset import Asset
 from app.models.audit_event import AuditEvent
 from app.models.carrier import Carrier
 from app.models.crop_batch import CropBatch
+from app.models.crop_issue import CropIssue
 from app.models.farm_work_item import (
     WORK_ITEM_TERMINAL_STATUSES,
     FarmWorkItem,
@@ -40,6 +41,7 @@ from app.services.errors import (
     AssetNotFoundError,
     CarrierNotFoundError,
     CropBatchNotFoundError,
+    CropIssueNotFoundError,
     FarmNotFoundError,
     FarmWorkItemCommandReusedWithDifferentPayloadError,
     FarmWorkItemInvalidTransitionError,
@@ -78,6 +80,17 @@ def _get_crop_batch_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
     if batch is None:
         raise CropBatchNotFoundError(str(crop_batch_id))
     return batch
+
+
+def _get_crop_issue_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, crop_issue_id: uuid.UUID) -> CropIssue:
+    issue = db.execute(
+        select(CropIssue).where(
+            CropIssue.id == crop_issue_id, CropIssue.tenant_id == tenant_id, CropIssue.farm_id == farm_id
+        )
+    ).scalar_one_or_none()
+    if issue is None:
+        raise CropIssueNotFoundError(str(crop_issue_id))
+    return issue
 
 
 def _require_active_member(db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
@@ -152,7 +165,12 @@ def create_work_item(
     quantity: Decimal | None,
     quantity_uom_id: uuid.UUID | None,
     completion_mode: str,
+    crop_issue_id: uuid.UUID | None = None,
 ) -> FarmWorkItem:
+    """`crop_issue_id` (PILOT-AGRO-001): the optional CropIssue this Work
+    Item is corrective action FOR (section 12). Defaulted, not a required
+    positional-equivalent, so every pre-existing caller of this function is
+    completely unaffected."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     def _find_by_command() -> FarmWorkItem | None:
@@ -165,7 +183,7 @@ def create_work_item(
     fingerprint = _fingerprint(
         tenant_id, farm_id, actor_user_id, work_type, category, title, instructions, priority, due_at,
         assigned_to_user_id, crop_batch_id, location_id, carrier_id, asset_id, quantity, quantity_uom_id,
-        completion_mode,
+        completion_mode, crop_issue_id,
     )
 
     existing = _find_by_command()
@@ -184,6 +202,8 @@ def create_work_item(
         carrier_service.get_carrier(db, tenant_id=tenant_id, farm_id=farm_id, carrier_id=carrier_id)
     if asset_id is not None:
         asset_service.get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id)
+    if crop_issue_id is not None:
+        _get_crop_issue_row(db, tenant_id=tenant_id, farm_id=farm_id, crop_issue_id=crop_issue_id)
     if quantity_uom_id is not None:
         _require_uom(db, uom_id=quantity_uom_id)
 
@@ -206,6 +226,7 @@ def create_work_item(
         location_id=location_id,
         carrier_id=carrier_id,
         asset_id=asset_id,
+        crop_issue_id=crop_issue_id,
         quantity=quantity,
         quantity_uom_id=quantity_uom_id,
         completion_mode=completion_mode,
@@ -232,6 +253,7 @@ def create_work_item(
             "code": item.code, "work_type": work_type, "category": category, "title": title,
             "priority": priority, "assigned_to_user_id": str(assigned_to_user_id) if assigned_to_user_id else None,
             "completion_mode": completion_mode,
+            "crop_issue_id": str(crop_issue_id) if crop_issue_id else None,
         },
     )
     db.commit()
@@ -860,6 +882,7 @@ def resolve_read_context(
     location_ids = {i.location_id for i in items if i.location_id}
     carrier_ids = {i.carrier_id for i in items if i.carrier_id}
     asset_ids = {i.asset_id for i in items if i.asset_id}
+    crop_issue_ids = {i.crop_issue_id for i in items if i.crop_issue_id}
     uom_ids = {i.quantity_uom_id for i in items if i.quantity_uom_id}
 
     batches = {}
@@ -897,4 +920,16 @@ def resolve_read_context(
         for row in db.execute(select(UnitOfMeasure.id, UnitOfMeasure.code).where(UnitOfMeasure.id.in_(uom_ids))):
             uoms[row.id] = {"id": row.id, "code": row.code}
 
-    return {"crop_batches": batches, "locations": locations, "carriers": carriers, "assets": assets, "uoms": uoms}
+    crop_issues = {}
+    if crop_issue_ids:
+        for row in db.execute(
+            select(CropIssue.id, CropIssue.code, CropIssue.status).where(
+                CropIssue.tenant_id == tenant_id, CropIssue.id.in_(crop_issue_ids)
+            )
+        ):
+            crop_issues[row.id] = {"id": row.id, "code": row.code, "status": row.status}
+
+    return {
+        "crop_batches": batches, "locations": locations, "carriers": carriers, "assets": assets, "uoms": uoms,
+        "crop_issues": crop_issues,
+    }
