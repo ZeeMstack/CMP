@@ -99,10 +99,10 @@ def _cleanup(test_engine, tenant_id: uuid.UUID) -> None:
             "crop_issue_follow_ups", "crop_issues", "inspection_findings", "grower_inspections",
             "batch_protocol_assignments", "protocol_care_activities", "protocol_observation_requirements",
             "growing_protocol_versions", "growing_protocols", "audit_events", "farms", "tenant_memberships",
-            "tenants",
         ):
             if conn.execute(text(f"SELECT to_regclass('{table}')")).scalar() is not None:
                 conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
         conn.execute(text("SET session_replication_role = DEFAULT"))
         trans.commit()
     finally:

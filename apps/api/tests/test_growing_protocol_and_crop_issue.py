@@ -24,6 +24,7 @@ from app.services import (
     observation_service,
     production_system_service,
     sowing_service,
+    tenant_service,
     workflow_service,
 )
 from app.services.errors import (
@@ -559,11 +560,18 @@ def test_issue_closure_is_deliberate_and_requires_prior_resolution(db_session, a
 # --- 17. tenant/farm isolation ---------------------------------------------------------------
 
 
-def test_tenant_isolation_on_growing_protocol(db_session, active_context_with_farm, active_context) -> None:
+def test_tenant_isolation_on_growing_protocol(db_session, active_context_with_farm) -> None:
     tenant_a, user_a, _headers_a, farm_a = active_context_with_farm
-    tenant_b, user_b, _headers_b = active_context
     scenario = _build_scenario(db_session, tenant_a, user_a, farm_a)
     protocol = _register_protocol(db_session, tenant_a, user_a, scenario)
+
+    # A genuinely SEPARATE second tenant -- requesting `active_context` as a
+    # second fixture parameter alongside `active_context_with_farm` would
+    # NOT do this: `active_context_with_farm` already depends on `active_
+    # context`, and pytest caches a fixture once per test, so both
+    # parameters would resolve to the SAME tenant. Mirrors `test_observation.
+    # py::test_...cross_tenant...`'s own established "tenant_b" pattern.
+    tenant_b = tenant_service.create_tenant(db_session, code=f"gp-tenant-b-{uuid.uuid4().hex[:8]}", name="Tenant B")
 
     with pytest.raises(GrowingProtocolNotFoundError):
         growing_protocol_service.get_protocol(db_session, tenant_id=tenant_b.id, growing_protocol_id=protocol.id)
