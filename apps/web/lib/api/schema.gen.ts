@@ -13425,11 +13425,8 @@ export interface components {
             seeding_station_id: string;
             /** Seeding Machine Id */
             seeding_machine_id?: string | null;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
+            /** Effective Time */
+            effective_time?: string | null;
             /** Note */
             note?: string | null;
             /** Trays */

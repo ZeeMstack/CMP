@@ -89,13 +89,25 @@ def _require_active_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUI
 
 def _compute_sow_new_batch_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, seed_lot_id: uuid.UUID,
-    seeding_station_id: uuid.UUID, seeding_machine_id: uuid.UUID | None, effective_time: datetime,
+    seeding_station_id: uuid.UUID, seeding_machine_id: uuid.UUID | None, effective_time: datetime | None,
     note: str | None, trays: list[dict], seeding_program_line_id: uuid.UUID | None = None,
 ) -> str:
+    """HOTFIX (sowing effective-time clock skew): `effective_time` is the
+    ORIGINAL client-supplied value (possibly `None` for "Sow now"), never
+    the server-resolved instant -- a `None` (NOW) command fingerprints as
+    the fixed marker `"now"` regardless of which real instant the server
+    happens to resolve on any given attempt. This is what keeps a genuine
+    retry of the same "Sow now" command (same `client_command_id`, still
+    omitting `effective_time`) idempotent: two attempts resolve two
+    different real timestamps a few seconds apart, but must fingerprint
+    identically so the second is recognized as a replay of the first
+    rather than rejected as "reused with a different payload"
+    (`SowingCommandReusedWithDifferentPayloadError`)."""
     sorted_trays = sorted(trays, key=lambda t: str(t["carrier_id"]))
+    effective_time_marker = effective_time.astimezone(timezone.utc).isoformat() if effective_time is not None else "now"
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(seed_lot_id), str(seeding_station_id),
-        str(seeding_machine_id) if seeding_machine_id else "", effective_time.astimezone(timezone.utc).isoformat(),
+        str(seeding_machine_id) if seeding_machine_id else "", effective_time_marker,
         note or "", str(seeding_program_line_id) if seeding_program_line_id else "",
     ]
     for tray in sorted_trays:
@@ -270,7 +282,7 @@ def sow_new_batch(
     seed_lot_id: uuid.UUID,
     seeding_station_id: uuid.UUID,
     seeding_machine_id: uuid.UUID | None,
-    effective_time: datetime,
+    effective_time: datetime | None,
     note: str | None,
     trays: list[dict],
     seeding_program_line_id: uuid.UUID | None = None,
@@ -280,7 +292,17 @@ def sow_new_batch(
     transaction. Trays: `[{"carrier_id": UUID, "seeds_sown": int}, ...]`.
     `seeding_program_line_id` is a PLANNING-OPS-001 addition -- optional,
     provenance only (validated the same way as the plain `/crop-batches/
-    {id}/sowings` route, inside `_sow_batch_core`)."""
+    {id}/sowings` route, inside `_sow_batch_core`).
+
+    HOTFIX (sowing effective-time clock skew): `effective_time=None` is
+    "Sow now" -- the server resolves its own authoritative
+    `datetime.now(timezone.utc)` (`resolved_effective_time` below), never
+    a client-generated timestamp that can race ahead of server time under
+    ordinary browser clock skew. Resolved only after the idempotency
+    existence check below, and never itself part of the request
+    fingerprint (see `_compute_sow_new_batch_fingerprint`'s own docstring)
+    -- a retry of the same NOW command must resolve to the same replay
+    outcome, never be treated as a different payload."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     if not trays:
@@ -309,6 +331,14 @@ def sow_new_batch(
             return existing
         raise SowingCommandReusedWithDifferentPayloadError(str(client_command_id))
 
+    # HOTFIX (sowing effective-time clock skew): resolved only now, on the
+    # confirmed-new-command path -- never for a replay (which already
+    # returned the original event above) and never included in
+    # `fingerprint` itself, so this resolving a different real instant on
+    # each attempt can never turn a genuine retry into a false
+    # "reused with a different payload" conflict.
+    resolved_effective_time = effective_time if effective_time is not None else datetime.now(timezone.utc)
+
     seed_lot = db.execute(
         select(SeedLot).where(SeedLot.id == seed_lot_id, SeedLot.tenant_id == tenant_id, SeedLot.farm_id == farm_id)
     ).scalar_one_or_none()
@@ -320,7 +350,7 @@ def sow_new_batch(
 
     workflow = _resolve_sowing_workflow(db, tenant_id=tenant_id, crop_id=seed_lot.crop_id, variety_id=seed_lot.variety_id)
 
-    local_date = effective_time.astimezone(ZoneInfo(farm.timezone)).date()
+    local_date = resolved_effective_time.astimezone(ZoneInfo(farm.timezone)).date()
     code = _generate_batch_code(db, tenant_id=tenant_id, local_date=local_date)
 
     # CARRIER-CONFIG-001B: the operator now supplies sown_site_count
@@ -349,12 +379,12 @@ def sow_new_batch(
     try:
         batch, _workflow, _version, _start_stage = crop_batch_service._create_batch_core(
             db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, code=code,
-            workflow_id=workflow.id, effective_time=effective_time,
+            workflow_id=workflow.id, effective_time=resolved_effective_time,
             client_command_id=client_command_id, request_fingerprint=fingerprint,
         )
         event = sowing_service._sow_batch_core(
             db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch.id,
-            client_command_id=client_command_id, effective_time=effective_time, note=note, lines=lines,
+            client_command_id=client_command_id, effective_time=resolved_effective_time, note=note, lines=lines,
             request_fingerprint=fingerprint,
             seeding_station_id=seeding_station_id, seeding_machine_id=seeding_machine_id,
             seeding_program_line_id=seeding_program_line_id,
@@ -395,7 +425,7 @@ def sow_new_batch(
                 "farm_id": str(farm_id), "seed_lot_id": str(seed_lot_id),
                 "seeding_station_id": str(seeding_station_id),
                 "seeding_machine_id": str(seeding_machine_id) if seeding_machine_id else None,
-                "effective_time": effective_time.isoformat(), "client_command_id": str(client_command_id),
+                "effective_time": resolved_effective_time.isoformat(), "client_command_id": str(client_command_id),
                 "tray_count": len(sorted_carrier_ids), "carrier_ids": [str(c) for c in sorted_carrier_ids],
                 "total_seeds_sown": sum(t["seeds_sown"] for t in trays),
                 "total_sown_site_count": total_sown_site_count,
