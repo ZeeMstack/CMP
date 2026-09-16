@@ -23,8 +23,10 @@ import {
   useAssets,
   useCarriers,
   useCreateWorkItem,
+  useCropIssues,
   useCurrentUserId,
   useFarm,
+  useFarmProtocolDueSummary,
   useHarvestablePlates,
   useLatestShiftHandover,
   useLocationsTree,
@@ -99,6 +101,12 @@ export default function FarmHomePage() {
   const handoverQuery = useLatestShiftHandover(farmId);
   const harvestableQuery = useHarvestablePlates(farmId);
   const summaryQuery = useOperationalSummary(farmId, "active");
+  // PILOT-AGRO-001B Part 8: live agronomy readiness -- computed/read-model,
+  // never a persisted duplicate of a Farm Work Item (an "Inspection due"
+  // row here is never itself written to farm_work_items; only explicit
+  // corrective work assigned from a Crop Issue is).
+  const cropIssuesQuery = useCropIssues(farmId);
+  const protocolDueQuery = useFarmProtocolDueSummary(farmId);
   // PILOT-OPS-001 closure: structured context option sources for manual
   // Work Item creation -- each reuses an existing farm-scoped read
   // (Locations tree, Batch summary already fetched above, Assets,
@@ -275,6 +283,58 @@ export default function FarmHomePage() {
               </span>
               <Link href={`/farms/${farmId}/crop-batches/${b.id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
                 View batch
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <LiveSourcePanel
+        title="Crop Attention"
+        isLoading={cropIssuesQuery.isLoading}
+        error={cropIssuesQuery.error}
+        onRetry={() => cropIssuesQuery.refetch()}
+        isEmpty={(cropIssuesQuery.data ?? []).filter((i) => i.status === "open").length === 0}
+        emptyLabel="No open crop issues right now."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {(cropIssuesQuery.data ?? [])
+            .filter((i) => i.status === "open")
+            .map((issue) => (
+              <li key={issue.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <span className="text-wl-text">
+                  {issue.code} · {humanizeEnumCode(issue.category)} · {humanizeEnumCode(issue.severity)}
+                  {issue.is_follow_up_overdue && <span className="text-wl-flag-fg"> · follow-up overdue</span>}
+                </span>
+                <Link href={`/farms/${farmId}/crop-issues/${issue.id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
+                  Open issue
+                </Link>
+              </li>
+            ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <LiveSourcePanel
+        title="Inspections Due"
+        isLoading={protocolDueQuery.isLoading}
+        error={protocolDueQuery.error}
+        onRetry={() => protocolDueQuery.refetch()}
+        isEmpty={(protocolDueQuery.data ?? []).length === 0}
+        emptyLabel="No inspections due right now."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {(protocolDueQuery.data ?? []).map((row) => (
+            <li key={row.batch_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="text-wl-text">
+                Batch {row.batch_code} · {row.protocol?.name}
+                {row.overdue_count > 0 ? (
+                  <span className="text-wl-flag-fg"> · {row.overdue_count} overdue</span>
+                ) : (
+                  <span className="text-wl-text-secondary"> · {row.due_count} due</span>
+                )}
+              </span>
+              <Link href={`/farms/${farmId}/production/inspect?batchId=${row.batch_id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
+                Inspect Crop
               </Link>
             </li>
           ))}

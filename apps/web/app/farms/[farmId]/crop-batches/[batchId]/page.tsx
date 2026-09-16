@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
+import { BatchProtocolPanel } from "@/components/agronomy/BatchProtocolPanel";
 import { OriginAndSplitsPanel } from "@/components/OriginAndSplitsPanel";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -25,7 +26,7 @@ import {
   useStageHistory,
 } from "@/lib/query/hooks";
 
-const TABS = ["overview", "history", "sowing", "origin", "quality"] as const;
+const TABS = ["overview", "history", "sowing", "origin", "quality", "protocol"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -34,6 +35,7 @@ const TAB_LABELS: Record<Tab, string> = {
   sowing: "Sowing",
   origin: "Origin & Splits",
   quality: "Quality",
+  protocol: "Protocol",
 };
 
 function TabLink({ farmId, batchId, tab, active }: { farmId: string; batchId: string; tab: Tab; active: boolean }) {
@@ -88,12 +90,20 @@ export default function CropBatchDetailPage() {
       <PageHeader
         title={batch.code}
         actions={
-          <Link
-            href={`/farms/${farmId}/labels/crop_batch/${batchId}`}
-            className="flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
-          >
-            Print Label
-          </Link>
+          <>
+            <Link
+              href={`/farms/${farmId}/production/inspect?batchId=${batchId}`}
+              className="flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border-strong bg-wl-brand-subtle px-3 text-sm font-medium text-wl-brand hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+            >
+              Inspect Crop
+            </Link>
+            <Link
+              href={`/farms/${farmId}/labels/crop_batch/${batchId}`}
+              className="flex min-h-11 items-center gap-1.5 rounded-md border border-wl-border-strong bg-wl-surface-raised px-3 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+            >
+              Print Label
+            </Link>
+          </>
         }
         breadcrumbs={
           <Breadcrumbs
@@ -354,6 +364,8 @@ export default function CropBatchDetailPage() {
           )}
         </>
       )}
+
+      {activeTab === "protocol" && <BatchProtocolPanel farmId={farmId} batch={batch} />}
     </div>
   );
 }

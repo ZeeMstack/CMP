@@ -29,6 +29,11 @@ export const farmWorkItemFormSchema = z.object({
   cropBatchId: z.string().nullable(),
   assetId: z.string().nullable(),
   carrierId: z.string().nullable(),
+  // PILOT-AGRO-001B: set only when this form was opened from a Crop Issue's
+  // own "Assign corrective work" action -- never user-editable (mirrors the
+  // backend's own `crop_issue_id` field, set only at creation, never
+  // retrofit onto an existing item).
+  cropIssueId: z.string().nullable(),
 });
 export type FarmWorkItemFormValues = z.infer<typeof farmWorkItemFormSchema>;
 
@@ -44,6 +49,7 @@ export const DEFAULT_FARM_WORK_ITEM_FORM_VALUES: FarmWorkItemFormValues = {
   cropBatchId: null,
   assetId: null,
   carrierId: null,
+  cropIssueId: null,
 };
 
 export function buildFarmWorkItemCreatePayload(
@@ -67,6 +73,7 @@ export function buildFarmWorkItemCreatePayload(
     crop_batch_id: values.cropBatchId || null,
     asset_id: values.assetId || null,
     carrier_id: values.carrierId || null,
+    crop_issue_id: values.cropIssueId || null,
     completion_mode: "manual_record",
   };
 }

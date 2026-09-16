@@ -345,4 +345,39 @@ export const queryKeys = {
   qrScan: (tenantId: string, token: string) => ["tenant", tenantId, "qr", token] as const,
   qrIdentifierFor: (tenantId: string, farmId: string, entityType: string, entityId: string) =>
     ["tenant", tenantId, "farms", farmId, "qr-identifier", entityType, entityId] as const,
+
+  // --- PILOT-AGRO-001B: Growing Protocols, Grower Inspections, Crop Issues ----
+  // Growing Protocol administration is tenant-wide (no farmId), mirroring its
+  // own route shape; Batch assignment/status, inspections, and issues are
+  // farm-scoped.
+  growingProtocols: (tenantId: string) => ["tenant", tenantId, "growing-protocols"] as const,
+  growingProtocol: (tenantId: string, protocolId: string) =>
+    ["tenant", tenantId, "growing-protocols", protocolId] as const,
+  protocolVersions: (tenantId: string, protocolId: string) =>
+    ["tenant", tenantId, "growing-protocols", protocolId, "versions"] as const,
+  protocolVersion: (tenantId: string, protocolId: string, versionId: string) =>
+    ["tenant", tenantId, "growing-protocols", protocolId, "versions", versionId] as const,
+  protocolObservationRequirements: (tenantId: string, protocolId: string, versionId: string) =>
+    ["tenant", tenantId, "growing-protocols", protocolId, "versions", versionId, "observation-requirements"] as const,
+  protocolCareActivities: (tenantId: string, protocolId: string, versionId: string) =>
+    ["tenant", tenantId, "growing-protocols", protocolId, "versions", versionId, "care-activities"] as const,
+  batchProtocolAssignments: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "protocol-assignments"] as const,
+  batchProtocolStatus: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "protocol-status"] as const,
+  farmProtocolDueSummary: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "growing-protocols", "due-summary"] as const,
+  growerInspections: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "grower-inspections"] as const,
+  growerInspection: (tenantId: string, farmId: string, batchId: string, inspectionId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "grower-inspections", inspectionId] as const,
+  // `batchId` defaults to "" (unfiltered farm-wide) so the unfiltered and
+  // Batch-filtered variants never collide in cache, mirroring
+  // NURSERY-OPS-005B's own convention.
+  cropIssues: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-issues", batchId] as const,
+  cropIssue: (tenantId: string, farmId: string, cropIssueId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-issues", "detail", cropIssueId] as const,
+  cropIssueFollowUps: (tenantId: string, farmId: string, cropIssueId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-issues", cropIssueId, "follow-ups"] as const,
 };

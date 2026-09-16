@@ -121,4 +121,33 @@ describe("CreateWorkItemForm", () => {
     expect(payload.asset_id).toBeNull();
     expect(payload.carrier_id).toBeNull();
   });
+
+  // PILOT-AGRO-001B: "Assign corrective work" from a Crop Issue reuses this
+  // exact existing form, never a second agronomy task model.
+  it("with lockedCropIssue, submits crop_issue_id and its Batch without an editable Batch picker", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <CreateWorkItemForm
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        isSubmitting={false}
+        lockedCropIssue={{ id: "issue-uuid-1", code: "CI-20260101-0001", batchId: "batch-uuid-1", batchLabel: "B-LET-2026-014" }}
+      />,
+    );
+    expect(screen.getByText("CI-20260101-0001", { exact: false })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Clean Germination Trolley 03"), {
+      target: { value: "Prune affected plants" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("cleaning"), { target: { value: "crop_care" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create work item" }));
+
+    await screen.findByRole("button", { name: "Create work item" });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.crop_issue_id).toBe("issue-uuid-1");
+    expect(payload.crop_batch_id).toBe("batch-uuid-1");
+
+    fireEvent.click(screen.getByText("+ Add context (location, batch, asset, carrier)"));
+    expect(screen.queryByLabelText("Batch")).not.toBeInTheDocument();
+  });
 });

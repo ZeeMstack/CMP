@@ -4631,6 +4631,359 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/growing-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Growing Protocols */
+        get: operations["list_growing_protocols_growing_protocols_get"];
+        put?: never;
+        /** Create Growing Protocol */
+        post: operations["create_growing_protocol_growing_protocols_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Growing Protocol */
+        get: operations["get_growing_protocol_growing_protocols__growing_protocol_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Protocol Versions */
+        get: operations["list_protocol_versions_growing_protocols__growing_protocol_id__versions_get"];
+        put?: never;
+        /** Create Protocol Version */
+        post: operations["create_protocol_version_growing_protocols__growing_protocol_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Protocol Version */
+        get: operations["get_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions/{version_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Protocol Version */
+        post: operations["activate_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions/{version_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Protocol Version */
+        post: operations["retire_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions/{version_id}/observation-requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Observation Requirements */
+        get: operations["list_observation_requirements_growing_protocols__growing_protocol_id__versions__version_id__observation_requirements_get"];
+        put?: never;
+        /** Add Observation Requirement */
+        post: operations["add_observation_requirement_growing_protocols__growing_protocol_id__versions__version_id__observation_requirements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/growing-protocols/{growing_protocol_id}/versions/{version_id}/care-activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Care Activities */
+        get: operations["list_care_activities_growing_protocols__growing_protocol_id__versions__version_id__care_activities_get"];
+        put?: never;
+        /** Add Care Activity */
+        post: operations["add_care_activity_growing_protocols__growing_protocol_id__versions__version_id__care_activities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/protocol-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Batch Protocol Assignments */
+        get: operations["list_batch_protocol_assignments_farms__farm_id__crop_batches__batch_id__protocol_assignments_get"];
+        put?: never;
+        /** Assign Batch Protocol */
+        post: operations["assign_batch_protocol_farms__farm_id__crop_batches__batch_id__protocol_assignments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/protocol-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch Protocol Status */
+        get: operations["get_batch_protocol_status_farms__farm_id__crop_batches__batch_id__protocol_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/growing-protocols/due-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Farm Protocol Due Summary
+         * @description Today on the Farm's "Inspections Due" section -- see
+         *     `growing_protocol_service.list_farm_protocol_due_summary`'s own
+         *     docstring for exactly what is (and deliberately is not) included.
+         */
+        get: operations["get_farm_protocol_due_summary_farms__farm_id__growing_protocols_due_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/grower-inspections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inspections */
+        get: operations["list_inspections_farms__farm_id__crop_batches__batch_id__grower_inspections_get"];
+        put?: never;
+        /** Record Inspection */
+        post: operations["record_inspection_farms__farm_id__crop_batches__batch_id__grower_inspections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/grower-inspections/{inspection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Inspection */
+        get: operations["get_inspection_farms__farm_id__crop_batches__batch_id__grower_inspections__inspection_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Crop Issues */
+        get: operations["list_crop_issues_farms__farm_id__crop_issues_get"];
+        put?: never;
+        /** Open Crop Issue */
+        post: operations["open_crop_issue_farms__farm_id__crop_issues_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Crop Issue */
+        get: operations["get_crop_issue_farms__farm_id__crop_issues__crop_issue_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Crop Issue */
+        post: operations["update_crop_issue_farms__farm_id__crop_issues__crop_issue_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}/confirm-diagnosis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Diagnosis */
+        post: operations["confirm_diagnosis_farms__farm_id__crop_issues__crop_issue_id__confirm_diagnosis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Crop Issue */
+        post: operations["resolve_crop_issue_farms__farm_id__crop_issues__crop_issue_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Crop Issue */
+        post: operations["close_crop_issue_farms__farm_id__crop_issues__crop_issue_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-issues/{crop_issue_id}/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Follow Ups */
+        get: operations["list_follow_ups_farms__farm_id__crop_issues__crop_issue_id__follow_ups_get"];
+        put?: never;
+        /** Record Follow Up */
+        post: operations["record_follow_up_farms__farm_id__crop_issues__crop_issue_id__follow_ups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/shift-handovers": {
         parameters: {
             query?: never;
@@ -4711,63 +5064,6 @@ export interface paths {
         put?: never;
         /** Print Qr Label */
         post: operations["print_qr_label_qr__token__print_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/tenants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap Tenant */
-        post: operations["bootstrap_tenant_dev_bootstrap_tenants_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/users": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bootstrap User */
-        post: operations["bootstrap_user_dev_bootstrap_users_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/bootstrap/memberships": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bootstrap Membership
-         * @description Development-only: creates a tenant's first membership. No active
-         *     membership is required to call this — that's the whole point of a
-         *     bootstrap route. `POST /memberships` (not under /dev/bootstrap) is for
-         *     an already-active member to add further members.
-         */
-        post: operations["bootstrap_membership_dev_bootstrap_memberships_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5476,6 +5772,85 @@ export interface components {
             /** Path */
             path: components["schemas"]["LocationPathSegment"][];
         };
+        /**
+         * BatchProtocolAssignIn
+         * @description Assigns (or changes) the ACTIVE `GrowingProtocolVersion` a Batch is
+         *     following. `effective_from` defaults to now when omitted.
+         */
+        BatchProtocolAssignIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Growing Protocol Version Id
+             * Format: uuid
+             */
+            growing_protocol_version_id: string;
+            /** Effective From */
+            effective_from?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** BatchProtocolAssignmentRead */
+        BatchProtocolAssignmentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Growing Protocol Version Id
+             * Format: uuid
+             */
+            growing_protocol_version_id: string;
+            /**
+             * Assigned By User Id
+             * Format: uuid
+             */
+            assigned_by_user_id: string;
+            /**
+             * Assigned At
+             * Format: date-time
+             */
+            assigned_at: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to: string | null;
+            /** Reason */
+            reason: string | null;
+        };
+        /**
+         * BatchProtocolStatusRead
+         * @description Compact "protocol context for a Batch" panel data (PILOT-AGRO-001
+         *     section 15) -- current assignment plus a deterministic due/deviation
+         *     read, never a persisted fact.
+         */
+        BatchProtocolStatusRead: {
+            current_assignment: components["schemas"]["BatchProtocolAssignmentRead"] | null;
+            protocol: components["schemas"]["GrowingProtocolRead"] | null;
+            protocol_version: components["schemas"]["GrowingProtocolVersionRead"] | null;
+            /** Current Stage Category */
+            current_stage_category: string | null;
+            /** Current Stage Occurrence Index */
+            current_stage_occurrence_index: number | null;
+            /** Days In Stage */
+            days_in_stage: number | null;
+            /** Due Observation Requirements */
+            due_observation_requirements: components["schemas"]["DueRequirementRead"][];
+            /** Open Crop Issue Count */
+            open_crop_issue_count: number;
+        };
         /** BatchSplitCreate */
         BatchSplitCreate: {
             /**
@@ -5588,25 +5963,6 @@ export interface components {
             client_command_id: string | null;
             /** Reason */
             reason: string | null;
-        };
-        /**
-         * BootstrapMembershipCreate
-         * @description Development-only: creates a membership without requiring an existing
-         *     active membership, to bootstrap a tenant's first member.
-         */
-        BootstrapMembershipCreate: {
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
-            /**
-             * User Id
-             * Format: uuid
-             */
-            user_id: string;
-            /** Role Code */
-            role_code: string;
         };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
@@ -6156,6 +6512,246 @@ export interface components {
             /** Crop Category */
             crop_category: string;
         };
+        /** CropIssueCloseIn */
+        CropIssueCloseIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Close Note */
+            close_note?: string | null;
+        };
+        /**
+         * CropIssueConfirmDiagnosisIn
+         * @description Suspected cause is never automatically promoted -- a confirmed
+         *     diagnosis is always this explicit, separate command (PILOT-AGRO-001
+         *     section 11).
+         */
+        CropIssueConfirmDiagnosisIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Confirmed Diagnosis */
+            confirmed_diagnosis: string;
+        };
+        /** CropIssueFollowUpIn */
+        CropIssueFollowUpIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Follow Up Grower Inspection Id */
+            follow_up_grower_inspection_id?: string | null;
+            /** Affected Count */
+            affected_count?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "improved" | "unchanged" | "worsened" | "resolved";
+        };
+        /** CropIssueFollowUpRead */
+        CropIssueFollowUpRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Crop Issue Id
+             * Format: uuid
+             */
+            crop_issue_id: string;
+            /** Follow Up Grower Inspection Id */
+            follow_up_grower_inspection_id: string | null;
+            /** Affected Count */
+            affected_count: number | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "improved" | "unchanged" | "worsened" | "resolved";
+            /**
+             * Recorded By User Id
+             * Format: uuid
+             */
+            recorded_by_user_id: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /**
+         * CropIssueOpenIn
+         * @description Opens a CropIssue from a significant Inspection Finding. Grower/
+         *     supervisory only (PILOT-AGRO-001 section 19).
+         */
+        CropIssueOpenIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Originating Grower Inspection Id
+             * Format: uuid
+             */
+            originating_grower_inspection_id: string;
+            /** Originating Finding Id */
+            originating_finding_id?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "vigor" | "uniformity" | "roots" | "leaf_condition" | "pest_evidence" | "disease_like_symptoms" | "physical_damage" | "deficiency_like_symptoms" | "growth_deviation" | "contamination_concern" | "other";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** Description */
+            description: string;
+            /** Suspected Cause */
+            suspected_cause?: string | null;
+            /** Assigned Owner User Id */
+            assigned_owner_user_id?: string | null;
+            /** Follow Up Due At */
+            follow_up_due_at?: string | null;
+        };
+        /** CropIssueRead */
+        CropIssueRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Carrier Assignment Id */
+            batch_carrier_assignment_id: string | null;
+            /** Location Id */
+            location_id: string | null;
+            /**
+             * Originating Grower Inspection Id
+             * Format: uuid
+             */
+            originating_grower_inspection_id: string;
+            /** Originating Finding Id */
+            originating_finding_id: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "vigor" | "uniformity" | "roots" | "leaf_condition" | "pest_evidence" | "disease_like_symptoms" | "physical_damage" | "deficiency_like_symptoms" | "growth_deviation" | "contamination_concern" | "other";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** Description */
+            description: string;
+            /** Suspected Cause */
+            suspected_cause: string | null;
+            /** Confirmed Diagnosis */
+            confirmed_diagnosis: string | null;
+            /** Diagnosis Confirmed By User Id */
+            diagnosis_confirmed_by_user_id: string | null;
+            /** Diagnosis Confirmed At */
+            diagnosis_confirmed_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "resolved" | "closed";
+            /**
+             * Opened By User Id
+             * Format: uuid
+             */
+            opened_by_user_id: string;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Assigned Owner User Id */
+            assigned_owner_user_id: string | null;
+            /** Follow Up Due At */
+            follow_up_due_at: string | null;
+            /** Resolved By User Id */
+            resolved_by_user_id: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolution Note */
+            resolution_note: string | null;
+            /** Closed By User Id */
+            closed_by_user_id: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Close Note */
+            close_note: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Has Open Work Item */
+            has_open_work_item: boolean;
+            /** Is Follow Up Overdue */
+            is_follow_up_overdue: boolean;
+        };
+        /** CropIssueResolveIn */
+        CropIssueResolveIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Resolution Note */
+            resolution_note: string;
+        };
+        /** CropIssueUpdateIn */
+        CropIssueUpdateIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** Assigned Owner User Id */
+            assigned_owner_user_id?: string | null;
+            /** Follow Up Due At */
+            follow_up_due_at?: string | null;
+            /** Suspected Cause */
+            suspected_cause?: string | null;
+        };
         /** CropRead */
         CropRead: {
             /**
@@ -6292,6 +6888,27 @@ export interface components {
             /** Dispatched Package Count */
             dispatched_package_count: number;
         };
+        /**
+         * DueRequirementRead
+         * @description One deterministic due/deviation read for a single Protocol
+         *     Observation Requirement against one Batch -- section 18: age informs
+         *     display only, never an automatic stage/farm event.
+         */
+        DueRequirementRead: {
+            requirement: components["schemas"]["ProtocolObservationRequirementRead"];
+            /** Observation Definition Code */
+            observation_definition_code: string;
+            /** Observation Definition Name */
+            observation_definition_name: string;
+            /** Is Due */
+            is_due: boolean;
+            /** Is Overdue */
+            is_overdue: boolean;
+            /** Is Outside Expected Window */
+            is_outside_expected_window: boolean;
+            /** Last Satisfied At */
+            last_satisfied_at: string | null;
+        };
         /** FarmCreate */
         FarmCreate: {
             /** Code */
@@ -6304,6 +6921,30 @@ export interface components {
             city_region?: string | null;
             /** Timezone */
             timezone: string;
+        };
+        /**
+         * FarmProtocolDueSummaryItem
+         * @description One row of PILOT-AGRO-001B's Today-on-the-Farm "Inspections Due" read
+         *     model -- a currently-active Batch that has a Protocol assigned and
+         *     currently has something due or an open Crop Issue. Never persisted;
+         *     recomputed fresh on every read, same as `BatchProtocolStatusRead`.
+         */
+        FarmProtocolDueSummaryItem: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            protocol: components["schemas"]["GrowingProtocolRead"] | null;
+            protocol_version: components["schemas"]["GrowingProtocolVersionRead"] | null;
+            /** Due Count */
+            due_count: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /** Open Crop Issue Count */
+            open_crop_issue_count: number;
         };
         /** FarmRead */
         FarmRead: {
@@ -6453,6 +7094,8 @@ export interface components {
             carrier_id?: string | null;
             /** Asset Id */
             asset_id?: string | null;
+            /** Crop Issue Id */
+            crop_issue_id?: string | null;
             /** Quantity */
             quantity?: number | string | null;
             /** Quantity Uom Id */
@@ -6567,6 +7210,7 @@ export interface components {
             location: components["schemas"]["WorkItemLocationSummary"] | null;
             carrier: components["schemas"]["WorkItemCarrierSummary"] | null;
             asset: components["schemas"]["WorkItemAssetSummary"] | null;
+            crop_issue?: components["schemas"]["WorkItemCropIssueSummary"] | null;
             /** Quantity */
             quantity: string | null;
             quantity_uom: components["schemas"]["WorkItemUomSummary"] | null;
@@ -7946,6 +8590,242 @@ export interface components {
             nursery_intervines?: components["schemas"]["StructureNurseryTableGroup"] | null;
         };
         /**
+         * GrowerInspectionCreate
+         * @description Records one Grower Inspection, optionally with structured Findings
+         *     and/or Observation values recorded in the same command -- one atomic
+         *     transaction (PILOT-AGRO-001 section 16's "Context -> Findings ->
+         *     Observations -> Crop Issue if needed -> Save" workspace flow).
+         */
+        GrowerInspectionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Carrier Assignment Id */
+            batch_carrier_assignment_id?: string | null;
+            /** Effective Time */
+            effective_time?: string | null;
+            /** Inspected Count */
+            inspected_count?: number | null;
+            /**
+             * Overall Assessment
+             * @enum {string}
+             */
+            overall_assessment: "normal" | "attention_needed" | "critical";
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Findings
+             * @default []
+             */
+            findings: components["schemas"]["InspectionFindingIn"][];
+            /**
+             * Observation Values
+             * @default []
+             */
+            observation_values: components["schemas"]["InspectionObservationValueIn"][];
+        };
+        /** GrowerInspectionRead */
+        GrowerInspectionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Carrier Assignment Id */
+            batch_carrier_assignment_id: string | null;
+            /** Location Id */
+            location_id: string | null;
+            /** Growing Protocol Version Id */
+            growing_protocol_version_id: string | null;
+            /**
+             * Inspected By User Id
+             * Format: uuid
+             */
+            inspected_by_user_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+            /** Inspected Count */
+            inspected_count: number | null;
+            /**
+             * Overall Assessment
+             * @enum {string}
+             */
+            overall_assessment: "normal" | "attention_needed" | "critical";
+            /** Notes */
+            notes: string | null;
+            /** Observation Event Id */
+            observation_event_id: string | null;
+            /** Findings */
+            findings: components["schemas"]["InspectionFindingRead"][];
+        };
+        /** GrowingProtocolCreate */
+        GrowingProtocolCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Variety Id */
+            variety_id?: string | null;
+            /** Production System Id */
+            production_system_id?: string | null;
+            /** Season Context */
+            season_context?: string | null;
+        };
+        /** GrowingProtocolRead */
+        GrowingProtocolRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Crop Id
+             * Format: uuid
+             */
+            crop_id: string;
+            /** Variety Id */
+            variety_id: string | null;
+            /** Production System Id */
+            production_system_id: string | null;
+            /** Season Context */
+            season_context: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** GrowingProtocolVersionActivateIn */
+        GrowingProtocolVersionActivateIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /**
+         * GrowingProtocolVersionCreate
+         * @description Creates the next DRAFT version for a protocol -- version_number is
+         *     server-assigned (max existing + 1), mirroring `workflow_service.
+         *     create_draft_version`.
+         */
+        GrowingProtocolVersionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason */
+            reason: string;
+            /** Effective Date */
+            effective_date?: string | null;
+        };
+        /** GrowingProtocolVersionRead */
+        GrowingProtocolVersionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Growing Protocol Id
+             * Format: uuid
+             */
+            growing_protocol_id: string;
+            /** Version Number */
+            version_number: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "active" | "retired";
+            /**
+             * Author User Id
+             * Format: uuid
+             */
+            author_user_id: string;
+            /** Reason */
+            reason: string;
+            /** Effective Date */
+            effective_date: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Activated At */
+            activated_at: string | null;
+            /** Retired At */
+            retired_at: string | null;
+        };
+        /** GrowingProtocolVersionRetireIn */
+        GrowingProtocolVersionRetireIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /**
          * GutterGeneratorConfig
          * @description Generates N sibling Grow Gutters under one Span, each with the same
          *     number of Grow Bag Positions. Grow Bag Position is a true exclusive
@@ -8183,6 +9063,79 @@ export interface components {
             potentially_affected_dispatched_weight_kg: string;
             /** Potentially Affected Dispatched Package Count */
             potentially_affected_dispatched_package_count: number;
+        };
+        /** InspectionFindingIn */
+        InspectionFindingIn: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "vigor" | "uniformity" | "roots" | "leaf_condition" | "pest_evidence" | "disease_like_symptoms" | "physical_damage" | "deficiency_like_symptoms" | "growth_deviation" | "contamination_concern" | "other";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** Affected Count */
+            affected_count?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Suspected Cause */
+            suspected_cause?: string | null;
+        };
+        /** InspectionFindingRead */
+        InspectionFindingRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "vigor" | "uniformity" | "roots" | "leaf_condition" | "pest_evidence" | "disease_like_symptoms" | "physical_damage" | "deficiency_like_symptoms" | "growth_deviation" | "contamination_concern" | "other";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /** Affected Count */
+            affected_count: number | null;
+            /** Notes */
+            notes: string | null;
+            /** Suspected Cause */
+            suspected_cause: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+        };
+        /**
+         * InspectionObservationValueIn
+         * @description Mirrors `app.schemas.observation_event.ObservationValueCreate`'s own
+         *     shape -- passed straight through to `observation_service.
+         *     record_observation` so no value/unit/range logic is duplicated here.
+         */
+        InspectionObservationValueIn: {
+            /**
+             * Observation Definition Id
+             * Format: uuid
+             */
+            observation_definition_id: string;
+            /** Batch Carrier Assignment Id */
+            batch_carrier_assignment_id?: string | null;
+            /** Value Integer */
+            value_integer?: number | null;
+            /** Value Decimal */
+            value_decimal?: number | null;
+            /** Value Boolean */
+            value_boolean?: boolean | null;
+            /** Value Text */
+            value_text?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /**
          * IntersaladsDestinationLineIn
@@ -11738,6 +12691,142 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ProtocolCareActivityCreate */
+        ProtocolCareActivityCreate: {
+            /**
+             * Stage Category
+             * @enum {string}
+             */
+            stage_category: "seeding" | "germination" | "nursery" | "transplanting" | "intermediate" | "production" | "harvest_ready" | "harvesting" | "completed" | "rejected";
+            /**
+             * Activity Type
+             * @enum {string}
+             */
+            activity_type: "inspect_roots" | "scout_pests" | "pruning" | "training" | "spacing" | "crop_hygiene" | "transfer_readiness" | "harvest_readiness" | "other";
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions?: string | null;
+            /** Frequency Days */
+            frequency_days?: number | null;
+            /** Stage Sequence Index */
+            stage_sequence_index?: number | null;
+            /**
+             * Display Order
+             * @default 0
+             */
+            display_order: number;
+        };
+        /** ProtocolCareActivityRead */
+        ProtocolCareActivityRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Growing Protocol Version Id
+             * Format: uuid
+             */
+            growing_protocol_version_id: string;
+            /**
+             * Stage Category
+             * @enum {string}
+             */
+            stage_category: "seeding" | "germination" | "nursery" | "transplanting" | "intermediate" | "production" | "harvest_ready" | "harvesting" | "completed" | "rejected";
+            /**
+             * Activity Type
+             * @enum {string}
+             */
+            activity_type: "inspect_roots" | "scout_pests" | "pruning" | "training" | "spacing" | "crop_hygiene" | "transfer_readiness" | "harvest_readiness" | "other";
+            /** Title */
+            title: string;
+            /** Instructions */
+            instructions: string | null;
+            /** Frequency Days */
+            frequency_days: number | null;
+            /** Stage Sequence Index */
+            stage_sequence_index: number | null;
+            /** Display Order */
+            display_order: number;
+        };
+        /** ProtocolObservationRequirementCreate */
+        ProtocolObservationRequirementCreate: {
+            /**
+             * Stage Category
+             * @enum {string}
+             */
+            stage_category: "seeding" | "germination" | "nursery" | "transplanting" | "intermediate" | "production" | "harvest_ready" | "harvesting" | "completed" | "rejected";
+            /**
+             * Observation Definition Id
+             * Format: uuid
+             */
+            observation_definition_id: string;
+            /**
+             * Requirement Level
+             * @enum {string}
+             */
+            requirement_level: "required" | "recommended";
+            /** Frequency Days */
+            frequency_days?: number | null;
+            /** Due Window Start Days */
+            due_window_start_days?: number | null;
+            /** Due Window End Days */
+            due_window_end_days?: number | null;
+            /** Stage Sequence Index */
+            stage_sequence_index?: number | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Escalation Guidance */
+            escalation_guidance?: string | null;
+            /**
+             * Display Order
+             * @default 0
+             */
+            display_order: number;
+        };
+        /** ProtocolObservationRequirementRead */
+        ProtocolObservationRequirementRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Growing Protocol Version Id
+             * Format: uuid
+             */
+            growing_protocol_version_id: string;
+            /**
+             * Stage Category
+             * @enum {string}
+             */
+            stage_category: "seeding" | "germination" | "nursery" | "transplanting" | "intermediate" | "production" | "harvest_ready" | "harvesting" | "completed" | "rejected";
+            /**
+             * Observation Definition Id
+             * Format: uuid
+             */
+            observation_definition_id: string;
+            /**
+             * Requirement Level
+             * @enum {string}
+             */
+            requirement_level: "required" | "recommended";
+            /** Frequency Days */
+            frequency_days: number | null;
+            /** Due Window Start Days */
+            due_window_start_days: number | null;
+            /** Due Window End Days */
+            due_window_end_days: number | null;
+            /** Stage Sequence Index */
+            stage_sequence_index: number | null;
+            /** Instructions */
+            instructions: string | null;
+            /** Escalation Guidance */
+            escalation_guidance: string | null;
+            /** Display Order */
+            display_order: number;
+        };
         /** QrCropSummary */
         QrCropSummary: {
             /** Code */
@@ -14339,17 +15428,6 @@ export interface components {
             /** Quantity Kind */
             quantity_kind: string;
         };
-        /** UserCreate */
-        UserCreate: {
-            /** Oidc Issuer */
-            oidc_issuer: string;
-            /** Oidc Subject */
-            oidc_subject: string;
-            /** Email */
-            email: string;
-            /** Display Name */
-            display_name: string;
-        };
         /**
          * UserLookupRead
          * @description AUTHZ-OPS-001: the minimal, administrative-only shape returned by
@@ -15084,6 +16162,18 @@ export interface components {
             id: string;
             /** Code */
             code: string;
+        };
+        /** WorkItemCropIssueSummary */
+        WorkItemCropIssueSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Status */
+            status: string;
         };
         /** WorkItemLocationSummary */
         WorkItemLocationSummary: {
@@ -27594,6 +28684,1089 @@ export interface operations {
             };
         };
     };
+    list_growing_protocols_growing_protocols_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_growing_protocol_growing_protocols_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowingProtocolCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_growing_protocol_growing_protocols__growing_protocol_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_protocol_versions_growing_protocols__growing_protocol_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolVersionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_protocol_version_growing_protocols__growing_protocol_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowingProtocolVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowingProtocolVersionActivateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_protocol_version_growing_protocols__growing_protocol_id__versions__version_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowingProtocolVersionRetireIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowingProtocolVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_observation_requirements_growing_protocols__growing_protocol_id__versions__version_id__observation_requirements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolObservationRequirementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_observation_requirement_growing_protocols__growing_protocol_id__versions__version_id__observation_requirements_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolObservationRequirementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolObservationRequirementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_care_activities_growing_protocols__growing_protocol_id__versions__version_id__care_activities_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolCareActivityRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_care_activity_growing_protocols__growing_protocol_id__versions__version_id__care_activities_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                growing_protocol_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolCareActivityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolCareActivityRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batch_protocol_assignments_farms__farm_id__crop_batches__batch_id__protocol_assignments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchProtocolAssignmentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_batch_protocol_farms__farm_id__crop_batches__batch_id__protocol_assignments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchProtocolAssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchProtocolAssignmentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_protocol_status_farms__farm_id__crop_batches__batch_id__protocol_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchProtocolStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_farm_protocol_due_summary_farms__farm_id__growing_protocols_due_summary_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmProtocolDueSummaryItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_inspections_farms__farm_id__crop_batches__batch_id__grower_inspections_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowerInspectionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_inspection_farms__farm_id__crop_batches__batch_id__grower_inspections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowerInspectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowerInspectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inspection_farms__farm_id__crop_batches__batch_id__grower_inspections__inspection_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+                inspection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowerInspectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_crop_issues_farms__farm_id__crop_issues_get: {
+        parameters: {
+            query?: {
+                batch_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_crop_issue_farms__farm_id__crop_issues_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueOpenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_crop_issue_farms__farm_id__crop_issues__crop_issue_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_crop_issue_farms__farm_id__crop_issues__crop_issue_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_diagnosis_farms__farm_id__crop_issues__crop_issue_id__confirm_diagnosis_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueConfirmDiagnosisIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_crop_issue_farms__farm_id__crop_issues__crop_issue_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_crop_issue_farms__farm_id__crop_issues__crop_issue_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueCloseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_follow_ups_farms__farm_id__crop_issues__crop_issue_id__follow_ups_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueFollowUpRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_follow_up_farms__farm_id__crop_issues__crop_issue_id__follow_ups_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                crop_issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropIssueFollowUpIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropIssueFollowUpRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_shift_handovers_farms__farm_id__shift_handovers_get: {
         parameters: {
             query?: never;
@@ -27807,105 +29980,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PrintLabelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_tenant_dev_bootstrap_tenants_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TenantCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_user_dev_bootstrap_users_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bootstrap_membership_dev_bootstrap_memberships_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BootstrapMembershipCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MembershipRead"];
                 };
             };
             /** @description Validation Error */

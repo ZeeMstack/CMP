@@ -2496,6 +2496,290 @@ export function createShiftHandover(
   return postJson<ShiftHandoverRead>(`/farms/${farmId}/shift-handovers`, payload, signal);
 }
 
+// --- PILOT-AGRO-001B: Growing Protocols, Grower Inspections, Crop Issues ----
+// Reuses the PILOT-AGRO-001/001A backend domain verbatim -- no new backend
+// reads/writes beyond what that domain already exposes (see qr_service's
+// "Inspect Crop" ScanAction additions below for the one precedented
+// exception). Growing Protocol administration is tenant-wide (no farmId in
+// its own routes); Batch assignment, inspections, and issues are farm-scoped.
+
+export type GrowingProtocolRead = components["schemas"]["GrowingProtocolRead"];
+export type GrowingProtocolCreate = components["schemas"]["GrowingProtocolCreate"];
+export type GrowingProtocolVersionRead = components["schemas"]["GrowingProtocolVersionRead"];
+export type GrowingProtocolVersionCreate = components["schemas"]["GrowingProtocolVersionCreate"];
+export type GrowingProtocolVersionActivateIn = components["schemas"]["GrowingProtocolVersionActivateIn"];
+export type GrowingProtocolVersionRetireIn = components["schemas"]["GrowingProtocolVersionRetireIn"];
+export type ProtocolObservationRequirementRead = components["schemas"]["ProtocolObservationRequirementRead"];
+export type ProtocolObservationRequirementCreate = components["schemas"]["ProtocolObservationRequirementCreate"];
+export type ProtocolCareActivityRead = components["schemas"]["ProtocolCareActivityRead"];
+export type ProtocolCareActivityCreate = components["schemas"]["ProtocolCareActivityCreate"];
+export type BatchProtocolAssignIn = components["schemas"]["BatchProtocolAssignIn"];
+export type BatchProtocolAssignmentRead = components["schemas"]["BatchProtocolAssignmentRead"];
+export type BatchProtocolStatusRead = components["schemas"]["BatchProtocolStatusRead"];
+export type DueRequirementRead = components["schemas"]["DueRequirementRead"];
+export type FarmProtocolDueSummaryItem = components["schemas"]["FarmProtocolDueSummaryItem"];
+export type GrowerInspectionCreate = components["schemas"]["GrowerInspectionCreate"];
+export type GrowerInspectionRead = components["schemas"]["GrowerInspectionRead"];
+export type InspectionFindingIn = components["schemas"]["InspectionFindingIn"];
+export type InspectionFindingRead = components["schemas"]["InspectionFindingRead"];
+export type InspectionObservationValueIn = components["schemas"]["InspectionObservationValueIn"];
+export type CropIssueOpenIn = components["schemas"]["CropIssueOpenIn"];
+export type CropIssueUpdateIn = components["schemas"]["CropIssueUpdateIn"];
+export type CropIssueConfirmDiagnosisIn = components["schemas"]["CropIssueConfirmDiagnosisIn"];
+export type CropIssueResolveIn = components["schemas"]["CropIssueResolveIn"];
+export type CropIssueCloseIn = components["schemas"]["CropIssueCloseIn"];
+export type CropIssueFollowUpIn = components["schemas"]["CropIssueFollowUpIn"];
+export type CropIssueFollowUpRead = components["schemas"]["CropIssueFollowUpRead"];
+export type CropIssueRead = components["schemas"]["CropIssueRead"];
+
+export function listGrowingProtocols(signal?: AbortSignal): Promise<GrowingProtocolRead[]> {
+  return getJson<GrowingProtocolRead[]>("/growing-protocols", signal);
+}
+
+export function getGrowingProtocol(protocolId: string, signal?: AbortSignal): Promise<GrowingProtocolRead> {
+  return getJson<GrowingProtocolRead>(`/growing-protocols/${protocolId}`, signal);
+}
+
+export function createGrowingProtocol(
+  payload: GrowingProtocolCreate,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolRead> {
+  return postJson<GrowingProtocolRead>("/growing-protocols", payload, signal);
+}
+
+export function listProtocolVersions(
+  protocolId: string,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolVersionRead[]> {
+  return getJson<GrowingProtocolVersionRead[]>(`/growing-protocols/${protocolId}/versions`, signal);
+}
+
+export function getProtocolVersion(
+  protocolId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolVersionRead> {
+  return getJson<GrowingProtocolVersionRead>(`/growing-protocols/${protocolId}/versions/${versionId}`, signal);
+}
+
+export function createProtocolVersion(
+  protocolId: string,
+  payload: GrowingProtocolVersionCreate,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolVersionRead> {
+  return postJson<GrowingProtocolVersionRead>(`/growing-protocols/${protocolId}/versions`, payload, signal);
+}
+
+export function activateProtocolVersion(
+  protocolId: string,
+  versionId: string,
+  payload: GrowingProtocolVersionActivateIn,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolVersionRead> {
+  return postJson<GrowingProtocolVersionRead>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/activate`, payload, signal,
+  );
+}
+
+export function retireProtocolVersion(
+  protocolId: string,
+  versionId: string,
+  payload: GrowingProtocolVersionRetireIn,
+  signal?: AbortSignal,
+): Promise<GrowingProtocolVersionRead> {
+  return postJson<GrowingProtocolVersionRead>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/retire`, payload, signal,
+  );
+}
+
+export function listProtocolObservationRequirements(
+  protocolId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<ProtocolObservationRequirementRead[]> {
+  return getJson<ProtocolObservationRequirementRead[]>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/observation-requirements`, signal,
+  );
+}
+
+export function addProtocolObservationRequirement(
+  protocolId: string,
+  versionId: string,
+  payload: ProtocolObservationRequirementCreate,
+  signal?: AbortSignal,
+): Promise<ProtocolObservationRequirementRead> {
+  return postJson<ProtocolObservationRequirementRead>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/observation-requirements`, payload, signal,
+  );
+}
+
+export function listProtocolCareActivities(
+  protocolId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<ProtocolCareActivityRead[]> {
+  return getJson<ProtocolCareActivityRead[]>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/care-activities`, signal,
+  );
+}
+
+export function addProtocolCareActivity(
+  protocolId: string,
+  versionId: string,
+  payload: ProtocolCareActivityCreate,
+  signal?: AbortSignal,
+): Promise<ProtocolCareActivityRead> {
+  return postJson<ProtocolCareActivityRead>(
+    `/growing-protocols/${protocolId}/versions/${versionId}/care-activities`, payload, signal,
+  );
+}
+
+export function assignBatchProtocol(
+  farmId: string,
+  batchId: string,
+  payload: BatchProtocolAssignIn,
+  signal?: AbortSignal,
+): Promise<BatchProtocolAssignmentRead> {
+  return postJson<BatchProtocolAssignmentRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/protocol-assignments`, payload, signal,
+  );
+}
+
+export function listBatchProtocolAssignments(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<BatchProtocolAssignmentRead[]> {
+  return getJson<BatchProtocolAssignmentRead[]>(
+    `/farms/${farmId}/crop-batches/${batchId}/protocol-assignments`, signal,
+  );
+}
+
+export function getBatchProtocolStatus(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<BatchProtocolStatusRead> {
+  return getJson<BatchProtocolStatusRead>(`/farms/${farmId}/crop-batches/${batchId}/protocol-status`, signal);
+}
+
+/** Today on the Farm's "Inspections Due" section -- one bounded farm-wide
+ * read (never a per-batch client-side fan-out). See
+ * `growing_protocol_service.list_farm_protocol_due_summary`'s own
+ * docstring for exactly what is (and deliberately is not) included. */
+export function getFarmProtocolDueSummary(
+  farmId: string,
+  signal?: AbortSignal,
+): Promise<FarmProtocolDueSummaryItem[]> {
+  return getJson<FarmProtocolDueSummaryItem[]>(`/farms/${farmId}/growing-protocols/due-summary`, signal);
+}
+
+export function recordGrowerInspection(
+  farmId: string,
+  batchId: string,
+  payload: GrowerInspectionCreate,
+  signal?: AbortSignal,
+): Promise<GrowerInspectionRead> {
+  return postJson<GrowerInspectionRead>(`/farms/${farmId}/crop-batches/${batchId}/grower-inspections`, payload, signal);
+}
+
+export function listGrowerInspections(
+  farmId: string,
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<GrowerInspectionRead[]> {
+  return getJson<GrowerInspectionRead[]>(`/farms/${farmId}/crop-batches/${batchId}/grower-inspections`, signal);
+}
+
+export function getGrowerInspection(
+  farmId: string,
+  batchId: string,
+  inspectionId: string,
+  signal?: AbortSignal,
+): Promise<GrowerInspectionRead> {
+  return getJson<GrowerInspectionRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/grower-inspections/${inspectionId}`, signal,
+  );
+}
+
+export function openCropIssue(
+  farmId: string,
+  payload: CropIssueOpenIn,
+  signal?: AbortSignal,
+): Promise<CropIssueRead> {
+  return postJson<CropIssueRead>(`/farms/${farmId}/crop-issues`, payload, signal);
+}
+
+/** `batchId` omitted lists every open-attention Crop Issue farm-wide (Today
+ * on the Farm's "Crop Attention" section) -- the backend already supports
+ * this with no code change (`crop_issues.py::list_crop_issues`'s `batch_id`
+ * query param is optional). */
+export function listCropIssues(
+  farmId: string,
+  batchId?: string,
+  signal?: AbortSignal,
+): Promise<CropIssueRead[]> {
+  const query = batchId ? `?batch_id=${batchId}` : "";
+  return getJson<CropIssueRead[]>(`/farms/${farmId}/crop-issues${query}`, signal);
+}
+
+export function getCropIssue(farmId: string, cropIssueId: string, signal?: AbortSignal): Promise<CropIssueRead> {
+  return getJson<CropIssueRead>(`/farms/${farmId}/crop-issues/${cropIssueId}`, signal);
+}
+
+export function updateCropIssue(
+  farmId: string,
+  cropIssueId: string,
+  payload: CropIssueUpdateIn,
+  signal?: AbortSignal,
+): Promise<CropIssueRead> {
+  return postJson<CropIssueRead>(`/farms/${farmId}/crop-issues/${cropIssueId}/update`, payload, signal);
+}
+
+export function confirmCropIssueDiagnosis(
+  farmId: string,
+  cropIssueId: string,
+  payload: CropIssueConfirmDiagnosisIn,
+  signal?: AbortSignal,
+): Promise<CropIssueRead> {
+  return postJson<CropIssueRead>(`/farms/${farmId}/crop-issues/${cropIssueId}/confirm-diagnosis`, payload, signal);
+}
+
+export function resolveCropIssue(
+  farmId: string,
+  cropIssueId: string,
+  payload: CropIssueResolveIn,
+  signal?: AbortSignal,
+): Promise<CropIssueRead> {
+  return postJson<CropIssueRead>(`/farms/${farmId}/crop-issues/${cropIssueId}/resolve`, payload, signal);
+}
+
+export function closeCropIssue(
+  farmId: string,
+  cropIssueId: string,
+  payload: CropIssueCloseIn,
+  signal?: AbortSignal,
+): Promise<CropIssueRead> {
+  return postJson<CropIssueRead>(`/farms/${farmId}/crop-issues/${cropIssueId}/close`, payload, signal);
+}
+
+export function recordCropIssueFollowUp(
+  farmId: string,
+  cropIssueId: string,
+  payload: CropIssueFollowUpIn,
+  signal?: AbortSignal,
+): Promise<CropIssueFollowUpRead> {
+  return postJson<CropIssueFollowUpRead>(`/farms/${farmId}/crop-issues/${cropIssueId}/follow-ups`, payload, signal);
+}
+
+export function listCropIssueFollowUps(
+  farmId: string,
+  cropIssueId: string,
+  signal?: AbortSignal,
+): Promise<CropIssueFollowUpRead[]> {
+  return getJson<CropIssueFollowUpRead[]>(`/farms/${farmId}/crop-issues/${cropIssueId}/follow-ups`, signal);
+}
+
 // --- PILOT-SCAN-001: QR identifiers, scan context, and label printing ------
 
 export type QrIdentifierRead = components["schemas"]["QrIdentifierRead"];

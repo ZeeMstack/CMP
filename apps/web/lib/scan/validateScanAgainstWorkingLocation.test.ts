@@ -237,6 +237,14 @@ describe("filterActionsForLocationValidation", () => {
     expect(filtered).toHaveLength(actions.length);
   });
 
+  // PILOT-AGRO-001B Part 10: MISMATCH must never present Inspect Crop as
+  // location-validated.
+  it("withholds Inspect Crop under MISMATCH", () => {
+    const withInspect = [...actions, { label: "Inspect Crop", href: "/e" }];
+    const filtered = filterActionsForLocationValidation(withInspect, { kind: "MISMATCH", reason: "different_location", pathString: "x" });
+    expect(filtered.map((a) => a.label)).not.toContain("Inspect Crop");
+  });
+
   it("never withholds any action under CANNOT_VALIDATE -- the destination page's own validation still applies", () => {
     const filtered = filterActionsForLocationValidation(actions, { kind: "CANNOT_VALIDATE", reason: "x" });
     expect(filtered).toHaveLength(actions.length);
