@@ -91,7 +91,15 @@ export function RecordObservationForm({
   isSubmitting: boolean;
   serverError?: AppError | null;
 }) {
+  // HOTFIX-TIME-002: this browser-local "now" is ONLY ever a convenience
+  // starting point for the optional custom-time fields below
+  // (`useCustomTime` defaults to false) -- it is never itself submitted.
+  // Default "record now" sends no effective_time at all (see
+  // handleSubmit); the server assigns its own authoritative current time,
+  // which can never race ahead of a browser clock that runs a few minutes
+  // fast.
   const initial = nowDateAndTime();
+  const [useCustomTime, setUseCustomTime] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState(initial.date);
   const [effectiveTime, setEffectiveTime] = useState(initial.time);
   const [note, setNote] = useState("");
@@ -217,7 +225,11 @@ export function RecordObservationForm({
   function handleSubmit() {
     const values = buildValues();
     if (!values) return;
-    const effective_time = new Date(`${effectiveDate}T${effectiveTime}`).toISOString();
+    // HOTFIX-TIME-002: default "record now" omits effective_time entirely
+    // rather than sending a browser-clock-derived timestamp -- the server
+    // assigns its own authoritative current time. Only an operator's own
+    // explicit date/time selection is ever sent as a concrete instant.
+    const effective_time = useCustomTime ? new Date(`${effectiveDate}T${effectiveTime}`).toISOString() : null;
     onSubmit({
       client_command_id: clientCommandId,
       effective_time,
@@ -368,25 +380,46 @@ export function RecordObservationForm({
         />
       </div>
 
-      <fieldset className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <span className={labelClass}>Date</span>
+      <fieldset className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm text-wl-text">
           <input
-            type="date"
-            className={inputClass}
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
+            type="checkbox"
+            checked={useCustomTime}
+            onChange={(e) => setUseCustomTime(e.target.checked)}
+            className="h-4 w-4"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className={labelClass}>Time</span>
-          <input
-            type="time"
-            className={inputClass}
-            value={effectiveTime}
-            onChange={(e) => setEffectiveTime(e.target.value)}
-          />
-        </div>
+          Use a specific date/time instead of now
+        </label>
+        {useCustomTime ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <span className={labelClass}>Date</span>
+              <input
+                type="date"
+                className={inputClass}
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className={labelClass}>Time</span>
+              <input
+                type="time"
+                className={inputClass}
+                value={effectiveTime}
+                onChange={(e) => setEffectiveTime(e.target.value)}
+              />
+            </div>
+          </div>
+        ) : (
+          // HOTFIX-TIME-002: never present a browser-generated timestamp
+          // as though it is already authoritative -- the server assigns
+          // the real recorded time only once this is actually saved.
+          <p className="text-sm text-wl-text-secondary">
+            Occurred at <span className="font-medium text-wl-text">Now</span> — recorded using the server&apos;s
+            current time when you save.
+          </p>
+        )}
       </fieldset>
 
       {rowError && (

@@ -20,6 +20,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import (
+    InvalidObservationEffectiveTimeError,
     ObservationCommandReusedWithDifferentPayloadError,
     ObservationValidationError,
 )
@@ -661,3 +662,155 @@ def test_observation_targets_unknown_batch_404s(client, active_context_with_farm
     _tenant, _user, headers, farm = active_context_with_farm
     resp = client.get(f"/farms/{farm.id}/crop-batches/{uuid.uuid4()}/observation-targets", headers=headers)
     assert resp.status_code == 404
+
+
+# =====================================================================
+# HOTFIX-TIME-002: server-authoritative "record now"
+# =====================================================================
+
+
+@pytest.mark.integration
+def test_record_now_omits_effective_time_and_succeeds(db_session, active_context_with_farm) -> None:
+    """Simulates a browser clock several minutes ahead of the server:
+    since "record now" never sends a client-generated timestamp at all,
+    there is nothing for the server to compare against its own clock."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+
+    event = _record(
+        db_session, tenant, user, farm, s["batch"], effective_time=None,
+        values=[{"observation_definition_id": definition.id, "value_decimal": Decimal("21.5")}],
+    )
+    assert event.effective_time is not None
+
+
+@pytest.mark.integration
+def test_record_now_uses_server_authoritative_effective_time(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+
+    before = _now()
+    event = _record(
+        db_session, tenant, user, farm, s["batch"], effective_time=None,
+        values=[{"observation_definition_id": definition.id, "value_decimal": Decimal("21.5")}],
+    )
+    after = _now()
+    assert before <= event.effective_time <= after
+
+
+@pytest.mark.integration
+def test_explicit_past_effective_time_preserved(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+    # Must be after the batch's own creation time (an unrelated, pre-existing
+    # rule) but before "now" -- the midpoint is always valid regardless of
+    # how much real wall-clock time this test itself takes to run.
+    created = s["batch"].created_effective_time
+    explicit_past = created + (_now() - created) / 2
+
+    event = _record(
+        db_session, tenant, user, farm, s["batch"], effective_time=explicit_past,
+        values=[{"observation_definition_id": definition.id, "value_decimal": Decimal("21.5")}],
+    )
+    assert event.effective_time == explicit_past
+
+
+@pytest.mark.integration
+def test_explicit_future_effective_time_still_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+    explicit_future = _now() + timedelta(minutes=10)
+
+    with pytest.raises(InvalidObservationEffectiveTimeError):
+        _record(
+            db_session, tenant, user, farm, s["batch"], effective_time=explicit_future,
+            values=[{"observation_definition_id": definition.id, "value_decimal": Decimal("21.5")}],
+        )
+
+
+@pytest.mark.integration
+def test_record_now_retry_same_client_command_id_is_idempotent_despite_different_resolved_times(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """The critical idempotency risk this hotfix introduces: a genuine
+    retry of a "record now" command (same client_command_id, still
+    omitting effective_time) must replay the ORIGINAL event, never
+    conflict -- even though the server resolves a different real
+    `datetime.now()` on each attempt."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+    ccid = uuid.uuid4()
+    values = [{"observation_definition_id": definition.id, "value_decimal": Decimal("21.5")}]
+
+    from app.services import observation_service as obs_mod
+
+    real_datetime = obs_mod.datetime
+    base = real_datetime.now(timezone.utc)
+    resolved_times = iter([base, base + timedelta(minutes=5)])
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(resolved_times)
+
+    monkeypatch.setattr(obs_mod, "datetime", _FakeDateTime)
+
+    first = _record(
+        db_session, tenant, user, farm, s["batch"], client_command_id=ccid, effective_time=None, values=values,
+    )
+    second = _record(
+        db_session, tenant, user, farm, s["batch"], client_command_id=ccid, effective_time=None, values=values,
+    )
+
+    assert first.id == second.id
+    assert db_session.execute(
+        select(func.count()).select_from(ObservationEvent).where(ObservationEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 1
+
+
+@pytest.mark.integration
+def test_record_now_http_omits_effective_time_and_succeeds(client, active_context_with_farm, db_session) -> None:
+    """End-to-end proof through the real API schema/router: a request body
+    that omits `effective_time` entirely is accepted."""
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+    db_session.commit()
+
+    before = _now()
+    resp = client.post(
+        f"/farms/{farm.id}/crop-batches/{s['batch'].id}/observations", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()),
+            "values": [{"observation_definition_id": str(definition.id), "value_decimal": "21.5"}],
+        },
+    )
+    after = _now()
+
+    assert resp.status_code == 201, resp.text
+    recorded = datetime.fromisoformat(resp.json()["effective_time"])
+    assert before <= recorded <= after
+
+
+@pytest.mark.integration
+def test_observation_http_future_effective_time_is_422_not_500(client, active_context_with_farm, db_session) -> None:
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm)
+    definition = _register_definition(db_session, tenant, user, value_type="decimal", target_scope="crop_batch")
+    db_session.commit()
+    explicit_future = (_now() + timedelta(minutes=10)).isoformat()
+
+    resp = client.post(
+        f"/farms/{farm.id}/crop-batches/{s['batch'].id}/observations", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "effective_time": explicit_future,
+            "values": [{"observation_definition_id": str(definition.id), "value_decimal": "21.5"}],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "cannot be in the future" in resp.text

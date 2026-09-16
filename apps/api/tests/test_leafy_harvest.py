@@ -6,13 +6,14 @@ Cultivation Plate BCA with a known opening population, never a fabricated
 one."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
+from app.models.harvest_event import HarvestEvent
 from app.models.harvest_population_event import HarvestPopulationEvent
 from app.models.occupancy import Occupancy
 from app.models.transplant_destination_line import TransplantDestinationLine
@@ -22,6 +23,7 @@ from app.services.errors import (
     HarvestPopulationInsufficientError,
     HarvestSourceAssignmentNotFoundError,
     HarvestValidationError,
+    InvalidHarvestEffectiveTimeError,
     NoPopulationRootError,
     QualityHoldOpenError,
     UnsupportedHarvestSourceCarrierTypeError,
@@ -372,3 +374,135 @@ def test_tenant_isolation(db_session, active_context_with_farm) -> None:
             batch_id=batch.id, client_command_id=uuid.uuid4(), effective_time=t0 + timedelta(hours=1),
             produce_lot_code=f"HL-{uuid.uuid4().hex[:8]}", note=None, source_lines=[_line(root_id, 5, "2.000")],
         )
+
+
+# =====================================================================
+# HOTFIX-TIME-002: server-authoritative "Harvest now"
+# =====================================================================
+# The scenario builder deliberately anchors its own chronological facts a
+# few synthetic hours ahead of whenever the scenario itself is built, so
+# these tests control the server-resolved "now" via monkeypatch (a fixed,
+# known instant safely after the scenario's own anchor `t0`) rather than
+# relying on literal wall-clock timing lining up with those synthetic
+# offsets -- deterministic, and still a faithful proof of the real
+# resolve-server-time code path.
+
+
+def _patch_harvest_now(monkeypatch, when: datetime):
+    real_datetime = harvest_service.datetime
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return when
+
+    monkeypatch.setattr(harvest_service, "datetime", _FakeDateTime)
+
+
+def test_leafy_harvest_now_omits_effective_time_and_succeeds(db_session, active_context_with_farm, monkeypatch) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    server_now = t0 + timedelta(minutes=1)
+    _patch_harvest_now(monkeypatch, server_now)
+
+    event = _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 100, "50.000")], effective_time=None)
+
+    assert event.effective_time == server_now
+
+
+def test_leafy_harvest_explicit_past_effective_time_preserved(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    explicit_time = t0 + timedelta(hours=1)
+
+    event = _harvest(
+        db_session, tenant, farm, user, batch.id, [_line(root_id, 100, "50.000")], effective_time=explicit_time,
+    )
+    assert event.effective_time == explicit_time
+
+
+def test_leafy_harvest_explicit_future_effective_time_still_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    explicit_future = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    with pytest.raises(InvalidHarvestEffectiveTimeError):
+        _harvest(db_session, tenant, farm, user, batch.id, [_line(root_id, 100, "50.000")], effective_time=explicit_future)
+
+
+def test_leafy_harvest_now_retry_same_client_command_id_is_idempotent(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """The critical idempotency risk this hotfix introduces: a genuine
+    retry of a "Harvest now" command (same client_command_id, still
+    omitting effective_time) must replay the ORIGINAL event, never
+    conflict -- even though the server resolves a different real
+    `datetime.now()` on each attempt."""
+    tenant, user, _headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    ccid = uuid.uuid4()
+    source_lines = [_line(root_id, 100, "50.000")]
+    # Must be identical across both attempts, exactly like every other
+    # field a genuine retry resends unchanged -- `_harvest`'s own default
+    # mints a FRESH random code per call, which would (correctly) look
+    # like a different payload and is not what this test is proving.
+    produce_lot_code = f"HL-{uuid.uuid4().hex[:8]}"
+
+    real_datetime = harvest_service.datetime
+    resolved_times = iter([t0 + timedelta(minutes=1), t0 + timedelta(minutes=6)])
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(resolved_times)
+
+    monkeypatch.setattr(harvest_service, "datetime", _FakeDateTime)
+
+    first = _harvest(
+        db_session, tenant, farm, user, batch.id, source_lines,
+        client_command_id=ccid, effective_time=None, produce_lot_code=produce_lot_code,
+    )
+    second = _harvest(
+        db_session, tenant, farm, user, batch.id, source_lines,
+        client_command_id=ccid, effective_time=None, produce_lot_code=produce_lot_code,
+    )
+
+    assert first.id == second.id
+    assert db_session.execute(
+        select(func.count()).select_from(HarvestEvent).where(HarvestEvent.batch_id == batch.id)
+    ).scalar_one() == 1
+
+
+def test_leafy_harvest_http_omits_effective_time_and_succeeds(client, active_context_with_farm, db_session) -> None:
+    tenant, user, headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    db_session.commit()
+
+    resp = client.post(
+        f"/farms/{farm.id}/leafy-production/harvests", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "batch_id": str(batch.id),
+            "produce_lot_code": f"HL-{uuid.uuid4().hex[:8]}", "note": None,
+            "source_lines": [{"batch_carrier_assignment_id": str(root_id), "whole_unit_count": 100, "harvested_weight_kg": "50.000", "note": None}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["effective_time"] is not None
+
+
+def test_leafy_harvest_http_future_effective_time_is_422_not_500(client, active_context_with_farm, db_session) -> None:
+    tenant, user, headers, farm = active_context_with_farm
+    batch, root_id, t0 = _plate_scenario(db_session, tenant, user, farm, opening_count=180)
+    db_session.commit()
+    explicit_future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+
+    resp = client.post(
+        f"/farms/{farm.id}/leafy-production/harvests", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "batch_id": str(batch.id), "effective_time": explicit_future,
+            "produce_lot_code": f"HL-{uuid.uuid4().hex[:8]}", "note": None,
+            "source_lines": [{"batch_carrier_assignment_id": str(root_id), "whole_unit_count": 100, "harvested_weight_kg": "50.000", "note": None}],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "cannot be in the future" in resp.text

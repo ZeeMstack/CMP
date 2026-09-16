@@ -81,7 +81,13 @@ class ObservationEventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     client_command_id: uuid.UUID
-    effective_time: datetime
+    # HOTFIX-TIME-002: optional -- omitting it means "record now," and the
+    # server assigns its own authoritative current time
+    # (observation_service.record_observation), never a client-generated
+    # timestamp that can race ahead of server time under browser clock
+    # skew. An explicit value is still required to be timezone-aware and
+    # is still rejected if it is genuinely in the future.
+    effective_time: datetime | None = None
     note: str | None = None
     values: list[ObservationValueIn] = Field(default_factory=list)
     germination_checks: list[GerminationCheckIn] = Field(default_factory=list)
@@ -92,8 +98,8 @@ class ObservationEventCreate(BaseModel):
 
     @field_validator("effective_time")
     @classmethod
-    def validate_effective_time(cls, v: datetime) -> datetime:
-        return _require_tz_aware(v)
+    def validate_effective_time(cls, v: datetime | None) -> datetime | None:
+        return v if v is None else _require_tz_aware(v)
 
     @field_validator("note")
     @classmethod

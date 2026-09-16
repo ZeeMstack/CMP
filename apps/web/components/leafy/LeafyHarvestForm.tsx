@@ -88,6 +88,7 @@ export function LeafyHarvestForm({
     defaultValues: {
       batch_id: plates[0]?.batch_id ?? "",
       batch_code: plates[0]?.batch_code ?? "",
+      use_custom_time: false,
       effective_date: initial.date,
       effective_time_of_day: initial.time,
       note: "",
@@ -165,7 +166,13 @@ export function LeafyHarvestForm({
 
   function confirm() {
     const values = getValues();
-    const effectiveTime = new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString();
+    // HOTFIX-TIME-002: default "Harvest now" omits effective_time entirely
+    // rather than sending a browser-clock-derived timestamp -- the server
+    // assigns its own authoritative current time. Only an operator's own
+    // explicit date/time selection is ever sent as a concrete instant.
+    const effectiveTime = values.use_custom_time
+      ? new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString()
+      : null;
     const sourceLines = values.lines.map((line) => ({
       batch_carrier_assignment_id: line.batch_carrier_assignment_id,
       whole_unit_count: line.heads_harvested,
@@ -197,8 +204,10 @@ export function LeafyHarvestForm({
       <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <h2 className="font-serif text-base font-semibold text-wl-text">Review before recording</h2>
         <p className="text-sm text-wl-text-secondary">
-          Batch <span className="font-medium text-wl-text">{values.batch_code}</span> · {values.effective_date}{" "}
-          {values.effective_time_of_day}
+          Batch <span className="font-medium text-wl-text">{values.batch_code}</span> ·{" "}
+          {/* HOTFIX-TIME-002: never present an uncommitted browser-generated
+              timestamp as though it is already authoritative. */}
+          {values.use_custom_time ? `${values.effective_date} ${values.effective_time_of_day}` : "Now"}
         </p>
         <ul className="flex flex-col gap-3">
           {values.lines.map((line) => {
@@ -365,19 +374,35 @@ export function LeafyHarvestForm({
         {errors.note?.message && <span className={errorClass}>{errors.note.message}</span>}
       </label>
 
-      <fieldset className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-wl-text">Date</span>
-          <input type="date" className={inputClass} {...register("effective_date")} />
-          {errors.effective_date?.message && <span className={errorClass}>{errors.effective_date.message}</span>}
+      <fieldset className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm text-wl-text">
+          <input type="checkbox" {...register("use_custom_time")} className="h-4 w-4" />
+          Use a specific date/time instead of now
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-wl-text">Time</span>
-          <input type="time" className={inputClass} {...register("effective_time_of_day")} />
-          {errors.effective_time_of_day?.message && (
-            <span className={errorClass}>{errors.effective_time_of_day.message}</span>
-          )}
-        </label>
+        {watch("use_custom_time") ? (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-wl-text">Date</span>
+              <input type="date" className={inputClass} {...register("effective_date")} />
+              {errors.effective_date?.message && <span className={errorClass}>{errors.effective_date.message}</span>}
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-wl-text">Time</span>
+              <input type="time" className={inputClass} {...register("effective_time_of_day")} />
+              {errors.effective_time_of_day?.message && (
+                <span className={errorClass}>{errors.effective_time_of_day.message}</span>
+              )}
+            </label>
+          </div>
+        ) : (
+          // HOTFIX-TIME-002: never present a browser-generated timestamp as
+          // though it is already authoritative -- the server assigns the
+          // real recorded time only once this is actually saved.
+          <p className="text-sm text-wl-text-secondary">
+            Occurred at <span className="font-medium text-wl-text">Now</span> — recorded using the server&apos;s
+            current time when you save.
+          </p>
+        )}
       </fieldset>
 
       {serverError && (

@@ -10596,11 +10596,8 @@ export interface components {
              * Format: uuid
              */
             client_command_id: string;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
+            /** Effective Time */
+            effective_time?: string | null;
             /** Note */
             note?: string | null;
             /** Values */
@@ -12353,11 +12350,8 @@ export interface components {
              * Format: uuid
              */
             batch_id: string;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
+            /** Effective Time */
+            effective_time?: string | null;
             /** Produce Lot Code */
             produce_lot_code: string;
             /** Note */
@@ -12480,11 +12474,8 @@ export interface components {
              * Format: uuid
              */
             batch_id: string;
-            /**
-             * Effective Time
-             * Format: date-time
-             */
-            effective_time: string;
+            /** Effective Time */
+            effective_time?: string | null;
             /** Produce Lot Code */
             produce_lot_code: string;
             /** Note */

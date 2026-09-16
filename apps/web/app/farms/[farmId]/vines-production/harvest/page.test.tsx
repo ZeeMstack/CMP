@@ -149,8 +149,6 @@ describe("VinesHarvestPage", () => {
     expect(weightInputs).toHaveLength(2);
     fireEvent.change(weightInputs[0], { target: { value: "15" } });
     fireEvent.change(weightInputs[1], { target: { value: "12" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
     fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
@@ -165,8 +163,6 @@ describe("VinesHarvestPage", () => {
 
     await waitFor(() => expect(screen.getByLabelText(/raw weight/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/raw weight/i), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
 
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
@@ -183,8 +179,6 @@ describe("VinesHarvestPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
     await waitFor(() => expect(screen.getByLabelText(/raw weight/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/raw weight/i), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
 
     await waitFor(() =>
@@ -287,8 +281,6 @@ describe("VinesHarvestPage", () => {
 
     await waitFor(() => expect(screen.getByLabelText(/raw weight/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/raw weight/i), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: /review harvest/i }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));

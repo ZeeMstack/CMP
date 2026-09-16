@@ -40,12 +40,24 @@ export const recordLeafyHarvestFormSchema = z
   .object({
     batch_id: z.string().min(1, "Select a Production Plate to establish the Batch"),
     batch_code: z.string(),
-    effective_date: z.string().min(1, "Date is required"),
-    effective_time_of_day: z.string().min(1, "Time is required"),
+    // HOTFIX-TIME-002: the operator's own deliberate choice to record
+    // something other than "now" -- default NOW never carries a client-
+    // generated timestamp at all (see buildRecordLeafyHarvestPayload), so
+    // `effective_date`/`effective_time_of_day` are only required, and only
+    // sent, when this is explicitly true.
+    use_custom_time: z.boolean(),
+    effective_date: z.string(),
+    effective_time_of_day: z.string(),
     note: z.string(),
     lines: z.array(leafyHarvestLineFormSchema).min(1, "Select at least one Production Plate"),
   })
   .superRefine((values, ctx) => {
+    if (values.use_custom_time && !values.effective_date) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["effective_date"], message: "Date is required" });
+    }
+    if (values.use_custom_time && !values.effective_time_of_day) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["effective_time_of_day"], message: "Time is required" });
+    }
     const ids = values.lines.map((l) => l.batch_carrier_assignment_id);
     const duplicates = new Set(ids.filter((id, i) => ids.indexOf(id) !== i));
     if (duplicates.size > 0) {

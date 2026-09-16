@@ -8,13 +8,14 @@ isolation, audit, Grading integration, traceability, and correction.
 Concurrency lives in its own file (`test_vines_harvest_concurrency.py`)."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.audit_event import AuditEvent
+from app.models.harvest_event import HarvestEvent
 from app.models.harvest_source_line import HarvestSourceLine
 from app.models.harvest_source_line_grow_bag import HarvestSourceLineGrowBag
 from app.services import (
@@ -31,6 +32,7 @@ from app.services.errors import (
     HarvestCorrectionCommandReusedWithDifferentPayloadError,
     HarvestEventNotFoundError,
     HarvestValidationError,
+    InvalidHarvestEffectiveTimeError,
     QualityHoldOpenError,
 )
 from tests._vines_harvest_scenario import build_vines_harvest_ready_scenario
@@ -545,3 +547,120 @@ def test_correction_stale_supersedes_id_conflicts(db_session, active_context_wit
             actor_user_id=user.id, client_command_id=uuid.uuid4(), supersedes_correction_id=None, is_void=False,
             corrected_harvested_weight_kg=Decimal("7.000"), reason_code="scale_error", note="reweighed again",
         )
+
+
+# =====================================================================
+# HOTFIX-TIME-002: server-authoritative "Harvest now"
+# =====================================================================
+# Mirrors test_leafy_harvest.py's identical HOTFIX-TIME-002 block exactly
+# -- same shared harvest_service.record_vines_harvest server-time
+# resolution and fingerprint marker.
+
+
+def _patch_harvest_now(monkeypatch, when: datetime):
+    real_datetime = harvest_service.datetime
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return when
+
+    monkeypatch.setattr(harvest_service, "datetime", _FakeDateTime)
+
+
+def test_vines_harvest_now_omits_effective_time_and_succeeds(db_session, active_context_with_farm, monkeypatch) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+    server_now = s["harvest_time"] + timedelta(minutes=1)
+    _patch_harvest_now(monkeypatch, server_now)
+
+    event = _record(db_session, tenant, farm, user, s, [(s["grow_gutter_id"], "10.000")], effective_time=None)
+
+    assert event.effective_time == server_now
+
+
+def test_vines_harvest_explicit_past_effective_time_preserved(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+
+    event = _record(
+        db_session, tenant, farm, user, s, [(s["grow_gutter_id"], "10.000")], effective_time=s["harvest_time"],
+    )
+    assert event.effective_time == s["harvest_time"]
+
+
+def test_vines_harvest_explicit_future_effective_time_still_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+    explicit_future = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    with pytest.raises(InvalidHarvestEffectiveTimeError):
+        _record(db_session, tenant, farm, user, s, [(s["grow_gutter_id"], "10.000")], effective_time=explicit_future)
+
+
+def test_vines_harvest_now_retry_same_client_command_id_is_idempotent(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+    ccid = uuid.uuid4()
+    produce_lot_code = f"LOT-{uuid.uuid4().hex[:8]}"
+
+    real_datetime = harvest_service.datetime
+    resolved_times = iter([s["harvest_time"] + timedelta(minutes=1), s["harvest_time"] + timedelta(minutes=6)])
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(resolved_times)
+
+    monkeypatch.setattr(harvest_service, "datetime", _FakeDateTime)
+
+    first = _record(
+        db_session, tenant, farm, user, s, [(s["grow_gutter_id"], "10.000")],
+        client_command_id=ccid, effective_time=None, produce_lot_code=produce_lot_code,
+    )
+    second = _record(
+        db_session, tenant, farm, user, s, [(s["grow_gutter_id"], "10.000")],
+        client_command_id=ccid, effective_time=None, produce_lot_code=produce_lot_code,
+    )
+
+    assert first.id == second.id
+    assert db_session.execute(
+        select(func.count()).select_from(HarvestEvent).where(HarvestEvent.batch_id == s["batch"].id)
+    ).scalar_one() == 1
+
+
+def test_vines_harvest_http_omits_effective_time_and_succeeds(client, active_context_with_farm, db_session) -> None:
+    tenant, user, headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+    db_session.commit()
+
+    resp = client.post(
+        f"/farms/{farm.id}/vines-production/harvests", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "batch_id": str(s["batch"].id),
+            "produce_lot_code": f"LOT-{uuid.uuid4().hex[:8]}", "note": None,
+            "source_lines": [{"gutter_id": str(s["grow_gutter_id"]), "harvested_weight_kg": "10.000", "note": None}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["effective_time"] is not None
+
+
+def test_vines_harvest_http_future_effective_time_is_422_not_500(client, active_context_with_farm, db_session) -> None:
+    tenant, user, headers, farm = active_context_with_farm
+    s = build_vines_harvest_ready_scenario(db_session, tenant, user, farm, intervines_plant_count=4)
+    db_session.commit()
+    explicit_future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+
+    resp = client.post(
+        f"/farms/{farm.id}/vines-production/harvests", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "batch_id": str(s["batch"].id), "effective_time": explicit_future,
+            "produce_lot_code": f"LOT-{uuid.uuid4().hex[:8]}", "note": None,
+            "source_lines": [{"gutter_id": str(s["grow_gutter_id"]), "harvested_weight_kg": "10.000", "note": None}],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    assert "cannot be in the future" in resp.text

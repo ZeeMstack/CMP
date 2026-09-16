@@ -100,7 +100,10 @@ def record_observation(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
             work_item_id=payload.work_item_id, client_command_id=payload.client_command_id,
             result_entity_type="observation_event", result_entity_id=event.id,
-            effective_time=payload.effective_time,
+            # HOTFIX-TIME-002: the resolved, authoritative value from the
+            # committed result -- never `payload.effective_time`, which is
+            # now optional/None for a "record now" command.
+            effective_time=result.effective_time,
         )
     return result
 
