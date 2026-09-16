@@ -603,3 +603,127 @@ def test_due_read_never_mutates_batch_or_stage(db_session, active_context_with_f
     assert len(audit_count_before) == len(audit_count_after)
     stage = db_session.execute(select(CropBatch.state).where(CropBatch.id == scenario["batch"].id)).scalar_one()
     assert stage == "active"
+
+
+# --- PILOT-AGRO-001A: stage_sequence_index disambiguates same-stage_category stages -------
+
+
+def test_stage_sequence_index_disambiguates_same_category_stages(db_session, active_context_with_farm) -> None:
+    """The pilot's own Iceberg Lettuce template (config/pilot/iceberg-
+    pilot.example.yaml) has TWO real stages sharing stage_category=
+    'transplanting' (Seedling->InterSalads, then InterSalads->Production).
+    A requirement meant only for the first must not leak into the second,
+    and vice versa -- proven here by building that exact shape and
+    checking the due-read at each stage."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    crop = crop_service.register_crop(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"ICE-{suffix}", common_name="Iceberg",
+        scientific_name=None, crop_category="leafy_green",
+    )
+    ps = production_system_service.register_production_system(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"PS-{suffix}", name="DWC", description=None,
+    )
+    workflow = workflow_service.register_workflow(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, crop_id=crop.id, variety_id=None,
+        production_system_id=ps.id, code=f"WF-{suffix}", name="Workflow",
+    )
+    wf_version = workflow_service.create_draft_version(db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id)
+    seeding = workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        code="SEEDING", name="Seeding", display_order=0, stage_category="seeding", expected_duration_minutes=None,
+        permitted_location_type_code=None, required_carrier_type_code="seed_tray", is_start=True, is_terminal=False,
+    )
+    into_intersalads = workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        code="INTO_INTERSALADS", name="Into InterSalads", display_order=1, stage_category="transplanting",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=False,
+    )
+    into_production = workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        code="INTO_PRODUCTION", name="Into Production", display_order=2, stage_category="transplanting",
+        expected_duration_minutes=None, permitted_location_type_code=None, required_carrier_type_code=None,
+        is_start=False, is_terminal=False,
+    )
+    complete = workflow_service.add_stage(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        code="COMPLETE", name="Complete", display_order=3, stage_category="completed", expected_duration_minutes=None,
+        permitted_location_type_code=None, required_carrier_type_code=None, is_start=False, is_terminal=True,
+    )
+    t1 = workflow_service.add_transition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        from_stage_id=seeding.id, to_stage_id=into_intersalads.id, code="ADV-1", name="Seeding -> InterSalads",
+    )
+    t2 = workflow_service.add_transition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        from_stage_id=into_intersalads.id, to_stage_id=into_production.id, code="ADV-2", name="InterSalads -> Production",
+    )
+    workflow_service.add_transition(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id,
+        from_stage_id=into_production.id, to_stage_id=complete.id, code="ADV-3", name="Production -> Complete",
+    )
+    workflow_service.publish_version(db_session, tenant_id=tenant.id, actor_user_id=user.id, workflow_id=workflow.id, version_id=wf_version.id)
+
+    batch = crop_batch_service.create_batch(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        code=f"BATCH-{suffix}", workflow_id=workflow.id, effective_time=_now(),
+    )
+
+    definition_1 = _register_observation_definition(db_session, tenant, user, value_type="text", target_scope="crop_batch")
+    definition_2 = _register_observation_definition(db_session, tenant, user, value_type="text", target_scope="crop_batch")
+
+    protocol = growing_protocol_service.register_protocol(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"GP-{suffix}", name="Test Protocol",
+        crop_id=crop.id, variety_id=None, production_system_id=ps.id, season_context=None,
+    )
+    draft = growing_protocol_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id,
+        client_command_id=uuid.uuid4(), reason="two transplanting occurrences", effective_date=None,
+    )
+    # Occurrence 1 (into InterSalads) requirement -- references definition_1.
+    growing_protocol_service.add_observation_requirement(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id, version_id=draft.id,
+        stage_category="transplanting", observation_definition_id=definition_1.id, requirement_level="required",
+        frequency_days=None, due_window_start_days=None, due_window_end_days=None, instructions=None,
+        escalation_guidance=None, display_order=0, stage_sequence_index=1,
+    )
+    # Occurrence 2 (into Production) requirement -- references definition_2.
+    growing_protocol_service.add_observation_requirement(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id, version_id=draft.id,
+        stage_category="transplanting", observation_definition_id=definition_2.id, requirement_level="required",
+        frequency_days=None, due_window_start_days=None, due_window_end_days=None, instructions=None,
+        escalation_guidance=None, display_order=1, stage_sequence_index=2,
+    )
+    active_version = growing_protocol_service.activate_version(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id, version_id=draft.id,
+        client_command_id=uuid.uuid4(),
+    )
+    growing_protocol_service.assign_batch_protocol(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        growing_protocol_version_id=active_version.id, effective_from=None, reason=None, client_command_id=uuid.uuid4(),
+    )
+
+    # Advance the batch into the FIRST transplanting occurrence.
+    crop_batch_service.transition_stage(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), configured_transition_id=t1.id, effective_time=_now(), reason=None,
+    )
+    status_at_occurrence_1 = growing_protocol_service.get_batch_protocol_status(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
+    )
+    assert status_at_occurrence_1["current_stage_occurrence_index"] == 1
+    due_defs_1 = {r["requirement"].observation_definition_id for r in status_at_occurrence_1["due_observation_requirements"]}
+    assert due_defs_1 == {definition_1.id}, "only occurrence 1's own requirement should apply, never occurrence 2's"
+
+    # Advance into the SECOND transplanting occurrence.
+    crop_batch_service.transition_stage(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
+        client_command_id=uuid.uuid4(), configured_transition_id=t2.id, effective_time=_now(), reason=None,
+    )
+    status_at_occurrence_2 = growing_protocol_service.get_batch_protocol_status(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, batch_id=batch.id
+    )
+    assert status_at_occurrence_2["current_stage_occurrence_index"] == 2
+    due_defs_2 = {r["requirement"].observation_definition_id for r in status_at_occurrence_2["due_observation_requirements"]}
+    assert due_defs_2 == {definition_2.id}, "only occurrence 2's own requirement should apply, never occurrence 1's"

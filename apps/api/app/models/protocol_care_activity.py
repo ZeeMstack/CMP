@@ -28,7 +28,12 @@ class ProtocolCareActivity(Base):
     `stage_category` mirrors `ProtocolObservationRequirement`'s own
     deliberate choice of the existing crop-agnostic stage classification
     over a version-pinned `workflow_stage_id` -- see that model's
-    docstring."""
+    docstring. `stage_sequence_index` mirrors that same model's own
+    optional Nth-occurrence disambiguation field (added by the
+    PILOT-AGRO-001A domain closure review) for the identical reason --
+    stored here for parity/forward-compatibility even though no current
+    read filters a Care Activity by it yet (only the Observation
+    Requirement due-read does, as of this ticket)."""
 
     __tablename__ = "protocol_care_activities"
 
@@ -42,6 +47,7 @@ class ProtocolCareActivity(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     frequency_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage_sequence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (
@@ -55,6 +61,10 @@ class ProtocolCareActivity(Base):
         ),
         CheckConstraint("length(btrim(title)) > 0", name="ck_protocol_care_activities_title_not_blank"),
         CheckConstraint("frequency_days IS NULL OR frequency_days > 0", name="ck_protocol_care_activities_frequency_positive"),
+        CheckConstraint(
+            "stage_sequence_index IS NULL OR stage_sequence_index > 0",
+            name="ck_protocol_care_activities_stage_sequence_positive",
+        ),
         UniqueConstraint("tenant_id", "id", name="uq_protocol_care_activities_tenant_id"),
         ForeignKeyConstraint(
             ["tenant_id", "growing_protocol_version_id"],

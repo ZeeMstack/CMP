@@ -69,6 +69,11 @@ class ProtocolObservationRequirementCreate(BaseModel):
     frequency_days: int | None = None
     due_window_start_days: int | None = None
     due_window_end_days: int | None = None
+    # PILOT-AGRO-001A: optionally narrows this requirement to the Nth
+    # (1-based) real occurrence of `stage_category` within whichever
+    # WorkflowVersion a Batch actually runs -- see the model's own
+    # docstring. None (default) applies to every occurrence.
+    stage_sequence_index: int | None = None
     instructions: str | None = None
     escalation_guidance: str | None = None
     display_order: int = 0
@@ -82,6 +87,7 @@ class ProtocolCareActivityCreate(BaseModel):
     title: str
     instructions: str | None = None
     frequency_days: int | None = None
+    stage_sequence_index: int | None = None
     display_order: int = 0
 
     @field_validator("title")
@@ -160,6 +166,7 @@ class ProtocolObservationRequirementRead(BaseModel):
     frequency_days: int | None
     due_window_start_days: int | None
     due_window_end_days: int | None
+    stage_sequence_index: int | None
     instructions: str | None
     escalation_guidance: str | None
     display_order: int
@@ -175,6 +182,7 @@ class ProtocolCareActivityRead(BaseModel):
     title: str
     instructions: str | None
     frequency_days: int | None
+    stage_sequence_index: int | None
     display_order: int
 
 
@@ -200,6 +208,11 @@ class BatchProtocolStatusRead(BaseModel):
     protocol: GrowingProtocolRead | None
     protocol_version: GrowingProtocolVersionRead | None
     current_stage_category: str | None
+    # PILOT-AGRO-001A: 1-based rank of the Batch's current WorkflowStage
+    # among its own same-`stage_category` siblings within its
+    # WorkflowVersion -- what a requirement's own `stage_sequence_index`
+    # is compared against. None when there is no active stage run.
+    current_stage_occurrence_index: int | None
     days_in_stage: int | None
     due_observation_requirements: list["DueRequirementRead"]
     open_crop_issue_count: int

@@ -209,8 +209,9 @@ def add_observation_requirement(
             version_id=version_id, stage_category=payload.stage_category,
             observation_definition_id=payload.observation_definition_id, requirement_level=payload.requirement_level,
             frequency_days=payload.frequency_days, due_window_start_days=payload.due_window_start_days,
-            due_window_end_days=payload.due_window_end_days, instructions=payload.instructions,
-            escalation_guidance=payload.escalation_guidance, display_order=payload.display_order,
+            due_window_end_days=payload.due_window_end_days, stage_sequence_index=payload.stage_sequence_index,
+            instructions=payload.instructions, escalation_guidance=payload.escalation_guidance,
+            display_order=payload.display_order,
         )
     except _NOT_FOUND_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
@@ -253,7 +254,7 @@ def add_care_activity(
             db, tenant_id=ctx.tenant_id, actor_user_id=ctx.user_id, growing_protocol_id=growing_protocol_id,
             version_id=version_id, stage_category=payload.stage_category, activity_type=payload.activity_type,
             title=payload.title, instructions=payload.instructions, frequency_days=payload.frequency_days,
-            display_order=payload.display_order,
+            stage_sequence_index=payload.stage_sequence_index, display_order=payload.display_order,
         )
     except _NOT_FOUND_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
@@ -347,6 +348,7 @@ def get_batch_protocol_status(
             if status_data["protocol_version"] else None
         ),
         current_stage_category=status_data["current_stage_category"],
+        current_stage_occurrence_index=status_data["current_stage_occurrence_index"],
         days_in_stage=status_data["days_in_stage"],
         due_observation_requirements=[
             DueRequirementRead(

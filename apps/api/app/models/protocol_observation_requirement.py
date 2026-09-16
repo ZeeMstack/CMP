@@ -34,7 +34,23 @@ class ProtocolObservationRequirement(Base):
     versions -- see docs/domain/GROWING_PROTOCOL_INSPECTION_MODEL.md.
     Only mutable while the owning version is DRAFT (service-enforced,
     mirroring `workflow_service.add_stage`'s `WorkflowVersionNotDraftError`
-    precedent -- no DB trigger duplicate of that check)."""
+    precedent -- no DB trigger duplicate of that check).
+
+    PILOT-AGRO-001A domain closure review: a single `stage_category` can be
+    shared by more than one real operational `WorkflowStage` within the
+    SAME `WorkflowVersion` -- confirmed against the pilot's own Iceberg
+    Lettuce template (`config/pilot/iceberg-pilot.example.yaml`), where
+    both the Seedling->InterSalads move (`INTER_LEAFY_GREENS`) and the
+    InterSalads->Production move (`PRODUCTION_TRANSFER`) are
+    `stage_category = 'transplanting'`. `stage_sequence_index` (nullable,
+    1-based) optionally narrows a requirement to the Nth occurrence of its
+    `stage_category`, ordered by `display_order`, within whichever
+    `WorkflowVersion` a Batch actually runs -- computed at READ time
+    (`growing_protocol_service.get_batch_protocol_status`), never
+    persisted against one specific `WorkflowVersion`, so the requirement
+    stays crop-agnostic and portable exactly like `stage_category` itself.
+    `NULL` (the default) preserves the original, pre-review behavior:
+    applies to every occurrence of the category."""
 
     __tablename__ = "protocol_observation_requirements"
 
@@ -51,6 +67,7 @@ class ProtocolObservationRequirement(Base):
     frequency_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     due_window_start_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     due_window_end_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage_sequence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     escalation_guidance: Mapped[str | None] = mapped_column(Text, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -65,6 +82,10 @@ class ProtocolObservationRequirement(Base):
             name="ck_protocol_observation_requirements_level",
         ),
         CheckConstraint("frequency_days IS NULL OR frequency_days > 0", name="ck_protocol_observation_requirements_frequency_positive"),
+        CheckConstraint(
+            "stage_sequence_index IS NULL OR stage_sequence_index > 0",
+            name="ck_protocol_observation_requirements_stage_sequence_positive",
+        ),
         CheckConstraint(
             "(due_window_start_days IS NULL) = (due_window_end_days IS NULL)",
             name="ck_protocol_observation_requirements_due_window_together",

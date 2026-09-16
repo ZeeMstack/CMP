@@ -24,7 +24,7 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -456,7 +456,19 @@ def add_observation_requirement(
     instructions: str | None,
     escalation_guidance: str | None,
     display_order: int,
+    stage_sequence_index: int | None = None,
 ) -> ProtocolObservationRequirement:
+    """`stage_sequence_index` (PILOT-AGRO-001A): optionally narrows this
+    requirement to the Nth (1-based) occurrence of `stage_category` within
+    whichever `WorkflowVersion` a Batch actually runs -- see the model's
+    own docstring for why (more than one real operational stage can share
+    one `stage_category`, e.g. two distinct 'transplanting' moves). `None`
+    (the default) applies to every occurrence, unchanged from this
+    function's original behavior. Not validated against any specific
+    `WorkflowVersion` here -- a `GrowingProtocolVersion` is deliberately
+    not pinned to one, exactly like `stage_category` itself; only
+    `get_batch_protocol_status` ever resolves it, against one Batch's own
+    actual current stage."""
     version = get_version(db, tenant_id=tenant_id, growing_protocol_id=growing_protocol_id, version_id=version_id)
     if version.state != "draft":
         raise GrowingProtocolVersionNotDraftError(str(version_id))
@@ -473,8 +485,8 @@ def add_observation_requirement(
         tenant_id=tenant_id, growing_protocol_version_id=version.id, stage_category=stage_category,
         observation_definition_id=observation_definition_id, requirement_level=requirement_level,
         frequency_days=frequency_days, due_window_start_days=due_window_start_days,
-        due_window_end_days=due_window_end_days, instructions=instructions,
-        escalation_guidance=escalation_guidance, display_order=display_order,
+        due_window_end_days=due_window_end_days, stage_sequence_index=stage_sequence_index,
+        instructions=instructions, escalation_guidance=escalation_guidance, display_order=display_order,
     )
     db.add(requirement)
     db.flush()
@@ -520,7 +532,11 @@ def add_care_activity(
     instructions: str | None,
     frequency_days: int | None,
     display_order: int,
+    stage_sequence_index: int | None = None,
 ) -> ProtocolCareActivity:
+    """`stage_sequence_index`: see `add_observation_requirement`'s own
+    docstring -- identical meaning, stored for parity even though no
+    current read filters a Care Activity by it yet."""
     version = get_version(db, tenant_id=tenant_id, growing_protocol_id=growing_protocol_id, version_id=version_id)
     if version.state != "draft":
         raise GrowingProtocolVersionNotDraftError(str(version_id))
@@ -528,7 +544,7 @@ def add_care_activity(
     activity = ProtocolCareActivity(
         tenant_id=tenant_id, growing_protocol_version_id=version.id, stage_category=stage_category,
         activity_type=activity_type, title=title, instructions=instructions, frequency_days=frequency_days,
-        display_order=display_order,
+        stage_sequence_index=stage_sequence_index, display_order=display_order,
     )
     db.add(activity)
     db.flush()
@@ -711,8 +727,28 @@ def get_batch_protocol_status(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
     ).first()
     current_stage_category = active_run[1].stage_category if active_run else None
     days_in_stage = None
+    current_stage_occurrence_index = None
     if active_run is not None:
         days_in_stage = (datetime.now(timezone.utc) - active_run[0].entered_effective_time).days
+        # PILOT-AGRO-001A: more than one real WorkflowStage within the SAME
+        # WorkflowVersion can share one stage_category (e.g. the pilot's
+        # own Seedling->InterSalads and InterSalads->Production moves are
+        # both 'transplanting') -- rank the batch's current stage among its
+        # own same-category siblings, ordered by display_order, so a
+        # requirement's optional stage_sequence_index can disambiguate
+        # which one it targets. Computed fresh here, never persisted
+        # against one WorkflowVersion.
+        sibling_stage_ids = list(
+            db.execute(
+                select(WorkflowStage.id)
+                .where(
+                    WorkflowStage.workflow_version_id == active_run[1].workflow_version_id,
+                    WorkflowStage.stage_category == current_stage_category,
+                )
+                .order_by(WorkflowStage.display_order, WorkflowStage.id)
+            ).scalars()
+        )
+        current_stage_occurrence_index = sibling_stage_ids.index(active_run[1].id) + 1
 
     assignment = get_current_assignment(db, tenant_id=tenant_id, batch_id=batch_id)
     version = None
@@ -732,6 +768,10 @@ def get_batch_protocol_status(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
             .where(
                 ProtocolObservationRequirement.growing_protocol_version_id == version.id,
                 ProtocolObservationRequirement.stage_category == current_stage_category,
+                or_(
+                    ProtocolObservationRequirement.stage_sequence_index.is_(None),
+                    ProtocolObservationRequirement.stage_sequence_index == current_stage_occurrence_index,
+                ),
             )
             .order_by(ProtocolObservationRequirement.display_order)
         ).all()
@@ -789,6 +829,7 @@ def get_batch_protocol_status(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
         "protocol": protocol,
         "protocol_version": version,
         "current_stage_category": current_stage_category,
+        "current_stage_occurrence_index": current_stage_occurrence_index,
         "days_in_stage": days_in_stage,
         "due_observation_requirements": requirements_out,
         "open_crop_issue_count": open_issue_count,

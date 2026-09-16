@@ -11,6 +11,23 @@ the existing `ObservationEvent`/`ObservationDefinition` architecture), and
 "is there a persistent crop problem, who owns it, was it followed up, was
 it deliberately resolved" (`CropIssue`/`CropIssueFollowUp`).
 
+PILOT-AGRO-001A domain closure review: `protocol_observation_requirements`
+and `protocol_care_activities` each additionally carry a nullable
+`stage_sequence_index` (1-based) -- confirmed against the pilot's own
+Iceberg Lettuce template (`config/pilot/iceberg-pilot.example.yaml`) that
+more than one real `WorkflowStage` within one `WorkflowVersion` can share
+the same `stage_category` (both the Seedling->InterSalads and the
+InterSalads->Production moves are `stage_category = 'transplanting'`),
+so `stage_category` alone is not always granular enough to target one of
+them without also matching the other. `stage_sequence_index` optionally
+narrows a requirement to the Nth occurrence of its `stage_category`
+(ordered by `display_order`) within whichever `WorkflowVersion` a Batch
+actually runs, computed at READ time -- never a `workflow_stage_id` FK,
+which would still pin the requirement to one specific `WorkflowVersion`
+(the exact problem `stage_category` was chosen to avoid). `NULL` (every
+existing row, since this ticket had no prior release) preserves "applies
+to every occurrence of the category."
+
 Entirely additive: nine new tables, plus one new nullable
 `farm_work_items.crop_issue_id` context column (mirrors that table's
 existing `crop_batch_id`/`location_id`/`carrier_id`/`asset_id` context-
@@ -209,6 +226,7 @@ def upgrade() -> None:
         sa.Column("frequency_days", sa.Integer(), nullable=True),
         sa.Column("due_window_start_days", sa.Integer(), nullable=True),
         sa.Column("due_window_end_days", sa.Integer(), nullable=True),
+        sa.Column("stage_sequence_index", sa.Integer(), nullable=True),
         sa.Column("instructions", sa.Text(), nullable=True),
         sa.Column("escalation_guidance", sa.Text(), nullable=True),
         sa.Column("display_order", sa.Integer(), nullable=False, server_default="0"),
@@ -221,6 +239,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "frequency_days IS NULL OR frequency_days > 0",
             name="ck_protocol_observation_requirements_frequency_positive",
+        ),
+        sa.CheckConstraint(
+            "stage_sequence_index IS NULL OR stage_sequence_index > 0",
+            name="ck_protocol_observation_requirements_stage_sequence_positive",
         ),
         sa.CheckConstraint(
             "(due_window_start_days IS NULL) = (due_window_end_days IS NULL)",
@@ -258,6 +280,7 @@ def upgrade() -> None:
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("instructions", sa.Text(), nullable=True),
         sa.Column("frequency_days", sa.Integer(), nullable=True),
+        sa.Column("stage_sequence_index", sa.Integer(), nullable=True),
         sa.Column("display_order", sa.Integer(), nullable=False, server_default="0"),
         sa.CheckConstraint(
             "stage_category IN " + str(STAGE_CATEGORIES), name="ck_protocol_care_activities_stage_category"
@@ -268,6 +291,10 @@ def upgrade() -> None:
         sa.CheckConstraint("length(btrim(title)) > 0", name="ck_protocol_care_activities_title_not_blank"),
         sa.CheckConstraint(
             "frequency_days IS NULL OR frequency_days > 0", name="ck_protocol_care_activities_frequency_positive"
+        ),
+        sa.CheckConstraint(
+            "stage_sequence_index IS NULL OR stage_sequence_index > 0",
+            name="ck_protocol_care_activities_stage_sequence_positive",
         ),
         sa.UniqueConstraint("tenant_id", "id", name="uq_protocol_care_activities_tenant_id"),
         sa.ForeignKeyConstraint(
