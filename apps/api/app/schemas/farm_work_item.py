@@ -61,6 +61,9 @@ class FarmWorkItemCreate(BaseModel):
     location_id: uuid.UUID | None = None
     carrier_id: uuid.UUID | None = None
     asset_id: uuid.UUID | None = None
+    # PILOT-AGRO-001: the CropIssue this Work Item is corrective action
+    # FOR, set only at creation (never retrofit onto an existing item).
+    crop_issue_id: uuid.UUID | None = None
     quantity: Decimal | None = None
     quantity_uom_id: uuid.UUID | None = None
     completion_mode: WorkItemCompletionMode
@@ -207,6 +210,12 @@ class WorkItemUomSummary(BaseModel):
     code: str
 
 
+class WorkItemCropIssueSummary(BaseModel):
+    id: uuid.UUID
+    code: str
+    status: str
+
+
 class FarmWorkItemRead(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -225,6 +234,7 @@ class FarmWorkItemRead(BaseModel):
     location: WorkItemLocationSummary | None
     carrier: WorkItemCarrierSummary | None
     asset: WorkItemAssetSummary | None
+    crop_issue: WorkItemCropIssueSummary | None = None
     quantity: Decimal | None
     quantity_uom: WorkItemUomSummary | None
 

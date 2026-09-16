@@ -62,6 +62,13 @@ class FarmWorkItem(TimestampMixin, Base):
     location_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     carrier_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     asset_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # PILOT-AGRO-001: optional context reference to the CropIssue this Work
+    # Item was created FROM (section 12) -- set only at creation, frozen for
+    # life by `enforce_farm_work_item_mutable_fields` exactly like the four
+    # context columns above. There is no retrofit path onto an existing,
+    # already-created Work Item -- a Crop Issue's corrective work is always
+    # a NEW Work Item carrying this reference from the start.
+    crop_issue_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     quantity: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     quantity_uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("unit_of_measures.id"), nullable=True)
 
@@ -182,6 +189,7 @@ class FarmWorkItem(TimestampMixin, Base):
         Index("ix_farm_work_items_farm_status", "tenant_id", "farm_id", "status"),
         Index("ix_farm_work_items_farm_assignee_status", "tenant_id", "farm_id", "assigned_to_user_id", "status"),
         Index("ix_farm_work_items_farm_due_at", "tenant_id", "farm_id", "due_at"),
+        Index("ix_farm_work_items_farm_crop_issue", "tenant_id", "farm_id", "crop_issue_id"),
         UniqueConstraint("tenant_id", "farm_id", "id", name="uq_farm_work_items_tenant_farm_id"),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id"], ["farms.tenant_id", "farms.id"], name="fk_farm_work_items_tenant_farm"
@@ -205,5 +213,10 @@ class FarmWorkItem(TimestampMixin, Base):
             ["tenant_id", "farm_id", "asset_id"],
             ["assets.tenant_id", "assets.farm_id", "assets.id"],
             name="fk_farm_work_items_tenant_farm_asset",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "farm_id", "crop_issue_id"],
+            ["crop_issues.tenant_id", "crop_issues.farm_id", "crop_issues.id"],
+            name="fk_farm_work_items_tenant_farm_crop_issue",
         ),
     )

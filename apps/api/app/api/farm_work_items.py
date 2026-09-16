@@ -24,6 +24,7 @@ from app.services.errors import (
     AssetNotFoundError,
     CarrierNotFoundError,
     CropBatchNotFoundError,
+    CropIssueNotFoundError,
     FarmNotFoundError,
     FarmWorkItemCommandReusedWithDifferentPayloadError,
     FarmWorkItemInvalidTransitionError,
@@ -42,6 +43,7 @@ router = APIRouter(tags=["farm-work-items"])
 _NOT_FOUND_ERRORS = (
     FarmNotFoundError, CropBatchNotFoundError, LocationNotFoundError, CarrierNotFoundError,
     AssetNotFoundError, UnitOfMeasureNotFoundError, UserNotFoundError, FarmWorkItemNotFoundError,
+    CropIssueNotFoundError,
 )
 
 
@@ -55,6 +57,7 @@ def _to_read(db: Session, *, tenant_id: uuid.UUID, item: FarmWorkItem) -> FarmWo
         location=context["locations"].get(item.location_id),
         carrier=context["carriers"].get(item.carrier_id),
         asset=context["assets"].get(item.asset_id),
+        crop_issue=context["crop_issues"].get(item.crop_issue_id),
         quantity=item.quantity,
         quantity_uom=context["uoms"].get(item.quantity_uom_id),
         completion_mode=item.completion_mode, result_entity_type=item.result_entity_type,
@@ -78,6 +81,7 @@ def _to_read_many(db: Session, *, tenant_id: uuid.UUID, items: list[FarmWorkItem
             location=context["locations"].get(i.location_id),
             carrier=context["carriers"].get(i.carrier_id),
             asset=context["assets"].get(i.asset_id),
+            crop_issue=context["crop_issues"].get(i.crop_issue_id),
             quantity=i.quantity,
             quantity_uom=context["uoms"].get(i.quantity_uom_id),
             completion_mode=i.completion_mode, result_entity_type=i.result_entity_type,
@@ -108,8 +112,8 @@ def create_work_item(
             title=payload.title, instructions=payload.instructions, priority=payload.priority,
             due_at=payload.due_at, assigned_to_user_id=payload.assigned_to_user_id,
             crop_batch_id=payload.crop_batch_id, location_id=payload.location_id, carrier_id=payload.carrier_id,
-            asset_id=payload.asset_id, quantity=payload.quantity, quantity_uom_id=payload.quantity_uom_id,
-            completion_mode=payload.completion_mode,
+            asset_id=payload.asset_id, crop_issue_id=payload.crop_issue_id, quantity=payload.quantity,
+            quantity_uom_id=payload.quantity_uom_id, completion_mode=payload.completion_mode,
         )
     except _NOT_FOUND_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc

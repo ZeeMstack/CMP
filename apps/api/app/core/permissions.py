@@ -282,6 +282,23 @@ class Permission(StrEnum):
     FARM_WORK_ITEM_MANAGE = "farm_work_item.manage"
     FARM_WORK_ITEM_EXECUTE = "farm_work_item.execute"
 
+    # PILOT-AGRO-001: Growing Protocol / Grower Inspection / Crop Issue.
+    # `GROWING_PROTOCOL_MANAGE` is master-data/agronomic-program authority
+    # (draft/version editing, activation, Batch protocol assignment) --
+    # grower/supervisory only. `CROP_INSPECTION_MANAGE` is the routine
+    # floor act of recording a structured Inspection -- the same tier as
+    # `OBSERVATION_ENTRY_MANAGE`, deliberately granted to `operator` too.
+    # `CROP_ISSUE_MANAGE` (open/assign/diagnose/resolve/close a persistent
+    # CropIssue) is a materially more consequential, supervisory authority
+    # than recording a routine Inspection Finding -- deliberately split,
+    # mirroring this catalog's own entry-vs-definition precedent
+    # (OBSERVATION_ENTRY_MANAGE/OBSERVATION_DEFINITION_MANAGE).
+    GROWING_PROTOCOL_READ = "growing_protocol.read"
+    GROWING_PROTOCOL_MANAGE = "growing_protocol.manage"
+    CROP_INSPECTION_READ = "crop_inspection.read"
+    CROP_INSPECTION_MANAGE = "crop_inspection.manage"
+    CROP_ISSUE_MANAGE = "crop_issue.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -382,6 +399,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # (supervisory oversight of "Today on the Farm") but does not
         # execute routine floor work itself.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
+        # PILOT-AGRO-001: farm_manager owns protocol master data and Crop
+        # Issue supervisory authority, same tier as its other master-data/
+        # accountable-correction grants above -- no CROP_INSPECTION_MANAGE
+        # (doesn't execute routine floor recording itself).
+        Permission.GROWING_PROTOCOL_READ, Permission.GROWING_PROTOCOL_MANAGE,
+        Permission.CROP_INSPECTION_READ, Permission.CROP_ISSUE_MANAGE,
     }),
     # Agronomic planning/master-data authority (25): crop/production-system
     # /workflow catalog, observation definitions, crop-batch lifecycle
@@ -419,6 +442,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: head_grower creates/assigns crop-care Work Items,
         # the same supervisory tier as farm_manager for this domain.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
+        # PILOT-AGRO-001: head_grower owns Growing Protocol master data
+        # (mirrors its CROP_MANAGE/WORKFLOW_MANAGE authority), records
+        # Inspections (mirrors its OBSERVATION_ENTRY_MANAGE), and manages
+        # Crop Issues (mirrors its HARVEST_MANAGE-tier agronomic authority).
+        Permission.GROWING_PROTOCOL_READ, Permission.GROWING_PROTOCOL_MANAGE,
+        Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE, Permission.CROP_ISSUE_MANAGE,
     }),
     # Production-floor execution oversight (24): the same transactional
     # commands operators perform, plus supervisory-level authority
@@ -459,6 +488,13 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # same transactional commands operators perform, plus supervisory
         # authority" character as its other grants above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-AGRO-001: production_supervisor records Inspections (same
+        # tier as OBSERVATION_ENTRY_MANAGE) and manages Crop Issues (floor
+        # oversight, same supervisory character as its other grants) -- no
+        # GROWING_PROTOCOL_MANAGE (no master-data configuration authority,
+        # matching this role's existing ceiling).
+        Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
+        Permission.CROP_ISSUE_MANAGE,
     }),
     # Restricted transactional execution (16): routine, single-purpose
     # floor commands only -- sowing, transplant, movement, harvest
@@ -490,6 +526,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # authority, matching this role's "restricted transactional
         # execution only" ceiling.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-AGRO-001: operator views the current protocol and records
+        # permitted Inspections (section 19) -- no protocol master-data or
+        # Crop Issue supervisory authority.
+        Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
     }),
     # Input/equipment receiving (6) -- intentionally narrow: the only
     # genuine "input receiving" action the current permission catalog
@@ -577,6 +617,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: qc_officer executes its own quality Work Items --
         # same routine execution tier as its other grants above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-AGRO-001: qc_officer records Inspections (same tier as
+        # OBSERVATION_ENTRY_MANAGE) and manages Crop Issues -- diagnosis
+        # confirmation and resolution fit this role's existing quality-
+        # investigation authority (QUALITY_HOLD_MANAGE) exactly.
+        Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
+        Permission.CROP_ISSUE_MANAGE,
     }),
     # Packing execution (12): owns its own stage only. Upstream
     # harvest.read (what's available to pack), downstream
@@ -691,6 +737,8 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: read-only visibility into Work Items, matching
         # this role's "every `.read` permission, zero mutations" character.
         Permission.FARM_WORK_ITEM_READ,
+        # PILOT-AGRO-001: identical "every .read, zero mutations" character.
+        Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ,
     }),
     # Broad operational visibility (20), zero mutations -- identical set
     # to `auditor` today, by design (see that role's comment above).
@@ -726,6 +774,8 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: identical to `auditor`'s own addition above, by
         # the same "zero mutations" design.
         Permission.FARM_WORK_ITEM_READ,
+        # PILOT-AGRO-001: identical to `auditor`'s own addition above.
+        Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ,
     }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)

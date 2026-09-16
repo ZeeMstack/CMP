@@ -16,6 +16,8 @@ PILOT-OPS-001 (`docs/domain/FARM_WORK_ITEM_MODEL.md`) adds a small operational w
 
 PILOT-SCAN-001 (`docs/domain/QR_SCAN_MODEL.md`) makes physical GrowCMP identities scannable: printable QR labels for Carriers, Assets, Locations, Crop Batches, Batch Carrier Assignments ("placements"), Harvested/Graded Produce Lots, and Finished Goods Lots, plus an authenticated scan-and-resolve page. A QR identifies context only — scanning never executes a farm operation (move, harvest, record loss, release Quality, ...); it resolves current authoritative state and prepares links into the existing workflows that do.
 
+PILOT-AGRO-001 (`docs/domain/GROWING_PROTOCOL_INSPECTION_MODEL.md`) adds versioned Growing Protocols (what SHOULD agronomically happen, by crop/variety/production-system), Batch → Protocol Version assignment history, protocol-driven observation requirements and crop-care activities mapped to the existing generic `stage_category`, structured Grower Inspections (what a grower ACTUALLY observed, referencing — never duplicating — the existing Observation architecture), and Crop Issues with deliberate diagnosis-confirmation, Work-Item-linked corrective action, follow-up, and closure. A Protocol never proves an operation happened; age informs display/deviation only and never advances a Batch's stage, moves plants, or creates a farm event; a Crop Issue never reduces living crop quantity; suspected cause and confirmed diagnosis are permanently separate facts; completing a linked Farm Work Item never resolves the Issue.
+
 ## Excluded unless separately approved
 
 Open fields, livestock, orchards, GIS/satellite features, machinery telematics, payroll, accounting, invoicing, general ledger, and retail POS.
