@@ -15,6 +15,7 @@ from app.services.errors import (
     CarrierAlreadyAssignedError,
     DuplicateBatchCodeError,
     FarmNotFoundError,
+    InvalidSowingEffectiveTimeError,
     NoSowingWorkflowFoundError,
     SeedingMachineInvalidError,
     SeedingProgramLineCancelledError,
@@ -80,6 +81,7 @@ def sow_new_batch(
     except (
         SowingValidationError,
         SowingCapacityExceededError,
+        InvalidSowingEffectiveTimeError,
         TooManySowingLinesError,
         SeedingStationInvalidError,
         SeedingMachineInvalidError,

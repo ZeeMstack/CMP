@@ -72,10 +72,24 @@ export const sowingFormSchema = z
     seeding_station_id: z.string().min(1, "Seeding Station is required"),
     seed_lot_id: z.string().min(1, "Seed Lot is required"),
     seeding_machine_id: z.string(),
-    effective_date: z.string().min(1, "Date is required"),
-    effective_time_of_day: z.string().min(1, "Time is required"),
+    // HOTFIX (sowing effective-time clock skew): the operator's own
+    // deliberate choice to record something other than "now" -- default
+    // NOW never carries a client-generated timestamp at all (see
+    // `buildSowingPayload`), so `effective_date`/`effective_time_of_day`
+    // are only required, and only sent, when this is explicitly true.
+    use_custom_time: z.boolean(),
+    effective_date: z.string(),
+    effective_time_of_day: z.string(),
     note: z.string(),
     trays: z.array(trayEntrySchema).min(1, "Select at least one Seed Tray"),
+  })
+  .refine((values) => !values.use_custom_time || values.effective_date.length > 0, {
+    message: "Date is required",
+    path: ["effective_date"],
+  })
+  .refine((values) => !values.use_custom_time || values.effective_time_of_day.length > 0, {
+    message: "Time is required",
+    path: ["effective_time_of_day"],
   })
   .refine(
     (values) => {
@@ -90,6 +104,7 @@ export const DEFAULT_SOWING_FORM_VALUES: SowingFormValues = {
   seeding_station_id: "",
   seed_lot_id: "",
   seeding_machine_id: "",
+  use_custom_time: false,
   effective_date: "",
   effective_time_of_day: "",
   note: "",
@@ -101,7 +116,17 @@ export function buildSowingPayload(
   clientCommandId: string,
   seedingProgramLineId?: string | null,
 ): SowNewBatchCreate {
-  const effectiveTime = new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString();
+  // HOTFIX (sowing effective-time clock skew): default "Sow now" omits
+  // `effective_time` entirely rather than sending a browser-clock-derived
+  // timestamp -- the server assigns its own authoritative current time
+  // (`nursery_service.sow_new_batch`), which can never race ahead of
+  // itself the way an operator's local clock occasionally does. Only an
+  // operator's own explicit date/time selection is ever sent as a
+  // concrete instant, and the server still rejects that if it is
+  // genuinely in the future.
+  const effectiveTime = values.use_custom_time
+    ? new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString()
+    : null;
   return {
     client_command_id: clientCommandId,
     seed_lot_id: values.seed_lot_id,

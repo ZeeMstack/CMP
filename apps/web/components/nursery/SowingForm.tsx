@@ -123,6 +123,13 @@ export function SowingForm({
     </p>
   );
 
+  // HOTFIX (sowing effective-time clock skew): this browser-local "now" is
+  // ONLY ever a convenience starting point for the optional custom-time
+  // fields below (`use_custom_time` defaults to false) -- it is never
+  // itself submitted. Default "Sow now" sends no effective_time at all
+  // (see buildSowingPayload); the server assigns its own authoritative
+  // current time, which can never race ahead of a browser clock that runs
+  // a few minutes fast.
   const initial = nowDateAndTime();
   const {
     register, control, watch, setValue, trigger, getValues, reset, formState: { errors },
@@ -380,7 +387,11 @@ export function SowingForm({
             <div>
               <dt className="text-wl-text-secondary">Occurred at</dt>
               <dd className="font-medium text-wl-text">
-                {values.effective_date} {values.effective_time_of_day}
+                {/* HOTFIX (sowing effective-time clock skew): never present
+                    an uncommitted browser-generated timestamp as though it
+                    is already authoritative -- the server assigns and
+                    records the real "now" only on save. */}
+                {values.use_custom_time ? `${values.effective_date} ${values.effective_time_of_day}` : "Now"}
               </dd>
             </div>
             <div>
@@ -562,12 +573,29 @@ export function SowingForm({
 
       <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
         <legend className="px-1 text-sm font-semibold text-wl-text">Sowing date/time</legend>
-        <Field label="Date" error={errors.effective_date?.message}>
-          <input type="date" {...register("effective_date")} className={inputClass} />
-        </Field>
-        <Field label="Time" error={errors.effective_time_of_day?.message}>
-          <input type="time" {...register("effective_time_of_day")} className={inputClass} />
-        </Field>
+        <label className="flex items-center gap-2 text-sm text-wl-text sm:col-span-2">
+          <input type="checkbox" {...register("use_custom_time")} className="h-4 w-4" />
+          Use a specific date/time instead of now
+        </label>
+        {watch("use_custom_time") ? (
+          <>
+            <Field label="Date" error={errors.effective_date?.message}>
+              <input type="date" {...register("effective_date")} className={inputClass} />
+            </Field>
+            <Field label="Time" error={errors.effective_time_of_day?.message}>
+              <input type="time" {...register("effective_time_of_day")} className={inputClass} />
+            </Field>
+          </>
+        ) : (
+          // HOTFIX (sowing effective-time clock skew): default mode never
+          // shows a concrete, browser-generated timestamp as though it is
+          // already authoritative -- the server assigns the real recorded
+          // time only once the Sowing is actually saved.
+          <p className="text-sm text-wl-text-secondary sm:col-span-2">
+            Occurred at <span className="font-medium text-wl-text">Now</span> — recorded using the server&apos;s
+            current time when you save.
+          </p>
+        )}
       </fieldset>
 
       {/* PILOT-UX-006: Seeding Machine and Note are both optional,

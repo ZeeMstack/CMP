@@ -10,6 +10,7 @@ import { SowingForm } from "@/components/nursery/SowingForm";
 import { Button } from "@/components/ui/Button";
 import type { SowingEventRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { formatDateTime } from "@/lib/format/datetime";
 import { batchMasterLabel, sowingTrayLabel } from "@/lib/labels/operationalLabel";
 import { printLabels } from "@/lib/labels/printableLabel";
 import { usePreparedPrintLabels } from "@/lib/labels/usePreparedPrintLabels";
@@ -51,6 +52,10 @@ export function SowingReceipt({ farmId, result }: { farmId: string; result: Sowi
           {result.total_seeds_sown} seeds across {result.lines.length}{" "}
           {result.lines.length === 1 ? "tray" : "trays"}.
         </p>
+        {/* HOTFIX (sowing effective-time clock skew): the actual
+            server-authoritative recorded time, never the pre-save
+            browser-generated estimate the Review step showed. */}
+        <p className="mt-1 text-sm text-wl-text-secondary">Occurred at {formatDateTime(result.effective_time)}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

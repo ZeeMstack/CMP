@@ -4,7 +4,7 @@ FARM-SETUP-001's Nursery topology verbatim -- this file tests only the new
 orchestration layer, not domain logic already covered by test_sowing.py/
 test_crop_batch.py/test_farm_setup.py."""
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -29,6 +29,7 @@ from app.services import (
 from app.services.errors import (
     AmbiguousSowingWorkflowError,
     CarrierAlreadyAssignedError,
+    InvalidSowingEffectiveTimeError,
     NoSowingWorkflowFoundError,
     SeedingMachineInvalidError,
     SeedingProgramLineCropMismatchError,
@@ -1299,3 +1300,160 @@ def test_sow_now_rejects_plan_line_of_a_different_crop(db_session, active_contex
 
     with pytest.raises(SeedingProgramLineCropMismatchError):
         _sow(db_session, tenant, user, farm, s, seeding_program_line_id=other_line.id)
+
+
+# =====================================================================
+# HOTFIX: sowing effective-time clock skew
+# =====================================================================
+# Root cause: the "New Sowing" form defaulted its date/time fields to the
+# BROWSER's own clock at form-mount time and always sent a concrete
+# `effective_time`, indistinguishable from a deliberately-entered value.
+# Under ordinary browser clock skew (a few minutes fast), this raced ahead
+# of the server's own `datetime.now(timezone.utc)` and was rejected. Fix:
+# `effective_time` is now optional -- omitting it ("Sow now") means the
+# server assigns its own authoritative current time; an explicit value is
+# still required to be timezone-aware and still rejected if genuinely in
+# the future.
+
+
+@pytest.mark.integration
+def test_sow_now_omits_effective_time_and_succeeds(db_session, active_context_with_farm) -> None:
+    """Simulates a browser clock several minutes ahead of the server: since
+    "Sow now" never sends a client-generated timestamp at all, there is
+    nothing for the server to compare against its own clock, so this can
+    never fail with InvalidSowingEffectiveTimeError."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+
+    event = _sow(db_session, tenant, user, farm, s, effective_time=None)
+
+    assert event.effective_time is not None
+
+
+@pytest.mark.integration
+def test_sow_now_records_server_authoritative_effective_time(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+
+    before = _now()
+    event = _sow(db_session, tenant, user, farm, s, effective_time=None)
+    after = _now()
+
+    assert before <= event.effective_time <= after
+
+
+@pytest.mark.integration
+def test_explicit_past_effective_time_is_preserved_verbatim(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    explicit_past = _now() - timedelta(days=2)
+
+    event = _sow(db_session, tenant, user, farm, s, effective_time=explicit_past)
+
+    assert event.effective_time == explicit_past
+
+
+@pytest.mark.integration
+def test_explicit_future_effective_time_still_rejected(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    explicit_future = _now() + timedelta(minutes=10)
+
+    with pytest.raises(InvalidSowingEffectiveTimeError):
+        _sow(db_session, tenant, user, farm, s, effective_time=explicit_future)
+
+
+@pytest.mark.integration
+def test_sow_now_retry_with_same_client_command_id_is_idempotent_despite_different_resolved_server_times(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """The critical idempotency risk this hotfix introduces: a genuine
+    retry of a "Sow now" command (same client_command_id, still omitting
+    effective_time) must replay the ORIGINAL event, never conflict --
+    even though the server resolves a different real `datetime.now()` on
+    each attempt. Proves the request fingerprint uses a stable "now"
+    marker for the omitted case, never the concretely resolved instant
+    (see nursery_service._compute_sow_new_batch_fingerprint)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    ccid = uuid.uuid4()
+    trays = [{"carrier_id": s["carriers"][0].id, "sown_site_count": 200, "seeds_sown": 200}]
+
+    real_datetime = nursery_service.datetime
+    resolved_times = iter(
+        [
+            real_datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+            real_datetime(2026, 1, 1, 10, 5, 0, tzinfo=timezone.utc),
+        ]
+    )
+
+    class _FakeDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return next(resolved_times)
+
+    monkeypatch.setattr(nursery_service, "datetime", _FakeDateTime)
+
+    first = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=None, trays=trays)
+    second = _sow(db_session, tenant, user, farm, s, client_command_id=ccid, effective_time=None, trays=trays)
+
+    assert first.id == second.id
+    assert first.batch_id == second.batch_id
+    assert db_session.execute(
+        select(func.count()).select_from(SowingEvent).where(SowingEvent.batch_id == first.batch_id)
+    ).scalar_one() == 1
+
+
+@pytest.mark.integration
+def test_sow_now_http_omits_effective_time_and_succeeds(client, active_context_with_farm, db_session) -> None:
+    """End-to-end proof through the real API schema/router, not just the
+    service layer: a request body that omits `effective_time` entirely is
+    accepted (schema no longer requires it) and the recorded event carries
+    a server-assigned time."""
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    db_session.commit()
+
+    before = _now()
+    resp = client.post(
+        f"/farms/{farm.id}/nursery/sowings", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "seed_lot_id": str(s["seed_lot"].id),
+            "seeding_station_id": str(s["seeding_station_id"]), "seeding_machine_id": None,
+            "note": None,
+            "trays": [{"carrier_id": str(s["carriers"][0].id), "sown_site_count": 200, "seeds_sown": 200}],
+        },
+    )
+    after = _now()
+
+    assert resp.status_code == 201, resp.text
+    recorded = datetime.fromisoformat(resp.json()["effective_time"])
+    assert before <= recorded <= after
+
+
+@pytest.mark.integration
+def test_sow_new_batch_http_rejects_future_effective_time_with_422_not_500(
+    client, active_context_with_farm, db_session,
+) -> None:
+    """Regression proof for the actual production incident: before this
+    hotfix, `app/api/nursery.py` never imported/caught
+    InvalidSowingEffectiveTimeError, so a future effective_time propagated
+    as an unhandled exception (HTTP 500) instead of the intended, clean
+    422 domain-validation response."""
+    tenant, user, headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    db_session.commit()
+    explicit_future = (_now() + timedelta(minutes=10)).isoformat()
+
+    resp = client.post(
+        f"/farms/{farm.id}/nursery/sowings", headers=headers,
+        json={
+            "client_command_id": str(uuid.uuid4()), "seed_lot_id": str(s["seed_lot"].id),
+            "seeding_station_id": str(s["seeding_station_id"]), "seeding_machine_id": None,
+            "effective_time": explicit_future, "note": None,
+            "trays": [{"carrier_id": str(s["carriers"][0].id), "sown_site_count": 200, "seeds_sown": 200}],
+        },
+    )
+
+    assert resp.status_code == 422, resp.text
+    assert "cannot be in the future" in resp.text

@@ -433,3 +433,78 @@ describe("SowingForm", () => {
     });
   });
 });
+
+// HOTFIX (sowing effective-time clock skew): "Sow now" must never depend on
+// the browser clock -- the default path omits effective_time entirely
+// rather than sending a browser-generated timestamp that can race ahead of
+// server time under ordinary clock skew.
+describe("SowingForm HOTFIX: server-authoritative sowing time", () => {
+  async function fillAndGoToReview() {
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/^sites to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/^seeds to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+  }
+
+  it("default mode never shows an uncommitted browser timestamp as though it is already authoritative -- shows Now instead", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await fillAndGoToReview();
+
+    const occurredAt = screen.getByText("Occurred at").nextElementSibling;
+    expect(occurredAt).toHaveTextContent("Now");
+  });
+
+  it("default 'Sow now' submits with no client-generated effective_time at all", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await fillAndGoToReview();
+    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].effective_time).toBeNull();
+  });
+
+  it("an operator who explicitly opts into a custom time sees and submits that exact selected timestamp, never Now", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /use a specific date\/time instead of now/i }));
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-01-15" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:30" } });
+
+    fireEvent.change(screen.getByLabelText(/^sites to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/^seeds to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+
+    const occurredAt = screen.getByText("Occurred at").nextElementSibling;
+    expect(occurredAt).toHaveTextContent("2026-01-15 09:30");
+    expect(occurredAt).not.toHaveTextContent("Now");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].effective_time).toBe(new Date("2026-01-15T09:30").toISOString());
+  });
+
+  it("does not require a Date/Time entry at all when in default Now mode", async () => {
+    stubFetch();
+    const onSubmit = vi.fn();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
+    await fillAndGoToReview();
+    // Reaching Review at all (with no date/time ever touched) proves the
+    // schema's date/time requirement is conditional on use_custom_time.
+    expect(screen.queryByText("Date is required")).not.toBeInTheDocument();
+    expect(screen.queryByText("Time is required")).not.toBeInTheDocument();
+  });
+});

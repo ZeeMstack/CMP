@@ -57,7 +57,16 @@ class SowNewBatchCreate(BaseModel):
     seed_lot_id: uuid.UUID
     seeding_station_id: uuid.UUID
     seeding_machine_id: uuid.UUID | None = None
-    effective_time: datetime
+    # HOTFIX (sowing effective-time clock skew): optional -- omitting it is
+    # "Sow now" and means the server assigns its own authoritative current
+    # time (`nursery_service.sow_new_batch`), never a client-generated
+    # timestamp that can race ahead of server time under browser clock
+    # skew. An explicitly supplied value is still required to be
+    # timezone-aware and is still rejected if it is genuinely in the
+    # future (`InvalidSowingEffectiveTimeError`, unchanged) -- this field
+    # only ever narrows when a client-supplied instant is trusted, never
+    # widens what value is accepted.
+    effective_time: datetime | None = None
     note: str | None = None
     trays: list[SowNewBatchTrayIn] = Field(min_length=1, max_length=500)
     # PLANNING-OPS-001: optional reference to the Seeding Program Line this
@@ -67,8 +76,8 @@ class SowNewBatchCreate(BaseModel):
 
     @field_validator("effective_time")
     @classmethod
-    def validate_effective_time(cls, v: datetime) -> datetime:
-        return _require_tz_aware(v)
+    def validate_effective_time(cls, v: datetime | None) -> datetime | None:
+        return v if v is None else _require_tz_aware(v)
 
     @field_validator("note")
     @classmethod
