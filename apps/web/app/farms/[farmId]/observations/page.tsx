@@ -13,6 +13,7 @@ import { RecordObservationForm } from "@/components/observations/RecordObservati
 import { Button } from "@/components/ui/Button";
 import type { ObservationEventCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { formatDateTime } from "@/lib/format/datetime";
 import { formatPlacementSummary } from "@/lib/format/placement";
 import {
   useBatchObservationTargets,
@@ -54,6 +55,7 @@ export default function ObservationsPage() {
   const [showRecordForm, setShowRecordForm] = useState(Boolean(prefillBatchId));
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordedCount, setRecordedCount] = useState<number | null>(null);
+  const [recordedEffectiveTime, setRecordedEffectiveTime] = useState<string | null>(null);
   const [workItemLinkStatus, setWorkItemLinkStatus] = useState<"linked" | "failed" | null>(null);
   const [formDirty, setFormDirty] = useState(false);
 
@@ -94,6 +96,7 @@ export default function ObservationsPage() {
     setShowRecordForm(false);
     setRecordError(null);
     setRecordedCount(null);
+    setRecordedEffectiveTime(null);
     setFormDirty(false);
   }
 
@@ -161,6 +164,7 @@ export default function ObservationsPage() {
                   setShowRecordForm(true);
                   setRecordError(null);
                   setRecordedCount(null);
+                  setRecordedEffectiveTime(null);
                 }}
               >
                 + Record observation
@@ -170,7 +174,10 @@ export default function ObservationsPage() {
 
           {recordedCount !== null && !showRecordForm && (
             <div className="rounded-lg border border-wl-border bg-wl-grow-bg px-3 py-2 text-sm text-wl-grow-fg">
-              Recorded {recordedCount} observation{recordedCount === 1 ? "" : "s"} for {selectedBatch.code}.
+              Recorded {recordedCount} observation{recordedCount === 1 ? "" : "s"} for {selectedBatch.code}
+              {/* HOTFIX-TIME-002: the actual server-authoritative recorded
+                  time, never the pre-save browser-generated estimate. */}
+              {recordedEffectiveTime ? ` at ${formatDateTime(recordedEffectiveTime)}` : ""}.
               {/* The Observation itself is always authoritative and
                   successful here -- a failed Work Item link is never an
                   Observation failure, and the Observation is never
@@ -213,6 +220,10 @@ export default function ObservationsPage() {
                     onSuccess: (result) => {
                       setShowRecordForm(false);
                       setRecordedCount(result.values.length);
+                      // HOTFIX-TIME-002: the actual server-authoritative
+                      // recorded time, never the pre-save browser-generated
+                      // estimate the form showed while "Now" was selected.
+                      setRecordedEffectiveTime(result.effective_time);
                       setWorkItemLinkStatus(result.work_item_link_status ?? null);
                       setFormDirty(false);
                     },

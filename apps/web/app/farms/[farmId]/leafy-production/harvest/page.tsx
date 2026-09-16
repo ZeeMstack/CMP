@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import type { CorrectLeafyHarvestSourceLineCreate, HarvestablePlateRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { formatDateTime } from "@/lib/format/datetime";
 import {
   useCorrectLeafyHarvestSourceLine, useHarvestablePlates, useLeafyHarvests, useLinkWorkItemResult,
   useRecordLeafyHarvest,
@@ -63,6 +64,9 @@ export default function LeafyHarvestPage() {
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
     lotId: string; lotCode: string; batchCode: string; totalHeads: number; totalWeight: string; plateCount: number;
+    // HOTFIX-TIME-002: the actual server-authoritative recorded time,
+    // never the pre-save browser-generated estimate the Review step showed.
+    effectiveTime: string;
     workItemLinkStatus: "linked" | "failed" | null;
     // Present only when a Work Item was involved -- lets a failed link be
     // retried right here, against the exact Harvest result that already
@@ -188,6 +192,10 @@ export default function LeafyHarvestPage() {
                 <dt className="text-wl-text-secondary">Source Plates</dt>
                 <dd className="tabular-nums font-medium text-wl-text">{recordSuccess.plateCount}</dd>
               </div>
+              <div>
+                <dt className="text-wl-text-secondary">Occurred at</dt>
+                <dd className="font-medium text-wl-text">{formatDateTime(recordSuccess.effectiveTime)}</dd>
+              </div>
             </dl>
             {/* PILOT-OPS-001: the Harvest above is already authoritative and
                 successful -- a failed Work Item link is never a Harvest
@@ -288,6 +296,7 @@ export default function LeafyHarvestPage() {
                           totalHeads: result.current_total_whole_unit_count,
                           totalWeight: result.current_total_harvested_weight_kg,
                           plateCount: result.source_lines.length,
+                          effectiveTime: result.effective_time,
                           workItemLinkStatus: result.work_item_link_status ?? null,
                           workItemReconciliation: workItemIdForSubmit
                             ? { workItemId: workItemIdForSubmit, harvestEventId: result.id, effectiveTime: result.effective_time }

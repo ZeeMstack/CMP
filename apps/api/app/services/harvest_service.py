@@ -129,12 +129,19 @@ def _line_anchor_key(line: dict) -> object:
 
 def _compute_harvest_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, batch_id: uuid.UUID,
-    effective_time: datetime, produce_lot_code: str, note: str | None, source_lines: list[dict],
+    effective_time: datetime | None, produce_lot_code: str, note: str | None, source_lines: list[dict],
 ) -> str:
+    """HOTFIX-TIME-002: `effective_time` is the ORIGINAL client-supplied
+    value -- `None` only ever for the Leafy/Vines "record now" paths
+    (the generic `record_harvest` always passes a concrete value, its
+    behavior here is unchanged). A `None` fingerprints as the stable "now"
+    marker, never the server-resolved instant, so a retry of the same NOW
+    command always replays the original event."""
+    effective_time_marker = effective_time.astimezone(timezone.utc).isoformat() if effective_time is not None else "now"
     sorted_lines = sorted(source_lines, key=lambda line: str(_line_anchor_key(line)))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(batch_id),
-        effective_time.astimezone(timezone.utc).isoformat(), produce_lot_code, note or "",
+        effective_time_marker, produce_lot_code, note or "",
     ]
     for line in sorted_lines:
         whole_unit_count = line.get("whole_unit_count")
@@ -488,7 +495,7 @@ def record_leafy_harvest(
     actor_user_id: uuid.UUID,
     batch_id: uuid.UUID,
     client_command_id: uuid.UUID,
-    effective_time: datetime,
+    effective_time: datetime | None,
     produce_lot_code: str,
     note: str | None,
     source_lines: list[dict],
@@ -506,10 +513,14 @@ def record_leafy_harvest(
 
     Locking order (multi-root deadlock prevention): CropBatch, then every
     affected population-root BCA in deterministic (sorted UUID) order --
-    never the caller's own request row order."""
+    never the caller's own request row order.
+
+    HOTFIX-TIME-002: `effective_time=None` is "Harvest now" -- the server
+    resolves its own authoritative current time, never a client-generated
+    timestamp that can race ahead of server time under browser clock skew."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
-    if effective_time > datetime.now(timezone.utc):
+    if effective_time is not None and effective_time > datetime.now(timezone.utc):
         raise InvalidHarvestEffectiveTimeError("effective_time cannot be in the future")
     if len(source_lines) > MAX_SOURCE_LINES:
         raise TooManyHarvestLinesError(f"a harvest command may include at most {MAX_SOURCE_LINES} source lines")
@@ -528,6 +539,14 @@ def record_leafy_harvest(
     )
     if replay is not None:
         return replay
+
+    # HOTFIX-TIME-002: resolved only now, on the confirmed-new-command path
+    # (never for a replay, already returned above) and never included in
+    # `fingerprint` itself. Rebinding `effective_time` here means every
+    # remaining use below, already correct and unchanged, operates on a
+    # concrete value.
+    if effective_time is None:
+        effective_time = datetime.now(timezone.utc)
 
     # No stage_category gate for Leafy Harvest (decision 3) -- still
     # requires a real active stage run, since HarvestEvent's own schema
@@ -697,7 +716,7 @@ def record_vines_harvest(
     actor_user_id: uuid.UUID,
     batch_id: uuid.UUID,
     client_command_id: uuid.UUID,
-    effective_time: datetime,
+    effective_time: datetime | None,
     produce_lot_code: str,
     note: str | None,
     source_lines: list[dict],
@@ -706,10 +725,14 @@ def record_vines_harvest(
     weight-only (`whole_unit_count` always `None` -- Vines Harvest is
     weight-based for the current pilot crops). No `stage_category` gate, no
     population consequence -- mirrors `record_leafy_harvest`'s own decision
-    3 exactly, via the sibling `cmp.vines_harvest` trigger escape hatch."""
+    3 exactly, via the sibling `cmp.vines_harvest` trigger escape hatch.
+
+    HOTFIX-TIME-002: `effective_time=None` is "Harvest now" -- the server
+    resolves its own authoritative current time, never a client-generated
+    timestamp that can race ahead of server time under browser clock skew."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
-    if effective_time > datetime.now(timezone.utc):
+    if effective_time is not None and effective_time > datetime.now(timezone.utc):
         raise InvalidHarvestEffectiveTimeError("effective_time cannot be in the future")
     if len(source_lines) > MAX_SOURCE_LINES:
         raise TooManyHarvestLinesError(f"a harvest command may include at most {MAX_SOURCE_LINES} source lines")
@@ -725,6 +748,12 @@ def record_vines_harvest(
     )
     if replay is not None:
         return replay
+
+    # HOTFIX-TIME-002: resolved only now, on the confirmed-new-command path
+    # (never for a replay, already returned above) and never included in
+    # `fingerprint` itself.
+    if effective_time is None:
+        effective_time = datetime.now(timezone.utc)
 
     # No stage_category gate for Vines Harvest either -- still requires a
     # real active stage run, since HarvestEvent's own schema requires one.

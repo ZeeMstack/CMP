@@ -157,9 +157,16 @@ def _canonical_value_repr(value: dict) -> str:
 
 def _compute_observation_fingerprint(
     *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, batch_id: uuid.UUID,
-    effective_time: datetime, note: str | None, values: list[dict], germination_checks: list[dict],
+    effective_time: datetime | None, note: str | None, values: list[dict], germination_checks: list[dict],
     germination_outcomes: list[dict],
 ) -> str:
+    """HOTFIX-TIME-002: `effective_time` is the ORIGINAL client-supplied
+    value (possibly `None` for "record now"), never the server-resolved
+    instant -- mirrors `nursery_service._compute_sow_new_batch_fingerprint`'s
+    own stable "now" marker exactly, so a retry of the same omitted-
+    effective_time command always fingerprints identically regardless of
+    which real instant the server resolves on any given attempt."""
+    effective_time_marker = effective_time.astimezone(timezone.utc).isoformat() if effective_time is not None else "now"
     sorted_values = sorted(
         values,
         key=lambda v: (str(v["observation_definition_id"]), str(v.get("batch_carrier_assignment_id") or "")),
@@ -168,7 +175,7 @@ def _compute_observation_fingerprint(
     sorted_outcomes = sorted(germination_outcomes, key=lambda o: str(o["batch_carrier_assignment_id"]))
     parts = [
         str(tenant_id), str(farm_id), str(actor_user_id), str(batch_id),
-        effective_time.astimezone(timezone.utc).isoformat(), note or "",
+        effective_time_marker, note or "",
     ]
     for v in sorted_values:
         parts.extend(
@@ -221,12 +228,20 @@ def record_observation(
     actor_user_id: uuid.UUID,
     batch_id: uuid.UUID,
     client_command_id: uuid.UUID,
-    effective_time: datetime,
+    effective_time: datetime | None,
     note: str | None,
     values: list[dict],
     germination_checks: list[dict],
     germination_outcomes: list[dict] | None = None,
 ) -> ObservationEvent:
+    """HOTFIX-TIME-002: `effective_time=None` is "record now" -- the server
+    resolves its own authoritative `datetime.now(timezone.utc)`, never a
+    client-generated timestamp that can race ahead of server time under
+    ordinary browser clock skew. Resolved only after both idempotency
+    existence checks below pass (never itself part of the request
+    fingerprint -- see `_compute_observation_fingerprint`), so a retry of
+    the same NOW command always replays the original event rather than
+    being rejected as "reused with a different payload"."""
     # Defaulted (not a required positional-equivalent like `values`/
     # `germination_checks`) so every pre-existing caller of this function
     # (the generic observation API route, and every legacy test) is
@@ -234,7 +249,7 @@ def record_observation(
     germination_outcomes = germination_outcomes or []
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
-    if effective_time > datetime.now(timezone.utc):
+    if effective_time is not None and effective_time > datetime.now(timezone.utc):
         raise InvalidObservationEffectiveTimeError("effective_time cannot be in the future")
     total_entries = len(values) + len(germination_checks) + len(germination_outcomes)
     if total_entries < 1:
@@ -267,6 +282,14 @@ def record_observation(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise ObservationCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    # HOTFIX-TIME-002: resolved only now, on the confirmed-new-command path
+    # -- never for a replay (already returned above) and never included in
+    # `fingerprint` itself. Rebinding `effective_time` here (rather than a
+    # second variable name) means every remaining use below, already
+    # correct and unchanged, operates on a concrete value.
+    if effective_time is None:
+        effective_time = datetime.now(timezone.utc)
 
     if batch.state != "active":
         raise CropBatchClosedError(str(batch_id))

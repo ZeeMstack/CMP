@@ -165,7 +165,11 @@ def record_leafy_harvest(
         result.work_item_link_status = farm_work_item_service.link_operational_result_best_effort(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
             work_item_id=payload.work_item_id, client_command_id=payload.client_command_id,
-            result_entity_type="harvest_event", result_entity_id=event.id, effective_time=payload.effective_time,
+            result_entity_type="harvest_event", result_entity_id=event.id,
+            # HOTFIX-TIME-002: the resolved, authoritative value from the
+            # committed result -- never `payload.effective_time`, which is
+            # now optional/None for a "Harvest now" command.
+            effective_time=result.effective_time,
         )
     return result
 

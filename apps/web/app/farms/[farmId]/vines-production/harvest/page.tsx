@@ -13,6 +13,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
 import type { CorrectVinesHarvestSourceLineCreate, VinesHarvestableSourceRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { formatDateTime } from "@/lib/format/datetime";
 import {
   useCorrectVinesHarvestSourceLine, useVinesHarvestableSources, useVinesHarvests, useRecordVinesHarvest,
 } from "@/lib/query/hooks";
@@ -38,6 +39,9 @@ export default function VinesHarvestPage() {
   const [recordError, setRecordError] = useState<AppError | null>(null);
   const [recordSuccess, setRecordSuccess] = useState<{
     lotId: string; lotCode: string; batchCode: string; totalWeight: string; gutterCount: number;
+    // HOTFIX-TIME-002: the authoritative server-recorded effective time,
+    // never the pre-save browser-clock placeholder.
+    effectiveTime: string;
   } | null>(null);
   const [correctingLineId, setCorrectingLineId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
@@ -108,6 +112,10 @@ export default function VinesHarvestPage() {
                   <dt className="text-ink-muted">Source Gutters</dt>
                   <dd className="font-medium text-ink">{recordSuccess.gutterCount}</dd>
                 </div>
+                <div>
+                  <dt className="text-ink-muted">Occurred at</dt>
+                  <dd className="font-medium text-ink">{formatDateTime(recordSuccess.effectiveTime)}</dd>
+                </div>
               </dl>
               <p className="text-xs text-ink-muted">
                 Living plant count and Grow Bag capacity are unchanged -- these Gutters remain fully harvestable
@@ -159,6 +167,7 @@ export default function VinesHarvestPage() {
                           batchCode: result.batch_code,
                           totalWeight: result.current_total_harvested_weight_kg,
                           gutterCount: result.source_lines.length,
+                          effectiveTime: result.effective_time,
                         });
                       },
                       onError: (error) => {

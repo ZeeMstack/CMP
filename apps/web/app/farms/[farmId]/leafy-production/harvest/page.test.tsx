@@ -169,8 +169,6 @@ describe("LeafyHarvestPage", () => {
     fireEvent.change(weightInputs[0], { target: { value: "2.5" } });
     fireEvent.change(headsInputs[1], { target: { value: "3" } });
     fireEvent.change(weightInputs[1], { target: { value: "1.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
@@ -186,8 +184,6 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
 
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
@@ -206,8 +202,6 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "180" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "90" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
 
     await waitFor(() => expect(screen.getByText(/Production population will be released/)).toBeInTheDocument());
@@ -243,8 +237,6 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
@@ -518,8 +510,6 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
@@ -559,8 +549,6 @@ describe("LeafyHarvestPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
@@ -656,8 +644,6 @@ describe("LeafyHarvestPage PILOT-OPS-001 closure: Work Item linkage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
@@ -693,8 +679,6 @@ describe("LeafyHarvestPage PILOT-OPS-001 closure: Work Item linkage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
@@ -733,8 +717,6 @@ describe("LeafyHarvestPage PILOT-OPS-001 closure: Work Item linkage", () => {
     await waitFor(() => expect(screen.getByLabelText(/heads harvested/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/heads harvested/i), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText(/raw harvested weight/i), { target: { value: "2.5" } });
-    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
-    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
