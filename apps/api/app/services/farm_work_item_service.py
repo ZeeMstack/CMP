@@ -29,6 +29,7 @@ from app.models.audit_event import AuditEvent
 from app.models.carrier import Carrier
 from app.models.crop_batch import CropBatch
 from app.models.crop_issue import CropIssue
+from app.models.equipment_incident import EquipmentIncident
 from app.models.farm_work_item import (
     WORK_ITEM_TERMINAL_STATUSES,
     FarmWorkItem,
@@ -42,6 +43,7 @@ from app.services.errors import (
     CarrierNotFoundError,
     CropBatchNotFoundError,
     CropIssueNotFoundError,
+    EquipmentIncidentNotFoundError,
     FarmNotFoundError,
     FarmWorkItemCommandReusedWithDifferentPayloadError,
     FarmWorkItemInvalidTransitionError,
@@ -91,6 +93,20 @@ def _get_crop_issue_row(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
     if issue is None:
         raise CropIssueNotFoundError(str(crop_issue_id))
     return issue
+
+
+def _get_equipment_incident_row(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, equipment_incident_id: uuid.UUID
+) -> EquipmentIncident:
+    incident = db.execute(
+        select(EquipmentIncident).where(
+            EquipmentIncident.id == equipment_incident_id, EquipmentIncident.tenant_id == tenant_id,
+            EquipmentIncident.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if incident is None:
+        raise EquipmentIncidentNotFoundError(str(equipment_incident_id))
+    return incident
 
 
 def _require_active_member(db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
@@ -166,11 +182,15 @@ def create_work_item(
     quantity_uom_id: uuid.UUID | None,
     completion_mode: str,
     crop_issue_id: uuid.UUID | None = None,
+    equipment_incident_id: uuid.UUID | None = None,
 ) -> FarmWorkItem:
     """`crop_issue_id` (PILOT-AGRO-001): the optional CropIssue this Work
-    Item is corrective action FOR (section 12). Defaulted, not a required
-    positional-equivalent, so every pre-existing caller of this function is
-    completely unaffected."""
+    Item is corrective action FOR (section 12). `equipment_incident_id`
+    (PILOT-ASSET-001): the optional EquipmentIncident this Work Item is
+    corrective action FOR, mirroring `crop_issue_id` exactly -- linking
+    never resolves the Incident (see equipment_incident_service). Both
+    defaulted, not a required positional-equivalent, so every pre-existing
+    caller of this function is completely unaffected."""
     farm = _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
 
     def _find_by_command() -> FarmWorkItem | None:
@@ -183,7 +203,7 @@ def create_work_item(
     fingerprint = _fingerprint(
         tenant_id, farm_id, actor_user_id, work_type, category, title, instructions, priority, due_at,
         assigned_to_user_id, crop_batch_id, location_id, carrier_id, asset_id, quantity, quantity_uom_id,
-        completion_mode, crop_issue_id,
+        completion_mode, crop_issue_id, equipment_incident_id,
     )
 
     existing = _find_by_command()
@@ -204,6 +224,10 @@ def create_work_item(
         asset_service.get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id)
     if crop_issue_id is not None:
         _get_crop_issue_row(db, tenant_id=tenant_id, farm_id=farm_id, crop_issue_id=crop_issue_id)
+    if equipment_incident_id is not None:
+        _get_equipment_incident_row(
+            db, tenant_id=tenant_id, farm_id=farm_id, equipment_incident_id=equipment_incident_id
+        )
     if quantity_uom_id is not None:
         _require_uom(db, uom_id=quantity_uom_id)
 
@@ -227,6 +251,7 @@ def create_work_item(
         carrier_id=carrier_id,
         asset_id=asset_id,
         crop_issue_id=crop_issue_id,
+        equipment_incident_id=equipment_incident_id,
         quantity=quantity,
         quantity_uom_id=quantity_uom_id,
         completion_mode=completion_mode,
@@ -254,6 +279,7 @@ def create_work_item(
             "priority": priority, "assigned_to_user_id": str(assigned_to_user_id) if assigned_to_user_id else None,
             "completion_mode": completion_mode,
             "crop_issue_id": str(crop_issue_id) if crop_issue_id else None,
+            "equipment_incident_id": str(equipment_incident_id) if equipment_incident_id else None,
         },
     )
     db.commit()
@@ -883,6 +909,7 @@ def resolve_read_context(
     carrier_ids = {i.carrier_id for i in items if i.carrier_id}
     asset_ids = {i.asset_id for i in items if i.asset_id}
     crop_issue_ids = {i.crop_issue_id for i in items if i.crop_issue_id}
+    equipment_incident_ids = {i.equipment_incident_id for i in items if i.equipment_incident_id}
     uom_ids = {i.quantity_uom_id for i in items if i.quantity_uom_id}
 
     batches = {}
@@ -929,7 +956,16 @@ def resolve_read_context(
         ):
             crop_issues[row.id] = {"id": row.id, "code": row.code, "status": row.status}
 
+    equipment_incidents = {}
+    if equipment_incident_ids:
+        for row in db.execute(
+            select(EquipmentIncident.id, EquipmentIncident.code, EquipmentIncident.status).where(
+                EquipmentIncident.tenant_id == tenant_id, EquipmentIncident.id.in_(equipment_incident_ids)
+            )
+        ):
+            equipment_incidents[row.id] = {"id": row.id, "code": row.code, "status": row.status}
+
     return {
         "crop_batches": batches, "locations": locations, "carriers": carriers, "assets": assets, "uoms": uoms,
-        "crop_issues": crop_issues,
+        "crop_issues": crop_issues, "equipment_incidents": equipment_incidents,
     }

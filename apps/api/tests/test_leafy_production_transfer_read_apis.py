@@ -9,11 +9,11 @@ authoritative-population/restoration-lineage guarantees 005A's own unified
 resolver provides (never a hand-summed reconstruction)."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.services import carrier_service, carrier_specification_service, farm_service, tenant_service, transplant_correction_service, transplant_service
+from app.services import carrier_service, carrier_specification_service, equipment_readiness_service, farm_service, tenant_service, transplant_correction_service, transplant_service
 from app.services import leafy_production_transfer_service
 from tests.test_leafy_production_transfer import (
     NURSERY_PLATE_TYPE,
@@ -236,9 +236,33 @@ def _register_production_spec(db_session, tenant, user, *, biological_position_c
 
 def _register_production_plate(db_session, tenant, user, farm, *, spec, suffix=None):
     suffix = suffix or uuid.uuid4().hex[:8]
-    return carrier_service.register_carrier(
+    plate = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec.id, code=f"PP-{suffix}", issued_date=None,
+    )
+    _mark_carrier_ready(db_session, tenant, user, farm, plate)
+    return plate
+
+
+def _mark_carrier_ready(db_session, tenant, user, farm, carrier):
+    """PILOT-ASSET-001 (corrected): UNKNOWN != READY -- a freshly-registered
+    Carrier is not allocation-eligible. Bring it to READY via the real
+    domain lifecycle (production_cultivation_plate requires cleaning)."""
+    state = equipment_readiness_service.get_readiness_for_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
+    )
+    equipment_readiness_service.mark_awaiting_cleaning(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=datetime.now(timezone.utc), method=None,
+        result="completed", notes=None,
+    )
+    equipment_readiness_service.mark_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
     )
 
 
@@ -270,6 +294,7 @@ def test_destination_carrier_with_active_bca_excluded(db_session, active_context
     s, aids = _nursery_plate_source_scenario(db_session, tenant, user, farm, opening_count=200)
     table_ids = _leafy_setup(db_session, tenant, user, farm)
     plates, _spec = _production_plates(db_session, tenant, user, farm, count=2)
+    _mark_carrier_ready(db_session, tenant, user, farm, plates[1])
     leafy_production_transfer_service.record_leafy_production_transfer(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch_id"],
         client_command_id=uuid.uuid4(), effective_time=s["transfer_ready_time"] + timedelta(hours=1), note=None,

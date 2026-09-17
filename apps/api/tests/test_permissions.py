@@ -132,6 +132,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: farm_manager creates/assigns/cancels Farm Work
         # Items (supervisory) but does not execute routine floor work.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_MANAGE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_MANAGE,
     }),
     "head_grower": frozenset({
         Permission.FARM_READ,
@@ -165,6 +167,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: head_grower creates/assigns crop-care Work Items,
         # the same supervisory tier as farm_manager for this domain.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     "production_supervisor": frozenset({
         Permission.FARM_READ,
@@ -200,6 +204,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # executes Work Items -- floor oversight plus its own transactional
         # execution tier.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_MANAGE, Permission.EQUIPMENT_READINESS_EXECUTE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_MANAGE, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     "operator": frozenset({
         Permission.FARM_READ,
@@ -222,6 +228,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: operator executes assigned/available floor Work
         # Items -- no create/assign/cancel authority.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     "storekeeper": frozenset({
         Permission.FARM_READ,
@@ -251,6 +259,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: storekeeper executes its own store/cleaning/
         # putaway Work Items.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     "qc_officer": frozenset({
         Permission.FARM_READ,
@@ -285,6 +295,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.TRACEABILITY_READ,
         # PILOT-OPS-001: qc_officer executes its own quality Work Items.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     "packing_supervisor": frozenset({
         Permission.FARM_READ,
@@ -306,6 +318,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: packing_supervisor executes its own post-harvest
         # Work Items.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     "cold_store_supervisor": frozenset({
         Permission.FARM_READ,
@@ -326,6 +340,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: cold_store_supervisor executes its own store Work
         # Items.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     "dispatch_officer": frozenset({
         Permission.FARM_READ,
@@ -346,6 +362,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: dispatch_officer executes its own dispatch Work
         # Items.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE, Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     "auditor": frozenset({
         Permission.FARM_READ,
@@ -379,6 +397,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.PLANNING_READ,
         # PILOT-OPS-001: read-only visibility into Work Items.
         Permission.FARM_WORK_ITEM_READ,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     "read_only": frozenset({
         Permission.FARM_READ,
@@ -412,6 +432,8 @@ EXPECTED_ROLE_GRANTS: dict[str, frozenset[Permission]] = {
         Permission.PLANNING_READ,
         # PILOT-OPS-001: identical to `auditor`'s own addition above.
         Permission.FARM_WORK_ITEM_READ,
+        # PILOT-ASSET-001 (test pin, added alongside permissions.py)
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
 }
 

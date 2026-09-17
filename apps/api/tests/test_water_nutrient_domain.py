@@ -595,7 +595,20 @@ def test_water_measurement_is_immutable_no_update_no_delete(active_context_with_
 def test_alembic_has_a_single_head_including_this_ticket_migration():
     """Proof 24 (partial -- full upgrade/downgrade already exercised
     manually against cmp_test per the ticket's own migration requirements).
-    A second head would mean an unmerged branch in migration history."""
+    A second head would mean an unmerged branch in migration history.
+
+    Deliberately does NOT assert this ticket's own revision (`0d62f68527a2`)
+    IS the current head -- a later ticket's migration stacking on top of it
+    (as PILOT-ASSET-001's `b202c013643f` now does) makes that literal-string
+    assertion permanently stale the moment any such migration lands, exactly
+    the documented anti-pattern `docs/product/OPEN_QUESTIONS.md`'s "Migration
+    graph decisions" section already flags for `test_farm_work_item_
+    migration.py`/`test_location_maintenance_migration.py` (both fixed by
+    resolving the head dynamically instead of hardcoding it). This walks the
+    single current head's own `down_revision` chain -- handling a merge's
+    tuple `down_revision` by following every parent -- to prove
+    `0d62f68527a2` is still reachable (still on the one, unbranched chain),
+    which is this test's actual intent."""
     from pathlib import Path
 
     from alembic.config import Config
@@ -607,7 +620,23 @@ def test_alembic_has_a_single_head_including_this_ticket_migration():
     script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
     assert len(heads) == 1
-    assert heads[0] == "0d62f68527a2"
+
+    target = "0d62f68527a2"
+    visited: set[str] = set()
+    stack = [heads[0]]
+    while stack:
+        revision_id = stack.pop()
+        if revision_id in visited:
+            continue
+        visited.add(revision_id)
+        if revision_id == target:
+            break
+        revision = script.get_revision(revision_id)
+        down = revision.down_revision
+        if down is None:
+            continue
+        stack.extend(down) if isinstance(down, tuple) else stack.append(down)
+    assert target in visited, f"{target} is no longer reachable from the current head {heads[0]!r}"
 
 
 # --- PILOT-WATER-001B: server-authoritative NOW (HOTFIX-TIME-002 pattern) -------------

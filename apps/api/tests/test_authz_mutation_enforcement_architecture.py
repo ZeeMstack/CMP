@@ -211,6 +211,17 @@ _NON_MANAGE_SUFFIX_EXEMPT_PATHS = {
     "/farms/{farm_id}/work-items/{work_item_id}/complete",
     "/farms/{farm_id}/work-items/{work_item_id}/link-result",
     "/farms/{farm_id}/shift-handovers",
+    # PILOT-ASSET-001: the identical authority split, reused for Equipment
+    # Readiness/Incident -- floor-execution commands (record cleaning,
+    # report damage, mark awaiting cleaning; open/acknowledge an incident)
+    # are gated by `equipment_readiness.execute`/`equipment_incident.
+    # execute`, not `.manage` -- release/maintenance/retire and assign/
+    # action-in-progress/resolve/close remain `.manage`-gated (supervisory).
+    "/farms/{farm_id}/equipment-readiness/{state_id}/mark-awaiting-cleaning",
+    "/farms/{farm_id}/equipment-readiness/{state_id}/record-cleaning",
+    "/farms/{farm_id}/equipment-readiness/{state_id}/report-damage",
+    "/farms/{farm_id}/equipment-incidents",
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/acknowledge",
 }
 
 

@@ -545,7 +545,13 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
     capacity and `legacy_level` slot counts; `invalid_level`s contribute
     nothing, never advertised as available), derived from actual active
     Occupancy, never configured capacity alone (section 23's own explicit
-    requirement)."""
+    requirement).
+
+    PILOT-ASSET-001: additionally excludes a Trolley whose Equipment
+    Readiness is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/
+    MAINTENANCE/RETIRED -- only READY is eligible; a dirty/damaged/
+    never-assessed Trolley must never be offered as a Tray placement
+    destination. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -557,6 +563,12 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
             "JOIN location_types clt ON clt.id = c.location_type_id AND clt.code = :chamber_code "
             "JOIN locations gh ON gh.id = c.parent_location_id AND gh.greenhouse_classification = 'nursery' "
             "WHERE a.tenant_id = :tid AND a.farm_id = :fid AND a.status = 'active' "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM equipment_readiness_states ers "
+            "  WHERE ers.asset_id = a.id AND ers.tenant_id = a.tenant_id "
+            "  AND ers.current_state IN ('unknown', 'awaiting_cleaning', 'cleaning_completed', 'damaged', "
+            "'maintenance', 'retired')"
+            ") "
             "ORDER BY a.code"
         ),
         {

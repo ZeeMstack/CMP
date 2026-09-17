@@ -2656,3 +2656,62 @@ class UnitOfMeasureKindMismatchError(DomainError):
     Reservoir's nominal capacity."""
 
     pass
+
+
+# --- PILOT-ASSET-001: Equipment Readiness / Critical Equipment Incidents --------
+
+
+class EquipmentReadinessNotTrackedError(DomainError):
+    """Raised when readiness is requested for an Asset/Carrier whose type
+    does not have `readiness_tracked=true`."""
+
+    pass
+
+
+class EquipmentReadinessStateNotFoundError(DomainError):
+    pass
+
+
+class EquipmentReadinessCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class EquipmentReadinessInvalidTransitionError(DomainError):
+    pass
+
+
+class EquipmentReadinessCarrierInUseError(DomainError):
+    """Raised when `mark_ready` is attempted on a Carrier that currently
+    holds an active `BatchCarrierAssignment`."""
+
+    pass
+
+
+class EquipmentReadinessCleaningNotRequiredError(DomainError):
+    """Raised when `mark_awaiting_cleaning` is attempted on a type with
+    `requires_cleaning=false`."""
+
+    pass
+
+
+class EquipmentReadinessCleaningNotCompletedError(DomainError):
+    """Raised when `mark_ready` is attempted on a cleaning-required type
+    whose most recent `CleaningEvent.result` is not `completed`."""
+
+    pass
+
+
+class CleaningEventCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class EquipmentIncidentNotFoundError(DomainError):
+    pass
+
+
+class EquipmentIncidentCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class EquipmentIncidentInvalidTransitionError(DomainError):
+    pass

@@ -146,6 +146,16 @@ import type {
   NutrientMixCreate,
   ReservoirEventCreate,
   WaterDeliveryEventCreate,
+  EquipmentReadinessCurrentState,
+  EquipmentReadinessNoteIn,
+  EquipmentReadinessReportDamageIn,
+  EquipmentReadinessRecordCleaningIn,
+  EquipmentIncidentOpenIn,
+  EquipmentIncidentStatus,
+  EquipmentIncidentCommandIn,
+  EquipmentIncidentAssignIn,
+  EquipmentIncidentResolveIn,
+  EquipmentIncidentCloseIn,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { AppError } from "@/lib/errors/adapter";
@@ -4890,6 +4900,272 @@ export function useWaterAttention(farmId: string) {
   return useQuery({
     queryKey: queryKeys.waterAttention(tenantId ?? "", farmId),
     queryFn: ({ signal }) => api.getWaterAttention(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+// --- PILOT-ASSET-001: Equipment Readiness + Critical Equipment Incidents ------------------
+
+export function useAssetReadiness(farmId: string, assetId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.assetReadiness(tenantId ?? "", farmId, assetId ?? ""),
+    queryFn: ({ signal }) => api.getAssetReadiness(farmId, assetId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(assetId),
+  });
+}
+
+export function useCarrierReadiness(farmId: string, carrierId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.carrierReadiness(tenantId ?? "", farmId, carrierId ?? ""),
+    queryFn: ({ signal }) => api.getCarrierReadiness(farmId, carrierId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(carrierId),
+  });
+}
+
+export function useEquipmentReadinessList(farmId: string, states?: EquipmentReadinessCurrentState[]) {
+  const tenantId = useSelectedTenantId();
+  const filterKey = (states ?? []).join(",");
+  return useQuery({
+    queryKey: queryKeys.equipmentReadinessList(tenantId ?? "", farmId, filterKey),
+    queryFn: ({ signal }) => api.listEquipmentReadiness(farmId, states, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+/** The Cleaning Queue. */
+export function useAwaitingCleaning(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.awaitingCleaning(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listAwaitingCleaning(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useEquipmentReadinessHistory(farmId: string, stateId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.equipmentReadinessHistory(tenantId ?? "", farmId, stateId ?? ""),
+    queryFn: ({ signal }) => api.getEquipmentReadinessHistory(farmId, stateId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(stateId),
+  });
+}
+
+export function useCleaningEvents(farmId: string, options: { assetId?: string; carrierId?: string } = {}) {
+  const tenantId = useSelectedTenantId();
+  const filterKey = `${options.assetId ?? ""}|${options.carrierId ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.cleaningEvents(tenantId ?? "", farmId, filterKey),
+    queryFn: ({ signal }) => api.listCleaningEvents(farmId, options, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+/** Every readiness-state mutation below invalidates: the entity's own
+ * asset/carrier readiness detail query (both may be live at once -- e.g.
+ * the detail page and the Cleaning Queue), the readiness list (every
+ * `state` filter variant is invalidated via the key prefix), the
+ * awaiting-cleaning queue, this state's own history, and Equipment
+ * Attention (a state change can add/remove an attention row). Mirrors
+ * `useInvalidateCropIssues`'s single-invalidation-helper convention. */
+function useInvalidateEquipmentReadiness(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (state: { id: string; asset_id: string | null; carrier_id: string | null }) => {
+    if (!tenantId) return;
+    if (state.asset_id) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.assetReadiness(tenantId, farmId, state.asset_id) });
+    }
+    if (state.carrier_id) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.carrierReadiness(tenantId, farmId, state.carrier_id) });
+    }
+    queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "equipment-readiness"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.equipmentReadinessHistory(tenantId, farmId, state.id) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.equipmentAttention(tenantId, farmId) });
+  };
+}
+
+export function useMarkAwaitingCleaning(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessNoteIn }) =>
+      api.markAwaitingCleaning(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useRecordCleaning(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessRecordCleaningIn }) =>
+      api.recordCleaning(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useMarkEquipmentReady(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessNoteIn }) =>
+      api.markEquipmentReady(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useReportEquipmentDamage(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessReportDamageIn }) =>
+      api.reportEquipmentDamage(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useSendToMaintenance(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessNoteIn }) =>
+      api.sendToMaintenance(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useReturnFromMaintenance(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessNoteIn }) =>
+      api.returnFromMaintenance(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+export function useRetireEquipmentReadiness(farmId: string) {
+  const invalidate = useInvalidateEquipmentReadiness(farmId);
+  return useMutation({
+    mutationFn: ({ stateId, payload }: { stateId: string; payload: EquipmentReadinessNoteIn }) =>
+      api.retireEquipmentReadiness(farmId, stateId, payload),
+    onSuccess: (data) => invalidate(data),
+  });
+}
+
+// --- PILOT-ASSET-001: Equipment Incidents -------------------------------------------------
+
+export function useEquipmentIncidents(farmId: string, options: { status?: EquipmentIncidentStatus[]; assetId?: string } = {}) {
+  const tenantId = useSelectedTenantId();
+  const filterKey = `${(options.status ?? []).join(",")}|${options.assetId ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.equipmentIncidents(tenantId ?? "", farmId, filterKey),
+    queryFn: ({ signal }) => api.listEquipmentIncidents(farmId, options, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useEquipmentIncident(farmId: string, incidentId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.equipmentIncident(tenantId ?? "", farmId, incidentId ?? ""),
+    queryFn: ({ signal }) => api.getEquipmentIncident(farmId, incidentId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(incidentId),
+  });
+}
+
+export function useEquipmentIncidentHistory(farmId: string, incidentId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.equipmentIncidentHistory(tenantId ?? "", farmId, incidentId ?? ""),
+    queryFn: ({ signal }) => api.getEquipmentIncidentHistory(farmId, incidentId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(incidentId),
+  });
+}
+
+/** Mirrors `useInvalidateCropIssues`: invalidates every open Equipment
+ * Incident list variant (via the key prefix), this incident's own detail,
+ * and Equipment Attention (open incidents feed into it). */
+function useInvalidateEquipmentIncidents(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (incidentId?: string) => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "equipment-incidents"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.equipmentAttention(tenantId, farmId) });
+    if (incidentId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.equipmentIncidentHistory(tenantId, farmId, incidentId) });
+    }
+  };
+}
+
+export function useOpenEquipmentIncident(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: (payload: EquipmentIncidentOpenIn) => api.openEquipmentIncident(farmId, payload),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useAcknowledgeEquipmentIncident(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: ({ incidentId, payload }: { incidentId: string; payload: EquipmentIncidentCommandIn }) =>
+      api.acknowledgeEquipmentIncident(farmId, incidentId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.incidentId),
+  });
+}
+
+export function useMarkEquipmentIncidentActionInProgress(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: ({ incidentId, payload }: { incidentId: string; payload: EquipmentIncidentCommandIn }) =>
+      api.markEquipmentIncidentActionInProgress(farmId, incidentId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.incidentId),
+  });
+}
+
+export function useAssignEquipmentIncident(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: ({ incidentId, payload }: { incidentId: string; payload: EquipmentIncidentAssignIn }) =>
+      api.assignEquipmentIncident(farmId, incidentId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.incidentId),
+  });
+}
+
+export function useResolveEquipmentIncident(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: ({ incidentId, payload }: { incidentId: string; payload: EquipmentIncidentResolveIn }) =>
+      api.resolveEquipmentIncident(farmId, incidentId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.incidentId),
+  });
+}
+
+export function useCloseEquipmentIncident(farmId: string) {
+  const invalidate = useInvalidateEquipmentIncidents(farmId);
+  return useMutation({
+    mutationFn: ({ incidentId, payload }: { incidentId: string; payload: EquipmentIncidentCloseIn }) =>
+      api.closeEquipmentIncident(farmId, incidentId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.incidentId),
+  });
+}
+
+// --- Today on the Farm: Equipment Attention -----------------------------------------------
+
+export function useEquipmentAttention(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.equipmentAttention(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getEquipmentAttention(farmId, signal),
     staleTime: STALE_LIST_MS,
     enabled: Boolean(tenantId) && Boolean(farmId),
   });

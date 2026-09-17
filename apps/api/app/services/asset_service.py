@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.asset import Asset
 from app.models.asset_position import AssetPosition
 from app.models.asset_type import AssetType
-from app.services import farm_service, qr_provisioning
+from app.services import equipment_readiness_provisioning, farm_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.services.errors import (
     AssetNotFoundError,
@@ -111,6 +111,12 @@ def register_asset(
     qr_provisioning.ensure_qr_identifier_for_new_entity(
         db, tenant_id=tenant_id, farm_id=farm_id, entity_type="asset", entity_id=asset.id,
         actor_user_id=actor_user_id,
+    )
+    # PILOT-ASSET-001: a readiness-tracked Asset type starts its Equipment
+    # Readiness lifecycle at UNKNOWN, same transaction/commit as the Asset
+    # row itself.
+    equipment_readiness_provisioning.ensure_readiness_state_for_new_asset(
+        db, tenant_id=tenant_id, farm_id=farm_id, asset=asset,
     )
     db.commit()
     db.refresh(asset)

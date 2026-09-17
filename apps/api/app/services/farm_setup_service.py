@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.models.asset import Asset
 from app.models.location import Location
-from app.services import asset_service, location_service, qr_provisioning
+from app.services import asset_service, equipment_readiness_provisioning, location_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.schemas.farm_setup import (
     GreenhouseOverviewItem,
@@ -360,6 +360,9 @@ def create_greenhouse_setup(
             qr_provisioning.ensure_qr_identifier_for_new_entity(
                 db, tenant_id=tenant_id, farm_id=farm_id, entity_type="asset", entity_id=asset.id,
                 actor_user_id=actor_user_id,
+            )
+            equipment_readiness_provisioning.ensure_readiness_state_for_new_asset(
+                db, tenant_id=tenant_id, farm_id=farm_id, asset=asset,
             )
     except Exception:
         # Defensive backstop: every `_*_core` call already rolls back on

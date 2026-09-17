@@ -8,6 +8,11 @@ from app.core.db import Base
 from app.models.common import TimestampMixin
 
 ASSET_STATUSES = ("active", "inactive", "damaged", "retired")
+# PILOT-ASSET-001 PART 11: a small, non-scoring instance-level
+# classification -- does NOT change automatically, never touched by
+# Equipment Readiness/Incident commands themselves. Informs Today-on-the-
+# Farm ordering and Incident severity presentation only.
+ASSET_CRITICALITIES = ("normal", "important", "critical")
 
 
 class Asset(TimestampMixin, Base):
@@ -22,6 +27,7 @@ class Asset(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
     commissioned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     retired_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    criticality: Mapped[str] = mapped_column(String, nullable=False, default="normal")
 
     __table_args__ = (
         CheckConstraint(
@@ -30,6 +36,9 @@ class Asset(TimestampMixin, Base):
         CheckConstraint(
             "status <> 'retired' OR retired_date IS NOT NULL",
             name="ck_assets_retired_requires_retired_date",
+        ),
+        CheckConstraint(
+            "criticality IN ('normal', 'important', 'critical')", name="ck_assets_criticality"
         ),
         Index("ux_assets_tenant_code_lower", "tenant_id", func.lower(code), unique=True),
     )

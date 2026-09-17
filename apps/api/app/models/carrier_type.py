@@ -26,3 +26,9 @@ class CarrierType(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     requires_specification: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     biological_position_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    # PILOT-ASSET-001: platform metadata (like `requires_specification`) --
+    # whether the Equipment Readiness lifecycle applies to Carriers of this
+    # type at all, and whether their post-use path goes through
+    # AWAITING_CLEANING. See docs/domain/EQUIPMENT_READINESS_MODEL.md.
+    readiness_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    requires_cleaning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

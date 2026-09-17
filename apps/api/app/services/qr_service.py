@@ -67,6 +67,7 @@ from app.services import (
     asset_service,
     carrier_service,
     crop_batch_service,
+    equipment_readiness_service,
     farm_service,
     farm_work_item_service,
     grading_service,
@@ -425,6 +426,52 @@ def _work_item_summaries(items) -> list[ScanWorkItemSummary]:
     ]
 
 
+def _equipment_readiness_actions(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, entity_type: str, entity_id: uuid.UUID,
+    may: "Callable[[str], bool]",
+) -> list[ScanAction]:
+    """PILOT-ASSET-001 PART 21: prepared, read-only navigation links only --
+    resolving a token never mutates readiness (QR_SCAN_MODEL.md's
+    "Scan ≠ activity" is unchanged). Silently omitted for a non-readiness-
+    tracked entity (no `EquipmentReadinessState` row exists)."""
+    if not may("equipment_readiness.read"):
+        return []
+    try:
+        if entity_type == "asset":
+            state = equipment_readiness_service.get_readiness_for_asset(
+                db, tenant_id=tenant_id, farm_id=farm_id, asset_id=entity_id
+            )
+        else:
+            state = equipment_readiness_service.get_readiness_for_carrier(
+                db, tenant_id=tenant_id, farm_id=farm_id, carrier_id=entity_id
+            )
+    except Exception:
+        return []
+
+    actions = [
+        ScanAction(
+            label="View Readiness", href=f"/farms/{farm_id}/equipment/{entity_type}/{entity_id}/readiness"
+        )
+    ]
+    if state.current_state == "awaiting_cleaning" and may("equipment_readiness.execute"):
+        actions.append(
+            ScanAction(
+                label="Record Cleaning",
+                href=f"/farms/{farm_id}/equipment/{entity_type}/{entity_id}/readiness?action=record-cleaning",
+            )
+        )
+    if state.current_state != "retired" and may("equipment_readiness.execute"):
+        actions.append(
+            ScanAction(
+                label="Report Damage",
+                href=f"/farms/{farm_id}/equipment/{entity_type}/{entity_id}/readiness?action=report-damage",
+            )
+        )
+    if entity_type == "asset" and may("equipment_incident.execute"):
+        actions.append(ScanAction(label="Report Incident", href=f"/farms/{farm_id}/equipment-incidents/new?assetId={entity_id}"))
+    return actions
+
+
 def resolve_scan_context(
     db: Session,
     *,
@@ -556,6 +603,11 @@ def resolve_scan_context(
                 )
             )
         actions.append(ScanAction(label="View current occupancy", href=f"/farms/{farm_id}/carriers"))
+        actions.extend(
+            _equipment_readiness_actions(
+                db, tenant_id=tenant_id, farm_id=farm_id, entity_type="carrier", entity_id=entity_id, may=may,
+            )
+        )
         return CarrierScanContext(
             **common,
             code=carrier.code,
@@ -574,6 +626,9 @@ def resolve_scan_context(
         loc, unresolved = _resolved_location_summary(
             db, tenant_id=tenant_id, farm_id=farm_id, occupant_kind="asset", occupant_id=entity_id
         )
+        asset_actions = _equipment_readiness_actions(
+            db, tenant_id=tenant_id, farm_id=farm_id, entity_type="asset", entity_id=entity_id, may=may,
+        )
         return AssetScanContext(
             **common,
             code=asset.code,
@@ -582,7 +637,7 @@ def resolve_scan_context(
             status=asset.status,
             current_location=loc,
             unresolved_reason=unresolved,
-            actions=[],
+            actions=asset_actions,
             work_items=work_items,
         )
 

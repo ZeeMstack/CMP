@@ -67,6 +67,10 @@ function stubFetch(carriers: unknown[], specs: unknown[] = [spec()], onPost?: (c
       }
       if (url.includes("/carrier-types")) return jsonResponse(carrierTypes);
       if (url.includes("/carrier-specifications")) return jsonResponse(specs);
+      // PILOT-ASSET-001: the Readiness column's batch-fetched list -- empty
+      // by default so existing assertions about the base table stay
+      // unaffected; readiness-specific behavior is covered separately.
+      if (url.includes("/equipment-readiness")) return jsonResponse([]);
       if (url.includes("/carriers")) return jsonResponse(carriers);
       return jsonResponse({});
     }),

@@ -443,4 +443,28 @@ export const queryKeys = {
   batchWaterExposure: (tenantId: string, farmId: string, batchId: string, windowKey: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "water-exposure", windowKey] as const,
   waterAttention: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "water-attention"] as const,
+
+  // --- PILOT-ASSET-001: Equipment Readiness + Critical Equipment Incidents ---
+  assetReadiness: (tenantId: string, farmId: string, assetId: string) =>
+    ["tenant", tenantId, "farms", farmId, "assets", assetId, "readiness"] as const,
+  carrierReadiness: (tenantId: string, farmId: string, carrierId: string) =>
+    ["tenant", tenantId, "farms", farmId, "carriers", carrierId, "readiness"] as const,
+  // `filterKey` bundles the (repeatable) `state` filter into one
+  // cache-distinct string, mirroring `gradedProduceLots`'s own convention.
+  equipmentReadinessList: (tenantId: string, farmId: string, filterKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-readiness", filterKey] as const,
+  awaitingCleaning: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-readiness", "awaiting-cleaning"] as const,
+  equipmentReadinessHistory: (tenantId: string, farmId: string, stateId: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-readiness", stateId, "history"] as const,
+  cleaningEvents: (tenantId: string, farmId: string, filterKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "cleaning-events", filterKey] as const,
+  equipmentIncidents: (tenantId: string, farmId: string, filterKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-incidents", filterKey] as const,
+  equipmentIncident: (tenantId: string, farmId: string, incidentId: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-incidents", "detail", incidentId] as const,
+  equipmentIncidentHistory: (tenantId: string, farmId: string, incidentId: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-incidents", incidentId, "history"] as const,
+  equipmentAttention: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "equipment-attention"] as const,
 };

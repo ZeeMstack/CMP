@@ -2363,8 +2363,20 @@ export function cancelSeedingProgramLine(
 
 // --- PILOT-OPS-001: Farm Work Item / Shift Handover ("Today on the Farm") ----
 
-export type FarmWorkItemRead = components["schemas"]["FarmWorkItemRead"];
-export type FarmWorkItemCreate = components["schemas"]["FarmWorkItemCreate"];
+// PILOT-ASSET-001: `schema.gen.ts` cannot be regenerated in this sandbox (no
+// backend/DB to run `npm run api:types` against) -- the additive
+// `equipment_incident_id`/`equipment_incident` fields these two types
+// gained are layered on via intersection rather than hand-editing the
+// generated file.
+export type FarmWorkItemRead = components["schemas"]["FarmWorkItemRead"] & {
+  // Optional (not just nullable) so existing hand-built `FarmWorkItemRead`
+  // test fixtures that predate this field keep type-checking -- every real
+  // response from the backend always includes it.
+  equipment_incident?: { id: string; code: string; status: string } | null;
+};
+export type FarmWorkItemCreate = components["schemas"]["FarmWorkItemCreate"] & {
+  equipment_incident_id?: string | null;
+};
 export type FarmWorkItemUpdateIn = components["schemas"]["FarmWorkItemUpdateIn"];
 export type FarmWorkItemStartIn = components["schemas"]["FarmWorkItemStartIn"];
 export type FarmWorkItemBlockIn = components["schemas"]["FarmWorkItemBlockIn"];
@@ -3193,4 +3205,259 @@ export function getBatchWaterExposure(
 
 export function getWaterAttention(farmId: string, signal?: AbortSignal): Promise<WaterAttentionItem[]> {
   return getJson<WaterAttentionItem[]>(`/farms/${farmId}/water/attention`, signal);
+}
+
+// --- PILOT-ASSET-001: Equipment Readiness + Critical Equipment Incidents ------------------
+// This backend domain shipped without a way to regenerate `schema.gen.ts` in this sandbox
+// (no Python venv/DB available to run `npm run api:types` against). As a deliberate,
+// documented deviation from this file's normal `components["schemas"][...]` convention,
+// every type below is a hand-written plain interface mirroring the backend's Pydantic
+// schemas field-for-field (see docs/domain/EQUIPMENT_READINESS_MODEL.md and the ticket's
+// exact contract). Replace these with generated aliases once the schema can be regenerated.
+
+export type EquipmentReadinessCurrentState =
+  | "unknown" | "awaiting_cleaning" | "cleaning_completed" | "ready" | "damaged" | "maintenance" | "retired";
+
+export interface EquipmentReadinessStateRead {
+  id: string; tenant_id: string; farm_id: string;
+  entity_type: "asset" | "carrier";
+  asset_id: string | null; carrier_id: string | null;
+  current_state: EquipmentReadinessCurrentState;
+  state_changed_at: string; state_changed_by_user_id: string | null;
+  state_note: string | null; last_cleaning_event_id: string | null;
+  created_at: string; updated_at: string;
+}
+
+export interface CleaningEventRead {
+  id: string; tenant_id: string; farm_id: string;
+  entity_type: "asset" | "carrier"; asset_id: string | null; carrier_id: string | null;
+  effective_at: string; recorded_at: string; performed_by_user_id: string;
+  method: string | null; result: "completed" | "needs_rework"; notes: string | null;
+}
+
+export interface EquipmentReadinessHistoryEntryRead {
+  id: string; action: string; actor_user_id: string | null; effective_time: string; event_data: Record<string, unknown>;
+}
+
+/** Body shape shared by every readiness command except `record-cleaning`
+ * (its own richer shape below) and `report-damage` (where `note` is
+ * required, not optional -- see `EquipmentReadinessReportDamageIn`). */
+export interface EquipmentReadinessNoteIn {
+  client_command_id: string;
+  note?: string;
+}
+export interface EquipmentReadinessReportDamageIn {
+  client_command_id: string;
+  note: string;
+}
+export interface EquipmentReadinessRecordCleaningIn {
+  client_command_id: string;
+  effective_at: string;
+  method?: string;
+  result: "completed" | "needs_rework";
+  notes?: string;
+}
+
+export function getAssetReadiness(
+  farmId: string, assetId: string, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return getJson<EquipmentReadinessStateRead>(`/farms/${farmId}/assets/${assetId}/readiness`, signal);
+}
+export function getCarrierReadiness(
+  farmId: string, carrierId: string, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return getJson<EquipmentReadinessStateRead>(`/farms/${farmId}/carriers/${carrierId}/readiness`, signal);
+}
+/** `states` omitted or empty lists every readiness-tracked Asset/Carrier farm-wide. */
+export function listEquipmentReadiness(
+  farmId: string, states?: EquipmentReadinessCurrentState[], signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead[]> {
+  const query = new URLSearchParams();
+  for (const state of states ?? []) query.append("state", state);
+  const qs = query.toString();
+  return getJson<EquipmentReadinessStateRead[]>(`/farms/${farmId}/equipment-readiness${qs ? `?${qs}` : ""}`, signal);
+}
+/** The Cleaning Queue. */
+export function listAwaitingCleaning(farmId: string, signal?: AbortSignal): Promise<EquipmentReadinessStateRead[]> {
+  return getJson<EquipmentReadinessStateRead[]>(`/farms/${farmId}/equipment-readiness/awaiting-cleaning`, signal);
+}
+export function getEquipmentReadinessHistory(
+  farmId: string, stateId: string, signal?: AbortSignal,
+): Promise<EquipmentReadinessHistoryEntryRead[]> {
+  return getJson<EquipmentReadinessHistoryEntryRead[]>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/history`, signal,
+  );
+}
+export function listCleaningEvents(
+  farmId: string, options: { assetId?: string; carrierId?: string } = {}, signal?: AbortSignal,
+): Promise<CleaningEventRead[]> {
+  const query = new URLSearchParams();
+  if (options.assetId) query.set("asset_id", options.assetId);
+  if (options.carrierId) query.set("carrier_id", options.carrierId);
+  const qs = query.toString();
+  return getJson<CleaningEventRead[]>(`/farms/${farmId}/cleaning-events${qs ? `?${qs}` : ""}`, signal);
+}
+
+export function markAwaitingCleaning(
+  farmId: string, stateId: string, payload: EquipmentReadinessNoteIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/mark-awaiting-cleaning`, payload, signal,
+  );
+}
+export function recordCleaning(
+  farmId: string, stateId: string, payload: EquipmentReadinessRecordCleaningIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/record-cleaning`, payload, signal,
+  );
+}
+export function markEquipmentReady(
+  farmId: string, stateId: string, payload: EquipmentReadinessNoteIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/mark-ready`, payload, signal,
+  );
+}
+export function reportEquipmentDamage(
+  farmId: string, stateId: string, payload: EquipmentReadinessReportDamageIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/report-damage`, payload, signal,
+  );
+}
+export function sendToMaintenance(
+  farmId: string, stateId: string, payload: EquipmentReadinessNoteIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/send-to-maintenance`, payload, signal,
+  );
+}
+export function returnFromMaintenance(
+  farmId: string, stateId: string, payload: EquipmentReadinessNoteIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/return-from-maintenance`, payload, signal,
+  );
+}
+export function retireEquipmentReadiness(
+  farmId: string, stateId: string, payload: EquipmentReadinessNoteIn, signal?: AbortSignal,
+): Promise<EquipmentReadinessStateRead> {
+  return postJson<EquipmentReadinessStateRead>(
+    `/farms/${farmId}/equipment-readiness/${stateId}/retire`, payload, signal,
+  );
+}
+
+// --- PILOT-ASSET-001: Equipment Incidents -------------------------------------------------
+
+export type EquipmentIncidentSeverity = "low" | "medium" | "high" | "critical";
+export type EquipmentIncidentCategory =
+  | "cooling" | "ventilation" | "irrigation_water" | "fertigation_dosing" | "ro_plant"
+  | "reservoir" | "germination_chamber" | "seeding_equipment" | "scale" | "cold_store" | "other";
+export type EquipmentIncidentStatus = "open" | "acknowledged" | "action_in_progress" | "resolved" | "closed";
+
+export interface EquipmentIncidentOpenIn {
+  client_command_id: string;
+  asset_id: string;
+  location_id?: string | null;
+  // UI label: "Potentially impacted area" -- NEVER "Affected crop".
+  potentially_impacted_location_id?: string | null;
+  severity: EquipmentIncidentSeverity;
+  category: EquipmentIncidentCategory;
+  description: string;
+  detected_at: string;
+  assigned_owner_user_id?: string | null;
+  notes?: string | null;
+}
+export interface EquipmentIncidentRead {
+  id: string; tenant_id: string; farm_id: string; code: string;
+  asset_id: string; asset: { id: string; code: string; name: string; criticality: string } | null;
+  location_id: string | null; location: { id: string; code: string; name: string } | null;
+  potentially_impacted_location_id: string | null;
+  potentially_impacted_location: { id: string; code: string; name: string } | null;
+  severity: EquipmentIncidentSeverity;
+  category: string; description: string;
+  detected_by_user_id: string; detected_at: string; notes: string | null;
+  status: EquipmentIncidentStatus;
+  opened_by_user_id: string; opened_at: string;
+  assigned_owner_user_id: string | null;
+  acknowledged_by_user_id: string | null; acknowledged_at: string | null;
+  resolved_by_user_id: string | null; resolved_at: string | null; resolution_note: string | null;
+  closed_by_user_id: string | null; closed_at: string | null; close_note: string | null;
+  updated_at: string;
+}
+export interface EquipmentIncidentHistoryEntryRead {
+  id: string; action: string; actor_user_id: string | null; effective_time: string; event_data: Record<string, unknown>;
+}
+export interface EquipmentIncidentCommandIn { client_command_id: string; }
+export interface EquipmentIncidentAssignIn { client_command_id: string; assigned_owner_user_id?: string | null; }
+export interface EquipmentIncidentResolveIn { client_command_id: string; resolution_note: string; }
+export interface EquipmentIncidentCloseIn { client_command_id: string; close_note?: string | null; }
+
+export function openEquipmentIncident(
+  farmId: string, payload: EquipmentIncidentOpenIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents`, payload, signal);
+}
+/** `status` omitted lists every status; `assetId` narrows to one Asset's incidents. */
+export function listEquipmentIncidents(
+  farmId: string, options: { status?: EquipmentIncidentStatus[]; assetId?: string } = {}, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead[]> {
+  const query = new URLSearchParams();
+  for (const status of options.status ?? []) query.append("status", status);
+  if (options.assetId) query.set("asset_id", options.assetId);
+  const qs = query.toString();
+  return getJson<EquipmentIncidentRead[]>(`/farms/${farmId}/equipment-incidents${qs ? `?${qs}` : ""}`, signal);
+}
+export function getEquipmentIncident(
+  farmId: string, incidentId: string, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return getJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents/${incidentId}`, signal);
+}
+export function getEquipmentIncidentHistory(
+  farmId: string, incidentId: string, signal?: AbortSignal,
+): Promise<EquipmentIncidentHistoryEntryRead[]> {
+  return getJson<EquipmentIncidentHistoryEntryRead[]>(
+    `/farms/${farmId}/equipment-incidents/${incidentId}/history`, signal,
+  );
+}
+export function acknowledgeEquipmentIncident(
+  farmId: string, incidentId: string, payload: EquipmentIncidentCommandIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents/${incidentId}/acknowledge`, payload, signal);
+}
+export function markEquipmentIncidentActionInProgress(
+  farmId: string, incidentId: string, payload: EquipmentIncidentCommandIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(
+    `/farms/${farmId}/equipment-incidents/${incidentId}/action-in-progress`, payload, signal,
+  );
+}
+export function assignEquipmentIncident(
+  farmId: string, incidentId: string, payload: EquipmentIncidentAssignIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents/${incidentId}/assign`, payload, signal);
+}
+export function resolveEquipmentIncident(
+  farmId: string, incidentId: string, payload: EquipmentIncidentResolveIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents/${incidentId}/resolve`, payload, signal);
+}
+export function closeEquipmentIncident(
+  farmId: string, incidentId: string, payload: EquipmentIncidentCloseIn, signal?: AbortSignal,
+): Promise<EquipmentIncidentRead> {
+  return postJson<EquipmentIncidentRead>(`/farms/${farmId}/equipment-incidents/${incidentId}/close`, payload, signal);
+}
+
+// --- Today on the Farm: Equipment Attention -----------------------------------------------
+
+export interface EquipmentAttentionItem {
+  kind: "OPEN_INCIDENT" | "MAINTENANCE" | "DAMAGED" | "AWAITING_CLEANING" | "CLEANING_COMPLETED_NOT_RELEASED";
+  message: string;
+  asset_id?: string | null; carrier_id?: string | null; code?: string | null;
+  equipment_incident_id?: string | null; severity?: string | null; criticality?: string | null;
+}
+
+export function getEquipmentAttention(farmId: string, signal?: AbortSignal): Promise<EquipmentAttentionItem[]> {
+  return getJson<EquipmentAttentionItem[]>(`/farms/${farmId}/equipment-attention`, signal);
 }

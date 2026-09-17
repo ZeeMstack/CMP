@@ -86,7 +86,9 @@ export function CreateWorkItemForm({
   batchOptions = [],
   assetOptions = [],
   carrierOptions = [],
+  equipmentIncidentOptions = [],
   lockedCropIssue,
+  lockedEquipmentIncident,
 }: {
   onSubmit: (payload: FarmWorkItemCreate) => void;
   onCancel: () => void;
@@ -97,11 +99,19 @@ export function CreateWorkItemForm({
   batchOptions?: WorkItemContextOption[];
   assetOptions?: WorkItemContextOption[];
   carrierOptions?: WorkItemContextOption[];
+  /** PILOT-ASSET-001: open Equipment Incidents this Work Item may be linked
+   * to via the "Add context" disclosure. Only rendered when neither locked
+   * prop is set (mirrors `lockedCropIssue`'s own "editable only when not
+   * locked" convention). */
+  equipmentIncidentOptions?: WorkItemContextOption[];
   /** PILOT-AGRO-001B: set when opened from a Crop Issue's "Assign
    * corrective work" action -- fixes `crop_issue_id` (and its Batch, when
    * known) as read-only context rather than an editable dropdown, since
    * the backend accepts `crop_issue_id` only at creation, never retrofit. */
   lockedCropIssue?: { id: string; code: string; batchId?: string; batchLabel?: string };
+  /** PILOT-ASSET-001: mirrors `lockedCropIssue` exactly -- set when opened
+   * from an Equipment Incident's own "Assign corrective work" action. */
+  lockedEquipmentIncident?: { id: string; code: string };
 }) {
   const [showContext, setShowContext] = useState(false);
   const {
@@ -114,9 +124,14 @@ export function CreateWorkItemForm({
     resolver: zodResolver(farmWorkItemFormSchema),
     defaultValues: {
       ...DEFAULT_FARM_WORK_ITEM_FORM_VALUES,
-      category: lockedCropIssue ? "crop_care" : DEFAULT_FARM_WORK_ITEM_FORM_VALUES.category,
+      category: lockedCropIssue
+        ? "crop_care"
+        : lockedEquipmentIncident
+          ? "maintenance"
+          : DEFAULT_FARM_WORK_ITEM_FORM_VALUES.category,
       cropIssueId: lockedCropIssue?.id ?? null,
       cropBatchId: lockedCropIssue?.batchId ?? null,
+      equipmentIncidentId: lockedEquipmentIncident?.id ?? null,
     },
     mode: "onBlur",
   });
@@ -132,9 +147,11 @@ export function CreateWorkItemForm({
   const cropBatchId = watch("cropBatchId");
   const assetId = watch("assetId");
   const carrierId = watch("carrierId");
+  const equipmentIncidentId = watch("equipmentIncidentId");
 
   const hasContextOptions =
-    locationOptions.length > 0 || batchOptions.length > 0 || assetOptions.length > 0 || carrierOptions.length > 0;
+    locationOptions.length > 0 || batchOptions.length > 0 || assetOptions.length > 0 || carrierOptions.length > 0 ||
+    equipmentIncidentOptions.length > 0;
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
@@ -142,6 +159,12 @@ export function CreateWorkItemForm({
         <p className="rounded-md bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
           Corrective work for Crop Issue <span className="font-medium text-wl-text">{lockedCropIssue.code}</span>
           {lockedCropIssue.batchLabel ? ` · ${lockedCropIssue.batchLabel}` : ""}
+        </p>
+      )}
+      {lockedEquipmentIncident && (
+        <p className="rounded-md bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
+          Corrective work for Equipment Incident{" "}
+          <span className="font-medium text-wl-text">{lockedEquipmentIncident.code}</span>
         </p>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -220,6 +243,14 @@ export function CreateWorkItemForm({
             options={carrierOptions}
             onChange={(v) => setValue("carrierId", v || null)}
           />
+          {!lockedCropIssue && !lockedEquipmentIncident && (
+            <ContextSelect
+              label="Equipment Incident"
+              value={equipmentIncidentId ?? ""}
+              options={equipmentIncidentOptions}
+              onChange={(v) => setValue("equipmentIncidentId", v || null)}
+            />
+          )}
           {!hasContextOptions && (
             <p className="sm:col-span-2 text-xs text-wl-text-secondary">
               No locations, batches, assets, or carriers found for this farm yet.

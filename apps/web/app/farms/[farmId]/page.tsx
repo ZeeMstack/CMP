@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { CreateWorkItemForm, type WorkItemContextOption } from "@/components/work-items/CreateWorkItemForm";
 import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
 import { WorkItemSection } from "@/components/work-items/WorkItemSection";
-import type { FarmWorkItemCreate } from "@/lib/api/client";
+import type { EquipmentAttentionItem, FarmWorkItemCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { computeHomeKpis } from "@/lib/format/homeKpis";
 import { humanizeEnumCode } from "@/lib/format/humanize";
@@ -25,6 +25,8 @@ import {
   useCreateWorkItem,
   useCropIssues,
   useCurrentUserId,
+  useEquipmentAttention,
+  useEquipmentIncidents,
   useFarm,
   useFarmProtocolDueSummary,
   useHarvestablePlates,
@@ -35,6 +37,19 @@ import {
   useWorkItems,
 } from "@/lib/query/hooks";
 import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
+
+/** Today on the Farm's "Equipment Attention" deep-link: `OPEN_INCIDENT` goes
+ * to the Incident workspace; the four readiness kinds go to the Readiness
+ * detail page for whichever entity is set (asset xor carrier, mirrors
+ * `EquipmentReadinessState`'s own XOR occupant shape). */
+function equipmentAttentionHref(farmId: string, item: EquipmentAttentionItem): string {
+  if (item.kind === "OPEN_INCIDENT") {
+    return `/farms/${farmId}/equipment-incidents/${item.equipment_incident_id}`;
+  }
+  const entityType = item.asset_id ? "asset" : "carrier";
+  const entityId = item.asset_id ?? item.carrier_id;
+  return `/farms/${farmId}/equipment/${entityType}/${entityId}/readiness`;
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
@@ -109,6 +124,7 @@ export default function FarmHomePage() {
   const cropIssuesQuery = useCropIssues(farmId);
   const protocolDueQuery = useFarmProtocolDueSummary(farmId);
   const waterAttentionQuery = useWaterAttention(farmId);
+  const equipmentAttentionQuery = useEquipmentAttention(farmId);
   // PILOT-OPS-001 closure: structured context option sources for manual
   // Work Item creation -- each reuses an existing farm-scoped read
   // (Locations tree, Batch summary already fetched above, Assets,
@@ -116,6 +132,9 @@ export default function FarmHomePage() {
   const locationsTreeQuery = useLocationsTree(farmId);
   const assetsQuery = useAssets(farmId, "");
   const carriersQuery = useCarriers(farmId);
+  const openEquipmentIncidentsQuery = useEquipmentIncidents(farmId, {
+    status: ["open", "acknowledged", "action_in_progress"],
+  });
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -137,6 +156,10 @@ export default function FarmHomePage() {
   const carrierOptions: WorkItemContextOption[] = useMemo(
     () => (carriersQuery.data ?? []).map((c) => ({ id: c.id, label: c.code })),
     [carriersQuery.data],
+  );
+  const equipmentIncidentOptions: WorkItemContextOption[] = useMemo(
+    () => (openEquipmentIncidentsQuery.data ?? []).map((i) => ({ id: i.id, label: `${i.code} · ${i.asset?.code ?? "—"}` })),
+    [openEquipmentIncidentsQuery.data],
   );
 
   const board = useMemo(
@@ -228,6 +251,7 @@ export default function FarmHomePage() {
             batchOptions={batchOptions}
             assetOptions={assetOptions}
             carrierOptions={carrierOptions}
+            equipmentIncidentOptions={equipmentIncidentOptions}
             onCancel={() => {
               setCreating(false);
               setCreateError(null);
@@ -360,6 +384,26 @@ export default function FarmHomePage() {
                 className="shrink-0 text-sm font-medium text-wl-brand hover:underline"
               >
                 Open Water &amp; Nutrients
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <LiveSourcePanel
+        title="Equipment Attention"
+        isLoading={equipmentAttentionQuery.isLoading}
+        error={equipmentAttentionQuery.error}
+        onRetry={() => equipmentAttentionQuery.refetch()}
+        isEmpty={(equipmentAttentionQuery.data ?? []).length === 0}
+        emptyLabel="Nothing currently needs Equipment attention."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {(equipmentAttentionQuery.data ?? []).map((item, i) => (
+            <li key={`${item.kind}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="text-wl-text">{item.message}</span>
+              <Link href={equipmentAttentionHref(farmId, item)} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
+                {item.kind === "OPEN_INCIDENT" ? "Open Incident" : "View Readiness"}
               </Link>
             </li>
           ))}

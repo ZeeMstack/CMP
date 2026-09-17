@@ -8,11 +8,11 @@ available-plates`). Not a generic Carrier-availability framework -- only
 `BatchCarrierAssignment`)."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.services import carrier_service, carrier_specification_service, farm_service, tenant_service
+from app.services import carrier_service, carrier_specification_service, equipment_readiness_service, farm_service, tenant_service
 from app.services import intersalads_transplant_service
 from tests.test_intersalads_transplant import _build_scenario, _simple_allocation, _simple_destination, _simple_source
 
@@ -21,9 +21,33 @@ DESTINATION_TYPE = "nursery_cultivation_plate"
 
 def _register_plate(db_session, tenant, user, farm, *, spec, suffix=None):
     suffix = suffix or uuid.uuid4().hex[:8]
-    return carrier_service.register_carrier(
+    plate = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec.id, code=f"NCP-{suffix}", issued_date=None,
+    )
+    _mark_carrier_ready(db_session, tenant, user, farm, plate)
+    return plate
+
+
+def _mark_carrier_ready(db_session, tenant, user, farm, carrier):
+    """PILOT-ASSET-001 (corrected): UNKNOWN != READY -- a freshly-registered
+    Carrier is not allocation-eligible. Bring it to READY via the real
+    domain lifecycle (nursery_cultivation_plate requires cleaning)."""
+    state = equipment_readiness_service.get_readiness_for_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
+    )
+    equipment_readiness_service.mark_awaiting_cleaning(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=datetime.now(timezone.utc), method=None,
+        result="completed", notes=None,
+    )
+    equipment_readiness_service.mark_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
     )
 
 
@@ -81,6 +105,7 @@ def test_carrier_with_active_batch_carrier_assignment_excluded(db_session, activ
     still_free_plate = s["destination_carriers"][1]
     aid = s["source_assignment_ids"][0]
     table_id = s["intersalads_table_ids"][0]
+    _mark_carrier_ready(db_session, tenant, user, farm, still_free_plate)
 
     intersalads_transplant_service.record_intersalads_transplant(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,

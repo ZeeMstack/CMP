@@ -8,6 +8,9 @@ from app.api.carriers import router as carriers_router
 from app.api.crop_batches import router as crop_batches_router
 from app.api.crops import router as crops_router
 from app.api.dispatch import router as dispatch_router
+from app.api.equipment_attention import router as equipment_attention_router
+from app.api.equipment_incidents import router as equipment_incidents_router
+from app.api.equipment_readiness import router as equipment_readiness_router
 from app.api.farm_setup import router as farm_setup_router
 from app.api.farm_setup_readiness import router as farm_setup_readiness_router
 from app.api.crop_issues import router as crop_issues_router
@@ -154,6 +157,9 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(water_attention_router)
     api.include_router(recall_router)
     api.include_router(farm_work_items_router)
+    api.include_router(equipment_readiness_router)
+    api.include_router(equipment_incidents_router)
+    api.include_router(equipment_attention_router)
     api.include_router(growing_protocols_router)
     api.include_router(grower_inspections_router)
     api.include_router(crop_issues_router)

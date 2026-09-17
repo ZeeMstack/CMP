@@ -34,6 +34,11 @@ export const farmWorkItemFormSchema = z.object({
   // backend's own `crop_issue_id` field, set only at creation, never
   // retrofit onto an existing item).
   cropIssueId: z.string().nullable(),
+  // PILOT-ASSET-001: mirrors `cropIssueId` exactly -- set either by the
+  // Equipment Incident workspace's own "Assign corrective work" action
+  // (locked, non-editable) or picked from the optional "Add context"
+  // disclosure's Equipment Incident select.
+  equipmentIncidentId: z.string().nullable(),
 });
 export type FarmWorkItemFormValues = z.infer<typeof farmWorkItemFormSchema>;
 
@@ -50,6 +55,7 @@ export const DEFAULT_FARM_WORK_ITEM_FORM_VALUES: FarmWorkItemFormValues = {
   assetId: null,
   carrierId: null,
   cropIssueId: null,
+  equipmentIncidentId: null,
 };
 
 export function buildFarmWorkItemCreatePayload(
@@ -74,6 +80,7 @@ export function buildFarmWorkItemCreatePayload(
     asset_id: values.assetId || null,
     carrier_id: values.carrierId || null,
     crop_issue_id: values.cropIssueId || null,
+    equipment_incident_id: values.equipmentIncidentId || null,
     completion_mode: "manual_record",
   };
 }
