@@ -395,9 +395,13 @@ def mark_ready(
         # a replay -- replays are already handled before this runs)
         # succeeds as a no-op rather than being treated as an illegal
         # transition -- see docs/domain/EQUIPMENT_READINESS_MODEL.md.
+        # `unknown` is deliberately NOT included here for a
+        # requires_cleaning type: UNKNOWN != READY is a frozen rule, and
+        # allowing UNKNOWN -> READY directly would let a never-cleaned
+        # item skip AWAITING_CLEANING/CLEANING_COMPLETED entirely.
         type_info = _type_info_for_state(db, tenant_id=tenant_id, farm_id=farm_id, state=state)
         if type_info.requires_cleaning:
-            if state.current_state not in ("cleaning_completed", "unknown", "ready"):
+            if state.current_state not in ("cleaning_completed", "ready"):
                 raise EquipmentReadinessInvalidTransitionError(
                     f"cannot mark_ready from state {state.current_state} (cleaning required)"
                 )
@@ -678,10 +682,9 @@ def list_farm_readiness_states(
 
 def get_ready_asset_ids(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, asset_type_id: uuid.UUID) -> set[uuid.UUID]:
     """Ready-equipment queue helper (PART 16): every Asset of the given
-    type whose readiness is currently allocation-eligible (`ready` or
-    `unknown` -- see the pilot transition rule in
-    docs/domain/EQUIPMENT_READINESS_MODEL.md), or which is not
-    readiness-tracked at all (no row -- unaffected by this filter)."""
+    type whose readiness is currently `ready`, or which is not
+    readiness-tracked at all (no row -- unaffected by this filter).
+    `UNKNOWN` is deliberately excluded: UNKNOWN != READY (frozen rule)."""
     non_ready_asset_ids = set(db.execute(non_ready_asset_ids_subquery(tenant_id=tenant_id, farm_id=farm_id)).scalars())
     all_asset_ids = set(
         db.execute(
@@ -694,18 +697,20 @@ def get_ready_asset_ids(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
     return all_asset_ids - non_ready_asset_ids
 
 
-# PART 17: leaving CLEANING_COMPLETED out of this list would let a cleaned
-# -but-not-yet-released item silently allocate, contradicting "Cleaning
-# Completed != Ready" -- see docs/domain/EQUIPMENT_READINESS_MODEL.md.
-NON_READY_STATES = ("awaiting_cleaning", "cleaning_completed", "damaged", "maintenance", "retired")
+# PART 17, corrected: UNKNOWN != READY is a frozen rule -- an unassessed
+# item is never allocation-eligible, so `unknown` is excluded here too,
+# alongside CLEANING_COMPLETED (leaving it out would let a cleaned-but
+# -not-yet-released item silently allocate, contradicting "Cleaning
+# Completed != Ready" -- see docs/domain/EQUIPMENT_READINESS_MODEL.md).
+NON_READY_STATES = ("unknown", "awaiting_cleaning", "cleaning_completed", "damaged", "maintenance", "retired")
 
 
 def non_ready_carrier_ids_subquery(*, tenant_id: uuid.UUID, farm_id: uuid.UUID):
     """PART 16/17: the one filter every "available Carrier" read applies
-    (`Carrier.id.not_in(non_ready_carrier_ids_subquery(...))`) -- READY and
-    UNKNOWN remain eligible per the pilot transition rule (see the domain
-    doc). A Carrier with no readiness row at all (non-readiness-tracked
-    type) is never included here and is therefore unaffected."""
+    (`Carrier.id.not_in(non_ready_carrier_ids_subquery(...))`) -- only
+    READY is eligible; UNKNOWN is excluded (UNKNOWN != READY). A Carrier
+    with no readiness row at all (non-readiness-tracked type) is never
+    included here and is therefore unaffected."""
     return select(EquipmentReadinessState.carrier_id).where(
         EquipmentReadinessState.tenant_id == tenant_id, EquipmentReadinessState.farm_id == farm_id,
         EquipmentReadinessState.entity_type == "carrier",

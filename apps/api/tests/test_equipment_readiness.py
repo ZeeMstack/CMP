@@ -93,6 +93,18 @@ def test_mark_ready_blocked_by_active_batch_carrier_assignment(db_session, activ
     state = equipment_readiness_service.get_readiness_for_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
     )
+    # Bring the carrier to CLEANING_COMPLETED first -- state must already
+    # satisfy the (corrected) cleaning-required precondition for mark_ready
+    # so this test isolates the in-use CHECK specifically, not the cleaning
+    # precondition.
+    equipment_readiness_service.mark_awaiting_cleaning(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    state, _event = equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=_now(), method=None, result="completed", notes=None,
+    )
 
     class _FakeAssignment:
         pass
@@ -115,15 +127,23 @@ def test_mark_ready_blocked_by_active_batch_carrier_assignment(db_session, activ
         equipment_readiness_service.has_active_batch_carrier_assignment = monkey_active
 
 
-# --- Proofs 3/17: Awaiting Cleaning / non-ready excluded from available reads ------
+# --- Proofs 1/2/17: shared non-ready filter -- UNKNOWN/AWAITING_CLEANING excluded,
+# READY included -- proven once via the seed_tray path (the same
+# `NON_READY_STATES` filter/subquery backs Production Plates, InterSalads
+# Plates, and Trolleys identically; see equipment_readiness_service.py). --
 
 
 @pytest.mark.integration
-def test_awaiting_cleaning_seed_tray_excluded_from_available(db_session, active_context_with_farm) -> None:
+def test_seed_tray_availability_follows_readiness_state(db_session, active_context_with_farm) -> None:
     tenant, user, _headers, farm = active_context_with_farm
     carrier = _register_carrier(db_session, tenant, farm, user)
-    available_before = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
-    assert any(a.id == carrier.id for a in available_before), "UNKNOWN tray must remain allocation-eligible"
+
+    def _is_available() -> bool:
+        rows = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
+        return any(a.id == carrier.id for a in rows)
+
+    # Proof 1: freshly-registered (UNKNOWN) is excluded -- UNKNOWN != READY.
+    assert not _is_available()
 
     state = equipment_readiness_service.get_readiness_for_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
@@ -132,8 +152,18 @@ def test_awaiting_cleaning_seed_tray_excluded_from_available(db_session, active_
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
         client_command_id=uuid.uuid4(),
     )
-    available_after = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
-    assert not any(a.id == carrier.id for a in available_after)
+    assert not _is_available()
+    state, _event = equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=_now(), method="wash", result="completed", notes=None,
+    )
+    assert not _is_available(), "CLEANING_COMPLETED != READY"
+    equipment_readiness_service.mark_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    # Proof 2: READY is available (registry active, no occupying assignment).
+    assert _is_available()
 
 
 # --- Proof 4: Cleaning Completed does not automatically mean READY ----------------
@@ -187,6 +217,23 @@ def test_mark_ready_succeeds_after_completed_cleaning(db_session, active_context
     assert ready.current_state == "ready"
     available = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
     assert any(a.id == carrier.id for a in available)
+
+
+@pytest.mark.integration
+def test_mark_ready_rejects_direct_call_from_unknown_when_cleaning_required(db_session, active_context_with_farm) -> None:
+    """Corrected path: a cleaning-required item may not skip AWAITING_CLEANING/
+    CLEANING_COMPLETED by calling mark_ready directly from UNKNOWN."""
+    tenant, user, _headers, farm = active_context_with_farm
+    carrier = _register_carrier(db_session, tenant, farm, user)
+    state = equipment_readiness_service.get_readiness_for_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
+    )
+    assert state.current_state == "unknown"
+    with pytest.raises(EquipmentReadinessInvalidTransitionError):
+        equipment_readiness_service.mark_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+            client_command_id=uuid.uuid4(),
+        )
 
 
 @pytest.mark.integration
@@ -278,6 +325,9 @@ def test_retired_is_terminal(db_session, active_context_with_farm) -> None:
     assert state.current_state == "retired"
     db_session.refresh(carrier)
     assert carrier.status == "retired"
+    # Proof 5: a retired resource cannot remain operationally allocatable.
+    available = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert not any(a.id == carrier.id for a in available)
     with pytest.raises(EquipmentReadinessInvalidTransitionError):
         equipment_readiness_service.mark_ready(
             db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
@@ -324,25 +374,6 @@ def test_cleaning_and_readiness_history_preserved(db_session, active_context_wit
     )
     assert len(cleaning_history) == 1
     assert cleaning_history[0].id == event.id
-
-
-# --- Proof 18: UNKNOWN legacy equipment behavior is truthful ----------------------
-
-
-@pytest.mark.integration
-def test_unknown_state_is_not_silently_treated_as_ready_flag(db_session, active_context_with_farm) -> None:
-    tenant, user, _headers, farm = active_context_with_farm
-    carrier = _register_carrier(db_session, tenant, farm, user)
-    state = equipment_readiness_service.get_readiness_for_carrier(
-        db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier.id
-    )
-    assert state.current_state == "unknown"
-    assert state.current_state != "ready"
-    # UNKNOWN remains allocation-eligible per the pilot transition rule
-    # (avoids a mass operational outage) without ever being reported AS
-    # "ready" itself.
-    available = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
-    assert any(a.id == carrier.id for a in available)
 
 
 # --- Proof 20: cross-tenant isolation ----------------------------------------------
