@@ -28,6 +28,7 @@ from app.services import (
     asset_service,
     carrier_service,
     crop_service,
+    equipment_readiness_service,
     farm_setup_service,
     germination_service,
     location_service,
@@ -206,6 +207,27 @@ def _place_trolley(db_session, tenant, user, farm, s, *, trolley_index=0, chambe
         client_command_id=client_command_id or uuid.uuid4(),
         trolley_id=s["trolleys"][trolley_index].id, chamber_id=chamber_id or s["chamber_id"],
         effective_time=_now(), reason=None,
+    )
+
+
+def _mark_asset_ready(db_session, tenant, user, farm, asset):
+    """PILOT-ASSET-001 (corrected): UNKNOWN != READY -- a freshly-registered
+    Asset is not allocation-eligible. Bring it to READY via the real
+    domain lifecycle (germination_trolley requires cleaning)."""
+    state = equipment_readiness_service.get_readiness_for_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, asset_id=asset.id
+    )
+    equipment_readiness_service.mark_awaiting_cleaning(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=_now(), method=None, result="completed", notes=None,
+    )
+    equipment_readiness_service.mark_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
     )
 
 
@@ -646,6 +668,7 @@ def test_invalid_level_not_advertised_as_available(db_session, active_context_wi
     tenant, user, _headers, farm = active_context_with_farm
     s = _build_scenario(db_session, tenant, user, farm, level_count=1, trays_per_level=2, tray_count=1)
     _place_trolley(db_session, tenant, user, farm, s)
+    _mark_asset_ready(db_session, tenant, user, farm, s["trolleys"][0])
     invalid_level_id = _make_invalid_level(db_session, tenant, farm, s["trolleys"][0].id)
 
     levels = germination_service.list_trolley_levels(db_session, tenant_id=tenant.id, farm_id=farm.id, trolley_id=s["trolleys"][0].id)
@@ -817,6 +840,7 @@ def test_list_available_trolleys_only_those_in_a_chamber(db_session, active_cont
     assert germination_service.list_available_trolleys(db_session, tenant_id=tenant.id, farm_id=farm.id) == []
 
     _place_trolley(db_session, tenant, user, farm, s, trolley_index=0)
+    _mark_asset_ready(db_session, tenant, user, farm, s["trolleys"][0])
     available = germination_service.list_available_trolleys(db_session, tenant_id=tenant.id, farm_id=farm.id)
     assert len(available) == 1
     assert available[0].id == s["trolleys"][0].id
