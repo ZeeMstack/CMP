@@ -230,6 +230,32 @@
 
 **Protocol != Operation. Age != Stage. Issue != Loss. Suspected Cause != Confirmed Diagnosis. Work Item Complete != Issue Resolved. Abnormal/Weak Living Plant != Loss.** These six frozen distinctions (`docs/domain/GROWING_PROTOCOL_INSPECTION_MODEL.md`) govern every command in this domain.
 
+## Water and Nutrient System (`docs/domain/WATER_NUTRIENT_SYSTEM_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Water Source | The origin of a water/nutrient solution before it reaches a Reservoir (bore, municipal, RO-treated, storage tank feed, other) — water TOPOLOGY, never a Location |
+| Reservoir | A physical body/container of solution (source-water tank, nutrient reservoir, return reservoir, mixing reservoir) — an optional Location/Asset reference, never a Location itself |
+| Irrigation Circuit | A controlled delivery path from a Reservoir toward crop Delivery Points — crop-agnostic, never named after a crop/variety |
+| Water Delivery Point | Links the water network to a real, authoritative Location (never a display-path string) — may map to a leaf (Table/Gutter) or a larger ancestor when that is how the plumbing actually serves it |
+| Water Return Point / Drainage Point | Where solution drains from crop area — may link to a Return Reservoir (recirculating) or exist with no such link (drain-to-waste) |
+| Topology Link (effective-dated) | A `Water Source -> Reservoir`, `Reservoir -> Circuit`, `Circuit -> Delivery Point`, or `Return Point -> Return Reservoir` connection with `effective_from`/`effective_to` — closing one never rewrites it; superseding it means closing the old row and inserting a new one |
+| Sampling Point | Where a measurement is physically taken — always anchored to exactly one authoritative water-system context (source/reservoir/circuit-supply/delivery/drain-return); never free-floating |
+| Water Instrument | Permanent measurement-capability identity referencing an existing Asset — never a second physical-object catalog |
+| Instrument Calibration Event | An immutable calibration record for a Water Instrument — never inferred from a Measurement merely existing |
+| Water Measurement | An immutable pH/EC/Solution-Temperature/Dissolved-Oxygen reading, tied to its Sampling Point, effective time, and recording operator — never rewrites, and is never rewritten by, a Recipe target |
+| Nutrient Recipe / Nutrient Recipe Version | A versioned, immutable-once-ACTIVE approved nutrient program (target EC/pH, target components) — what SHOULD be prepared, never proof anything was |
+| Nutrient Recipe Component | One TARGET ingredient line on a DRAFT Recipe Version — never decrements Store inventory |
+| Nutrient Mix | What was ACTUALLY prepared in a Reservoir — actual inputs are explicit, recorded facts, never auto-copied from a Recipe's target |
+| Nutrient Mix Input | One ACTUAL ingredient added to a Mix — optionally references an `InventoryItem` as a catalog label only; recording one never touches Store existence |
+| Reservoir Event | An actual operating event against a Reservoir (nutrient addition, water top-up, pH adjustment, solution replacement, flush, drain) — never infers a resulting EC/pH; a Measurement records the observed result separately |
+| Water Delivery Event | An actual delivery interval from a Reservoir through a Circuit — may exist without a fabricated volume, and may be open-ended (`effective_end = NULL`) for continuous circulation |
+| Potential Water Exposure | The read-only fact that a Batch Placement and a Reservoir/Circuit shared eligible time/location during a window — evidence only, never a disease/contamination/infection claim |
+| Configured Topology Exposure | Exposure derived from topology mapping alone, regardless of whether a Delivery was ever recorded |
+| Recorded Delivery Exposure | Exposure additionally backed by at least one real, overlapping `Water Delivery Event` — strictly stronger evidence than topology alone |
+
+**Water Topology != physical Location hierarchy. Shared Water != Disease. Approved Recipe != Actual Mix != Actual Delivery. Target != Measurement. Measurement != Calibration. Mix Input != Inventory Consumption. Topology Exposure != Confirmed Actual Exposure** unless supported by Delivery records. These frozen distinctions (`docs/domain/WATER_NUTRIENT_SYSTEM_MODEL.md`) govern every command in this domain.
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

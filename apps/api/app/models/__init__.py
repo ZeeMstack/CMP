@@ -26,6 +26,7 @@ from app.models.goods_receipt_line import GoodsReceiptLine
 from app.models.grower_inspection import GrowerInspection
 from app.models.growing_protocol import GrowingProtocol
 from app.models.growing_protocol_version import GrowingProtocolVersion
+from app.models.instrument_calibration_event import InstrumentCalibrationEvent
 from app.models.inventory_category import InventoryCategory
 from app.models.inventory_existence_ledger_entry import InventoryExistenceLedgerEntry
 from app.models.inventory_item import InventoryItem
@@ -38,6 +39,11 @@ from app.models.location_type import LocationType
 from app.models.location_type_hierarchy_rule import LocationTypeHierarchyRule
 from app.models.membership import TenantMembership
 from app.models.movement import Movement
+from app.models.nutrient_mix import NutrientMix
+from app.models.nutrient_mix_input import NutrientMixInput
+from app.models.nutrient_recipe import NutrientRecipe
+from app.models.nutrient_recipe_component import NutrientRecipeComponent
+from app.models.nutrient_recipe_version import NutrientRecipeVersion
 from app.models.observation_definition import ObservationDefinition
 from app.models.observation_event import ObservationEvent
 from app.models.observation_value import ObservationValue
@@ -60,6 +66,22 @@ from app.models.recall import (
     RecallScopeFinishedGoodsLot,
     RecallScopeGradedProduceLot,
     RecallScopeProduceLot,
+)
+from app.models.reservoir import Reservoir
+from app.models.reservoir_event import ReservoirEvent
+from app.models.irrigation_circuit import IrrigationCircuit
+from app.models.sampling_point import SamplingPoint
+from app.models.water_source import WaterSource
+from app.models.water_delivery_point import WaterDeliveryPoint
+from app.models.water_delivery_event import WaterDeliveryEvent
+from app.models.water_return_point import WaterReturnPoint
+from app.models.water_measurement import WaterMeasurement
+from app.models.water_instrument import WaterInstrument
+from app.models.water_topology_link import (
+    CircuitDeliveryPointLink,
+    ReservoirCircuitLink,
+    ReturnPointReservoirLink,
+    WaterSourceReservoirLink,
 )
 from app.models.production_disposition_command import ProductionDispositionCommand
 from app.models.production_disposition_event import ProductionDispositionEvent
@@ -113,6 +135,7 @@ __all__ = [
     "GerminationOutcomeSnapshot",
     "GoodsReceipt",
     "GoodsReceiptLine",
+    "InstrumentCalibrationEvent",
     "InventoryCategory",
     "InventoryExistenceLedgerEntry",
     "InventoryItem",
@@ -124,6 +147,11 @@ __all__ = [
     "LocationType",
     "LocationTypeHierarchyRule",
     "Movement",
+    "NutrientMix",
+    "NutrientMixInput",
+    "NutrientRecipe",
+    "NutrientRecipeComponent",
+    "NutrientRecipeVersion",
     "ObservationDefinition",
     "ObservationEvent",
     "ObservationValue",
@@ -141,6 +169,20 @@ __all__ = [
     "RecallScopeFinishedGoodsLot",
     "RecallScopeGradedProduceLot",
     "RecallScopeProduceLot",
+    "Reservoir",
+    "ReservoirEvent",
+    "IrrigationCircuit",
+    "SamplingPoint",
+    "WaterSource",
+    "WaterDeliveryPoint",
+    "WaterDeliveryEvent",
+    "WaterReturnPoint",
+    "WaterMeasurement",
+    "WaterInstrument",
+    "CircuitDeliveryPointLink",
+    "ReservoirCircuitLink",
+    "ReturnPointReservoirLink",
+    "WaterSourceReservoirLink",
     "ProductionDispositionCommand",
     "ProductionDispositionEvent",
     "ProductionDispositionEventGrowCube",

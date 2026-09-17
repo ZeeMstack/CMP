@@ -299,6 +299,37 @@ class Permission(StrEnum):
     CROP_INSPECTION_MANAGE = "crop_inspection.manage"
     CROP_ISSUE_MANAGE = "crop_issue.manage"
 
+    # PILOT-WATER-001A: water/nutrient domain. `WATER_TOPOLOGY_MANAGE`
+    # covers WaterSource/Reservoir/IrrigationCircuit/WaterDeliveryPoint/
+    # WaterReturnPoint identity and their effective-dated topology links --
+    # infrastructure/master-data authority, grower/supervisory only, same
+    # tier as `GROWING_PROTOCOL_MANAGE`. `SAMPLING_POINT_MANAGE` and
+    # `WATER_INSTRUMENT_MANAGE` (which also covers recording Calibration --
+    # ticket section 24 groups "manage calibration records" with grower/
+    # supervisory authority) are their own pairs at the same tier.
+    # `WATER_MEASUREMENT_MANAGE` and `NUTRIENT_OPERATIONS_MANAGE` (Mix/
+    # Reservoir adjustment/Delivery recording) are deliberately the
+    # OPERATOR-tier floor-recording authority the ticket calls out
+    # explicitly ("record permitted measurements", "record mix/delivery/
+    # adjustment events") -- never bundled with the manage-tier permissions
+    # above. `NUTRIENT_RECIPE_MANAGE` (draft/version/activate/retire/
+    # components) and `WATER_EXPOSURE_READ` (review exposure) are
+    # grower/supervisory, mirroring `GROWING_PROTOCOL_MANAGE`/
+    # `TRACEABILITY_READ`'s own precedent exactly.
+    WATER_TOPOLOGY_READ = "water_topology.read"
+    WATER_TOPOLOGY_MANAGE = "water_topology.manage"
+    SAMPLING_POINT_READ = "sampling_point.read"
+    SAMPLING_POINT_MANAGE = "sampling_point.manage"
+    WATER_INSTRUMENT_READ = "water_instrument.read"
+    WATER_INSTRUMENT_MANAGE = "water_instrument.manage"
+    WATER_MEASUREMENT_READ = "water_measurement.read"
+    WATER_MEASUREMENT_MANAGE = "water_measurement.manage"
+    NUTRIENT_RECIPE_READ = "nutrient_recipe.read"
+    NUTRIENT_RECIPE_MANAGE = "nutrient_recipe.manage"
+    NUTRIENT_OPERATIONS_READ = "nutrient_operations.read"
+    NUTRIENT_OPERATIONS_MANAGE = "nutrient_operations.manage"
+    WATER_EXPOSURE_READ = "water_exposure.read"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -405,6 +436,19 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # (doesn't execute routine floor recording itself).
         Permission.GROWING_PROTOCOL_READ, Permission.GROWING_PROTOCOL_MANAGE,
         Permission.CROP_INSPECTION_READ, Permission.CROP_ISSUE_MANAGE,
+        # PILOT-WATER-001A: farm_manager owns water/nutrient infrastructure
+        # (topology, Sampling Points, Instruments/Calibration, Recipe
+        # master data) and exposure review, same supervisory tier as its
+        # GROWING_PROTOCOL_MANAGE grant above -- no floor-recording
+        # authority (WATER_MEASUREMENT_MANAGE/NUTRIENT_OPERATIONS_MANAGE),
+        # matching its existing "doesn't execute routine floor recording
+        # itself" character.
+        Permission.WATER_TOPOLOGY_READ, Permission.WATER_TOPOLOGY_MANAGE,
+        Permission.SAMPLING_POINT_READ, Permission.SAMPLING_POINT_MANAGE,
+        Permission.WATER_INSTRUMENT_READ, Permission.WATER_INSTRUMENT_MANAGE,
+        Permission.NUTRIENT_RECIPE_READ, Permission.NUTRIENT_RECIPE_MANAGE,
+        Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
+        Permission.WATER_EXPOSURE_READ,
     }),
     # Agronomic planning/master-data authority (25): crop/production-system
     # /workflow catalog, observation definitions, crop-batch lifecycle
@@ -448,6 +492,16 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # Crop Issues (mirrors its HARVEST_MANAGE-tier agronomic authority).
         Permission.GROWING_PROTOCOL_READ, Permission.GROWING_PROTOCOL_MANAGE,
         Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE, Permission.CROP_ISSUE_MANAGE,
+        # PILOT-WATER-001A: head_grower owns water/nutrient infrastructure
+        # and Recipe master data (mirrors its GROWING_PROTOCOL_MANAGE
+        # authority above), and reviews exposure -- same tier as
+        # farm_manager's identical grant.
+        Permission.WATER_TOPOLOGY_READ, Permission.WATER_TOPOLOGY_MANAGE,
+        Permission.SAMPLING_POINT_READ, Permission.SAMPLING_POINT_MANAGE,
+        Permission.WATER_INSTRUMENT_READ, Permission.WATER_INSTRUMENT_MANAGE,
+        Permission.NUTRIENT_RECIPE_READ, Permission.NUTRIENT_RECIPE_MANAGE,
+        Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
+        Permission.WATER_EXPOSURE_READ,
     }),
     # Production-floor execution oversight (24): the same transactional
     # commands operators perform, plus supervisory-level authority
@@ -495,6 +549,18 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # matching this role's existing ceiling).
         Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
         Permission.CROP_ISSUE_MANAGE,
+        # PILOT-WATER-001A: production_supervisor performs the same
+        # floor-recording commands as operator (measurements, mix/
+        # reservoir/delivery events) plus supervisory oversight (exposure
+        # review, mirroring its CROP_ISSUE_MANAGE character) -- no
+        # topology/Sampling-Point/Instrument/Recipe MASTER-DATA authority,
+        # matching this role's existing "no master-data configuration"
+        # ceiling.
+        Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
+        Permission.NUTRIENT_RECIPE_READ,
+        Permission.WATER_MEASUREMENT_READ, Permission.WATER_MEASUREMENT_MANAGE,
+        Permission.NUTRIENT_OPERATIONS_READ, Permission.NUTRIENT_OPERATIONS_MANAGE,
+        Permission.WATER_EXPOSURE_READ,
     }),
     # Restricted transactional execution (16): routine, single-purpose
     # floor commands only -- sowing, transplant, movement, harvest
@@ -530,6 +596,17 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # permitted Inspections (section 19) -- no protocol master-data or
         # Crop Issue supervisory authority.
         Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
+        # PILOT-WATER-001A section 24: operator reads water topology and
+        # records permitted measurements/mix/reservoir/delivery events --
+        # no topology/Sampling-Point/Instrument/Recipe MANAGE authority
+        # (registering infrastructure, calibrating instruments, and
+        # drafting/activating Recipes are grower/supervisory, per the
+        # ticket's own explicit split), matching this role's "restricted
+        # transactional execution only" ceiling.
+        Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
+        Permission.NUTRIENT_RECIPE_READ,
+        Permission.WATER_MEASUREMENT_READ, Permission.WATER_MEASUREMENT_MANAGE,
+        Permission.NUTRIENT_OPERATIONS_READ, Permission.NUTRIENT_OPERATIONS_MANAGE,
     }),
     # Input/equipment receiving (6) -- intentionally narrow: the only
     # genuine "input receiving" action the current permission catalog
@@ -623,6 +700,14 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # investigation authority (QUALITY_HOLD_MANAGE) exactly.
         Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ, Permission.CROP_INSPECTION_MANAGE,
         Permission.CROP_ISSUE_MANAGE,
+        # PILOT-WATER-001A: qc_officer reviews water/nutrient facts and
+        # exposure for root-cause investigation (mirrors its existing
+        # TRACEABILITY_READ grant) -- read-only, no floor-recording or
+        # master-data authority, matching its "no recall.manage" restraint
+        # elsewhere in this role.
+        Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
+        Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
+        Permission.WATER_EXPOSURE_READ,
     }),
     # Packing execution (12): owns its own stage only. Upstream
     # harvest.read (what's available to pack), downstream
@@ -739,6 +824,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.FARM_WORK_ITEM_READ,
         # PILOT-AGRO-001: identical "every .read, zero mutations" character.
         Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ,
+        # PILOT-WATER-001A: identical "every .read, zero mutations"
+        # character, including exposure review.
+        Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
+        Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
+        Permission.WATER_EXPOSURE_READ,
     }),
     # Broad operational visibility (20), zero mutations -- identical set
     # to `auditor` today, by design (see that role's comment above).
@@ -776,6 +866,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.FARM_WORK_ITEM_READ,
         # PILOT-AGRO-001: identical to `auditor`'s own addition above.
         Permission.GROWING_PROTOCOL_READ, Permission.CROP_INSPECTION_READ,
+        # PILOT-WATER-001A: identical to `auditor`'s own addition above.
+        Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
+        Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
+        Permission.WATER_EXPOSURE_READ,
     }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)
