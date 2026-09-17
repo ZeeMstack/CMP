@@ -9,12 +9,15 @@ from app.models.batch_stage_transition import BatchStageTransition
 from app.models.carrier import Carrier
 from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
+from app.models.cleaning_event import CleaningEvent
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
 from app.models.crop_issue import CropIssue
 from app.models.crop_issue_follow_up import CropIssueFollowUp
 from app.models.dispatch_event import DispatchEvent
 from app.models.dispatch_line import DispatchLine
+from app.models.equipment_incident import EquipmentIncident
+from app.models.equipment_readiness_state import EquipmentReadinessState
 from app.models.farm import Farm
 from app.models.farm_work_item import FarmWorkItem
 from app.models.finished_goods_ledger_entry import FinishedGoodsLedgerEntry
@@ -124,10 +127,13 @@ __all__ = [
     "Carrier",
     "CarrierSpecification",
     "CarrierType",
+    "CleaningEvent",
     "Crop",
     "CropBatch",
     "DispatchEvent",
     "DispatchLine",
+    "EquipmentIncident",
+    "EquipmentReadinessState",
     "Farm",
     "FinishedGoodsLedgerEntry",
     "FinishedGoodsStorageMovement",

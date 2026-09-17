@@ -10,7 +10,7 @@ from app.models.carrier_specification import CarrierSpecification
 from app.models.carrier_type import CarrierType
 from app.schemas.carrier import CarrierRead
 from app.schemas.carrier_specification import CarrierSpecificationSummary
-from app.services import farm_service, qr_provisioning
+from app.services import equipment_readiness_provisioning, farm_service, qr_provisioning
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -160,6 +160,13 @@ def register_carrier(
         db, tenant_id=tenant_id, farm_id=farm_id, entity_type="carrier", entity_id=carrier.id,
         actor_user_id=actor_user_id,
     )
+    # PILOT-ASSET-001: a readiness-tracked Carrier type starts its
+    # Equipment Readiness lifecycle at UNKNOWN, same transaction/commit as
+    # the Carrier row itself -- never fabricated READY, mirroring the
+    # migration's own legacy backfill rule.
+    equipment_readiness_provisioning.ensure_readiness_state_for_new_carrier(
+        db, tenant_id=tenant_id, farm_id=farm_id, carrier=carrier,
+    )
     db.commit()
     db.refresh(carrier)
     return carrier
@@ -236,6 +243,9 @@ def bulk_register_carriers(
         qr_provisioning.ensure_qr_identifier_for_new_entity(
             db, tenant_id=tenant_id, farm_id=farm_id, entity_type="carrier", entity_id=carrier.id,
             actor_user_id=actor_user_id,
+        )
+        equipment_readiness_provisioning.ensure_readiness_state_for_new_carrier(
+            db, tenant_id=tenant_id, farm_id=farm_id, carrier=carrier,
         )
     db.commit()
     for carrier in created:

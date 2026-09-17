@@ -256,6 +256,21 @@
 
 **Water Topology != physical Location hierarchy. Shared Water != Disease. Approved Recipe != Actual Mix != Actual Delivery. Target != Measurement. Measurement != Calibration. Mix Input != Inventory Consumption. Topology Exposure != Confirmed Actual Exposure** unless supported by Delivery records. These frozen distinctions (`docs/domain/WATER_NUTRIENT_SYSTEM_MODEL.md`) govern every command in this domain.
 
+## Equipment Readiness and Critical Equipment Incidents (`docs/domain/EQUIPMENT_READINESS_MODEL.md`)
+
+| Term | Meaning |
+|---|---|
+| Equipment Readiness State | A CURRENT-STATE row, one per readiness-tracked Asset/Carrier, answering WHETHER it is usable — kept deliberately separate from physical Occupancy (WHERE it is) and from the registry `status` (active/inactive/damaged/retired) |
+| `readiness_tracked` / `requires_cleaning` | Platform metadata flags on the global `AssetType`/`CarrierType` catalog (like `supports_positions`/`requires_specification`) — whether readiness applies to a type at all, and whether its post-use path goes through AWAITING_CLEANING |
+| UNKNOWN | Legacy/newly-registered readiness state — truthfully "not yet assessed", never fabricated READY; remains allocation-eligible during the pilot transition (never excluded from "available" reads the way AWAITING_CLEANING/DAMAGED/MAINTENANCE/RETIRED are) |
+| Cleaning Event | Immutable, insert-only record of one cleaning action against a readiness-tracked Asset/Carrier (`COMPLETED`/`NEEDS_REWORK`); recording one advances readiness to CLEANING_COMPLETED only — never automatically to READY |
+| RETIRED (readiness) | Terminal readiness state (`CLAUDE.md` rule 6) — sets the underlying Asset/Carrier's own registry `status` to `retired` in the same transaction; no ordinary transition returns from it |
+| Equipment Incident | A lightweight CURRENT-STATE record of an equipment/system problem (pump, cooling, dosing, RO plant, germination chamber, seeding equipment, scale, cold store, ...) — never a full CMMS, never a Crop Issue, never auto-created from or auto-creating either |
+| Potentially Impacted Area | An Equipment Incident's optional, independently-set second location (distinct from the incident's own `location_id`) naming where the problem MAY affect operations — deliberately never worded "Affected crop"; no Crop Issue is ever inferred from it |
+| Equipment Criticality | A small, non-scoring instance-level classification (`normal`/`important`/`critical`) on an Asset — informs Today-on-the-Farm ordering and Incident severity presentation only; never changes automatically |
+
+**Empty != Ready. Location != Readiness. Cleaning Completed != Ready. Incident != Work Item. Incident != Crop Issue. Work Item Complete != Incident Resolved. Retired is terminal. UNKNOWN != Ready.** These frozen distinctions (`docs/domain/EQUIPMENT_READINESS_MODEL.md`) govern every command in this domain.
+
 ## Terms introduced by approved architecture decisions
 
 | Term | Meaning | Source |

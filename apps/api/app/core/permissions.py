@@ -330,6 +330,22 @@ class Permission(StrEnum):
     NUTRIENT_OPERATIONS_MANAGE = "nutrient_operations.manage"
     WATER_EXPOSURE_READ = "water_exposure.read"
 
+    # PILOT-ASSET-001: Equipment Readiness / Critical Equipment Incidents.
+    # Three tiers each, mirroring FARM_WORK_ITEM_READ/.MANAGE/.EXECUTE --
+    # `.manage` (supervisory: release READY, maintenance transitions,
+    # retire / assign owner, mark action-in-progress, resolve, close) is
+    # deliberately separate from `.execute` (floor: record cleaning,
+    # report damage, mark awaiting cleaning / open, acknowledge, link a
+    # Work Item), for the identical reason PILOT-OPS-001 already
+    # established: a role trusted to execute routine floor work should not
+    # automatically gain supervisory release/closure authority.
+    EQUIPMENT_READINESS_READ = "equipment_readiness.read"
+    EQUIPMENT_READINESS_MANAGE = "equipment_readiness.manage"
+    EQUIPMENT_READINESS_EXECUTE = "equipment_readiness.execute"
+    EQUIPMENT_INCIDENT_READ = "equipment_incident.read"
+    EQUIPMENT_INCIDENT_MANAGE = "equipment_incident.manage"
+    EQUIPMENT_INCIDENT_EXECUTE = "equipment_incident.execute"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -449,6 +465,14 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.NUTRIENT_RECIPE_READ, Permission.NUTRIENT_RECIPE_MANAGE,
         Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: farm_manager owns equipment readiness release/
+        # maintenance/retirement authority and Incident supervisory
+        # authority (assign/resolve/close), same infrastructure-owner tier
+        # as its ASSET_MANAGE/CARRIER_MANAGE grant above -- no floor
+        # execution authority (`.execute`), matching its "doesn't execute
+        # routine floor work itself" character.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_MANAGE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_MANAGE,
     }),
     # Agronomic planning/master-data authority (25): crop/production-system
     # /workflow catalog, observation definitions, crop-batch lifecycle
@@ -502,6 +526,10 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.NUTRIENT_RECIPE_READ, Permission.NUTRIENT_RECIPE_MANAGE,
         Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: read-only visibility -- head_grower has no
+        # equipment-ownership role in this domain today (mirrors its
+        # existing ASSET_READ-only, no ASSET_MANAGE, ceiling).
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     # Production-floor execution oversight (24): the same transactional
     # commands operators perform, plus supervisory-level authority
@@ -561,6 +589,16 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.WATER_MEASUREMENT_READ, Permission.WATER_MEASUREMENT_MANAGE,
         Permission.NUTRIENT_OPERATIONS_READ, Permission.NUTRIENT_OPERATIONS_MANAGE,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: production_supervisor both creates/releases
+        # equipment readiness and manages Incidents (floor oversight) AND
+        # executes the floor-level commands (record cleaning, report
+        # damage/incidents) -- the same "does the same transactional
+        # commands operators perform, plus supervisory authority" character
+        # as its FARM_WORK_ITEM_READ/.MANAGE/.EXECUTE triple grant above.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_MANAGE,
+        Permission.EQUIPMENT_READINESS_EXECUTE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_MANAGE,
+        Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     # Restricted transactional execution (16): routine, single-purpose
     # floor commands only -- sowing, transplant, movement, harvest
@@ -607,6 +645,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.NUTRIENT_RECIPE_READ,
         Permission.WATER_MEASUREMENT_READ, Permission.WATER_MEASUREMENT_MANAGE,
         Permission.NUTRIENT_OPERATIONS_READ, Permission.NUTRIENT_OPERATIONS_MANAGE,
+        # PILOT-ASSET-001: operator records cleaning, reports damage/
+        # incidents, and marks equipment awaiting cleaning -- no release/
+        # maintenance/retire/resolve/close authority, matching this role's
+        # "restricted transactional execution only" ceiling.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     # Input/equipment receiving (6) -- intentionally narrow: the only
     # genuine "input receiving" action the current permission catalog
@@ -653,6 +697,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # putaway Work Items -- same routine execution tier as its other
         # grants above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001: read-only visibility -- equipment
+        # registration/readiness release remains centralized under
+        # farm_manager/production_supervisor, matching this role's
+        # existing narrow "one genuine function" characterization.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     # Quality authority (19): observation entry (not definition -- cannot
     # be safely scoped to "QC-specific" vs. agronomic, see the policy
@@ -708,6 +757,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
         Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: read-only visibility for root-cause
+        # investigation (mirrors its existing TRACEABILITY_READ/
+        # WATER_EXPOSURE_READ character) -- no floor-recording or
+        # supervisory authority.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     # Packing execution (12): owns its own stage only. Upstream
     # harvest.read (what's available to pack), downstream
@@ -735,6 +789,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # Work Items -- same routine execution tier as its other grants
         # above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001: packing_supervisor records cleaning/reports
+        # damage/incidents on its own stage's equipment -- same routine
+        # execution tier as its FARM_WORK_ITEM_EXECUTE grant above; no
+        # release/maintenance/retire/resolve/close authority.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     # Finished-goods storage execution (11): owns its own stage only.
     # Upstream packing.read, downstream dispatch.read -- never
@@ -758,6 +818,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: cold_store_supervisor executes its own store Work
         # Items -- same routine execution tier as its other grants above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001: cold_store_supervisor records cleaning/reports
+        # damage/incidents on its own stage's equipment (e.g. a cold-store
+        # cooling problem) -- same routine execution tier as its
+        # FARM_WORK_ITEM_EXECUTE grant above.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     # Dispatch execution (11): owns its own stage only. Upstream
     # finished_goods_storage.read and packing.read (lot provenance for
@@ -782,6 +848,11 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PILOT-OPS-001: dispatch_officer executes its own dispatch Work
         # Items -- same routine execution tier as its other grants above.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_EXECUTE,
+        # PILOT-ASSET-001: dispatch_officer records cleaning/reports
+        # damage/incidents on its own stage's equipment -- same routine
+        # execution tier as its FARM_WORK_ITEM_EXECUTE grant above.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_READINESS_EXECUTE,
+        Permission.EQUIPMENT_INCIDENT_READ, Permission.EQUIPMENT_INCIDENT_EXECUTE,
     }),
     # Broad compliance/traceability visibility (20) -- every `.read`
     # permission, zero `.manage`. Technically identical to `read_only`
@@ -829,6 +900,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
         Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: identical "every .read, zero mutations"
+        # character.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
     # Broad operational visibility (20), zero mutations -- identical set
     # to `auditor` today, by design (see that role's comment above).
@@ -870,6 +944,8 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.WATER_TOPOLOGY_READ, Permission.SAMPLING_POINT_READ, Permission.WATER_INSTRUMENT_READ,
         Permission.NUTRIENT_RECIPE_READ, Permission.WATER_MEASUREMENT_READ, Permission.NUTRIENT_OPERATIONS_READ,
         Permission.WATER_EXPOSURE_READ,
+        # PILOT-ASSET-001: identical to `auditor`'s own addition above.
+        Permission.EQUIPMENT_READINESS_READ, Permission.EQUIPMENT_INCIDENT_READ,
     }),
 }
 ROLE_PERMISSIONS: Mapping[str, frozenset[Permission]] = MappingProxyType(_ROLE_PERMISSIONS)

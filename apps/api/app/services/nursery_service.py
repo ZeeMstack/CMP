@@ -52,7 +52,14 @@ from app.models.workflow_version import WorkflowVersion
 from app.schemas.carrier_specification import CarrierSpecificationSummary
 from app.schemas.nursery import AvailableSeedTrayRead
 from app.schemas.sowing_event import CarrierTypeSummary
-from app.services import asset_service, crop_batch_service, farm_service, location_service, sowing_service
+from app.services import (
+    asset_service,
+    crop_batch_service,
+    equipment_readiness_service,
+    farm_service,
+    location_service,
+    sowing_service,
+)
 from app.services.audit import append_audit_event
 from app.services.errors import (
     AmbiguousSowingWorkflowError,
@@ -218,13 +225,21 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
     Carrier in this tenant/farm with no active Batch-Carrier-Assignment.
     Never infers physical location/occupancy -- CMP does not model where a
     reusable tray currently sits (see module docstring / SEED_SOWING_MODEL.md);
-    availability here is purely "not already carrying a live crop batch"."""
+    availability here is purely "not already carrying a live crop batch".
+
+    PILOT-ASSET-001: additionally excludes a tray whose Equipment Readiness
+    is AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/RETIRED --
+    an empty but dirty/damaged tray must never appear as available. See
+    docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     seed_tray_type = db.execute(
         select(CarrierType).where(CarrierType.code == SEED_TRAY_CARRIER_TYPE_CODE)
     ).scalar_one()
     active_assignment_carrier_ids = select(BatchCarrierAssignment.carrier_id).where(
         BatchCarrierAssignment.tenant_id == tenant_id, BatchCarrierAssignment.released_effective_time.is_(None)
+    )
+    non_ready_carrier_ids = equipment_readiness_service.non_ready_carrier_ids_subquery(
+        tenant_id=tenant_id, farm_id=farm_id
     )
     carriers = list(
         db.execute(
@@ -233,6 +248,7 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
                 Carrier.tenant_id == tenant_id, Carrier.farm_id == farm_id,
                 Carrier.carrier_type_id == seed_tray_type.id, Carrier.status == "active",
                 Carrier.id.not_in(active_assignment_carrier_ids),
+                Carrier.id.not_in(non_ready_carrier_ids),
             )
             .order_by(Carrier.code)
         ).scalars()

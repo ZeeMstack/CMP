@@ -15,13 +15,28 @@ import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { AppError } from "@/lib/errors/adapter";
 import { isSelectableForCarrierRegistration } from "@/lib/validation/carrierRegistration";
+import { humanizeEnumCode } from "@/lib/format/humanize";
+import type { EquipmentReadinessCurrentState } from "@/lib/api/client";
 import {
   useBulkRegisterCarriers,
   useCarriers,
   useCarrierSpecifications,
   useCarrierTypes,
+  useEquipmentReadinessList,
   useRegisterCarrier,
 } from "@/lib/query/hooks";
+
+// PILOT-ASSET-001: mirrors the Equipment Readiness detail page's own tone
+// mapping.
+const READINESS_TONE: Record<EquipmentReadinessCurrentState, StatusTone> = {
+  unknown: "neutral",
+  awaiting_cleaning: "attention",
+  cleaning_completed: "attention",
+  ready: "active",
+  damaged: "critical",
+  maintenance: "attention",
+  retired: "closed",
+};
 
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
@@ -44,6 +59,13 @@ export default function CarriersPage() {
   const typesQuery = useCarrierTypes();
   const registerMutation = useRegisterCarrier(farmId);
   const bulkRegisterMutation = useBulkRegisterCarriers(farmId);
+  // PILOT-ASSET-001: one batch-fetched Readiness list, indexed by
+  // `carrier_id`, rather than one request per row.
+  const readinessQuery = useEquipmentReadinessList(farmId);
+  const readinessByCarrierId = useMemo(
+    () => new Map((readinessQuery.data ?? []).filter((r) => r.carrier_id).map((r) => [r.carrier_id as string, r])),
+    [readinessQuery.data],
+  );
 
   const carriers = carriersQuery.data ?? [];
   // FINAL INTEGRITY CLEANUP: excludes both inactive specs AND the legacy
@@ -149,6 +171,7 @@ export default function CarriersPage() {
                     <th className="px-4 py-2 font-medium">Carrier Type</th>
                     <th className="px-4 py-2 font-medium">Specification</th>
                     <th className="px-4 py-2 font-medium">Status</th>
+                    <th className="px-4 py-2 font-medium">Readiness</th>
                     <th className="px-4 py-2 font-medium">Issued</th>
                     <th className="px-4 py-2 font-medium" />
                   </tr>
@@ -167,6 +190,21 @@ export default function CarriersPage() {
                         </td>
                         <td className="px-4 py-2">
                           <StatusBadge label={carrier.status} tone={tone} />
+                        </td>
+                        <td className="px-4 py-2">
+                          {(() => {
+                            const readiness = readinessByCarrierId.get(carrier.id);
+                            return readiness ? (
+                              <Link href={`/farms/${farmId}/equipment/carrier/${carrier.id}/readiness`} className="inline-block">
+                                <StatusBadge
+                                  label={humanizeEnumCode(readiness.current_state)}
+                                  tone={READINESS_TONE[readiness.current_state]}
+                                />
+                              </Link>
+                            ) : (
+                              <span className="text-ink-muted">—</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-2 text-ink-muted">{carrier.issued_date ?? "—"}</td>
                         <td className="px-4 py-2 text-right">

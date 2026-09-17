@@ -327,7 +327,11 @@ def list_available_production_plates(
     Occupancy" -- Movement legitimately relocates a Carrier and closes its
     prior Occupancy atomically as part of the same move. One query, no N+1,
     mirrors `intersalads_transplant_service.list_available_intersalads_
-    plates`'s exact shape for the sibling carrier type."""
+    plates`'s exact shape for the sibling carrier type.
+
+    PILOT-ASSET-001: additionally excludes a Plate whose Equipment
+    Readiness is AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/
+    RETIRED -- see docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     carrier_service._require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -341,6 +345,12 @@ def list_available_production_plates(
             "AND NOT EXISTS ("
             "  SELECT 1 FROM batch_carrier_assignments bca "
             "  WHERE bca.carrier_id = c.id AND bca.released_effective_time IS NULL"
+            ") "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM equipment_readiness_states ers "
+            "  WHERE ers.carrier_id = c.id AND ers.tenant_id = c.tenant_id "
+            "  AND ers.current_state IN ('awaiting_cleaning', 'cleaning_completed', 'damaged', "
+            "'maintenance', 'retired')"
             ") "
             "ORDER BY c.code"
         ),

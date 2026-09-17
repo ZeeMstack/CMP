@@ -62,6 +62,11 @@ function stubFetch() {
       if (url.includes("/locations/tree")) return jsonResponse([]);
       if (url.includes("/assets")) return jsonResponse([]);
       if (url.includes("/carriers")) return jsonResponse([]);
+      // PILOT-ASSET-001: Equipment Attention section + the manual Work
+      // Item "Add context" Equipment Incident option source -- empty by
+      // default, same reasoning as above.
+      if (url.includes("/equipment-attention")) return jsonResponse([]);
+      if (url.includes("/equipment-incidents")) return jsonResponse([]);
       return jsonResponse({});
     }),
   );
