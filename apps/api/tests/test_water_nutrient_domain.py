@@ -608,3 +608,192 @@ def test_alembic_has_a_single_head_including_this_ticket_migration():
     heads = script.get_heads()
     assert len(heads) == 1
     assert heads[0] == "0d62f68527a2"
+
+
+# --- PILOT-WATER-001B: server-authoritative NOW (HOTFIX-TIME-002 pattern) -------------
+
+
+def test_measurement_omitted_effective_at_uses_server_time_not_future_rejected(active_context_with_farm, db_session):
+    """Proof 21. Omitting `effective_at` records "now" using the server's
+    own clock (never a client-supplied timestamp); an explicit future
+    timestamp is rejected cleanly."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    reservoir = _register_reservoir(db_session, tenant, user, farm, suffix)
+    sampling_point = sampling_point_service.register_sampling_point(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, code=f"SP-{suffix}",
+        name="Reservoir Sample", point_type="reservoir", anchor_id=reservoir.id, notes=None,
+    )
+    before = datetime.now(timezone.utc)
+    measurement = water_instrument_service.record_measurement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, sampling_point_id=sampling_point.id,
+        metric="PH", value="6.0", unit="pH", effective_at=None, water_instrument_id=None, notes=None,
+        client_command_id=uuid.uuid4(),
+    )
+    after = datetime.now(timezone.utc)
+    assert before <= measurement.effective_at <= after
+
+    from app.services.errors import WaterMeasurementValidationError
+
+    with pytest.raises(WaterMeasurementValidationError):
+        water_instrument_service.record_measurement(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+            sampling_point_id=sampling_point.id, metric="PH", value="6.0", unit="pH",
+            effective_at=_now() + timedelta(days=1), water_instrument_id=None, notes=None,
+            client_command_id=uuid.uuid4(),
+        )
+
+
+def test_measurement_now_command_retry_is_idempotent_not_a_second_row(active_context_with_farm, db_session):
+    """Proof 21 (idempotency half). Retrying the same `client_command_id`
+    with `effective_at=None` replays the original row -- it never creates a
+    second measurement with a later "now"."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    reservoir = _register_reservoir(db_session, tenant, user, farm, suffix)
+    sampling_point = sampling_point_service.register_sampling_point(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, code=f"SP-{suffix}",
+        name="Reservoir Sample", point_type="reservoir", anchor_id=reservoir.id, notes=None,
+    )
+    command_id = uuid.uuid4()
+    first = water_instrument_service.record_measurement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, sampling_point_id=sampling_point.id,
+        metric="PH", value="6.0", unit="pH", effective_at=None, water_instrument_id=None, notes=None,
+        client_command_id=command_id,
+    )
+    second = water_instrument_service.record_measurement(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, sampling_point_id=sampling_point.id,
+        metric="PH", value="6.0", unit="pH", effective_at=None, water_instrument_id=None, notes=None,
+        client_command_id=command_id,
+    )
+    assert first.id == second.id
+    assert first.effective_at == second.effective_at
+
+
+# --- PILOT-WATER-001B: farm-wide topology/operational reads + Water Attention ----------
+
+
+def test_multiple_water_sources_and_one_source_feeding_multiple_reservoirs(active_context_with_farm, db_session):
+    """Proofs 1 + 2 (frontend/001B). Multiple independent WaterSources may
+    exist on one farm, and one WaterSource may feed multiple Reservoirs --
+    never a "one source per farm" assumption."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    ro_plant = water_topology_service.register_water_source(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, code=f"RO-{suffix}",
+        name="RO Plant", source_type="ro_treated", notes=None,
+    )
+    bore = water_topology_service.register_water_source(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, code=f"BORE-{suffix}",
+        name="Bore Water", source_type="bore", notes=None,
+    )
+    reservoir_a = _register_reservoir(db_session, tenant, user, farm, suffix + "a")
+    reservoir_b = _register_reservoir(db_session, tenant, user, farm, suffix + "b")
+    water_topology_service.open_water_source_reservoir_link(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, water_source_id=ro_plant.id,
+        reservoir_id=reservoir_a.id, effective_from=_now() - timedelta(days=1), reason=None,
+    )
+    water_topology_service.open_water_source_reservoir_link(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, water_source_id=ro_plant.id,
+        reservoir_id=reservoir_b.id, effective_from=_now() - timedelta(days=1), reason=None,
+    )
+
+    sources = water_topology_service.list_water_sources(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert {s.id for s in sources} >= {ro_plant.id, bore.id}
+
+    links = water_topology_service.list_water_source_reservoir_links(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    ro_plant_reservoirs = {link.reservoir_id for link in links if link.water_source_id == ro_plant.id}
+    assert ro_plant_reservoirs == {reservoir_a.id, reservoir_b.id}
+
+
+def test_topology_link_list_shows_historical_and_current_together(active_context_with_farm, db_session):
+    """Proof 5. Closing and re-opening a link never removes the closed row
+    from the farm-wide list -- both the historical and current rows remain
+    visible (section 6/26)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    reservoir_a = _register_reservoir(db_session, tenant, user, farm, suffix + "a")
+    reservoir_b = _register_reservoir(db_session, tenant, user, farm, suffix + "b")
+    circuit = _register_circuit(db_session, tenant, user, farm, suffix)
+
+    old_link = water_topology_service.open_reservoir_circuit_link(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, reservoir_id=reservoir_a.id,
+        irrigation_circuit_id=circuit.id, effective_from=_now() - timedelta(days=10), reason="initial",
+    )
+    water_topology_service.close_reservoir_circuit_link(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, link_id=old_link.id,
+        effective_to=_now() - timedelta(days=5),
+    )
+    new_link = water_topology_service.open_reservoir_circuit_link(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, reservoir_id=reservoir_b.id,
+        irrigation_circuit_id=circuit.id, effective_from=_now() - timedelta(days=5), reason="re-plumbed",
+    )
+
+    links = water_topology_service.list_reservoir_circuit_links(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    ids = {link.id for link in links}
+    assert old_link.id in ids and new_link.id in ids
+    by_id = {link.id: link for link in links}
+    assert by_id[old_link.id].effective_to is not None
+    assert by_id[new_link.id].effective_to is None
+
+
+def test_farm_wide_lists_aggregate_across_every_reservoir_and_circuit(active_context_with_farm, db_session):
+    """Proof 3 + 4 (frontend/001B). Farm-wide Mix/Reservoir-Event/Delivery-
+    Event/Measurement reads span every Reservoir/Circuit on the farm, not
+    just one -- the "recent activity" Overview needs this across
+    independently-serving Tanks."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    reservoir_a = _register_reservoir(db_session, tenant, user, farm, suffix + "a")
+    reservoir_b = _register_reservoir(db_session, tenant, user, farm, suffix + "b")
+
+    reservoir_operations_service.record_reservoir_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, reservoir_id=reservoir_a.id,
+        event_type="WATER_TOP_UP", effective_at=None, quantity=None, quantity_uom_id=None, inventory_item_id=None,
+        notes=None, client_command_id=uuid.uuid4(),
+    )
+    reservoir_operations_service.record_reservoir_event(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, reservoir_id=reservoir_b.id,
+        event_type="FLUSH", effective_at=None, quantity=None, quantity_uom_id=None, inventory_item_id=None,
+        notes=None, client_command_id=uuid.uuid4(),
+    )
+    events = reservoir_operations_service.list_reservoir_events_for_farm(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert {e.reservoir_id for e in events} == {reservoir_a.id, reservoir_b.id}
+
+
+def test_water_attention_flags_active_circuit_missing_reservoir_and_never_calibrated_instrument(
+    active_context_with_farm, db_session,
+):
+    """Proof: Today Water Attention surfaces only genuine, explicit facts
+    -- never a manufactured threshold (section 28)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    suffix = uuid.uuid4().hex[:8]
+    circuit = _register_circuit(db_session, tenant, user, farm, suffix)
+    asset = asset_service.register_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="water_quality_meter", code=f"WQ-{suffix}", name="Meter", commissioned_date=None,
+    )
+    instrument = water_instrument_service.register_water_instrument(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=asset.id,
+        supports_ph=True, supports_ec=False, supports_solution_temperature=False, supports_dissolved_oxygen=False,
+    )
+
+    from app.services import water_attention_service
+
+    items = water_attention_service.get_water_attention(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    kinds_for_circuit = {i["kind"] for i in items if i.get("irrigation_circuit_id") == circuit.id}
+    assert "CIRCUIT_MISSING_RESERVOIR" in kinds_for_circuit
+    kinds_for_instrument = {i["kind"] for i in items if i.get("water_instrument_id") == instrument.id}
+    assert "INSTRUMENT_NEVER_CALIBRATED" in kinds_for_instrument
+
+    # Feeding the circuit clears the topology-gap signal.
+    reservoir = _register_reservoir(db_session, tenant, user, farm, suffix)
+    water_topology_service.open_reservoir_circuit_link(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, reservoir_id=reservoir.id,
+        irrigation_circuit_id=circuit.id, effective_from=_now(), reason=None,
+    )
+    items_after = water_attention_service.get_water_attention(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert not any(
+        i["kind"] == "CIRCUIT_MISSING_RESERVOIR" and i.get("irrigation_circuit_id") == circuit.id
+        for i in items_after
+    )

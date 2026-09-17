@@ -125,6 +125,27 @@ import type {
   WorkflowCreate,
   WorkflowStageCreate,
   WorkflowTransitionCreate,
+  WaterSourceCreate,
+  ReservoirCreate,
+  IrrigationCircuitCreate,
+  WaterDeliveryPointCreate,
+  WaterReturnPointCreate,
+  WaterSourceReservoirLinkOpen,
+  ReservoirCircuitLinkOpen,
+  CircuitDeliveryPointLinkOpen,
+  ReturnPointReservoirLinkOpen,
+  TopologyLinkClose,
+  SamplingPointCreate,
+  WaterInstrumentCreate,
+  CalibrationEventCreate,
+  WaterMeasurementCreate,
+  NutrientRecipeCreate,
+  NutrientRecipeVersionCreate,
+  NutrientRecipeVersionLifecycleCommand,
+  NutrientRecipeComponentCreate,
+  NutrientMixCreate,
+  ReservoirEventCreate,
+  WaterDeliveryEventCreate,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { AppError } from "@/lib/errors/adapter";
@@ -4220,5 +4241,656 @@ export function useRecordCropIssueFollowUp(farmId: string, cropIssueId: string) 
       queryClient.invalidateQueries({ queryKey: queryKeys.cropIssueFollowUps(tenantId, farmId, cropIssueId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.cropIssue(tenantId, farmId, cropIssueId) });
     },
+  });
+}
+
+// --- PILOT-WATER-001A/001B: Water & Nutrient domain --------------------------------
+
+export function useWaterSources(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterSources(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listWaterSources(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useCreateWaterSource(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterSourceCreate) => api.createWaterSource(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterSources(tenantId, farmId) });
+    },
+  });
+}
+
+export function useReservoirs(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.reservoirs(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listReservoirs(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useReservoir(reservoirId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.reservoir(tenantId ?? "", reservoirId ?? ""),
+    queryFn: ({ signal }) => api.getReservoir(reservoirId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(reservoirId),
+  });
+}
+export function useCreateReservoir(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReservoirCreate) => api.createReservoir(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.reservoirs(tenantId, farmId) });
+    },
+  });
+}
+
+export function useIrrigationCircuits(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.irrigationCircuits(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listIrrigationCircuits(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useIrrigationCircuit(circuitId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.irrigationCircuit(tenantId ?? "", circuitId ?? ""),
+    queryFn: ({ signal }) => api.getIrrigationCircuit(circuitId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(circuitId),
+  });
+}
+export function useCreateIrrigationCircuit(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: IrrigationCircuitCreate) => api.createIrrigationCircuit(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.irrigationCircuits(tenantId, farmId) });
+    },
+  });
+}
+
+export function useWaterDeliveryPoints(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterDeliveryPoints(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listWaterDeliveryPoints(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useCreateWaterDeliveryPoint(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterDeliveryPointCreate) => api.createWaterDeliveryPoint(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterDeliveryPoints(tenantId, farmId) });
+    },
+  });
+}
+
+export function useWaterReturnPoints(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterReturnPoints(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listWaterReturnPoints(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useCreateWaterReturnPoint(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterReturnPointCreate) => api.createWaterReturnPoint(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterReturnPoints(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Topology links: one list + open + close hook per relationship -----------------
+
+export function useWaterSourceReservoirLinks(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterSourceReservoirLinks(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listWaterSourceReservoirLinks(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useOpenWaterSourceReservoirLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterSourceReservoirLinkOpen) => api.openWaterSourceReservoirLink(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterSourceReservoirLinks(tenantId, farmId) });
+    },
+  });
+}
+export function useCloseWaterSourceReservoirLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, payload }: { linkId: string; payload: TopologyLinkClose }) =>
+      api.closeWaterSourceReservoirLink(linkId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterSourceReservoirLinks(tenantId, farmId) });
+    },
+  });
+}
+
+export function useReservoirCircuitLinks(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.reservoirCircuitLinks(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listReservoirCircuitLinks(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useOpenReservoirCircuitLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReservoirCircuitLinkOpen) => api.openReservoirCircuitLink(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.reservoirCircuitLinks(tenantId, farmId) });
+    },
+  });
+}
+export function useCloseReservoirCircuitLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, payload }: { linkId: string; payload: TopologyLinkClose }) =>
+      api.closeReservoirCircuitLink(linkId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.reservoirCircuitLinks(tenantId, farmId) });
+    },
+  });
+}
+
+export function useCircuitDeliveryPointLinks(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.circuitDeliveryPointLinks(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listCircuitDeliveryPointLinks(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useOpenCircuitDeliveryPointLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CircuitDeliveryPointLinkOpen) => api.openCircuitDeliveryPointLink(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.circuitDeliveryPointLinks(tenantId, farmId) });
+    },
+  });
+}
+export function useCloseCircuitDeliveryPointLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, payload }: { linkId: string; payload: TopologyLinkClose }) =>
+      api.closeCircuitDeliveryPointLink(linkId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.circuitDeliveryPointLinks(tenantId, farmId) });
+    },
+  });
+}
+
+export function useReturnPointReservoirLinks(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.returnPointReservoirLinks(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listReturnPointReservoirLinks(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useOpenReturnPointReservoirLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReturnPointReservoirLinkOpen) => api.openReturnPointReservoirLink(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.returnPointReservoirLinks(tenantId, farmId) });
+    },
+  });
+}
+export function useCloseReturnPointReservoirLink(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, payload }: { linkId: string; payload: TopologyLinkClose }) =>
+      api.closeReturnPointReservoirLink(linkId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.returnPointReservoirLinks(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Sampling Points -----------------------------------------------------------------
+
+export function useSamplingPoints(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.samplingPoints(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listSamplingPoints(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useCreateSamplingPoint(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SamplingPointCreate) => api.createSamplingPoint(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.samplingPoints(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Water Instruments + Calibration ------------------------------------------------
+
+export function useWaterInstruments(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterInstruments(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listWaterInstruments(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useCreateWaterInstrument(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterInstrumentCreate) => api.createWaterInstrument(farmId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterInstruments(tenantId, farmId) });
+    },
+  });
+}
+export function useCalibrations(instrumentId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.calibrations(tenantId ?? "", instrumentId ?? ""),
+    queryFn: ({ signal }) => api.listCalibrations(instrumentId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(instrumentId),
+  });
+}
+export function useCalibrationStatus(instrumentId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.calibrationStatus(tenantId ?? "", instrumentId ?? ""),
+    queryFn: ({ signal }) => api.getCalibrationStatus(instrumentId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(instrumentId),
+  });
+}
+export function useRecordCalibration(farmId: string, instrumentId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CalibrationEventCreate) => api.recordCalibration(farmId, instrumentId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.calibrations(tenantId, instrumentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.calibrationStatus(tenantId, instrumentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterAttention(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Water Measurements ---------------------------------------------------------------
+
+export function useMeasurements(samplingPointId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.measurements(tenantId ?? "", samplingPointId ?? ""),
+    queryFn: ({ signal }) => api.listMeasurements(samplingPointId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(samplingPointId),
+  });
+}
+export function useMeasurementsForFarm(
+  farmId: string,
+  params: { metric?: string; reservoirId?: string; windowStart?: string; windowEnd?: string } = {},
+) {
+  const tenantId = useSelectedTenantId();
+  const filterKey = JSON.stringify(params);
+  return useQuery({
+    queryKey: queryKeys.measurementsForFarm(tenantId ?? "", farmId, filterKey),
+    queryFn: ({ signal }) => api.listMeasurementsForFarm(farmId, params, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useRecordMeasurement(farmId: string, samplingPointId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterMeasurementCreate) => api.recordMeasurement(farmId, samplingPointId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.measurements(tenantId, samplingPointId) });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "farms", farmId, "water-measurements"], exact: false,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterAttention(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Nutrient Recipe catalog -----------------------------------------------------------
+
+export function useNutrientRecipes() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.nutrientRecipes(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listNutrientRecipes(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+export function useNutrientRecipe(recipeId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.nutrientRecipe(tenantId ?? "", recipeId ?? ""),
+    queryFn: ({ signal }) => api.getNutrientRecipe(recipeId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(recipeId),
+  });
+}
+export function useCreateNutrientRecipe() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: NutrientRecipeCreate) => api.createNutrientRecipe(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrientRecipes(tenantId) });
+    },
+  });
+}
+export function useNutrientRecipeVersions(recipeId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.nutrientRecipeVersions(tenantId ?? "", recipeId ?? ""),
+    queryFn: ({ signal }) => api.listNutrientRecipeVersions(recipeId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(recipeId),
+  });
+}
+export function useNutrientRecipeVersion(versionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.nutrientRecipeVersion(tenantId ?? "", versionId ?? ""),
+    queryFn: ({ signal }) => api.getNutrientRecipeVersion(versionId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(versionId),
+  });
+}
+function useInvalidateRecipeVersions(recipeId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (versionId?: string) => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.nutrientRecipeVersions(tenantId, recipeId) });
+    if (versionId) queryClient.invalidateQueries({ queryKey: queryKeys.nutrientRecipeVersion(tenantId, versionId) });
+  };
+}
+export function useCreateNutrientRecipeVersion(recipeId: string) {
+  const invalidate = useInvalidateRecipeVersions(recipeId);
+  return useMutation({
+    mutationFn: (payload: NutrientRecipeVersionCreate) => api.createNutrientRecipeVersion(recipeId, payload),
+    onSuccess: () => invalidate(),
+  });
+}
+/** Activation retires the previously-ACTIVE version in the same backend
+ * transaction (FROZEN: one ACTIVE version per Recipe, mirrors Growing
+ * Protocol Version) -- invalidating the whole list is what picks that up. */
+export function useActivateNutrientRecipeVersion(recipeId: string) {
+  const invalidate = useInvalidateRecipeVersions(recipeId);
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: NutrientRecipeVersionLifecycleCommand }) =>
+      api.activateNutrientRecipeVersion(versionId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.versionId),
+  });
+}
+export function useRetireNutrientRecipeVersion(recipeId: string) {
+  const invalidate = useInvalidateRecipeVersions(recipeId);
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: NutrientRecipeVersionLifecycleCommand }) =>
+      api.retireNutrientRecipeVersion(versionId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.versionId),
+  });
+}
+export function useNutrientRecipeComponents(versionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.nutrientRecipeComponents(tenantId ?? "", versionId ?? ""),
+    queryFn: ({ signal }) => api.listNutrientRecipeComponents(versionId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(versionId),
+  });
+}
+export function useAddNutrientRecipeComponent(versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: NutrientRecipeComponentCreate) => api.addNutrientRecipeComponent(versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrientRecipeComponents(tenantId, versionId) });
+    },
+  });
+}
+
+// --- Nutrient Mix ----------------------------------------------------------------------
+
+export function useMixesForReservoir(reservoirId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.mixesForReservoir(tenantId ?? "", reservoirId ?? ""),
+    queryFn: ({ signal }) => api.listMixesForReservoir(reservoirId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(reservoirId),
+  });
+}
+export function useMixesForFarm(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.mixesForFarm(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listMixesForFarm(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useMix(mixId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.mix(tenantId ?? "", mixId ?? ""),
+    queryFn: ({ signal }) => api.getMix(mixId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(mixId),
+  });
+}
+export function useMixInputs(mixId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.mixInputs(tenantId ?? "", mixId ?? ""),
+    queryFn: ({ signal }) => api.listMixInputs(mixId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(mixId),
+  });
+}
+export function useRecordMix(farmId: string, reservoirId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: NutrientMixCreate) => api.recordMix(farmId, reservoirId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mixesForReservoir(tenantId, reservoirId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.mixesForFarm(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Reservoir Events / Water Delivery Events -------------------------------------------
+
+export function useReservoirEvents(reservoirId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.reservoirEvents(tenantId ?? "", reservoirId ?? ""),
+    queryFn: ({ signal }) => api.listReservoirEvents(reservoirId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(reservoirId),
+  });
+}
+export function useReservoirEventsForFarm(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.reservoirEventsForFarm(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listReservoirEventsForFarm(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useRecordReservoirEvent(farmId: string, reservoirId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ReservoirEventCreate) => api.recordReservoirEvent(farmId, reservoirId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.reservoirEvents(tenantId, reservoirId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.reservoirEventsForFarm(tenantId, farmId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.waterAttention(tenantId, farmId) });
+    },
+  });
+}
+
+export function useDeliveryEventsForCircuit(circuitId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.deliveryEventsForCircuit(tenantId ?? "", circuitId ?? ""),
+    queryFn: ({ signal }) => api.listDeliveryEventsForCircuit(circuitId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(circuitId),
+  });
+}
+export function useDeliveryEventsForFarm(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.deliveryEventsForFarm(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.listDeliveryEventsForFarm(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+export function useRecordDeliveryEvent(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: WaterDeliveryEventCreate) => api.recordDeliveryEvent(farmId, payload),
+    onSuccess: (data) => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForCircuit(tenantId, data.irrigation_circuit_id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForFarm(tenantId, farmId) });
+    },
+  });
+}
+
+// --- Crop Water Exposure -----------------------------------------------------------------
+
+export function useExposedPlacementsForCircuit(
+  farmId: string, circuitId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStart ?? ""}|${windowEnd ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.exposedPlacementsForCircuit(tenantId ?? "", circuitId ?? "", windowKey),
+    queryFn: ({ signal }) =>
+      api.getExposedPlacementsForCircuit(circuitId as string, farmId, windowStart as string, windowEnd as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(circuitId) && Boolean(windowStart) && Boolean(windowEnd),
+  });
+}
+export function useExposedPlacementsForReservoir(
+  farmId: string, reservoirId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStart ?? ""}|${windowEnd ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.exposedPlacementsForReservoir(tenantId ?? "", reservoirId ?? "", windowKey),
+    queryFn: ({ signal }) =>
+      api.getExposedPlacementsForReservoir(reservoirId as string, farmId, windowStart as string, windowEnd as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(reservoirId) && Boolean(windowStart) && Boolean(windowEnd),
+  });
+}
+export function useBatchWaterExposure(
+  farmId: string, batchId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStart ?? ""}|${windowEnd ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.batchWaterExposure(tenantId ?? "", farmId, batchId ?? "", windowKey),
+    queryFn: ({ signal }) =>
+      api.getBatchWaterExposure(batchId as string, farmId, windowStart as string, windowEnd as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId) && Boolean(windowStart) && Boolean(windowEnd),
+  });
+}
+
+// --- Today on the Farm: Water Attention ---------------------------------------------------
+
+export function useWaterAttention(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.waterAttention(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getWaterAttention(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
   });
 }

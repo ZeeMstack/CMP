@@ -3,7 +3,12 @@
 PILOT-WATER-001A: the hydroponic water/nutrient DOMAIN/API FOUNDATION.
 Manual/human-entered only — no PLC/fertigation-controller integration, no
 automatic dosing, no automatic sensor ingestion, no autonomous control.
-Operator-facing screens (PILOT-WATER-001B) are not built here.
+
+PILOT-WATER-001B (this section's additions below): the operator-facing
+frontend workspace built on top of the frozen 001A domain. 001B never
+redesigns or duplicates the 001A domain — it is UI plus a small number of
+additive, read-only backend list endpoints and an optional-timestamp
+(HOTFIX-TIME) fix, documented under "PILOT-WATER-001B additions" below.
 
 ## Product questions this domain answers
 
@@ -298,11 +303,107 @@ create-command idempotency for topology master data, no structured
 correction relationship, exposure reverse-lookup scale, no
 Store-consumption linking, service-layer-only UOM-kind validation).
 
-## Out of scope (this ticket)
+## PILOT-WATER-001B additions
 
-Operator UI (PILOT-WATER-001B), graphical plumbing diagrams, controller
-integration, sensor ingestion, automatic dosing, automatic irrigation,
-irrigation optimization, AI nutrient recommendations, AI disease
-inference, weather integration, open-field irrigation, a lab module,
-inventory auto-consumption, a full maintenance system, alerts/
-notifications, offline mode.
+### Multi-source / multi-tank shape (never assumed to be singular)
+
+- A Farm may have **many** `WaterSource` rows (bore + municipal + RO, etc.
+  simultaneously) — the Overview and System Setup screens list every
+  active source, never assume or display exactly one.
+- A single `WaterSource` may feed **multiple** `Reservoir`s via multiple
+  concurrent `water_source_reservoir_links` rows — the topology tables in
+  System Setup never collapse this to a 1:1 picture.
+- Different `Reservoir`/Tank rows commonly serve **different** crop areas
+  independently (e.g. one Nutrient Reservoir per Zone) — nothing in the
+  frontend infers "this Farm's one tank" or renders a tank as farm-wide by
+  default.
+- A `Reservoir` may serve **one or several** `IrrigationCircuit`s (and
+  therefore several Locations) via multiple concurrent
+  `reservoir_circuit_links` rows.
+- Supply relationships are **effective-dated**: the System Setup Topology
+  view and the Exposure views always show current and historical link rows
+  together (never only the currently-open one), and exposure queries for a
+  past window resolve against the topology that was actually true during
+  that window, not only today's.
+
+### Navigation and workspace
+
+`Production → Water & Nutrients` (`/farms/{farmId}/water`) with an in-page
+six-tab subnav (`components/water/WaterSubNav.tsx`, mirrors
+`StoreSubNav`): Overview / Measurements / Mixing / Delivery / Exposure /
+System Setup. `Company catalogs → Nutrient Recipes`
+(`/nutrient-recipes`, `/nutrient-recipes/[recipeId]`) is a separate,
+tenant-wide catalog page mirroring Growing Protocols' own route shape —
+Recipe administration is never nested inside a single Farm's Water
+workspace.
+
+### Backend additions (small, additive, read-only unless noted)
+
+- Farm-wide list endpoints that did not exist in 001A, added because the
+  UI's farm-wide screens (Overview, System Setup Topology, Measurement
+  History, recent Mixes/Reservoir Events/Deliveries, Today's Water
+  Attention) need to look across every Reservoir/Circuit at once, not one
+  entity at a time: `GET /farms/{farmId}/water-topology-links/*` (all four
+  link kinds), `GET /farms/{farmId}/nutrient-mixes`,
+  `GET /farms/{farmId}/reservoir-events`,
+  `GET /farms/{farmId}/water-delivery-events`,
+  `GET /farms/{farmId}/water-measurements` (filterable by metric/
+  reservoir/time window).
+- `GET /farms/{farmId}/water/attention` (`app/services/
+  water_attention_service.py`, new file) — the Today-on-the-Farm "Water
+  Attention" read model. Conservative by design: it flags only (a) an
+  active Circuit with no currently-open `reservoir_circuit_links` row, (b)
+  a `WaterInstrument` with zero `InstrumentCalibrationEvent` rows ever, (c)
+  a Measurement whose value falls outside its Recipe Version's target EC/pH
+  by more than a documented ±10% tolerance band. It never invents an alert
+  rule beyond these three, and never fabricates a status for a condition it
+  cannot actually evaluate.
+- **HOTFIX-TIME-002 pattern applied to every 001A "floor recording"
+  command that previously required an explicit client timestamp**
+  (`WaterMeasurementCreate.effective_at`, `CalibrationEventCreate.
+  effective_at`, `NutrientMixCreate.effective_at`,
+  `ReservoirEventCreate.effective_at`, `WaterDeliveryEventCreate.
+  effective_start`): each is now `datetime | None = None`. `None` means
+  "record now" and resolves to the server's own `datetime.now(timezone.utc)`
+  **after** the idempotency/fingerprint check (never part of the
+  fingerprint), so a retried "now" command replays the original row
+  instead of duplicating or erroring; a caller-supplied future timestamp is
+  rejected. This closes the same browser-clock-skew defect class as
+  HOTFIX-TIME-002 elsewhere in the codebase. `effective_to`/
+  `effective_end` fields remain conceptually distinct "still open" facts
+  and are never resolved to "now" by this change. Frontend forms never
+  submit a browser-generated timestamp as the authoritative "now" — they
+  either omit the field or, when the operator explicitly back-dates an
+  entry, send that exact chosen ISO timestamp.
+
+### Frozen distinctions the UI never blurs
+
+Recipe != Mix != Delivery, Target != Measurement, Calibration !=
+Measurement, Mix Input != Store Consumption, Water Topology != Location
+hierarchy, Shared Water != Disease (exposure wording stays exactly
+"Configured Topology Exposure" / "Recorded Delivery Exposure", never
+"Affected/Contaminated/Infected"), and Exposure always follows actual
+topology + placement + recorded-delivery evidence, never Farm membership
+alone (two tanks/circuits serving different greenhouses on the same Farm
+never cross-expose each other in the UI).
+
+### Deferred, not built in 001B
+
+- **QR entity types for Sampling Point / Reservoir / Instrument / Circuit**:
+  `qr_identifiers` has a fixed, CHECK-constrained set of entity-type
+  columns (migration `29d6697de6d5`). Adding a Water entity type to it is
+  a genuine schema change, which conflicts with 001B's "prefer no
+  migration" instruction — deferred to a future ticket rather than done
+  here. No QR entry points were added for this domain in 001B.
+- A structured correction/supersession relationship, topology
+  create-command idempotency, exposure reverse-index optimization, and the
+  Store-consumption linkage remain exactly as documented under "Known
+  gaps" below — 001B did not touch any of them.
+
+## Out of scope (both tickets)
+
+Graphical plumbing diagrams, controller integration, sensor ingestion,
+automatic dosing, automatic irrigation, irrigation optimization, AI
+nutrient recommendations, AI disease inference, weather integration,
+open-field irrigation, a lab module, inventory auto-consumption, a full
+maintenance system, alerts/notifications, offline mode.

@@ -3,7 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+def _require_tz_aware(v: datetime) -> datetime:
+    if v.tzinfo is None:
+        raise ValueError("must be timezone-aware")
+    return v
 
 
 class WaterInstrumentCreate(BaseModel):
@@ -30,11 +36,18 @@ class WaterInstrumentRead(BaseModel):
 
 class CalibrationEventCreate(BaseModel):
     metric: str
-    effective_at: datetime
+    # PILOT-WATER-001B (HOTFIX-TIME-002 pattern): omitting effective_at
+    # means "record now" -- see WaterMeasurementCreate's identical note.
+    effective_at: datetime | None = None
     result: str
     standard_reference: str | None = None
     notes: str | None = None
     client_command_id: uuid.UUID
+
+    @field_validator("effective_at")
+    @classmethod
+    def validate_effective_at(cls, v: datetime | None) -> datetime | None:
+        return v if v is None else _require_tz_aware(v)
 
 
 class CalibrationEventRead(BaseModel):

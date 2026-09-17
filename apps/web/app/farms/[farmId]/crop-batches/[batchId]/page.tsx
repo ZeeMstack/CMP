@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
 import { BatchProtocolPanel } from "@/components/agronomy/BatchProtocolPanel";
+import { BatchWaterExposurePanel } from "@/components/water/BatchWaterExposurePanel";
 import { OriginAndSplitsPanel } from "@/components/OriginAndSplitsPanel";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -26,7 +27,7 @@ import {
   useStageHistory,
 } from "@/lib/query/hooks";
 
-const TABS = ["overview", "history", "sowing", "origin", "quality", "protocol"] as const;
+const TABS = ["overview", "history", "sowing", "origin", "quality", "protocol", "water"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -36,6 +37,7 @@ const TAB_LABELS: Record<Tab, string> = {
   origin: "Origin & Splits",
   quality: "Quality",
   protocol: "Protocol",
+  water: "Water Exposure",
 };
 
 function TabLink({ farmId, batchId, tab, active }: { farmId: string; batchId: string; tab: Tab; active: boolean }) {
@@ -366,6 +368,7 @@ export default function CropBatchDetailPage() {
       )}
 
       {activeTab === "protocol" && <BatchProtocolPanel farmId={farmId} batch={batch} />}
+      {activeTab === "water" && <BatchWaterExposurePanel farmId={farmId} batch={batch} />}
     </div>
   );
 }

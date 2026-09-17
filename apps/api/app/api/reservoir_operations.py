@@ -98,3 +98,19 @@ def list_delivery_events(
     return reservoir_operations_service.list_delivery_events_for_circuit(
         db, tenant_id=ctx.tenant_id, irrigation_circuit_id=irrigation_circuit_id
     )
+
+
+@router.get("/farms/{farm_id}/reservoir-events", response_model=list[ReservoirEventRead])
+def list_reservoir_events_for_farm(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_READ)),
+) -> list[ReservoirEventRead]:
+    return reservoir_operations_service.list_reservoir_events_for_farm(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+
+
+@router.get("/farms/{farm_id}/water-delivery-events", response_model=list[WaterDeliveryEventRead])
+def list_delivery_events_for_farm(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_READ)),
+) -> list[WaterDeliveryEventRead]:
+    return reservoir_operations_service.list_delivery_events_for_farm(db, tenant_id=ctx.tenant_id, farm_id=farm_id)

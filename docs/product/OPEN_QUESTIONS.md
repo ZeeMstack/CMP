@@ -116,6 +116,44 @@ None of the items below are treated as invented values; they are recorded as ope
 - **`NutrientMixInput`/`ReservoirEvent`'s optional `inventory_item_id` is a catalog-label reference only — no explicit link to a resulting Store consumption transaction was built**, even though ticket section 15 permits (does not require) one ("If current Store architecture provides a safe explicit consumption transaction, you MAY link to the resulting transaction"). No code path in this ticket creates, reads, or writes `InventoryMaterialEvent`/`InventoryExistenceLedgerEntry`. Adding an optional, explicit `inventory_material_event_id` link — populated only by a caller who separately, deliberately executed a real Store consumption command — is a clean, additive follow-up whenever a concrete need for it appears; inventing that column speculatively now would be exactly the kind of "half-finished implementation" CLAUDE.md warns against.
 - **UOM `quantity_kind = 'volume'` validation for Reservoir capacity / Mix / Reservoir Event / Delivery Event quantities is enforced at the service layer, not by a DB trigger.** A caller that bypasses the service layer entirely (raw SQL) could insert a non-volume UOM id. This mirrors other service-layer-only validations already established in this codebase (e.g. `carrier_specification_service`'s minimum-fields check) rather than adding a new generic "does this FK'd row satisfy property X" trigger; not treated as a gap requiring escalation, but noted for completeness.
 
+### Operator frontend decisions (PILOT-WATER-001B)
+
+- ~~**Topology registration/link commands carry no idempotency pair.**~~ Not
+  revisited in 001B — the operator workspace's System Setup screens submit
+  registration/link-open/link-close directly against the existing 001A
+  endpoints as-is; adding offline/scan-safe idempotency there remains the
+  scoped follow-up noted above, not built speculatively in this ticket
+  either.
+- **QR entry points for Sampling Point / Reservoir / Water Instrument /
+  Irrigation Circuit were not added.** `qr_identifiers` has a fixed,
+  CHECK-constrained set of entity-type columns (migration `29d6697de6d5`);
+  adding a Water entity type to it is a genuine schema change, which
+  001B's own "prefer no migration" instruction explicitly says to defer
+  rather than force through. A future ticket that wants "scan a Sampling
+  Point/Reservoir QR code to jump straight to Record Measurement/Record
+  Mix/Record Event" should extend that CHECK constraint deliberately, with
+  its own migration, rather than working around it.
+- **The Today-on-the-Farm "Water Attention" read model is deliberately
+  conservative** (`app/services/water_attention_service.py`): it flags
+  only an active Circuit missing current topology, an instrument never
+  calibrated, and a measurement outside its Recipe's target EC/pH by more
+  than a documented ±10% tolerance band. It does not flag "measurement
+  overdue" (no explicit measurement-frequency rule exists anywhere in this
+  domain to check against) — inventing a cadence rule was out of scope;
+  if a future ticket defines one (e.g. on `SamplingPoint` or `Reservoir`),
+  extending this read model to use it is straightforward.
+- **Nutrient Recipe administration is a separate top-level
+  `/nutrient-recipes` catalog page**, not nested inside a single Farm's
+  Water & Nutrients workspace, mirroring Growing Protocols' own existing
+  tenant-wide route shape exactly (a Recipe is reusable across every Farm
+  in the tenant, the same way a Growing Protocol is).
+- **Farm-wide list endpoints added in 001B are unfiltered by design**
+  (current AND historical topology-link rows together; all Reservoirs'/
+  Circuits' Mixes/Events/Deliveries together) — the frontend applies its
+  own display filters (metric, reservoir, time window) client-side or via
+  query params rather than the backend maintaining a second, narrower
+  "active only" variant of each list.
+
 ## Location-first scan validation (PILOT-SCAN-001F)
 
 - **After this ticket, PILOT-SCAN-001 has no remaining substantive QR pilot blocker**, unless implementation of a later, currently-unplanned ticket discovers one. The scan-first pilot flow is now complete end to end: SCAN → resolve authoritative entity/context → (optionally) establish/compare a working location → operator deliberately selects an action → destination operation opens with the scanned (and, where applicable, location-validated) context already applied. Audit-history/QR-management dashboard UI remains explicitly post-pilot (see PILOT-SCAN-001E's own note above) — it was never a blocker and still is not one.

@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import TenantContext
@@ -51,3 +52,19 @@ def list_measurements(
     ctx: TenantContext = Depends(require_permission(Permission.WATER_MEASUREMENT_READ)),
 ) -> list[WaterMeasurementRead]:
     return water_instrument_service.list_measurements(db, tenant_id=ctx.tenant_id, sampling_point_id=sampling_point_id)
+
+
+@router.get("/farms/{farm_id}/water-measurements", response_model=list[WaterMeasurementRead])
+def list_measurements_for_farm(
+    farm_id: uuid.UUID,
+    metric: str | None = Query(default=None),
+    reservoir_id: uuid.UUID | None = Query(default=None),
+    window_start: datetime | None = Query(default=None),
+    window_end: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WATER_MEASUREMENT_READ)),
+) -> list[WaterMeasurementRead]:
+    return water_instrument_service.list_measurements_for_farm(
+        db, tenant_id=ctx.tenant_id, farm_id=farm_id, metric=metric, reservoir_id=reservoir_id,
+        window_start=window_start, window_end=window_end,
+    )

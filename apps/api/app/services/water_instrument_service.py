@@ -10,7 +10,7 @@ at `InstrumentCalibrationEvent` history, never at `WaterMeasurement`.
 
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -105,9 +105,11 @@ def list_water_instruments(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.U
 
 def record_calibration(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID,
-    water_instrument_id: uuid.UUID, metric: str, effective_at: datetime, result: str,
+    water_instrument_id: uuid.UUID, metric: str, effective_at: datetime | None, result: str,
     standard_reference: str | None, notes: str | None, client_command_id: uuid.UUID,
 ) -> InstrumentCalibrationEvent:
+    """PILOT-WATER-001B: `effective_at=None` is "record now" -- see
+    `record_measurement`'s own identical HOTFIX-TIME-002 note."""
     get_water_instrument(db, tenant_id=tenant_id, water_instrument_id=water_instrument_id)
     fingerprint = _fingerprint(tenant_id, water_instrument_id, metric, effective_at, result, standard_reference)
 
@@ -121,6 +123,11 @@ def record_calibration(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise InstrumentCalibrationValidationError(f"client_command_id {client_command_id} reused with a different payload")
+
+    if effective_at is None:
+        effective_at = datetime.now(timezone.utc)
+    elif effective_at > datetime.now(timezone.utc):
+        raise InstrumentCalibrationValidationError("effective_at cannot be in the future")
 
     event = InstrumentCalibrationEvent(
         tenant_id=tenant_id, farm_id=farm_id, water_instrument_id=water_instrument_id, metric=metric,
@@ -196,9 +203,16 @@ def instrument_calibration_status(db: Session, *, tenant_id: uuid.UUID, water_in
 
 def record_measurement(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, sampling_point_id: uuid.UUID,
-    metric: str, value, unit: str, effective_at: datetime, water_instrument_id: uuid.UUID | None, notes: str | None,
-    client_command_id: uuid.UUID,
+    metric: str, value, unit: str, effective_at: datetime | None, water_instrument_id: uuid.UUID | None,
+    notes: str | None, client_command_id: uuid.UUID,
 ):
+    """PILOT-WATER-001B (HOTFIX-TIME-002 pattern): `effective_at=None` is
+    "record now" -- resolved to the server's own authoritative
+    `datetime.now(timezone.utc)` only after the idempotency check below
+    confirms this is a genuinely new command (never part of the
+    fingerprint itself), so a retry of the same NOW command always replays
+    the original measurement rather than being rejected as "reused with a
+    different payload" or creating a second row."""
     sampling_point = db.execute(
         select(SamplingPoint).where(SamplingPoint.id == sampling_point_id, SamplingPoint.tenant_id == tenant_id)
     ).scalar_one_or_none()
@@ -226,6 +240,11 @@ def record_measurement(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise WaterMeasurementValidationError(f"client_command_id {client_command_id} reused with a different payload")
+
+    if effective_at is None:
+        effective_at = datetime.now(timezone.utc)
+    elif effective_at > datetime.now(timezone.utc):
+        raise WaterMeasurementValidationError("effective_at cannot be in the future")
 
     measurement = WaterMeasurement(
         tenant_id=tenant_id, farm_id=farm_id, sampling_point_id=sampling_point_id, metric=metric, value=value,
@@ -273,3 +292,31 @@ def list_measurements(
             .limit(limit)
         ).scalars()
     )
+
+
+def list_measurements_for_farm(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, metric: str | None = None,
+    reservoir_id: uuid.UUID | None = None, window_start=None, window_end=None, limit: int = 200,
+):
+    """PILOT-WATER-001B: farm-wide, optionally filtered -- powers both the
+    Overview workspace's "latest key measurements" and the dedicated
+    Measurement History page's Sampling Point/Reservoir/metric/time-window
+    filters (section 12), rather than two separate reads. `reservoir_id`
+    filters through `SamplingPoint.reservoir_id` (only meaningful for
+    reservoir-anchored Sampling Points; a source/circuit/delivery/drain
+    -anchored point is simply excluded when this filter is set, never
+    silently misattributed to a Reservoir it isn't anchored to)."""
+    from app.models.water_measurement import WaterMeasurement
+
+    query = select(WaterMeasurement).where(WaterMeasurement.tenant_id == tenant_id, WaterMeasurement.farm_id == farm_id)
+    if metric is not None:
+        query = query.where(WaterMeasurement.metric == metric)
+    if window_start is not None:
+        query = query.where(WaterMeasurement.effective_at >= window_start)
+    if window_end is not None:
+        query = query.where(WaterMeasurement.effective_at <= window_end)
+    if reservoir_id is not None:
+        query = query.join(SamplingPoint, SamplingPoint.id == WaterMeasurement.sampling_point_id).where(
+            SamplingPoint.reservoir_id == reservoir_id
+        )
+    return list(db.execute(query.order_by(WaterMeasurement.effective_at.desc()).limit(limit)).scalars())
