@@ -38,6 +38,7 @@ import type {
   GrowingProtocolCreate,
   GrowingProtocolVersionActivateIn,
   GrowingProtocolVersionCreate,
+  GrowingProtocolVersionRead,
   GrowingProtocolVersionRetireIn,
   ProtocolObservationRequirementCreate,
   ProtocolCareActivityCreate,
@@ -119,6 +120,7 @@ import type {
   ShiftHandoverCreate,
   SowNewBatchCreate,
   VarietyCreate,
+  VarietyRead,
   VinesProductionTransferCreate,
   RecordVinesGrowCubeDispositionCreate,
   CorrectVinesGrowCubeDispositionCreate,
@@ -467,6 +469,33 @@ export function useVarieties(cropId: string | undefined) {
     staleTime: STALE_REFERENCE_MS,
     enabled: Boolean(tenantId) && Boolean(cropId),
   });
+}
+
+/** There is no tenant-wide "list all Varieties" endpoint -- Varieties are
+ * only listable scoped per-Crop (`/crops/{cropId}/varieties`) -- so a
+ * screen that needs Variety names across several Crops at once (the
+ * Growing Protocol list's own "Variety" column) resolves them via a bounded
+ * `useQueries` fan-out over the small set of distinct Crop ids already
+ * present, mirroring `useGradeVersionLabelMap`'s own established pattern.
+ * Shares the same per-Crop query keys `useVarieties` subscribes to. */
+export function useVarietiesForCrops(cropIds: string[]): {
+  varietyById: Record<string, VarietyRead>;
+  isLoading: boolean;
+} {
+  const tenantId = useSelectedTenantId();
+  const varietyQueries = useQueries({
+    queries: cropIds.map((cropId) => ({
+      queryKey: queryKeys.varieties(tenantId ?? "", cropId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listVarieties(cropId, signal),
+      staleTime: STALE_REFERENCE_MS,
+      enabled: Boolean(tenantId) && Boolean(cropId),
+    })),
+  });
+  const varietyById: Record<string, VarietyRead> = {};
+  for (const q of varietyQueries) {
+    for (const v of q.data ?? []) varietyById[v.id] = v;
+  }
+  return { varietyById, isLoading: varietyQueries.some((q) => q.isLoading) };
 }
 
 export function useCreateCrop() {
@@ -3948,6 +3977,33 @@ export function useProtocolVersion(protocolId: string | undefined, versionId: st
     staleTime: STALE_DETAIL_MS,
     enabled: Boolean(tenantId) && Boolean(protocolId) && Boolean(versionId),
   });
+}
+
+/** Same rationale/pattern as `useGradeVersionLabelMap`: fans `useQueries`
+ * out over every Growing Protocol already loaded by the caller (tenant-wide
+ * master-data catalog scale, not per-Batch operational scale) to resolve
+ * each Protocol's currently ACTIVE Version, for the Protocol list's
+ * "Active Version" column. Shares the same per-protocol version query keys
+ * `useProtocolVersions` subscribes to, so this never doubles requests when
+ * both are mounted. */
+export function useProtocolActiveVersionMap(protocolIds: string[]): {
+  activeVersionByProtocolId: Record<string, GrowingProtocolVersionRead | undefined>;
+  isLoading: boolean;
+} {
+  const tenantId = useSelectedTenantId();
+  const versionQueries = useQueries({
+    queries: protocolIds.map((protocolId) => ({
+      queryKey: queryKeys.protocolVersions(tenantId ?? "", protocolId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.listProtocolVersions(protocolId, signal),
+      staleTime: STALE_LIST_MS,
+      enabled: Boolean(tenantId) && Boolean(protocolId),
+    })),
+  });
+  const activeVersionByProtocolId: Record<string, GrowingProtocolVersionRead | undefined> = {};
+  protocolIds.forEach((protocolId, i) => {
+    activeVersionByProtocolId[protocolId] = versionQueries[i]?.data?.find((v) => v.state === "active");
+  });
+  return { activeVersionByProtocolId, isLoading: versionQueries.some((q) => q.isLoading) };
 }
 
 function useInvalidateProtocolVersions(protocolId: string) {
