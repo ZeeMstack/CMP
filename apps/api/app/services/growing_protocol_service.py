@@ -834,3 +834,55 @@ def get_batch_protocol_status(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
         "due_observation_requirements": requirements_out,
         "open_crop_issue_count": open_issue_count,
     }
+
+
+def list_farm_protocol_due_summary(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> list[dict]:
+    """PILOT-AGRO-001B: Today on the Farm's "Inspections Due" read model.
+
+    Genuinely missing shape before this ticket: `get_batch_protocol_status`
+    above is per-Batch only, and there is no client-visible way to learn
+    which Batches on a Farm currently need an inspection without the
+    frontend fanning out one call per active Batch (a real N+1). This does
+    the same fan-out server-side instead -- one small, bounded loop reusing
+    `get_batch_protocol_status` unchanged (never a duplicate due-computation
+    implementation) -- and returns only currently-active Batches that HAVE a
+    protocol assigned. A Batch with no protocol assigned at all is
+    deliberately NOT reported as an agronomy-attention item here: whether
+    every Batch is expected to carry a protocol is a product policy this
+    ticket has no authority to invent (CLAUDE.md "Authority and Stop
+    Conditions") -- that stays visible on the Batch's own Protocol panel
+    instead ("No growing protocol assigned"), never synthesized into a
+    farm-wide alert list."""
+    batch_ids = list(
+        db.execute(
+            select(BatchProtocolAssignment.batch_id)
+            .join(CropBatch, CropBatch.id == BatchProtocolAssignment.batch_id)
+            .where(
+                BatchProtocolAssignment.tenant_id == tenant_id,
+                BatchProtocolAssignment.effective_to.is_(None),
+                CropBatch.farm_id == farm_id,
+                CropBatch.state == "active",
+            )
+        ).scalars()
+    )
+    summary: list[dict] = []
+    for batch_id in batch_ids:
+        status = get_batch_protocol_status(db, tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id)
+        due = status["due_observation_requirements"]
+        overdue_count = sum(1 for r in due if r["is_overdue"])
+        due_count = sum(1 for r in due if r["is_due"])
+        if due_count == 0 and status["open_crop_issue_count"] == 0:
+            continue
+        batch = db.get(CropBatch, batch_id)
+        summary.append(
+            {
+                "batch_id": batch_id,
+                "batch_code": batch.code,
+                "protocol": status["protocol"],
+                "protocol_version": status["protocol_version"],
+                "due_count": due_count,
+                "overdue_count": overdue_count,
+                "open_crop_issue_count": status["open_crop_issue_count"],
+            }
+        )
+    return summary

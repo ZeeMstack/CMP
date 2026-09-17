@@ -469,6 +469,11 @@ def resolve_scan_context(
             actions.append(ScanAction(label="Record Observation", href=f"/farms/{farm_id}/observations?batchId={entity_id}"))
         if may("harvest.manage"):
             actions.append(ScanAction(label="Harvest", href=f"/farms/{farm_id}/leafy-production/harvest?batchId={entity_id}"))
+        # PILOT-AGRO-001B: Batch QR opens Batch-level Inspect Crop context --
+        # never a specific placement (the operator chooses one in the
+        # workspace itself, or scans a Placement/Carrier QR for that).
+        if may("crop_inspection.manage"):
+            actions.append(ScanAction(label="Inspect Crop", href=f"/farms/{farm_id}/production/inspect?batchId={entity_id}"))
         if may("traceability.read"):
             actions.append(ScanAction(label="View traceability", href=f"/farms/{farm_id}/traceability?entryType=crop-batch&id={entity_id}"))
         return CropBatchScanContext(
@@ -538,6 +543,18 @@ def resolve_scan_context(
                     href=f"/farms/{farm_id}/observations?batchId={current_batch.id}&assignmentId={assignment.id}",
                 )
             )
+        # PILOT-AGRO-001B: a Carrier QR must inspect its CURRENT occupant
+        # only -- `assignment` above is already `sowing_service.
+        # get_carrier_batch_assignment`'s current (unreleased) placement, so
+        # a reused Carrier whose earlier Batch has since been released here
+        # naturally never offers Inspect Crop for that historical Batch.
+        if current_batch is not None and may("crop_inspection.manage"):
+            actions.append(
+                ScanAction(
+                    label="Inspect Crop",
+                    href=f"/farms/{farm_id}/production/inspect?batchId={current_batch.id}&assignmentId={assignment.id}",
+                )
+            )
         actions.append(ScanAction(label="View current occupancy", href=f"/farms/{farm_id}/carriers"))
         return CarrierScanContext(
             **common,
@@ -590,6 +607,19 @@ def resolve_scan_context(
                 ScanAction(
                     label="Harvest",
                     href=f"/farms/{farm_id}/leafy-production/harvest?assignmentId={entity_id}&batchId={batch.id}",
+                )
+            )
+        # PILOT-AGRO-001B: a historical Placement QR (already released) must
+        # never offer current Inspect Crop -- gated on `released_effective_
+        # time is None` exactly like Harvest above. `assignmentId` is kept
+        # narrow (the exact physical placement this QR identifies), never
+        # widened to a bare `batchId` link -- same reasoning as Harvest's own
+        # comment just above.
+        if assignment.released_effective_time is None and may("crop_inspection.manage"):
+            actions.append(
+                ScanAction(
+                    label="Inspect Crop",
+                    href=f"/farms/{farm_id}/production/inspect?assignmentId={entity_id}&batchId={batch.id}",
                 )
             )
         return BatchCarrierAssignmentScanContext(

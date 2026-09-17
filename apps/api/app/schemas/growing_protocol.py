@@ -218,6 +218,21 @@ class BatchProtocolStatusRead(BaseModel):
     open_crop_issue_count: int
 
 
+class FarmProtocolDueSummaryItem(BaseModel):
+    """One row of PILOT-AGRO-001B's Today-on-the-Farm "Inspections Due" read
+    model -- a currently-active Batch that has a Protocol assigned and
+    currently has something due or an open Crop Issue. Never persisted;
+    recomputed fresh on every read, same as `BatchProtocolStatusRead`."""
+
+    batch_id: uuid.UUID
+    batch_code: str
+    protocol: GrowingProtocolRead | None
+    protocol_version: GrowingProtocolVersionRead | None
+    due_count: int
+    overdue_count: int
+    open_crop_issue_count: int
+
+
 class DueRequirementRead(BaseModel):
     """One deterministic due/deviation read for a single Protocol
     Observation Requirement against one Batch -- section 18: age informs

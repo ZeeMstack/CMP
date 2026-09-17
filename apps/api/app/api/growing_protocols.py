@@ -11,6 +11,7 @@ from app.schemas.growing_protocol import (
     BatchProtocolAssignmentRead,
     BatchProtocolStatusRead,
     DueRequirementRead,
+    FarmProtocolDueSummaryItem,
     GrowingProtocolCreate,
     GrowingProtocolRead,
     GrowingProtocolVersionActivateIn,
@@ -362,3 +363,29 @@ def get_batch_protocol_status(
         ],
         open_crop_issue_count=status_data["open_crop_issue_count"],
     )
+
+
+@router.get(
+    "/farms/{farm_id}/growing-protocols/due-summary", response_model=list[FarmProtocolDueSummaryItem]
+)
+def get_farm_protocol_due_summary(
+    farm_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.GROWING_PROTOCOL_READ)),
+) -> list[FarmProtocolDueSummaryItem]:
+    """Today on the Farm's "Inspections Due" section -- see
+    `growing_protocol_service.list_farm_protocol_due_summary`'s own
+    docstring for exactly what is (and deliberately is not) included."""
+    rows = growing_protocol_service.list_farm_protocol_due_summary(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+    return [
+        FarmProtocolDueSummaryItem(
+            batch_id=r["batch_id"], batch_code=r["batch_code"],
+            protocol=GrowingProtocolRead.model_validate(r["protocol"]) if r["protocol"] else None,
+            protocol_version=(
+                GrowingProtocolVersionRead.model_validate(r["protocol_version"]) if r["protocol_version"] else None
+            ),
+            due_count=r["due_count"], overdue_count=r["overdue_count"],
+            open_crop_issue_count=r["open_crop_issue_count"],
+        )
+        for r in rows
+    ]

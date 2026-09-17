@@ -86,6 +86,7 @@ export function CreateWorkItemForm({
   batchOptions = [],
   assetOptions = [],
   carrierOptions = [],
+  lockedCropIssue,
 }: {
   onSubmit: (payload: FarmWorkItemCreate) => void;
   onCancel: () => void;
@@ -96,6 +97,11 @@ export function CreateWorkItemForm({
   batchOptions?: WorkItemContextOption[];
   assetOptions?: WorkItemContextOption[];
   carrierOptions?: WorkItemContextOption[];
+  /** PILOT-AGRO-001B: set when opened from a Crop Issue's "Assign
+   * corrective work" action -- fixes `crop_issue_id` (and its Batch, when
+   * known) as read-only context rather than an editable dropdown, since
+   * the backend accepts `crop_issue_id` only at creation, never retrofit. */
+  lockedCropIssue?: { id: string; code: string; batchId?: string; batchLabel?: string };
 }) {
   const [showContext, setShowContext] = useState(false);
   const {
@@ -106,7 +112,12 @@ export function CreateWorkItemForm({
     formState: { errors },
   } = useForm<FarmWorkItemFormValues>({
     resolver: zodResolver(farmWorkItemFormSchema),
-    defaultValues: DEFAULT_FARM_WORK_ITEM_FORM_VALUES,
+    defaultValues: {
+      ...DEFAULT_FARM_WORK_ITEM_FORM_VALUES,
+      category: lockedCropIssue ? "crop_care" : DEFAULT_FARM_WORK_ITEM_FORM_VALUES.category,
+      cropIssueId: lockedCropIssue?.id ?? null,
+      cropBatchId: lockedCropIssue?.batchId ?? null,
+    },
     mode: "onBlur",
   });
 
@@ -127,6 +138,12 @@ export function CreateWorkItemForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+      {lockedCropIssue && (
+        <p className="rounded-md bg-wl-surface-sunken px-3 py-2 text-xs text-wl-text-secondary">
+          Corrective work for Crop Issue <span className="font-medium text-wl-text">{lockedCropIssue.code}</span>
+          {lockedCropIssue.batchLabel ? ` · ${lockedCropIssue.batchLabel}` : ""}
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Title" error={errors.title?.message}>
           <input {...register("title")} className={inputClass} placeholder="Clean Germination Trolley 03" />
@@ -183,12 +200,14 @@ export function CreateWorkItemForm({
             options={locationOptions}
             onChange={(v) => setValue("locationId", v || null)}
           />
-          <ContextSelect
-            label="Batch"
-            value={cropBatchId ?? ""}
-            options={batchOptions}
-            onChange={(v) => setValue("cropBatchId", v || null)}
-          />
+          {!lockedCropIssue && (
+            <ContextSelect
+              label="Batch"
+              value={cropBatchId ?? ""}
+              options={batchOptions}
+              onChange={(v) => setValue("cropBatchId", v || null)}
+            />
+          )}
           <ContextSelect
             label="Asset"
             value={assetId ?? ""}

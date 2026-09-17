@@ -129,6 +129,10 @@ const WITHHELD_UNDER_MISMATCH: ReadonlySet<string> = new Set([
   "Pack",
   "Dispatch",
   "Cold Storage",
+  // PILOT-AGRO-001B Part 10: MISMATCH must never present Inspect Crop as
+  // location-validated -- same withholding as every other physical-action
+  // link in this set.
+  "Inspect Crop",
 ]);
 
 export function filterActionsForLocationValidation<T extends { label: string }>(

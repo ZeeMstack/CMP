@@ -177,6 +177,13 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
         { label: "Production Systems", href: "/production-systems", section: "Company catalogs" },
         { label: "Workflows", href: "/workflows", section: "Company catalogs" },
         { label: "Grade Definitions", href: "/grade-definitions", section: "Company catalogs" },
+        // PILOT-AGRO-001B: tenant-wide, same reasoning as every other
+        // "Company catalogs" entry -- a Growing Protocol is shared across
+        // every Farm the tenant has, never Farm-scoped. Deliberately not
+        // `/farms/${farmId}/setup/growing-protocols` (Part 13: protocol
+        // administration is secondary to floor operations, and every
+        // sibling master-data catalog in this group is already top-level).
+        { label: "Growing Protocols", href: "/growing-protocols", section: "Company catalogs" },
         { label: "Packaging Units", href: "/packaging-units", section: "Company catalogs" },
         { label: "Pack Specifications", href: "/pack-specifications", section: "Company catalogs" },
         // AUTHZ-OPS-001: tenant-wide (no farmId), same reasoning as every

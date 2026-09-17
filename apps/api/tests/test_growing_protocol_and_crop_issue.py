@@ -727,3 +727,67 @@ def test_stage_sequence_index_disambiguates_same_category_stages(db_session, act
     assert status_at_occurrence_2["current_stage_occurrence_index"] == 2
     due_defs_2 = {r["requirement"].observation_definition_id for r in status_at_occurrence_2["due_observation_requirements"]}
     assert due_defs_2 == {definition_2.id}, "only occurrence 2's own requirement should apply, never occurrence 1's"
+
+
+# --- PILOT-AGRO-001B: farm-wide "Inspections Due" summary (Today on the Farm) -------------
+
+
+def test_farm_due_summary_includes_batch_with_due_requirement(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    scenario = _build_scenario(db_session, tenant, user, farm)
+    protocol = _register_protocol(db_session, tenant, user, scenario)
+    definition = _register_observation_definition(db_session, tenant, user, value_type="text", target_scope="crop_batch")
+
+    draft = growing_protocol_service.create_draft_version(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id,
+        client_command_id=uuid.uuid4(), reason="with requirement", effective_date=None,
+    )
+    growing_protocol_service.add_observation_requirement(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id,
+        version_id=draft.id, stage_category="seeding", observation_definition_id=definition.id,
+        requirement_level="required", frequency_days=None, due_window_start_days=0, due_window_end_days=0,
+        instructions=None, escalation_guidance=None, display_order=0,
+    )
+    active_version = growing_protocol_service.activate_version(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, growing_protocol_id=protocol.id,
+        version_id=draft.id, client_command_id=uuid.uuid4(),
+    )
+    growing_protocol_service.assign_batch_protocol(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=scenario["batch"].id,
+        growing_protocol_version_id=active_version.id, effective_from=None, reason=None, client_command_id=uuid.uuid4(),
+    )
+
+    summary = growing_protocol_service.list_farm_protocol_due_summary(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert len(summary) == 1
+    assert summary[0]["batch_id"] == scenario["batch"].id
+    assert summary[0]["due_count"] == 1
+    assert summary[0]["protocol"].id == protocol.id
+
+
+def test_farm_due_summary_excludes_batch_with_nothing_due(db_session, active_context_with_farm) -> None:
+    """A Batch whose assigned Protocol Version carries no requirements for
+    its current stage, and has no open Crop Issue, must not clutter the
+    farm-wide "Inspections Due" list -- only genuinely actionable rows
+    belong here."""
+    tenant, user, _headers, farm = active_context_with_farm
+    scenario = _build_scenario(db_session, tenant, user, farm)
+    protocol = _register_protocol(db_session, tenant, user, scenario)
+    active_version = _create_and_activate_version(db_session, tenant, user, protocol)
+    growing_protocol_service.assign_batch_protocol(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=scenario["batch"].id,
+        growing_protocol_version_id=active_version.id, effective_from=None, reason=None, client_command_id=uuid.uuid4(),
+    )
+
+    summary = growing_protocol_service.list_farm_protocol_due_summary(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert summary == []
+
+
+def test_farm_due_summary_excludes_batch_with_no_protocol_assigned(db_session, active_context_with_farm) -> None:
+    """No protocol assigned is a fact shown on the Batch's own Protocol
+    panel -- never synthesized into a farm-wide alert row (no policy exists
+    for which Batches are "supposed to" carry a protocol)."""
+    tenant, user, _headers, farm = active_context_with_farm
+    _build_scenario(db_session, tenant, user, farm)
+
+    summary = growing_protocol_service.list_farm_protocol_due_summary(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert summary == []

@@ -35,6 +35,20 @@ import type {
   GradingEventCreate,
   GradingReversalEventCreate,
   GreenhouseSetupCreate,
+  GrowingProtocolCreate,
+  GrowingProtocolVersionActivateIn,
+  GrowingProtocolVersionCreate,
+  GrowingProtocolVersionRetireIn,
+  ProtocolObservationRequirementCreate,
+  ProtocolCareActivityCreate,
+  BatchProtocolAssignIn,
+  GrowerInspectionCreate,
+  CropIssueOpenIn,
+  CropIssueUpdateIn,
+  CropIssueConfirmDiagnosisIn,
+  CropIssueResolveIn,
+  CropIssueCloseIn,
+  CropIssueFollowUpIn,
   IntersaladsTransplantCreate,
   IntervinesTransplantCreate,
   InventoryCategoryCreate,
@@ -3847,6 +3861,364 @@ export function usePrintQrLabel(token: string) {
     onSuccess: () => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.qrScan(tenantId, token) });
+    },
+  });
+}
+
+// --- PILOT-AGRO-001B: Growing Protocols, Grower Inspections, Crop Issues ----
+
+export function useGrowingProtocols() {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.growingProtocols(tenantId ?? ""),
+    queryFn: ({ signal }) => api.listGrowingProtocols(signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useGrowingProtocol(protocolId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.growingProtocol(tenantId ?? "", protocolId ?? ""),
+    queryFn: ({ signal }) => api.getGrowingProtocol(protocolId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(protocolId),
+  });
+}
+
+export function useCreateGrowingProtocol() {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrowingProtocolCreate) => api.createGrowingProtocol(payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.growingProtocols(tenantId) });
+    },
+  });
+}
+
+export function useProtocolVersions(protocolId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.protocolVersions(tenantId ?? "", protocolId ?? ""),
+    queryFn: ({ signal }) => api.listProtocolVersions(protocolId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(protocolId),
+  });
+}
+
+export function useProtocolVersion(protocolId: string | undefined, versionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.protocolVersion(tenantId ?? "", protocolId ?? "", versionId ?? ""),
+    queryFn: ({ signal }) => api.getProtocolVersion(protocolId as string, versionId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(protocolId) && Boolean(versionId),
+  });
+}
+
+function useInvalidateProtocolVersions(protocolId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (versionId?: string) => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.protocolVersions(tenantId, protocolId) });
+    if (versionId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.protocolVersion(tenantId, protocolId, versionId) });
+    }
+  };
+}
+
+export function useCreateProtocolVersion(protocolId: string) {
+  const invalidate = useInvalidateProtocolVersions(protocolId);
+  return useMutation({
+    mutationFn: (payload: GrowingProtocolVersionCreate) => api.createProtocolVersion(protocolId, payload),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Activation retires the previously-ACTIVE version in the same backend
+ * transaction (FROZEN: one ACTIVE version per Protocol) -- invalidating the
+ * whole version list is what picks up that retirement in the UI, not just
+ * the newly-activated version's own detail key. */
+export function useActivateProtocolVersion(protocolId: string) {
+  const invalidate = useInvalidateProtocolVersions(protocolId);
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GrowingProtocolVersionActivateIn }) =>
+      api.activateProtocolVersion(protocolId, versionId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.versionId),
+  });
+}
+
+export function useRetireProtocolVersion(protocolId: string) {
+  const invalidate = useInvalidateProtocolVersions(protocolId);
+  return useMutation({
+    mutationFn: ({ versionId, payload }: { versionId: string; payload: GrowingProtocolVersionRetireIn }) =>
+      api.retireProtocolVersion(protocolId, versionId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.versionId),
+  });
+}
+
+export function useProtocolObservationRequirements(protocolId: string | undefined, versionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.protocolObservationRequirements(tenantId ?? "", protocolId ?? "", versionId ?? ""),
+    queryFn: ({ signal }) =>
+      api.listProtocolObservationRequirements(protocolId as string, versionId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(protocolId) && Boolean(versionId),
+  });
+}
+
+export function useAddProtocolObservationRequirement(protocolId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProtocolObservationRequirementCreate) =>
+      api.addProtocolObservationRequirement(protocolId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.protocolObservationRequirements(tenantId, protocolId, versionId),
+      });
+    },
+  });
+}
+
+export function useProtocolCareActivities(protocolId: string | undefined, versionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.protocolCareActivities(tenantId ?? "", protocolId ?? "", versionId ?? ""),
+    queryFn: ({ signal }) => api.listProtocolCareActivities(protocolId as string, versionId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(protocolId) && Boolean(versionId),
+  });
+}
+
+export function useAddProtocolCareActivity(protocolId: string, versionId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProtocolCareActivityCreate) => api.addProtocolCareActivity(protocolId, versionId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.protocolCareActivities(tenantId, protocolId, versionId) });
+    },
+  });
+}
+
+export function useBatchProtocolAssignments(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.batchProtocolAssignments(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listBatchProtocolAssignments(farmId, batchId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+/** Batch Protocol context panel's one compact read -- current assignment
+ * plus the deterministic due/deviation computation, never a persisted
+ * fact (FROZEN: age/timing guidance never advances a Batch). */
+export function useBatchProtocolStatus(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.batchProtocolStatus(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.getBatchProtocolStatus(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+/** Today on the Farm's "Inspections Due" section. */
+export function useFarmProtocolDueSummary(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.farmProtocolDueSummary(tenantId ?? "", farmId),
+    queryFn: ({ signal }) => api.getFarmProtocolDueSummary(farmId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+/** Assigning (or reassigning) a Batch's Protocol Version changes both the
+ * assignment history and the derived status read -- invalidates both, plus
+ * the farm-wide due summary (a newly-assigned Batch can immediately have
+ * something due). Never invalidates the Batch's own operational-context/
+ * stage query -- assignment never touches Batch state (FROZEN). */
+export function useAssignBatchProtocol(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: BatchProtocolAssignIn) => api.assignBatchProtocol(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchProtocolAssignments(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchProtocolStatus(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.farmProtocolDueSummary(tenantId, farmId) });
+    },
+  });
+}
+
+export function useGrowerInspections(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.growerInspections(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listGrowerInspections(farmId, batchId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+export function useGrowerInspection(farmId: string, batchId: string | undefined, inspectionId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.growerInspection(tenantId ?? "", farmId, batchId ?? "", inspectionId ?? ""),
+    queryFn: ({ signal }) => api.getGrowerInspection(farmId, batchId as string, inspectionId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId) && Boolean(inspectionId),
+  });
+}
+
+/** Recording an Inspection can satisfy due Observation Requirements (in the
+ * SAME atomic backend command, when observation values are included) and
+ * can change the Batch's open-issue-eligible context, so this invalidates
+ * the inspection list, the Batch's protocol status (its due/overdue state
+ * may have just changed), and the farm-wide due summary. */
+export function useRecordGrowerInspection(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrowerInspectionCreate) => api.recordGrowerInspection(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.growerInspections(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchProtocolStatus(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.farmProtocolDueSummary(tenantId, farmId) });
+    },
+  });
+}
+
+/** `batchId` omitted lists every open-attention Crop Issue farm-wide
+ * (Today on the Farm's "Crop Attention" section). */
+export function useCropIssues(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cropIssues(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.listCropIssues(farmId, batchId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId),
+  });
+}
+
+export function useCropIssue(farmId: string, cropIssueId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cropIssue(tenantId ?? "", farmId, cropIssueId ?? ""),
+    queryFn: ({ signal }) => api.getCropIssue(farmId, cropIssueId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(cropIssueId),
+  });
+}
+
+export function useCropIssueFollowUps(farmId: string, cropIssueId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.cropIssueFollowUps(tenantId ?? "", farmId, cropIssueId ?? ""),
+    queryFn: ({ signal }) => api.listCropIssueFollowUps(farmId, cropIssueId as string, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(cropIssueId),
+  });
+}
+
+/** Every Crop Issue mutation below invalidates the farm-wide list (both the
+ * unfiltered and this issue's own Batch-filtered variant), the issue's own
+ * detail, and the farm-wide due summary (`open_crop_issue_count` feeds
+ * into it) -- mirroring `useInvalidateWorkItems`'s single-invalidation-
+ * target convention. */
+function useInvalidateCropIssues(farmId: string, batchId?: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return (cropIssueId?: string) => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.cropIssues(tenantId, farmId, "") });
+    if (batchId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cropIssues(tenantId, farmId, batchId) });
+    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.farmProtocolDueSummary(tenantId, farmId) });
+    if (cropIssueId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.cropIssue(tenantId, farmId, cropIssueId) });
+    }
+  };
+}
+
+/** Opening an Issue always originates from a Grower Inspection (backend-
+ * required) -- `batchId` is passed through purely so this Batch's own
+ * Batch-filtered Crop Issue list cache is invalidated too. */
+export function useOpenCropIssue(farmId: string, batchId?: string) {
+  const invalidate = useInvalidateCropIssues(farmId, batchId);
+  return useMutation({
+    mutationFn: (payload: CropIssueOpenIn) => api.openCropIssue(farmId, payload),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useUpdateCropIssue(farmId: string) {
+  const invalidate = useInvalidateCropIssues(farmId);
+  return useMutation({
+    mutationFn: ({ cropIssueId, payload }: { cropIssueId: string; payload: CropIssueUpdateIn }) =>
+      api.updateCropIssue(farmId, cropIssueId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.cropIssueId),
+  });
+}
+
+/** Confirming a diagnosis never reads/copies `suspected_cause` (FROZEN:
+ * suspected != confirmed) -- enforced entirely backend-side; this hook is
+ * purely plumbing. */
+export function useConfirmCropIssueDiagnosis(farmId: string) {
+  const invalidate = useInvalidateCropIssues(farmId);
+  return useMutation({
+    mutationFn: ({ cropIssueId, payload }: { cropIssueId: string; payload: CropIssueConfirmDiagnosisIn }) =>
+      api.confirmCropIssueDiagnosis(farmId, cropIssueId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.cropIssueId),
+  });
+}
+
+export function useResolveCropIssue(farmId: string) {
+  const invalidate = useInvalidateCropIssues(farmId);
+  return useMutation({
+    mutationFn: ({ cropIssueId, payload }: { cropIssueId: string; payload: CropIssueResolveIn }) =>
+      api.resolveCropIssue(farmId, cropIssueId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.cropIssueId),
+  });
+}
+
+/** Only reachable from `status: "resolved"` -- the backend enforces
+ * OPEN -> RESOLVED -> CLOSED (FROZEN: never a direct OPEN -> CLOSED). */
+export function useCloseCropIssue(farmId: string) {
+  const invalidate = useInvalidateCropIssues(farmId);
+  return useMutation({
+    mutationFn: ({ cropIssueId, payload }: { cropIssueId: string; payload: CropIssueCloseIn }) =>
+      api.closeCropIssue(farmId, cropIssueId, payload),
+    onSuccess: (_data, variables) => invalidate(variables.cropIssueId),
+  });
+}
+
+/** FROZEN: a FollowUp outcome of RESOLVED never auto-resolves the Issue --
+ * this only invalidates the follow-up list and the issue detail (its
+ * `is_follow_up_overdue` overlay may have changed), never the Issue's own
+ * status. */
+export function useRecordCropIssueFollowUp(farmId: string, cropIssueId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CropIssueFollowUpIn) => api.recordCropIssueFollowUp(farmId, cropIssueId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.cropIssueFollowUps(tenantId, farmId, cropIssueId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.cropIssue(tenantId, farmId, cropIssueId) });
     },
   });
 }
