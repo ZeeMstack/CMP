@@ -2521,3 +2521,138 @@ class CropIssueInvalidTransitionError(DomainError):
 
 class CropIssueFollowUpCommandReusedWithDifferentPayloadError(DomainError):
     pass
+
+
+# --- PILOT-WATER-001A: water/nutrient domain foundation -----------------------------
+
+
+class WaterSourceNotFoundError(DomainError):
+    pass
+
+
+class DuplicateWaterSourceCodeError(DomainError):
+    pass
+
+
+class ReservoirNotFoundError(DomainError):
+    pass
+
+
+class DuplicateReservoirCodeError(DomainError):
+    pass
+
+
+class IrrigationCircuitNotFoundError(DomainError):
+    pass
+
+
+class DuplicateIrrigationCircuitCodeError(DomainError):
+    pass
+
+
+class WaterDeliveryPointNotFoundError(DomainError):
+    pass
+
+
+class DuplicateWaterDeliveryPointCodeError(DomainError):
+    pass
+
+
+class WaterReturnPointNotFoundError(DomainError):
+    pass
+
+
+class DuplicateWaterReturnPointCodeError(DomainError):
+    pass
+
+
+class WaterTopologyLinkNotFoundError(DomainError):
+    pass
+
+
+class WaterTopologyLinkAlreadyClosedError(DomainError):
+    pass
+
+
+class SamplingPointNotFoundError(DomainError):
+    pass
+
+
+class DuplicateSamplingPointCodeError(DomainError):
+    pass
+
+
+class SamplingPointValidationError(DomainError):
+    """Raised when a SamplingPoint's `point_type` and its one required
+    anchor (water source/reservoir/circuit/delivery point/return point) do
+    not agree, or the anchor does not resolve within the tenant/farm."""
+
+    pass
+
+
+class WaterInstrumentNotFoundError(DomainError):
+    pass
+
+
+class DuplicateWaterInstrumentAssetError(DomainError):
+    pass
+
+
+class WaterInstrumentValidationError(DomainError):
+    pass
+
+
+class InstrumentCalibrationValidationError(DomainError):
+    pass
+
+
+class WaterMeasurementValidationError(DomainError):
+    """Raised when a measurement's `unit` does not match its `metric`'s
+    canonical unit (section 9) -- mirrors the DB CHECK constraint so the
+    caller gets a clean 422 instead of a raw IntegrityError."""
+
+    pass
+
+
+class NutrientRecipeNotFoundError(DomainError):
+    pass
+
+
+class DuplicateNutrientRecipeCodeError(DomainError):
+    pass
+
+
+class NutrientRecipeVersionNotFoundError(DomainError):
+    pass
+
+
+class NutrientRecipeVersionNotDraftError(DomainError):
+    pass
+
+
+class NutrientRecipeVersionCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class NutrientMixNotFoundError(DomainError):
+    pass
+
+
+class NutrientMixValidationError(DomainError):
+    pass
+
+
+class ReservoirEventValidationError(DomainError):
+    pass
+
+
+class WaterDeliveryEventValidationError(DomainError):
+    pass
+
+
+class UnitOfMeasureKindMismatchError(DomainError):
+    """Raised when a caller-supplied UOM id does not carry the physical
+    `quantity_kind` (volume) the field requires -- e.g. passing `EA` for a
+    Reservoir's nominal capacity."""
+
+    pass

@@ -14,6 +14,14 @@ from app.api.crop_issues import router as crop_issues_router
 from app.api.farm_work_items import router as farm_work_items_router
 from app.api.grower_inspections import router as grower_inspections_router
 from app.api.growing_protocols import router as growing_protocols_router
+from app.api.nutrient_mixes import router as nutrient_mixes_router
+from app.api.nutrient_recipes import router as nutrient_recipes_router
+from app.api.reservoir_operations import router as reservoir_operations_router
+from app.api.sampling_points import router as sampling_points_router
+from app.api.water_exposure import router as water_exposure_router
+from app.api.water_instruments import router as water_instruments_router
+from app.api.water_measurements import router as water_measurements_router
+from app.api.water_topology import router as water_topology_router
 from app.api.farms import router as farms_router
 from app.api.finished_goods_storage import router as finished_goods_storage_router
 from app.api.germination import router as germination_router
@@ -134,6 +142,14 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(dispatch_router)
     api.include_router(finished_goods_storage_router)
     api.include_router(traceability_router)
+    api.include_router(water_topology_router)
+    api.include_router(sampling_points_router)
+    api.include_router(water_instruments_router)
+    api.include_router(water_measurements_router)
+    api.include_router(nutrient_recipes_router)
+    api.include_router(nutrient_mixes_router)
+    api.include_router(reservoir_operations_router)
+    api.include_router(water_exposure_router)
     api.include_router(recall_router)
     api.include_router(farm_work_items_router)
     api.include_router(growing_protocols_router)
