@@ -107,6 +107,14 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
         // batches (not stage-specific), placed here per the ticket's own
         // preferred IA rather than duplicated into every crop-stage group.
         { label: "Observations", href: `/farms/${farmId}/observations` },
+        // PILOT-WATER-001B: "Production -> Water & Nutrients" per the
+        // ticket's own requested IA -- one entry point landing on the
+        // Overview view; the workspace's own six views (Overview/
+        // Measurements/Mixing/Delivery/Exposure/System Setup) are reached
+        // via its in-page WaterSubNav, mirroring how Store & Inventory's
+        // own multi-view workspace is reached from one sidebar entry plus
+        // an in-page StoreSubNav, not six separate sidebar leaves.
+        { label: "Water & Nutrients", href: `/farms/${farmId}/water` },
       ],
     },
     {
@@ -184,6 +192,11 @@ function navGroups(farmId: string, canManageUsers: boolean): NavGroupDef[] {
         // administration is secondary to floor operations, and every
         // sibling master-data catalog in this group is already top-level).
         { label: "Growing Protocols", href: "/growing-protocols", section: "Company catalogs" },
+        // PILOT-WATER-001B: tenant-wide, same reasoning as Growing
+        // Protocols directly above -- a Nutrient Recipe is shared across
+        // every Farm the tenant has, never Farm-scoped (mirrors
+        // NutrientRecipe's own backend identity, no farm_id column).
+        { label: "Nutrient Recipes", href: "/nutrient-recipes", section: "Company catalogs" },
         { label: "Packaging Units", href: "/packaging-units", section: "Company catalogs" },
         { label: "Pack Specifications", href: "/pack-specifications", section: "Company catalogs" },
         // AUTHZ-OPS-001: tenant-wide (no farmId), same reasoning as every

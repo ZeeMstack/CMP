@@ -7,6 +7,12 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
+def _require_tz_aware(v: datetime) -> datetime:
+    if v.tzinfo is None:
+        raise ValueError("must be timezone-aware")
+    return v
+
+
 class NutrientMixInputCreate(BaseModel):
     inventory_item_id: uuid.UUID | None = None
     component_label: str
@@ -26,7 +32,9 @@ class NutrientMixInputCreate(BaseModel):
 
 class NutrientMixCreate(BaseModel):
     nutrient_recipe_version_id: uuid.UUID | None = None
-    effective_at: datetime
+    # PILOT-WATER-001B (HOTFIX-TIME-002 pattern): omitting effective_at
+    # means "record now" -- see WaterMeasurementCreate's identical note.
+    effective_at: datetime | None = None
     target_volume: Decimal | None = None
     target_volume_uom_id: uuid.UUID | None = None
     actual_volume: Decimal | None = None
@@ -34,6 +42,11 @@ class NutrientMixCreate(BaseModel):
     notes: str | None = None
     client_command_id: uuid.UUID
     inputs: list[NutrientMixInputCreate]
+
+    @field_validator("effective_at")
+    @classmethod
+    def validate_effective_at(cls, v: datetime | None) -> datetime | None:
+        return v if v is None else _require_tz_aware(v)
 
 
 class NutrientMixRead(BaseModel):

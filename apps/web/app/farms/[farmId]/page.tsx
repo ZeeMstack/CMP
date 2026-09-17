@@ -31,6 +31,7 @@ import {
   useLatestShiftHandover,
   useLocationsTree,
   useOperationalSummary,
+  useWaterAttention,
   useWorkItems,
 } from "@/lib/query/hooks";
 import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
@@ -107,6 +108,7 @@ export default function FarmHomePage() {
   // corrective work assigned from a Crop Issue is).
   const cropIssuesQuery = useCropIssues(farmId);
   const protocolDueQuery = useFarmProtocolDueSummary(farmId);
+  const waterAttentionQuery = useWaterAttention(farmId);
   // PILOT-OPS-001 closure: structured context option sources for manual
   // Work Item creation -- each reuses an existing farm-scoped read
   // (Locations tree, Batch summary already fetched above, Assets,
@@ -335,6 +337,29 @@ export default function FarmHomePage() {
               </span>
               <Link href={`/farms/${farmId}/production/inspect?batchId=${row.batch_id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
                 Inspect Crop
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </LiveSourcePanel>
+
+      <LiveSourcePanel
+        title="Water Attention"
+        isLoading={waterAttentionQuery.isLoading}
+        error={waterAttentionQuery.error}
+        onRetry={() => waterAttentionQuery.refetch()}
+        isEmpty={(waterAttentionQuery.data ?? []).length === 0}
+        emptyLabel="Nothing currently needs Water attention."
+      >
+        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
+          {(waterAttentionQuery.data ?? []).map((item, i) => (
+            <li key={`${item.kind}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+              <span className="text-wl-text">{item.message}</span>
+              <Link
+                href={item.kind === "CIRCUIT_MISSING_RESERVOIR" ? `/farms/${farmId}/water/setup` : `/farms/${farmId}/water/measurements`}
+                className="shrink-0 text-sm font-medium text-wl-brand hover:underline"
+              >
+                Open Water &amp; Nutrients
               </Link>
             </li>
           ))}

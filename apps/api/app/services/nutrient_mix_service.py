@@ -9,7 +9,7 @@ imports or references `inventory_existence_ledger_service`/
 
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -58,7 +58,7 @@ def _require_uom(db: Session, *, uom_id: uuid.UUID) -> UnitOfMeasure:
 
 def record_mix(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, reservoir_id: uuid.UUID,
-    nutrient_recipe_version_id: uuid.UUID | None, effective_at: datetime, target_volume, target_volume_uom_id,
+    nutrient_recipe_version_id: uuid.UUID | None, effective_at: datetime | None, target_volume, target_volume_uom_id,
     actual_volume, actual_volume_uom_id, notes: str | None, client_command_id: uuid.UUID,
     inputs: list[dict],
 ) -> NutrientMix:
@@ -66,7 +66,11 @@ def record_mix(
     `component_label`, `actual_quantity`, `actual_quantity_uom_id`,
     `sequence_number` (optional), `note` (optional) -- recorded atomically
     with the Mix header in the same transaction, never a separate command,
-    since a Mix with zero recorded inputs is not a useful fact."""
+    since a Mix with zero recorded inputs is not a useful fact.
+
+    PILOT-WATER-001B: `effective_at=None` is "record now" -- see
+    `water_instrument_service.record_measurement`'s own identical
+    HOTFIX-TIME-002 note."""
     water_topology_service.get_reservoir(db, tenant_id=tenant_id, reservoir_id=reservoir_id)
     if target_volume_uom_id is not None:
         _require_volume_uom(db, uom_id=target_volume_uom_id)
@@ -86,6 +90,11 @@ def record_mix(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise NutrientMixValidationError(f"client_command_id {client_command_id} reused with a different payload")
+
+    if effective_at is None:
+        effective_at = datetime.now(timezone.utc)
+    elif effective_at > datetime.now(timezone.utc):
+        raise NutrientMixValidationError("effective_at cannot be in the future")
 
     mix = NutrientMix(
         tenant_id=tenant_id, farm_id=farm_id, reservoir_id=reservoir_id,
@@ -167,5 +176,19 @@ def list_mixes_for_reservoir(db: Session, *, tenant_id: uuid.UUID, reservoir_id:
             select(NutrientMix)
             .where(NutrientMix.tenant_id == tenant_id, NutrientMix.reservoir_id == reservoir_id)
             .order_by(NutrientMix.effective_at.desc())
+        ).scalars()
+    )
+
+
+def list_mixes_for_farm(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, limit: int = 50) -> list[NutrientMix]:
+    """PILOT-WATER-001B: farm-wide (not one Reservoir at a time) -- the
+    Overview workspace's "recent Mixes" section needs this across every
+    Reservoir on the farm, which WATER-001A had no read for."""
+    return list(
+        db.execute(
+            select(NutrientMix)
+            .where(NutrientMix.tenant_id == tenant_id, NutrientMix.farm_id == farm_id)
+            .order_by(NutrientMix.effective_at.desc())
+            .limit(limit)
         ).scalars()
     )

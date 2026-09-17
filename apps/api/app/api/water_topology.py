@@ -414,3 +414,38 @@ def close_return_point_reservoir_link(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found") from exc
     except WaterTopologyLinkAlreadyClosedError as exc:
         raise _link_conflict(exc) from exc
+
+
+# --- PILOT-WATER-001B: farm-wide topology link reads (current + historical) -----------
+
+
+@router.get("/farms/{farm_id}/water-topology-links/water-source-reservoir", response_model=list[TopologyLinkRead])
+def list_water_source_reservoir_links(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WATER_TOPOLOGY_READ)),
+) -> list[TopologyLinkRead]:
+    return water_topology_service.list_water_source_reservoir_links(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+
+
+@router.get("/farms/{farm_id}/water-topology-links/reservoir-circuit", response_model=list[TopologyLinkRead])
+def list_reservoir_circuit_links(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WATER_TOPOLOGY_READ)),
+) -> list[TopologyLinkRead]:
+    return water_topology_service.list_reservoir_circuit_links(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+
+
+@router.get("/farms/{farm_id}/water-topology-links/circuit-delivery-point", response_model=list[TopologyLinkRead])
+def list_circuit_delivery_point_links(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WATER_TOPOLOGY_READ)),
+) -> list[TopologyLinkRead]:
+    return water_topology_service.list_circuit_delivery_point_links(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+
+
+@router.get("/farms/{farm_id}/water-topology-links/return-point-reservoir", response_model=list[TopologyLinkRead])
+def list_return_point_reservoir_links(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.WATER_TOPOLOGY_READ)),
+) -> list[TopologyLinkRead]:
+    return water_topology_service.list_return_point_reservoir_links(db, tenant_id=ctx.tenant_id, farm_id=farm_id)

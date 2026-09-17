@@ -7,7 +7,7 @@ resulting EC/pH -- an operator records the observed result afterward as a
 
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -57,9 +57,12 @@ def _require_volume_uom(db: Session, *, uom_id: uuid.UUID) -> UnitOfMeasure:
 
 def record_reservoir_event(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, reservoir_id: uuid.UUID,
-    event_type: str, effective_at: datetime, quantity, quantity_uom_id: uuid.UUID | None,
+    event_type: str, effective_at: datetime | None, quantity, quantity_uom_id: uuid.UUID | None,
     inventory_item_id: uuid.UUID | None, notes: str | None, client_command_id: uuid.UUID,
 ) -> ReservoirEvent:
+    """PILOT-WATER-001B: `effective_at=None` is "record now" -- see
+    `water_instrument_service.record_measurement`'s own identical
+    HOTFIX-TIME-002 note."""
     water_topology_service.get_reservoir(db, tenant_id=tenant_id, reservoir_id=reservoir_id)
     if quantity_uom_id is not None:
         _require_uom(db, uom_id=quantity_uom_id)
@@ -78,6 +81,11 @@ def record_reservoir_event(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise ReservoirEventValidationError(f"client_command_id {client_command_id} reused with a different payload")
+
+    if effective_at is None:
+        effective_at = datetime.now(timezone.utc)
+    elif effective_at > datetime.now(timezone.utc):
+        raise ReservoirEventValidationError("effective_at cannot be in the future")
 
     event = ReservoirEvent(
         tenant_id=tenant_id, farm_id=farm_id, reservoir_id=reservoir_id, event_type=event_type,
@@ -125,10 +133,16 @@ def list_reservoir_events(db: Session, *, tenant_id: uuid.UUID, reservoir_id: uu
 
 def record_delivery_event(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, actor_user_id: uuid.UUID, reservoir_id: uuid.UUID,
-    irrigation_circuit_id: uuid.UUID, effective_start: datetime, effective_end: datetime | None, delivered_volume,
-    delivered_volume_uom_id: uuid.UUID | None, nutrient_mix_id: uuid.UUID | None, notes: str | None,
-    client_command_id: uuid.UUID,
+    irrigation_circuit_id: uuid.UUID, effective_start: datetime | None, effective_end: datetime | None,
+    delivered_volume, delivered_volume_uom_id: uuid.UUID | None, nutrient_mix_id: uuid.UUID | None,
+    notes: str | None, client_command_id: uuid.UUID,
 ) -> WaterDeliveryEvent:
+    """PILOT-WATER-001B: `effective_start=None` is "starting now" -- see
+    `water_instrument_service.record_measurement`'s own identical
+    HOTFIX-TIME-002 note. `effective_end=None` remains its own, separate
+    fact (section 21/17 of WATER-001A/001B): an ongoing/continuous
+    delivery that has not (yet) ended -- never conflated with "starting
+    now"."""
     water_topology_service.get_reservoir(db, tenant_id=tenant_id, reservoir_id=reservoir_id)
     water_topology_service.get_irrigation_circuit(db, tenant_id=tenant_id, irrigation_circuit_id=irrigation_circuit_id)
     if delivered_volume_uom_id is not None:
@@ -149,6 +163,14 @@ def record_delivery_event(
         if existing.request_fingerprint == fingerprint:
             return existing
         raise WaterDeliveryEventValidationError(f"client_command_id {client_command_id} reused with a different payload")
+
+    now = datetime.now(timezone.utc)
+    if effective_start is None:
+        effective_start = now
+    elif effective_start > now:
+        raise WaterDeliveryEventValidationError("effective_start cannot be in the future")
+    if effective_end is not None and effective_end > now:
+        raise WaterDeliveryEventValidationError("effective_end cannot be in the future")
 
     event = WaterDeliveryEvent(
         tenant_id=tenant_id, farm_id=farm_id, reservoir_id=reservoir_id,
@@ -194,5 +216,36 @@ def list_delivery_events_for_circuit(
                 WaterDeliveryEvent.irrigation_circuit_id == irrigation_circuit_id,
             )
             .order_by(WaterDeliveryEvent.effective_start.desc())
+        ).scalars()
+    )
+
+
+def list_reservoir_events_for_farm(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, limit: int = 50
+) -> list[ReservoirEvent]:
+    """PILOT-WATER-001B: farm-wide -- the Overview workspace's "recent
+    activity" needs this across every Reservoir, which WATER-001A had no
+    read for (only per-Reservoir)."""
+    return list(
+        db.execute(
+            select(ReservoirEvent)
+            .where(ReservoirEvent.tenant_id == tenant_id, ReservoirEvent.farm_id == farm_id)
+            .order_by(ReservoirEvent.effective_at.desc())
+            .limit(limit)
+        ).scalars()
+    )
+
+
+def list_delivery_events_for_farm(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, limit: int = 50
+) -> list[WaterDeliveryEvent]:
+    """PILOT-WATER-001B: farm-wide -- same reasoning as
+    `list_reservoir_events_for_farm` above, for Delivery Events."""
+    return list(
+        db.execute(
+            select(WaterDeliveryEvent)
+            .where(WaterDeliveryEvent.tenant_id == tenant_id, WaterDeliveryEvent.farm_id == farm_id)
+            .order_by(WaterDeliveryEvent.effective_start.desc())
+            .limit(limit)
         ).scalars()
     )

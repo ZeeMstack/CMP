@@ -380,4 +380,67 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "crop-issues", "detail", cropIssueId] as const,
   cropIssueFollowUps: (tenantId: string, farmId: string, cropIssueId: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-issues", cropIssueId, "follow-ups"] as const,
+
+  // --- PILOT-WATER-001A/001B: Water & Nutrient domain -------------------------
+  waterSources: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "water-sources"] as const,
+  reservoirs: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "reservoirs"] as const,
+  reservoir: (tenantId: string, reservoirId: string) => ["tenant", tenantId, "reservoirs", reservoirId] as const,
+  irrigationCircuits: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "irrigation-circuits"] as const,
+  irrigationCircuit: (tenantId: string, circuitId: string) =>
+    ["tenant", tenantId, "irrigation-circuits", circuitId] as const,
+  waterDeliveryPoints: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-delivery-points"] as const,
+  waterReturnPoints: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-return-points"] as const,
+  waterSourceReservoirLinks: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-topology-links", "water-source-reservoir"] as const,
+  reservoirCircuitLinks: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-topology-links", "reservoir-circuit"] as const,
+  circuitDeliveryPointLinks: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-topology-links", "circuit-delivery-point"] as const,
+  returnPointReservoirLinks: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-topology-links", "return-point-reservoir"] as const,
+  samplingPoints: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "sampling-points"] as const,
+  waterInstruments: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-instruments"] as const,
+  calibrations: (tenantId: string, instrumentId: string) =>
+    ["tenant", tenantId, "water-instruments", instrumentId, "calibrations"] as const,
+  calibrationStatus: (tenantId: string, instrumentId: string) =>
+    ["tenant", tenantId, "water-instruments", instrumentId, "calibration-status"] as const,
+  measurements: (tenantId: string, samplingPointId: string) =>
+    ["tenant", tenantId, "sampling-points", samplingPointId, "measurements"] as const,
+  // `filterKey` bundles metric/reservoirId/window into one cache-distinct
+  // string, mirroring `gradedProduceLots`'s own `filterKey` convention.
+  measurementsForFarm: (tenantId: string, farmId: string, filterKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-measurements", filterKey] as const,
+  nutrientRecipes: (tenantId: string) => ["tenant", tenantId, "nutrient-recipes"] as const,
+  nutrientRecipe: (tenantId: string, recipeId: string) => ["tenant", tenantId, "nutrient-recipes", recipeId] as const,
+  nutrientRecipeVersions: (tenantId: string, recipeId: string) =>
+    ["tenant", tenantId, "nutrient-recipes", recipeId, "versions"] as const,
+  nutrientRecipeVersion: (tenantId: string, versionId: string) =>
+    ["tenant", tenantId, "nutrient-recipe-versions", versionId] as const,
+  nutrientRecipeComponents: (tenantId: string, versionId: string) =>
+    ["tenant", tenantId, "nutrient-recipe-versions", versionId, "components"] as const,
+  mixesForReservoir: (tenantId: string, reservoirId: string) =>
+    ["tenant", tenantId, "reservoirs", reservoirId, "nutrient-mixes"] as const,
+  mixesForFarm: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "nutrient-mixes"] as const,
+  mix: (tenantId: string, mixId: string) => ["tenant", tenantId, "nutrient-mixes", mixId] as const,
+  mixInputs: (tenantId: string, mixId: string) => ["tenant", tenantId, "nutrient-mixes", mixId, "inputs"] as const,
+  reservoirEvents: (tenantId: string, reservoirId: string) =>
+    ["tenant", tenantId, "reservoirs", reservoirId, "events"] as const,
+  reservoirEventsForFarm: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "reservoir-events"] as const,
+  deliveryEventsForCircuit: (tenantId: string, circuitId: string) =>
+    ["tenant", tenantId, "irrigation-circuits", circuitId, "water-delivery-events"] as const,
+  deliveryEventsForFarm: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-delivery-events"] as const,
+  exposedPlacementsForCircuit: (tenantId: string, circuitId: string, windowKey: string) =>
+    ["tenant", tenantId, "irrigation-circuits", circuitId, "exposed-placements", windowKey] as const,
+  exposedPlacementsForReservoir: (tenantId: string, reservoirId: string, windowKey: string) =>
+    ["tenant", tenantId, "reservoirs", reservoirId, "exposed-placements", windowKey] as const,
+  batchWaterExposure: (tenantId: string, farmId: string, batchId: string, windowKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "water-exposure", windowKey] as const,
+  waterAttention: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "water-attention"] as const,
 };

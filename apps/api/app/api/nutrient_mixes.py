@@ -58,6 +58,14 @@ def list_mixes(
     return nutrient_mix_service.list_mixes_for_reservoir(db, tenant_id=ctx.tenant_id, reservoir_id=reservoir_id)
 
 
+@router.get("/farms/{farm_id}/nutrient-mixes", response_model=list[NutrientMixRead])
+def list_mixes_for_farm(
+    farm_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_READ)),
+) -> list[NutrientMixRead]:
+    return nutrient_mix_service.list_mixes_for_farm(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
+
+
 @router.get("/nutrient-mixes/{nutrient_mix_id}", response_model=NutrientMixRead)
 def get_mix(
     nutrient_mix_id: uuid.UUID, db: Session = Depends(get_db),

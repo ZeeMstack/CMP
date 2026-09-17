@@ -4401,6 +4401,820 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/water-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Water Sources */
+        get: operations["list_water_sources_farms__farm_id__water_sources_get"];
+        put?: never;
+        /** Register Water Source */
+        post: operations["register_water_source_farms__farm_id__water_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-sources/{water_source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Water Source */
+        get: operations["get_water_source_water_sources__water_source_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/reservoirs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservoirs */
+        get: operations["list_reservoirs_farms__farm_id__reservoirs_get"];
+        put?: never;
+        /** Register Reservoir */
+        post: operations["register_reservoir_farms__farm_id__reservoirs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reservoirs/{reservoir_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reservoir */
+        get: operations["get_reservoir_reservoirs__reservoir_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/irrigation-circuits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Irrigation Circuits */
+        get: operations["list_irrigation_circuits_farms__farm_id__irrigation_circuits_get"];
+        put?: never;
+        /** Register Irrigation Circuit */
+        post: operations["register_irrigation_circuit_farms__farm_id__irrigation_circuits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/irrigation-circuits/{irrigation_circuit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Irrigation Circuit */
+        get: operations["get_irrigation_circuit_irrigation_circuits__irrigation_circuit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-delivery-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Water Delivery Points */
+        get: operations["list_water_delivery_points_farms__farm_id__water_delivery_points_get"];
+        put?: never;
+        /** Register Water Delivery Point */
+        post: operations["register_water_delivery_point_farms__farm_id__water_delivery_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-return-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Water Return Points */
+        get: operations["list_water_return_points_farms__farm_id__water_return_points_get"];
+        put?: never;
+        /** Register Water Return Point */
+        post: operations["register_water_return_point_farms__farm_id__water_return_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-topology-links/water-source-reservoir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Water Source Reservoir Links */
+        get: operations["list_water_source_reservoir_links_farms__farm_id__water_topology_links_water_source_reservoir_get"];
+        put?: never;
+        /** Open Water Source Reservoir Link */
+        post: operations["open_water_source_reservoir_link_farms__farm_id__water_topology_links_water_source_reservoir_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-topology-links/water-source-reservoir/{link_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Water Source Reservoir Link */
+        post: operations["close_water_source_reservoir_link_water_topology_links_water_source_reservoir__link_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-topology-links/reservoir-circuit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservoir Circuit Links */
+        get: operations["list_reservoir_circuit_links_farms__farm_id__water_topology_links_reservoir_circuit_get"];
+        put?: never;
+        /** Open Reservoir Circuit Link */
+        post: operations["open_reservoir_circuit_link_farms__farm_id__water_topology_links_reservoir_circuit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-topology-links/reservoir-circuit/{link_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Reservoir Circuit Link */
+        post: operations["close_reservoir_circuit_link_water_topology_links_reservoir_circuit__link_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-topology-links/circuit-delivery-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Circuit Delivery Point Links */
+        get: operations["list_circuit_delivery_point_links_farms__farm_id__water_topology_links_circuit_delivery_point_get"];
+        put?: never;
+        /** Open Circuit Delivery Point Link */
+        post: operations["open_circuit_delivery_point_link_farms__farm_id__water_topology_links_circuit_delivery_point_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-topology-links/circuit-delivery-point/{link_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Circuit Delivery Point Link */
+        post: operations["close_circuit_delivery_point_link_water_topology_links_circuit_delivery_point__link_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-topology-links/return-point-reservoir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Return Point Reservoir Links */
+        get: operations["list_return_point_reservoir_links_farms__farm_id__water_topology_links_return_point_reservoir_get"];
+        put?: never;
+        /** Open Return Point Reservoir Link */
+        post: operations["open_return_point_reservoir_link_farms__farm_id__water_topology_links_return_point_reservoir_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-topology-links/return-point-reservoir/{link_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Return Point Reservoir Link */
+        post: operations["close_return_point_reservoir_link_water_topology_links_return_point_reservoir__link_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/sampling-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sampling Points */
+        get: operations["list_sampling_points_farms__farm_id__sampling_points_get"];
+        put?: never;
+        /** Register Sampling Point */
+        post: operations["register_sampling_point_farms__farm_id__sampling_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sampling-points/{sampling_point_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sampling Point */
+        get: operations["get_sampling_point_sampling_points__sampling_point_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-instruments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Water Instruments */
+        get: operations["list_water_instruments_farms__farm_id__water_instruments_get"];
+        put?: never;
+        /** Register Water Instrument */
+        post: operations["register_water_instrument_farms__farm_id__water_instruments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-instruments/{water_instrument_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Water Instrument */
+        get: operations["get_water_instrument_water_instruments__water_instrument_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-instruments/{water_instrument_id}/calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Calibration */
+        post: operations["record_calibration_farms__farm_id__water_instruments__water_instrument_id__calibrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-instruments/{water_instrument_id}/calibrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Calibrations */
+        get: operations["list_calibrations_water_instruments__water_instrument_id__calibrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/water-instruments/{water_instrument_id}/calibration-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Calibration Status */
+        get: operations["get_calibration_status_water_instruments__water_instrument_id__calibration_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/sampling-points/{sampling_point_id}/measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Measurement */
+        post: operations["record_measurement_farms__farm_id__sampling_points__sampling_point_id__measurements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sampling-points/{sampling_point_id}/measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Measurements */
+        get: operations["list_measurements_sampling_points__sampling_point_id__measurements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Measurements For Farm */
+        get: operations["list_measurements_for_farm_farms__farm_id__water_measurements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Recipes */
+        get: operations["list_recipes_nutrient_recipes_get"];
+        put?: never;
+        /** Register Recipe */
+        post: operations["register_recipe_nutrient_recipes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipes/{nutrient_recipe_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Recipe */
+        get: operations["get_recipe_nutrient_recipes__nutrient_recipe_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipes/{nutrient_recipe_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions */
+        get: operations["list_versions_nutrient_recipes__nutrient_recipe_id__versions_get"];
+        put?: never;
+        /** Create Draft Version */
+        post: operations["create_draft_version_nutrient_recipes__nutrient_recipe_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipe-versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_nutrient_recipe_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipe-versions/{version_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Version */
+        post: operations["activate_version_nutrient_recipe_versions__version_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipe-versions/{version_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Version */
+        post: operations["retire_version_nutrient_recipe_versions__version_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-recipe-versions/{version_id}/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Components */
+        get: operations["list_components_nutrient_recipe_versions__version_id__components_get"];
+        put?: never;
+        /** Add Component */
+        post: operations["add_component_nutrient_recipe_versions__version_id__components_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/reservoirs/{reservoir_id}/nutrient-mixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Mix */
+        post: operations["record_mix_farms__farm_id__reservoirs__reservoir_id__nutrient_mixes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reservoirs/{reservoir_id}/nutrient-mixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mixes */
+        get: operations["list_mixes_reservoirs__reservoir_id__nutrient_mixes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/nutrient-mixes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mixes For Farm */
+        get: operations["list_mixes_for_farm_farms__farm_id__nutrient_mixes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-mixes/{nutrient_mix_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Mix */
+        get: operations["get_mix_nutrient_mixes__nutrient_mix_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nutrient-mixes/{nutrient_mix_id}/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mix Inputs */
+        get: operations["list_mix_inputs_nutrient_mixes__nutrient_mix_id__inputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/reservoirs/{reservoir_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Reservoir Event */
+        post: operations["record_reservoir_event_farms__farm_id__reservoirs__reservoir_id__events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reservoirs/{reservoir_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservoir Events */
+        get: operations["list_reservoir_events_reservoirs__reservoir_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-delivery-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Delivery Events For Farm */
+        get: operations["list_delivery_events_for_farm_farms__farm_id__water_delivery_events_get"];
+        put?: never;
+        /** Record Delivery Event */
+        post: operations["record_delivery_event_farms__farm_id__water_delivery_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/irrigation-circuits/{irrigation_circuit_id}/water-delivery-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Delivery Events */
+        get: operations["list_delivery_events_irrigation_circuits__irrigation_circuit_id__water_delivery_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/reservoir-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reservoir Events For Farm */
+        get: operations["list_reservoir_events_for_farm_farms__farm_id__reservoir_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/irrigation-circuits/{irrigation_circuit_id}/exposed-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Exposed Placements For Circuit */
+        get: operations["get_exposed_placements_for_circuit_irrigation_circuits__irrigation_circuit_id__exposed_placements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reservoirs/{reservoir_id}/exposed-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Exposed Placements For Reservoir */
+        get: operations["get_exposed_placements_for_reservoir_reservoirs__reservoir_id__exposed_placements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crop-batches/{batch_id}/water-exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Water Exposure History For Batch */
+        get: operations["get_water_exposure_history_for_batch_crop_batches__batch_id__water_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Water Attention */
+        get: operations["get_water_attention_farms__farm_id__water_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/recall-cases": {
         parameters: {
             query?: never;
@@ -5964,6 +6778,79 @@ export interface components {
             /** Reason */
             reason: string | null;
         };
+        /** BatchWaterExposureRead */
+        BatchWaterExposureRead: {
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /** Reservoir Ids */
+            reservoir_ids: string[];
+            /** Location Ids */
+            location_ids: string[];
+            /** Exposure Kind */
+            exposure_kind: string;
+        };
+        /** CalibrationEventCreate */
+        CalibrationEventCreate: {
+            /** Metric */
+            metric: string;
+            /** Effective At */
+            effective_at?: string | null;
+            /** Result */
+            result: string;
+            /** Standard Reference */
+            standard_reference?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** CalibrationEventRead */
+        CalibrationEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Water Instrument Id
+             * Format: uuid
+             */
+            water_instrument_id: string;
+            /** Metric */
+            metric: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Result */
+            result: string;
+            /** Standard Reference */
+            standard_reference: string | null;
+            /** Notes */
+            notes: string | null;
+        };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
             /** Carrier Type Code */
@@ -6203,6 +7090,26 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /** CircuitDeliveryPointLinkOpen */
+        CircuitDeliveryPointLinkOpen: {
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /**
+             * Water Delivery Point Id
+             * Format: uuid
+             */
+            water_delivery_point_id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Reason */
+            reason?: string | null;
         };
         /** CohortStorageBreakdownRead */
         CohortStorageBreakdownRead: {
@@ -6908,6 +7815,41 @@ export interface components {
             is_outside_expected_window: boolean;
             /** Last Satisfied At */
             last_satisfied_at: string | null;
+        };
+        /** ExposedPlacementRead */
+        ExposedPlacementRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /** Exposure Kind */
+            exposure_kind: string;
+            /**
+             * Overlap Start
+             * Format: date-time
+             */
+            overlap_start: string;
+            /**
+             * Overlap End
+             * Format: date-time
+             */
+            overlap_end: string;
         };
         /** FarmCreate */
         FarmCreate: {
@@ -10424,6 +11366,45 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** IrrigationCircuitCreate */
+        IrrigationCircuitCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** System Type */
+            system_type?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** IrrigationCircuitRead */
+        IrrigationCircuitRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** System Type */
+            system_type: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+        };
         /**
          * IssuableSourceRead
          * @description One (Cohort, Bin) pair an operator may pick as an Issue line's
@@ -11460,6 +12441,277 @@ export interface components {
             trolley_generator?: components["schemas"]["TrolleyGeneratorConfig"] | null;
             /** Seeding Machines */
             seeding_machines?: components["schemas"]["SeedingMachineSetupConfig"][];
+        };
+        /** NutrientMixCreate */
+        NutrientMixCreate: {
+            /** Nutrient Recipe Version Id */
+            nutrient_recipe_version_id?: string | null;
+            /** Effective At */
+            effective_at?: string | null;
+            /** Target Volume */
+            target_volume?: number | string | null;
+            /** Target Volume Uom Id */
+            target_volume_uom_id?: string | null;
+            /** Actual Volume */
+            actual_volume?: number | string | null;
+            /** Actual Volume Uom Id */
+            actual_volume_uom_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Inputs */
+            inputs: components["schemas"]["NutrientMixInputCreate"][];
+        };
+        /** NutrientMixInputCreate */
+        NutrientMixInputCreate: {
+            /** Inventory Item Id */
+            inventory_item_id?: string | null;
+            /** Component Label */
+            component_label: string;
+            /** Actual Quantity */
+            actual_quantity: number | string;
+            /**
+             * Actual Quantity Uom Id
+             * Format: uuid
+             */
+            actual_quantity_uom_id: string;
+            /** Sequence Number */
+            sequence_number?: number | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** NutrientMixInputRead */
+        NutrientMixInputRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Nutrient Mix Id
+             * Format: uuid
+             */
+            nutrient_mix_id: string;
+            /** Inventory Item Id */
+            inventory_item_id: string | null;
+            /** Component Label */
+            component_label: string;
+            /** Actual Quantity */
+            actual_quantity: string;
+            /**
+             * Actual Quantity Uom Id
+             * Format: uuid
+             */
+            actual_quantity_uom_id: string;
+            /** Sequence Number */
+            sequence_number: number | null;
+            /** Note */
+            note: string | null;
+        };
+        /** NutrientMixRead */
+        NutrientMixRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /** Nutrient Recipe Version Id */
+            nutrient_recipe_version_id: string | null;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Target Volume */
+            target_volume: string | null;
+            /** Actual Volume */
+            actual_volume: string | null;
+            /** Notes */
+            notes: string | null;
+        };
+        /** NutrientRecipeComponentCreate */
+        NutrientRecipeComponentCreate: {
+            /** Inventory Item Id */
+            inventory_item_id?: string | null;
+            /** Component Label */
+            component_label: string;
+            /** Target Quantity */
+            target_quantity: number | string;
+            /**
+             * Target Quantity Uom Id
+             * Format: uuid
+             */
+            target_quantity_uom_id: string;
+            /** Basis Volume */
+            basis_volume?: number | string | null;
+            /** Basis Volume Uom Id */
+            basis_volume_uom_id?: string | null;
+            /** Sequence Number */
+            sequence_number?: number | null;
+            /** Instructions */
+            instructions?: string | null;
+        };
+        /** NutrientRecipeComponentRead */
+        NutrientRecipeComponentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Nutrient Recipe Version Id
+             * Format: uuid
+             */
+            nutrient_recipe_version_id: string;
+            /** Inventory Item Id */
+            inventory_item_id: string | null;
+            /** Component Label */
+            component_label: string;
+            /** Target Quantity */
+            target_quantity: string;
+            /**
+             * Target Quantity Uom Id
+             * Format: uuid
+             */
+            target_quantity_uom_id: string;
+            /** Basis Volume */
+            basis_volume: string | null;
+            /** Basis Volume Uom Id */
+            basis_volume_uom_id: string | null;
+            /** Sequence Number */
+            sequence_number: number | null;
+            /** Instructions */
+            instructions: string | null;
+        };
+        /** NutrientRecipeCreate */
+        NutrientRecipeCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Crop Id */
+            crop_id?: string | null;
+            /** Variety Id */
+            variety_id?: string | null;
+            /** Production System Id */
+            production_system_id?: string | null;
+        };
+        /** NutrientRecipeRead */
+        NutrientRecipeRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Crop Id */
+            crop_id: string | null;
+            /** Variety Id */
+            variety_id: string | null;
+            /** Production System Id */
+            production_system_id: string | null;
+            /** Status */
+            status: string;
+        };
+        /** NutrientRecipeVersionCreate */
+        NutrientRecipeVersionCreate: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Reason */
+            reason: string;
+            /** Target Ec */
+            target_ec?: number | string | null;
+            /** Target Ph */
+            target_ph?: number | string | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Effective Date */
+            effective_date?: string | null;
+        };
+        /** NutrientRecipeVersionLifecycleCommand */
+        NutrientRecipeVersionLifecycleCommand: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** NutrientRecipeVersionRead */
+        NutrientRecipeVersionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Nutrient Recipe Id
+             * Format: uuid
+             */
+            nutrient_recipe_id: string;
+            /** Version Number */
+            version_number: number;
+            /** State */
+            state: string;
+            /** Reason */
+            reason: string;
+            /** Target Ec */
+            target_ec: string | null;
+            /** Target Ph */
+            target_ph: string | null;
+            /** Instructions */
+            instructions: string | null;
+            /** Effective Date */
+            effective_date: string | null;
         };
         /** ObservationDefinitionCreate */
         ObservationDefinitionCreate: {
@@ -13622,6 +14874,144 @@ export interface components {
             /** Quantity */
             quantity: number | string;
         };
+        /** ReservoirCircuitLinkOpen */
+        ReservoirCircuitLinkOpen: {
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ReservoirCreate */
+        ReservoirCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Reservoir Type */
+            reservoir_type: string;
+            /** Nominal Capacity */
+            nominal_capacity?: number | null;
+            /** Nominal Capacity Uom Id */
+            nominal_capacity_uom_id?: string | null;
+            /** Linked Asset Id */
+            linked_asset_id?: string | null;
+            /** Location Id */
+            location_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** ReservoirEventCreate */
+        ReservoirEventCreate: {
+            /** Event Type */
+            event_type: string;
+            /** Effective At */
+            effective_at?: string | null;
+            /** Quantity */
+            quantity?: number | string | null;
+            /** Quantity Uom Id */
+            quantity_uom_id?: string | null;
+            /** Inventory Item Id */
+            inventory_item_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** ReservoirEventRead */
+        ReservoirEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Quantity */
+            quantity: string | null;
+            /** Quantity Uom Id */
+            quantity_uom_id: string | null;
+            /** Inventory Item Id */
+            inventory_item_id: string | null;
+            /** Notes */
+            notes: string | null;
+        };
+        /** ReservoirRead */
+        ReservoirRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Reservoir Type */
+            reservoir_type: string;
+            /** Nominal Capacity */
+            nominal_capacity: number | null;
+            /** Nominal Capacity Uom Id */
+            nominal_capacity_uom_id: string | null;
+            /** Linked Asset Id */
+            linked_asset_id: string | null;
+            /** Location Id */
+            location_id: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+        };
         /** ResolvedLocationRead */
         ResolvedLocationRead: {
             occupant: components["schemas"]["OccupantRef"];
@@ -13646,6 +15036,26 @@ export interface components {
             germination: components["schemas"]["GerminationResolvedPlacement"] | null;
             seedling_table: components["schemas"]["SeedlingTableSummary"] | null;
         };
+        /** ReturnPointReservoirLinkOpen */
+        ReturnPointReservoirLinkOpen: {
+            /**
+             * Water Return Point Id
+             * Format: uuid
+             */
+            water_return_point_id: string;
+            /**
+             * Return Reservoir Id
+             * Format: uuid
+             */
+            return_reservoir_id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * RoleOption
          * @description AUTHZ-OPS-001 section 17: a small, explicit, backend-owned read so
@@ -13662,6 +15072,57 @@ export interface components {
             name: string;
             /** Description */
             description: string;
+        };
+        /** SamplingPointCreate */
+        SamplingPointCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Point Type */
+            point_type: string;
+            /** Anchor Id */
+            anchor_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** SamplingPointRead */
+        SamplingPointRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Point Type */
+            point_type: string;
+            /** Water Source Id */
+            water_source_id: string | null;
+            /** Reservoir Id */
+            reservoir_id: string | null;
+            /** Irrigation Circuit Id */
+            irrigation_circuit_id: string | null;
+            /** Water Delivery Point Id */
+            water_delivery_point_id: string | null;
+            /** Water Return Point Id */
+            water_return_point_id: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
         };
         /**
          * ScanAction
@@ -14964,6 +16425,53 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** TopologyLinkClose */
+        TopologyLinkClose: {
+            /**
+             * Effective To
+             * Format: date-time
+             */
+            effective_to: string;
+        };
+        /** TopologyLinkRead */
+        TopologyLinkRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Water Source Id */
+            water_source_id?: string | null;
+            /** Reservoir Id */
+            reservoir_id?: string | null;
+            /** Irrigation Circuit Id */
+            irrigation_circuit_id?: string | null;
+            /** Water Delivery Point Id */
+            water_delivery_point_id?: string | null;
+            /** Water Return Point Id */
+            water_return_point_id?: string | null;
+            /** Return Reservoir Id */
+            return_reservoir_id?: string | null;
+        };
         /** TransplantAllocationIn */
         TransplantAllocationIn: {
             /**
@@ -16130,6 +17638,373 @@ export interface components {
         VinesSetupConfig: {
             /** Zones */
             zones: components["schemas"]["ZoneSetupConfig"][];
+        };
+        /** WaterAttentionItem */
+        WaterAttentionItem: {
+            /** Kind */
+            kind: string;
+            /** Message */
+            message: string;
+            /** Irrigation Circuit Id */
+            irrigation_circuit_id?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Water Instrument Id */
+            water_instrument_id?: string | null;
+            /** Reservoir Id */
+            reservoir_id?: string | null;
+            /** Sampling Point Id */
+            sampling_point_id?: string | null;
+            /** Metric */
+            metric?: string | null;
+            /** Measured Value */
+            measured_value?: string | null;
+            /** Target Value */
+            target_value?: string | null;
+            /** Nutrient Recipe Version Id */
+            nutrient_recipe_version_id?: string | null;
+        };
+        /** WaterDeliveryEventCreate */
+        WaterDeliveryEventCreate: {
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /** Effective Start */
+            effective_start?: string | null;
+            /** Effective End */
+            effective_end?: string | null;
+            /** Delivered Volume */
+            delivered_volume?: number | string | null;
+            /** Delivered Volume Uom Id */
+            delivered_volume_uom_id?: string | null;
+            /** Nutrient Mix Id */
+            nutrient_mix_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** WaterDeliveryEventRead */
+        WaterDeliveryEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /**
+             * Effective Start
+             * Format: date-time
+             */
+            effective_start: string;
+            /** Effective End */
+            effective_end: string | null;
+            /** Delivered Volume */
+            delivered_volume: string | null;
+            /** Delivered Volume Uom Id */
+            delivered_volume_uom_id: string | null;
+            /** Nutrient Mix Id */
+            nutrient_mix_id: string | null;
+            /** Notes */
+            notes: string | null;
+        };
+        /** WaterDeliveryPointCreate */
+        WaterDeliveryPointCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** WaterDeliveryPointRead */
+        WaterDeliveryPointRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+        };
+        /** WaterInstrumentCreate */
+        WaterInstrumentCreate: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Supports Ph
+             * @default false
+             */
+            supports_ph: boolean;
+            /**
+             * Supports Ec
+             * @default false
+             */
+            supports_ec: boolean;
+            /**
+             * Supports Solution Temperature
+             * @default false
+             */
+            supports_solution_temperature: boolean;
+            /**
+             * Supports Dissolved Oxygen
+             * @default false
+             */
+            supports_dissolved_oxygen: boolean;
+        };
+        /** WaterInstrumentRead */
+        WaterInstrumentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Supports Ph */
+            supports_ph: boolean;
+            /** Supports Ec */
+            supports_ec: boolean;
+            /** Supports Solution Temperature */
+            supports_solution_temperature: boolean;
+            /** Supports Dissolved Oxygen */
+            supports_dissolved_oxygen: boolean;
+            /** Status */
+            status: string;
+        };
+        /** WaterMeasurementCreate */
+        WaterMeasurementCreate: {
+            /** Metric */
+            metric: string;
+            /** Value */
+            value: number | string;
+            /** Unit */
+            unit: string;
+            /** Effective At */
+            effective_at?: string | null;
+            /** Water Instrument Id */
+            water_instrument_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** WaterMeasurementRead */
+        WaterMeasurementRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Sampling Point Id
+             * Format: uuid
+             */
+            sampling_point_id: string;
+            /** Metric */
+            metric: string;
+            /** Value */
+            value: string;
+            /** Unit */
+            unit: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Water Instrument Id */
+            water_instrument_id: string | null;
+            /** Notes */
+            notes: string | null;
+        };
+        /** WaterReturnPointCreate */
+        WaterReturnPointCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Location Id */
+            location_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** WaterReturnPointRead */
+        WaterReturnPointRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Location Id */
+            location_id: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+        };
+        /** WaterSourceCreate */
+        WaterSourceCreate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Source Type */
+            source_type: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** WaterSourceRead */
+        WaterSourceRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Source Type */
+            source_type: string;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+        };
+        /** WaterSourceReservoirLinkOpen */
+        WaterSourceReservoirLinkOpen: {
+            /**
+             * Water Source Id
+             * Format: uuid
+             */
+            water_source_id: string;
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Reason */
+            reason?: string | null;
         };
         /** WorkItemAssetSummary */
         WorkItemAssetSummary: {
@@ -28076,6 +29951,2357 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HarvestedProduceLotImpactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_water_sources_farms__farm_id__water_sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterSourceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_water_source_farms__farm_id__water_sources_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterSourceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterSourceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_water_source_water_sources__water_source_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                water_source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterSourceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservoirs_farms__farm_id__reservoirs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_reservoir_farms__farm_id__reservoirs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservoirCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reservoir_reservoirs__reservoir_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_irrigation_circuits_farms__farm_id__irrigation_circuits_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrrigationCircuitRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_irrigation_circuit_farms__farm_id__irrigation_circuits_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IrrigationCircuitCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrrigationCircuitRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_irrigation_circuit_irrigation_circuits__irrigation_circuit_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                irrigation_circuit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrrigationCircuitRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_water_delivery_points_farms__farm_id__water_delivery_points_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryPointRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_water_delivery_point_farms__farm_id__water_delivery_points_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterDeliveryPointCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryPointRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_water_return_points_farms__farm_id__water_return_points_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterReturnPointRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_water_return_point_farms__farm_id__water_return_points_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterReturnPointCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterReturnPointRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_water_source_reservoir_links_farms__farm_id__water_topology_links_water_source_reservoir_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_water_source_reservoir_link_farms__farm_id__water_topology_links_water_source_reservoir_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterSourceReservoirLinkOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_water_source_reservoir_link_water_topology_links_water_source_reservoir__link_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopologyLinkClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservoir_circuit_links_farms__farm_id__water_topology_links_reservoir_circuit_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_reservoir_circuit_link_farms__farm_id__water_topology_links_reservoir_circuit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservoirCircuitLinkOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_reservoir_circuit_link_water_topology_links_reservoir_circuit__link_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopologyLinkClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_circuit_delivery_point_links_farms__farm_id__water_topology_links_circuit_delivery_point_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_circuit_delivery_point_link_farms__farm_id__water_topology_links_circuit_delivery_point_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircuitDeliveryPointLinkOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_circuit_delivery_point_link_water_topology_links_circuit_delivery_point__link_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopologyLinkClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_return_point_reservoir_links_farms__farm_id__water_topology_links_return_point_reservoir_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_return_point_reservoir_link_farms__farm_id__water_topology_links_return_point_reservoir_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnPointReservoirLinkOpen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_return_point_reservoir_link_water_topology_links_return_point_reservoir__link_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopologyLinkClose"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopologyLinkRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sampling_points_farms__farm_id__sampling_points_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingPointRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_sampling_point_farms__farm_id__sampling_points_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SamplingPointCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingPointRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sampling_point_sampling_points__sampling_point_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                sampling_point_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingPointRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_water_instruments_farms__farm_id__water_instruments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterInstrumentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_water_instrument_farms__farm_id__water_instruments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterInstrumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterInstrumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_water_instrument_water_instruments__water_instrument_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                water_instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterInstrumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_calibration_farms__farm_id__water_instruments__water_instrument_id__calibrations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                water_instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalibrationEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_calibrations_water_instruments__water_instrument_id__calibrations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                water_instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calibration_status_water_instruments__water_instrument_id__calibration_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                water_instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_measurement_farms__farm_id__sampling_points__sampling_point_id__measurements_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                sampling_point_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterMeasurementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterMeasurementRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_measurements_sampling_points__sampling_point_id__measurements_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                sampling_point_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterMeasurementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_measurements_for_farm_farms__farm_id__water_measurements_get: {
+        parameters: {
+            query?: {
+                metric?: string | null;
+                reservoir_id?: string | null;
+                window_start?: string | null;
+                window_end?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterMeasurementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_recipes_nutrient_recipes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_recipe_nutrient_recipes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientRecipeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recipe_nutrient_recipes__nutrient_recipe_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                nutrient_recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_nutrient_recipes__nutrient_recipe_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                nutrient_recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeVersionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_version_nutrient_recipes__nutrient_recipe_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                nutrient_recipe_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientRecipeVersionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_nutrient_recipe_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_version_nutrient_recipe_versions__version_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientRecipeVersionLifecycleCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_version_nutrient_recipe_versions__version_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientRecipeVersionLifecycleCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeVersionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_components_nutrient_recipe_versions__version_id__components_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeComponentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_component_nutrient_recipe_versions__version_id__components_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientRecipeComponentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientRecipeComponentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_mix_farms__farm_id__reservoirs__reservoir_id__nutrient_mixes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NutrientMixCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientMixRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mixes_reservoirs__reservoir_id__nutrient_mixes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientMixRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mixes_for_farm_farms__farm_id__nutrient_mixes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientMixRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mix_nutrient_mixes__nutrient_mix_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                nutrient_mix_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientMixRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_mix_inputs_nutrient_mixes__nutrient_mix_id__inputs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                nutrient_mix_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NutrientMixInputRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_reservoir_event_farms__farm_id__reservoirs__reservoir_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReservoirEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservoir_events_reservoirs__reservoir_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_delivery_events_for_farm_farms__farm_id__water_delivery_events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_delivery_event_farms__farm_id__water_delivery_events_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterDeliveryEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_delivery_events_irrigation_circuits__irrigation_circuit_id__water_delivery_events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                irrigation_circuit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reservoir_events_for_farm_farms__farm_id__reservoir_events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReservoirEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exposed_placements_for_circuit_irrigation_circuits__irrigation_circuit_id__exposed_placements_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                window_start: string;
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                irrigation_circuit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExposedPlacementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exposed_placements_for_reservoir_reservoirs__reservoir_id__exposed_placements_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                window_start: string;
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExposedPlacementRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_water_exposure_history_for_batch_crop_batches__batch_id__water_exposure_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                window_start: string;
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchWaterExposureRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_water_attention_farms__farm_id__water_attention_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterAttentionItem"][];
                 };
             };
             /** @description Validation Error */

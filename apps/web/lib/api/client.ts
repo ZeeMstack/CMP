@@ -2847,3 +2847,350 @@ export function printQrLabel(
 ): Promise<PrintLabelResponse> {
   return postJson<PrintLabelResponse>(`/qr/${encodeURIComponent(token)}/print`, payload, signal);
 }
+
+// --- PILOT-WATER-001A/001B: Water & Nutrient domain --------------------------------
+
+export type WaterSourceCreate = components["schemas"]["WaterSourceCreate"];
+export type WaterSourceRead = components["schemas"]["WaterSourceRead"];
+export type ReservoirCreate = components["schemas"]["ReservoirCreate"];
+export type ReservoirRead = components["schemas"]["ReservoirRead"];
+export type IrrigationCircuitCreate = components["schemas"]["IrrigationCircuitCreate"];
+export type IrrigationCircuitRead = components["schemas"]["IrrigationCircuitRead"];
+export type WaterDeliveryPointCreate = components["schemas"]["WaterDeliveryPointCreate"];
+export type WaterDeliveryPointRead = components["schemas"]["WaterDeliveryPointRead"];
+export type WaterReturnPointCreate = components["schemas"]["WaterReturnPointCreate"];
+export type WaterReturnPointRead = components["schemas"]["WaterReturnPointRead"];
+export type WaterSourceReservoirLinkOpen = components["schemas"]["WaterSourceReservoirLinkOpen"];
+export type ReservoirCircuitLinkOpen = components["schemas"]["ReservoirCircuitLinkOpen"];
+export type CircuitDeliveryPointLinkOpen = components["schemas"]["CircuitDeliveryPointLinkOpen"];
+export type ReturnPointReservoirLinkOpen = components["schemas"]["ReturnPointReservoirLinkOpen"];
+export type TopologyLinkClose = components["schemas"]["TopologyLinkClose"];
+export type TopologyLinkRead = components["schemas"]["TopologyLinkRead"];
+export type SamplingPointCreate = components["schemas"]["SamplingPointCreate"];
+export type SamplingPointRead = components["schemas"]["SamplingPointRead"];
+export type WaterInstrumentCreate = components["schemas"]["WaterInstrumentCreate"];
+export type WaterInstrumentRead = components["schemas"]["WaterInstrumentRead"];
+export type CalibrationEventCreate = components["schemas"]["CalibrationEventCreate"];
+export type CalibrationEventRead = components["schemas"]["CalibrationEventRead"];
+export type WaterMeasurementCreate = components["schemas"]["WaterMeasurementCreate"];
+export type WaterMeasurementRead = components["schemas"]["WaterMeasurementRead"];
+export type NutrientRecipeCreate = components["schemas"]["NutrientRecipeCreate"];
+export type NutrientRecipeRead = components["schemas"]["NutrientRecipeRead"];
+export type NutrientRecipeVersionCreate = components["schemas"]["NutrientRecipeVersionCreate"];
+export type NutrientRecipeVersionRead = components["schemas"]["NutrientRecipeVersionRead"];
+export type NutrientRecipeVersionLifecycleCommand = components["schemas"]["NutrientRecipeVersionLifecycleCommand"];
+export type NutrientRecipeComponentCreate = components["schemas"]["NutrientRecipeComponentCreate"];
+export type NutrientRecipeComponentRead = components["schemas"]["NutrientRecipeComponentRead"];
+export type NutrientMixInputCreate = components["schemas"]["NutrientMixInputCreate"];
+export type NutrientMixCreate = components["schemas"]["NutrientMixCreate"];
+export type NutrientMixRead = components["schemas"]["NutrientMixRead"];
+export type NutrientMixInputRead = components["schemas"]["NutrientMixInputRead"];
+export type ReservoirEventCreate = components["schemas"]["ReservoirEventCreate"];
+export type ReservoirEventRead = components["schemas"]["ReservoirEventRead"];
+export type WaterDeliveryEventCreate = components["schemas"]["WaterDeliveryEventCreate"];
+export type WaterDeliveryEventRead = components["schemas"]["WaterDeliveryEventRead"];
+export type ExposedPlacementRead = components["schemas"]["ExposedPlacementRead"];
+export type BatchWaterExposureRead = components["schemas"]["BatchWaterExposureRead"];
+export type WaterAttentionItem = components["schemas"]["WaterAttentionItem"];
+
+// --- Water topology: Water Sources ------------------------------------------------
+
+export function listWaterSources(farmId: string, signal?: AbortSignal): Promise<WaterSourceRead[]> {
+  return getJson<WaterSourceRead[]>(`/farms/${farmId}/water-sources`, signal);
+}
+export function createWaterSource(
+  farmId: string, payload: WaterSourceCreate, signal?: AbortSignal,
+): Promise<WaterSourceRead> {
+  return postJson<WaterSourceRead>(`/farms/${farmId}/water-sources`, payload, signal);
+}
+
+// --- Water topology: Reservoirs / Tanks -------------------------------------------
+
+export function listReservoirs(farmId: string, signal?: AbortSignal): Promise<ReservoirRead[]> {
+  return getJson<ReservoirRead[]>(`/farms/${farmId}/reservoirs`, signal);
+}
+export function createReservoir(
+  farmId: string, payload: ReservoirCreate, signal?: AbortSignal,
+): Promise<ReservoirRead> {
+  return postJson<ReservoirRead>(`/farms/${farmId}/reservoirs`, payload, signal);
+}
+export function getReservoir(reservoirId: string, signal?: AbortSignal): Promise<ReservoirRead> {
+  return getJson<ReservoirRead>(`/reservoirs/${reservoirId}`, signal);
+}
+
+// --- Water topology: Irrigation Circuits ------------------------------------------
+
+export function listIrrigationCircuits(farmId: string, signal?: AbortSignal): Promise<IrrigationCircuitRead[]> {
+  return getJson<IrrigationCircuitRead[]>(`/farms/${farmId}/irrigation-circuits`, signal);
+}
+export function createIrrigationCircuit(
+  farmId: string, payload: IrrigationCircuitCreate, signal?: AbortSignal,
+): Promise<IrrigationCircuitRead> {
+  return postJson<IrrigationCircuitRead>(`/farms/${farmId}/irrigation-circuits`, payload, signal);
+}
+export function getIrrigationCircuit(circuitId: string, signal?: AbortSignal): Promise<IrrigationCircuitRead> {
+  return getJson<IrrigationCircuitRead>(`/irrigation-circuits/${circuitId}`, signal);
+}
+
+// --- Water topology: Delivery / Return Points -------------------------------------
+
+export function listWaterDeliveryPoints(farmId: string, signal?: AbortSignal): Promise<WaterDeliveryPointRead[]> {
+  return getJson<WaterDeliveryPointRead[]>(`/farms/${farmId}/water-delivery-points`, signal);
+}
+export function createWaterDeliveryPoint(
+  farmId: string, payload: WaterDeliveryPointCreate, signal?: AbortSignal,
+): Promise<WaterDeliveryPointRead> {
+  return postJson<WaterDeliveryPointRead>(`/farms/${farmId}/water-delivery-points`, payload, signal);
+}
+export function listWaterReturnPoints(farmId: string, signal?: AbortSignal): Promise<WaterReturnPointRead[]> {
+  return getJson<WaterReturnPointRead[]>(`/farms/${farmId}/water-return-points`, signal);
+}
+export function createWaterReturnPoint(
+  farmId: string, payload: WaterReturnPointCreate, signal?: AbortSignal,
+): Promise<WaterReturnPointRead> {
+  return postJson<WaterReturnPointRead>(`/farms/${farmId}/water-return-points`, payload, signal);
+}
+
+// --- Water topology: effective-dated links ----------------------------------------
+
+export function listWaterSourceReservoirLinks(farmId: string, signal?: AbortSignal): Promise<TopologyLinkRead[]> {
+  return getJson<TopologyLinkRead[]>(`/farms/${farmId}/water-topology-links/water-source-reservoir`, signal);
+}
+export function openWaterSourceReservoirLink(
+  farmId: string, payload: WaterSourceReservoirLinkOpen, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/farms/${farmId}/water-topology-links/water-source-reservoir`, payload, signal);
+}
+export function closeWaterSourceReservoirLink(
+  linkId: string, payload: TopologyLinkClose, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/water-topology-links/water-source-reservoir/${linkId}/close`, payload, signal);
+}
+
+export function listReservoirCircuitLinks(farmId: string, signal?: AbortSignal): Promise<TopologyLinkRead[]> {
+  return getJson<TopologyLinkRead[]>(`/farms/${farmId}/water-topology-links/reservoir-circuit`, signal);
+}
+export function openReservoirCircuitLink(
+  farmId: string, payload: ReservoirCircuitLinkOpen, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/farms/${farmId}/water-topology-links/reservoir-circuit`, payload, signal);
+}
+export function closeReservoirCircuitLink(
+  linkId: string, payload: TopologyLinkClose, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/water-topology-links/reservoir-circuit/${linkId}/close`, payload, signal);
+}
+
+export function listCircuitDeliveryPointLinks(farmId: string, signal?: AbortSignal): Promise<TopologyLinkRead[]> {
+  return getJson<TopologyLinkRead[]>(`/farms/${farmId}/water-topology-links/circuit-delivery-point`, signal);
+}
+export function openCircuitDeliveryPointLink(
+  farmId: string, payload: CircuitDeliveryPointLinkOpen, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/farms/${farmId}/water-topology-links/circuit-delivery-point`, payload, signal);
+}
+export function closeCircuitDeliveryPointLink(
+  linkId: string, payload: TopologyLinkClose, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/water-topology-links/circuit-delivery-point/${linkId}/close`, payload, signal);
+}
+
+export function listReturnPointReservoirLinks(farmId: string, signal?: AbortSignal): Promise<TopologyLinkRead[]> {
+  return getJson<TopologyLinkRead[]>(`/farms/${farmId}/water-topology-links/return-point-reservoir`, signal);
+}
+export function openReturnPointReservoirLink(
+  farmId: string, payload: ReturnPointReservoirLinkOpen, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/farms/${farmId}/water-topology-links/return-point-reservoir`, payload, signal);
+}
+export function closeReturnPointReservoirLink(
+  linkId: string, payload: TopologyLinkClose, signal?: AbortSignal,
+): Promise<TopologyLinkRead> {
+  return postJson<TopologyLinkRead>(`/water-topology-links/return-point-reservoir/${linkId}/close`, payload, signal);
+}
+
+// --- Sampling Points -----------------------------------------------------------------
+
+export function listSamplingPoints(farmId: string, signal?: AbortSignal): Promise<SamplingPointRead[]> {
+  return getJson<SamplingPointRead[]>(`/farms/${farmId}/sampling-points`, signal);
+}
+export function createSamplingPoint(
+  farmId: string, payload: SamplingPointCreate, signal?: AbortSignal,
+): Promise<SamplingPointRead> {
+  return postJson<SamplingPointRead>(`/farms/${farmId}/sampling-points`, payload, signal);
+}
+
+// --- Water Instruments + Calibration ------------------------------------------------
+
+export function listWaterInstruments(farmId: string, signal?: AbortSignal): Promise<WaterInstrumentRead[]> {
+  return getJson<WaterInstrumentRead[]>(`/farms/${farmId}/water-instruments`, signal);
+}
+export function createWaterInstrument(
+  farmId: string, payload: WaterInstrumentCreate, signal?: AbortSignal,
+): Promise<WaterInstrumentRead> {
+  return postJson<WaterInstrumentRead>(`/farms/${farmId}/water-instruments`, payload, signal);
+}
+export function recordCalibration(
+  farmId: string, instrumentId: string, payload: CalibrationEventCreate, signal?: AbortSignal,
+): Promise<CalibrationEventRead> {
+  return postJson<CalibrationEventRead>(
+    `/farms/${farmId}/water-instruments/${instrumentId}/calibrations`, payload, signal,
+  );
+}
+export function listCalibrations(instrumentId: string, signal?: AbortSignal): Promise<CalibrationEventRead[]> {
+  return getJson<CalibrationEventRead[]>(`/water-instruments/${instrumentId}/calibrations`, signal);
+}
+export function getCalibrationStatus(instrumentId: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  return getJson<Record<string, unknown>>(`/water-instruments/${instrumentId}/calibration-status`, signal);
+}
+
+// --- Water Measurements ---------------------------------------------------------------
+
+export function recordMeasurement(
+  farmId: string, samplingPointId: string, payload: WaterMeasurementCreate, signal?: AbortSignal,
+): Promise<WaterMeasurementRead> {
+  return postJson<WaterMeasurementRead>(
+    `/farms/${farmId}/sampling-points/${samplingPointId}/measurements`, payload, signal,
+  );
+}
+export function listMeasurements(samplingPointId: string, signal?: AbortSignal): Promise<WaterMeasurementRead[]> {
+  return getJson<WaterMeasurementRead[]>(`/sampling-points/${samplingPointId}/measurements`, signal);
+}
+export function listMeasurementsForFarm(
+  farmId: string,
+  params: { metric?: string; reservoirId?: string; windowStart?: string; windowEnd?: string } = {},
+  signal?: AbortSignal,
+): Promise<WaterMeasurementRead[]> {
+  const query = new URLSearchParams();
+  if (params.metric) query.set("metric", params.metric);
+  if (params.reservoirId) query.set("reservoir_id", params.reservoirId);
+  if (params.windowStart) query.set("window_start", params.windowStart);
+  if (params.windowEnd) query.set("window_end", params.windowEnd);
+  const qs = query.toString();
+  return getJson<WaterMeasurementRead[]>(`/farms/${farmId}/water-measurements${qs ? `?${qs}` : ""}`, signal);
+}
+
+// --- Nutrient Recipe catalog -----------------------------------------------------------
+
+export function listNutrientRecipes(signal?: AbortSignal): Promise<NutrientRecipeRead[]> {
+  return getJson<NutrientRecipeRead[]>("/nutrient-recipes", signal);
+}
+export function createNutrientRecipe(
+  payload: NutrientRecipeCreate, signal?: AbortSignal,
+): Promise<NutrientRecipeRead> {
+  return postJson<NutrientRecipeRead>("/nutrient-recipes", payload, signal);
+}
+export function getNutrientRecipe(recipeId: string, signal?: AbortSignal): Promise<NutrientRecipeRead> {
+  return getJson<NutrientRecipeRead>(`/nutrient-recipes/${recipeId}`, signal);
+}
+export function listNutrientRecipeVersions(
+  recipeId: string, signal?: AbortSignal,
+): Promise<NutrientRecipeVersionRead[]> {
+  return getJson<NutrientRecipeVersionRead[]>(`/nutrient-recipes/${recipeId}/versions`, signal);
+}
+export function createNutrientRecipeVersion(
+  recipeId: string, payload: NutrientRecipeVersionCreate, signal?: AbortSignal,
+): Promise<NutrientRecipeVersionRead> {
+  return postJson<NutrientRecipeVersionRead>(`/nutrient-recipes/${recipeId}/versions`, payload, signal);
+}
+export function getNutrientRecipeVersion(
+  versionId: string, signal?: AbortSignal,
+): Promise<NutrientRecipeVersionRead> {
+  return getJson<NutrientRecipeVersionRead>(`/nutrient-recipe-versions/${versionId}`, signal);
+}
+export function activateNutrientRecipeVersion(
+  versionId: string, payload: NutrientRecipeVersionLifecycleCommand, signal?: AbortSignal,
+): Promise<NutrientRecipeVersionRead> {
+  return postJson<NutrientRecipeVersionRead>(`/nutrient-recipe-versions/${versionId}/activate`, payload, signal);
+}
+export function retireNutrientRecipeVersion(
+  versionId: string, payload: NutrientRecipeVersionLifecycleCommand, signal?: AbortSignal,
+): Promise<NutrientRecipeVersionRead> {
+  return postJson<NutrientRecipeVersionRead>(`/nutrient-recipe-versions/${versionId}/retire`, payload, signal);
+}
+export function addNutrientRecipeComponent(
+  versionId: string, payload: NutrientRecipeComponentCreate, signal?: AbortSignal,
+): Promise<NutrientRecipeComponentRead> {
+  return postJson<NutrientRecipeComponentRead>(`/nutrient-recipe-versions/${versionId}/components`, payload, signal);
+}
+export function listNutrientRecipeComponents(
+  versionId: string, signal?: AbortSignal,
+): Promise<NutrientRecipeComponentRead[]> {
+  return getJson<NutrientRecipeComponentRead[]>(`/nutrient-recipe-versions/${versionId}/components`, signal);
+}
+
+// --- Nutrient Mix ----------------------------------------------------------------------
+
+export function recordMix(
+  farmId: string, reservoirId: string, payload: NutrientMixCreate, signal?: AbortSignal,
+): Promise<NutrientMixRead> {
+  return postJson<NutrientMixRead>(`/farms/${farmId}/reservoirs/${reservoirId}/nutrient-mixes`, payload, signal);
+}
+export function listMixesForReservoir(reservoirId: string, signal?: AbortSignal): Promise<NutrientMixRead[]> {
+  return getJson<NutrientMixRead[]>(`/reservoirs/${reservoirId}/nutrient-mixes`, signal);
+}
+export function listMixesForFarm(farmId: string, signal?: AbortSignal): Promise<NutrientMixRead[]> {
+  return getJson<NutrientMixRead[]>(`/farms/${farmId}/nutrient-mixes`, signal);
+}
+export function getMix(mixId: string, signal?: AbortSignal): Promise<NutrientMixRead> {
+  return getJson<NutrientMixRead>(`/nutrient-mixes/${mixId}`, signal);
+}
+export function listMixInputs(mixId: string, signal?: AbortSignal): Promise<NutrientMixInputRead[]> {
+  return getJson<NutrientMixInputRead[]>(`/nutrient-mixes/${mixId}/inputs`, signal);
+}
+
+// --- Reservoir Events / Water Delivery Events -------------------------------------------
+
+export function recordReservoirEvent(
+  farmId: string, reservoirId: string, payload: ReservoirEventCreate, signal?: AbortSignal,
+): Promise<ReservoirEventRead> {
+  return postJson<ReservoirEventRead>(`/farms/${farmId}/reservoirs/${reservoirId}/events`, payload, signal);
+}
+export function listReservoirEvents(reservoirId: string, signal?: AbortSignal): Promise<ReservoirEventRead[]> {
+  return getJson<ReservoirEventRead[]>(`/reservoirs/${reservoirId}/events`, signal);
+}
+export function listReservoirEventsForFarm(farmId: string, signal?: AbortSignal): Promise<ReservoirEventRead[]> {
+  return getJson<ReservoirEventRead[]>(`/farms/${farmId}/reservoir-events`, signal);
+}
+export function recordDeliveryEvent(
+  farmId: string, payload: WaterDeliveryEventCreate, signal?: AbortSignal,
+): Promise<WaterDeliveryEventRead> {
+  return postJson<WaterDeliveryEventRead>(`/farms/${farmId}/water-delivery-events`, payload, signal);
+}
+export function listDeliveryEventsForCircuit(
+  circuitId: string, signal?: AbortSignal,
+): Promise<WaterDeliveryEventRead[]> {
+  return getJson<WaterDeliveryEventRead[]>(`/irrigation-circuits/${circuitId}/water-delivery-events`, signal);
+}
+export function listDeliveryEventsForFarm(farmId: string, signal?: AbortSignal): Promise<WaterDeliveryEventRead[]> {
+  return getJson<WaterDeliveryEventRead[]>(`/farms/${farmId}/water-delivery-events`, signal);
+}
+
+// --- Crop Water Exposure -----------------------------------------------------------------
+
+export function getExposedPlacementsForCircuit(
+  circuitId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<ExposedPlacementRead[]> {
+  const query = new URLSearchParams({ farm_id: farmId, window_start: windowStart, window_end: windowEnd });
+  return getJson<ExposedPlacementRead[]>(
+    `/irrigation-circuits/${circuitId}/exposed-placements?${query.toString()}`, signal,
+  );
+}
+export function getExposedPlacementsForReservoir(
+  reservoirId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<ExposedPlacementRead[]> {
+  const query = new URLSearchParams({ farm_id: farmId, window_start: windowStart, window_end: windowEnd });
+  return getJson<ExposedPlacementRead[]>(`/reservoirs/${reservoirId}/exposed-placements?${query.toString()}`, signal);
+}
+export function getBatchWaterExposure(
+  batchId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<BatchWaterExposureRead[]> {
+  const query = new URLSearchParams({ farm_id: farmId, window_start: windowStart, window_end: windowEnd });
+  return getJson<BatchWaterExposureRead[]>(`/crop-batches/${batchId}/water-exposure?${query.toString()}`, signal);
+}
+
+// --- Today on the Farm: Water Attention ---------------------------------------------------
+
+export function getWaterAttention(farmId: string, signal?: AbortSignal): Promise<WaterAttentionItem[]> {
+  return getJson<WaterAttentionItem[]>(`/farms/${farmId}/water/attention`, signal);
+}

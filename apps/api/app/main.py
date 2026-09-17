@@ -18,6 +18,7 @@ from app.api.nutrient_mixes import router as nutrient_mixes_router
 from app.api.nutrient_recipes import router as nutrient_recipes_router
 from app.api.reservoir_operations import router as reservoir_operations_router
 from app.api.sampling_points import router as sampling_points_router
+from app.api.water_attention import router as water_attention_router
 from app.api.water_exposure import router as water_exposure_router
 from app.api.water_instruments import router as water_instruments_router
 from app.api.water_measurements import router as water_measurements_router
@@ -150,6 +151,7 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(nutrient_mixes_router)
     api.include_router(reservoir_operations_router)
     api.include_router(water_exposure_router)
+    api.include_router(water_attention_router)
     api.include_router(recall_router)
     api.include_router(farm_work_items_router)
     api.include_router(growing_protocols_router)

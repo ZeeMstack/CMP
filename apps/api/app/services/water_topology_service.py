@@ -533,3 +533,59 @@ def close_return_point_reservoir_link(
         effective_to=effective_to, action="return_point_reservoir_link.closed",
         entity_type="return_point_reservoir_link",
     )
+
+
+# --- PILOT-WATER-001B: farm-wide topology link reads --------------------------------------
+#
+# WATER-001A exposed open/close for every link table but no way to READ one
+# at all -- these four farm-wide, unfiltered lists (current AND historical,
+# newest-effective-from first) are the one missing capability the Topology
+# Workspace (section 6) and area-specific Tank-serving views (section 5)
+# genuinely need. Every row is real, already-stored history; nothing here
+# infers or fabricates a relationship.
+
+
+def list_water_source_reservoir_links(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
+) -> list[WaterSourceReservoirLink]:
+    return list(
+        db.execute(
+            select(WaterSourceReservoirLink)
+            .where(WaterSourceReservoirLink.tenant_id == tenant_id, WaterSourceReservoirLink.farm_id == farm_id)
+            .order_by(WaterSourceReservoirLink.effective_from.desc())
+        ).scalars()
+    )
+
+
+def list_reservoir_circuit_links(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID) -> list[ReservoirCircuitLink]:
+    return list(
+        db.execute(
+            select(ReservoirCircuitLink)
+            .where(ReservoirCircuitLink.tenant_id == tenant_id, ReservoirCircuitLink.farm_id == farm_id)
+            .order_by(ReservoirCircuitLink.effective_from.desc())
+        ).scalars()
+    )
+
+
+def list_circuit_delivery_point_links(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
+) -> list[CircuitDeliveryPointLink]:
+    return list(
+        db.execute(
+            select(CircuitDeliveryPointLink)
+            .where(CircuitDeliveryPointLink.tenant_id == tenant_id, CircuitDeliveryPointLink.farm_id == farm_id)
+            .order_by(CircuitDeliveryPointLink.effective_from.desc())
+        ).scalars()
+    )
+
+
+def list_return_point_reservoir_links(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
+) -> list[ReturnPointReservoirLink]:
+    return list(
+        db.execute(
+            select(ReturnPointReservoirLink)
+            .where(ReturnPointReservoirLink.tenant_id == tenant_id, ReturnPointReservoirLink.farm_id == farm_id)
+            .order_by(ReturnPointReservoirLink.effective_from.desc())
+        ).scalars()
+    )
