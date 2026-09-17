@@ -12,7 +12,9 @@ import pytest
 from app.services import (
     asset_service,
     carrier_service,
+    carrier_specification_service,
     equipment_readiness_service,
+    leafy_production_transfer_service,
     membership_service,
     nursery_service,
     tenant_service,
@@ -164,6 +166,56 @@ def test_seed_tray_availability_follows_readiness_state(db_session, active_conte
     )
     # Proof 2: READY is available (registry active, no occupying assignment).
     assert _is_available()
+
+
+# --- Retirement integrity check: raw-SQL "available" paths must exclude UNKNOWN
+# too, not just the original four states -- `list_available_production_plates`
+# and `list_available_intersalads_plates` (carriers) and
+# `list_available_trolleys` (assets) each hardcode their own literal
+# readiness-exclusion list in a raw `text()` query rather than sharing
+# `equipment_readiness_service.NON_READY_STATES`, so fixing the shared
+# constant alone did not fix them. Proven once, via the production-plates
+# path, representative of the same bug class in the other two raw-SQL
+# functions.
+
+
+@pytest.mark.integration
+def test_production_plate_availability_excludes_unknown_readiness(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    spec = carrier_specification_service.register_carrier_specification(
+        db_session, tenant_id=tenant.id, actor_user_id=user.id, carrier_type_code="production_cultivation_plate",
+        code=f"PP-SPEC-{uuid.uuid4().hex[:8]}", name="Plate", length_mm=600, width_mm=400, height_mm=80,
+        biological_position_count=200,
+    )
+    plate = carrier_service.register_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        specification_id=spec.id, code=f"PP-{uuid.uuid4().hex[:8]}", issued_date=None,
+    )
+
+    def _is_available() -> bool:
+        rows = leafy_production_transfer_service.list_available_production_plates(
+            db_session, tenant_id=tenant.id, farm_id=farm.id
+        )
+        return any(r.id == plate.id for r in rows)
+
+    assert not _is_available(), "freshly-registered (UNKNOWN) plate must be excluded -- UNKNOWN != READY"
+
+    state = equipment_readiness_service.get_readiness_for_carrier(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=plate.id
+    )
+    equipment_readiness_service.mark_awaiting_cleaning(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    state, _event = equipment_readiness_service.record_cleaning_completed(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(), effective_at=_now(), method=None, result="completed", notes=None,
+    )
+    equipment_readiness_service.mark_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=state.id,
+        client_command_id=uuid.uuid4(),
+    )
+    assert _is_available(), "READY plate must be available"
 
 
 # --- Proof 4: Cleaning Completed does not automatically mean READY ----------------

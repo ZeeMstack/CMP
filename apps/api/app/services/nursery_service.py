@@ -228,8 +228,9 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
     availability here is purely "not already carrying a live crop batch".
 
     PILOT-ASSET-001: additionally excludes a tray whose Equipment Readiness
-    is AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/RETIRED --
-    an empty but dirty/damaged tray must never appear as available. See
+    is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/
+    RETIRED -- only READY is eligible; an empty but never-assessed/dirty/
+    damaged tray must never appear as available. See
     docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     seed_tray_type = db.execute(

@@ -548,9 +548,10 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
     requirement).
 
     PILOT-ASSET-001: additionally excludes a Trolley whose Equipment
-    Readiness is AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/
-    RETIRED -- a dirty/damaged Trolley must never be offered as a Tray
-    placement destination. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
+    Readiness is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/
+    MAINTENANCE/RETIRED -- only READY is eligible; a dirty/damaged/
+    never-assessed Trolley must never be offered as a Tray placement
+    destination. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -565,7 +566,7 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
             "AND NOT EXISTS ("
             "  SELECT 1 FROM equipment_readiness_states ers "
             "  WHERE ers.asset_id = a.id AND ers.tenant_id = a.tenant_id "
-            "  AND ers.current_state IN ('awaiting_cleaning', 'cleaning_completed', 'damaged', "
+            "  AND ers.current_state IN ('unknown', 'awaiting_cleaning', 'cleaning_completed', 'damaged', "
             "'maintenance', 'retired')"
             ") "
             "ORDER BY a.code"
