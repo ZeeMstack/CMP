@@ -7,8 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
+from app.models.batch_harvest_forecast import BatchHarvestForecast
 from app.models.crop import Crop
 from app.models.crop_batch import CropBatch
+from app.models.harvested_produce_lot import HarvestedProduceLot
 from app.models.production_requirement import ProductionRequirement
 from app.models.seeding_program_line import SeedingProgramLine
 from app.models.sowing_event import SowingEvent
@@ -20,6 +22,7 @@ from app.schemas.planning import (
     LinkedSowingSummary,
     ProductionRequirementRead,
     RequirementFulfillment,
+    RequirementHarvestOutlook,
     SeedingProgramLineDetailRead,
     SeedingProgramLineRead,
     UomSummary,
@@ -869,3 +872,106 @@ def list_seeding_program_lines(
         query = query.where(SeedingProgramLine.production_requirement_id == production_requirement_id)
     rows = db.execute(query.order_by(SeedingProgramLine.planned_sow_date, SeedingProgramLine.id)).all()
     return [_row_to_line_read(db, row=row) for row in rows]
+
+
+# === Requirement Harvest Outlook (PILOT-PLAN-001A Part 7) ===========================
+
+
+def compute_requirement_harvest_outlook(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, requirement_id: uuid.UUID
+) -> RequirementHarvestOutlook:
+    """A READ MODEL, kept fully separate from `RequirementFulfillment`
+    (never touched by this function). Reaches actual Crop Batches through
+    the existing FK chain -- this Requirement's Seeding Program Lines ->
+    `SowingEvent.seeding_program_line_id` -> `SowingEvent.batch_id` --
+    never a new demand-storage table. UOM comparison always goes through
+    `unit_of_measure_service.resolve_conversion_factor`; when no
+    conversion path exists, the paired quantity is `None` and
+    `*_comparable` is `False` rather than an invented conversion."""
+    requirement = db.execute(
+        select(ProductionRequirement).where(
+            ProductionRequirement.id == requirement_id, ProductionRequirement.tenant_id == tenant_id,
+            ProductionRequirement.farm_id == farm_id,
+        )
+    ).scalar_one_or_none()
+    if requirement is None:
+        raise ProductionRequirementNotFoundError(str(requirement_id))
+
+    line_ids = list(
+        db.execute(
+            select(SeedingProgramLine.id).where(
+                SeedingProgramLine.tenant_id == tenant_id, SeedingProgramLine.farm_id == farm_id,
+                SeedingProgramLine.production_requirement_id == requirement_id,
+            )
+        ).scalars()
+    )
+    batch_ids: list[uuid.UUID] = []
+    if line_ids:
+        batch_ids = list(
+            db.execute(
+                select(SowingEvent.batch_id).where(
+                    SowingEvent.tenant_id == tenant_id, SowingEvent.seeding_program_line_id.in_(line_ids)
+                )
+            ).scalars()
+        )
+
+    forecast_comparable = False
+    forecast_low = forecast_expected = forecast_high = None
+    batches_with_forecast = 0
+    if batch_ids:
+        current_forecasts = list(
+            db.execute(
+                select(BatchHarvestForecast).where(
+                    BatchHarvestForecast.tenant_id == tenant_id, BatchHarvestForecast.farm_id == farm_id,
+                    BatchHarvestForecast.batch_id.in_(batch_ids), BatchHarvestForecast.superseded_at.is_(None),
+                )
+            ).scalars()
+        )
+        batches_with_forecast = len(current_forecasts)
+        comparable_forecasts = []
+        for forecast in current_forecasts:
+            factor = unit_of_measure_service.resolve_conversion_factor(
+                db, from_uom_id=forecast.quantity_uom_id, to_uom_id=requirement.quantity_uom_id
+            )
+            if factor is not None:
+                comparable_forecasts.append((forecast, factor))
+        if comparable_forecasts:
+            forecast_comparable = True
+            forecast_low = sum((f.low_quantity * factor for f, factor in comparable_forecasts), Decimal("0"))
+            forecast_expected = sum(
+                (f.expected_quantity * factor for f, factor in comparable_forecasts), Decimal("0")
+            )
+            forecast_high = sum((f.high_quantity * factor for f, factor in comparable_forecasts), Decimal("0"))
+
+    coverage_gap = (requirement.required_quantity - forecast_expected) if forecast_comparable else None
+
+    actual_weight_kg = Decimal("0")
+    if batch_ids:
+        actual_weight_kg = Decimal(
+            db.execute(
+                select(func.coalesce(func.sum(HarvestedProduceLot.total_harvested_weight_kg), 0)).where(
+                    HarvestedProduceLot.tenant_id == tenant_id, HarvestedProduceLot.farm_id == farm_id,
+                    HarvestedProduceLot.batch_id.in_(batch_ids),
+                )
+            ).scalar_one()
+        )
+    actual_comparable = False
+    actual_quantity = None
+    if batch_ids:
+        kg_uom = db.execute(select(UnitOfMeasure).where(UnitOfMeasure.code == "kg")).scalar_one()
+        factor = unit_of_measure_service.resolve_conversion_factor(
+            db, from_uom_id=kg_uom.id, to_uom_id=requirement.quantity_uom_id
+        )
+        if factor is not None:
+            actual_comparable = True
+            actual_quantity = actual_weight_kg * factor
+
+    return RequirementHarvestOutlook(
+        requirement_id=requirement_id, required_quantity=requirement.required_quantity,
+        required_uom=_uom_summary(db.get(UnitOfMeasure, requirement.quantity_uom_id)),
+        contributing_batch_count=len(set(batch_ids)), batches_with_current_forecast_count=batches_with_forecast,
+        forecast_comparable=forecast_comparable, forecast_low_quantity=forecast_low,
+        forecast_expected_quantity=forecast_expected, forecast_high_quantity=forecast_high,
+        coverage_gap_quantity=coverage_gap, actual_harvested_comparable=actual_comparable,
+        actual_harvested_quantity=actual_quantity, actual_harvested_weight_kg=actual_weight_kg,
+    )

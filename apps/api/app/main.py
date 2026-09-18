@@ -70,6 +70,8 @@ from app.api.quality_holds import router as quality_holds_router
 from app.api.ready import router as ready_router
 from app.api.recall import router as recall_router
 from app.api.nursery import router as nursery_router
+from app.api.capacity_plans import router as capacity_plans_router
+from app.api.harvest_forecasts import router as harvest_forecasts_router
 from app.api.planning import router as planning_router
 from app.api.seed_lots import router as seed_lots_router
 from app.api.seedling import router as seedling_router
@@ -124,6 +126,8 @@ def create_app(cfg: Settings) -> FastAPI:
     api.include_router(seed_lots_router)
     api.include_router(sowings_router)
     api.include_router(planning_router)
+    api.include_router(harvest_forecasts_router)
+    api.include_router(capacity_plans_router)
     api.include_router(nursery_router)
     api.include_router(germination_router)
     api.include_router(observation_definitions_router)

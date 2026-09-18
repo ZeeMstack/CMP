@@ -211,3 +211,32 @@ class SeedingProgramLineRead(BaseModel):
 
 class SeedingProgramLineDetailRead(SeedingProgramLineRead):
     linked_sowings: list[LinkedSowingSummary]
+
+
+# --- PILOT-PLAN-001A: Requirement Harvest Outlook (Part 7) --------------------------
+
+
+class RequirementHarvestOutlook(BaseModel):
+    """A READ MODEL, not a second demand ledger -- kept fully separate from
+    `RequirementFulfillment` (which never changes). Rolls up the CURRENT
+    `BatchHarvestForecast` and actual harvested quantity for every Crop
+    Batch reached via this Requirement's Seeding Program Lines'
+    `SowingEvent.seeding_program_line_id` link (the existing FK chain --
+    see `docs/domain/HARVEST_FORECAST_CAPACITY_MODEL.md`). Never sums a
+    quantity whose UOM cannot be converted into the Requirement's own
+    `quantity_uom_id` -- `*_comparable=False` and the paired quantity is
+    `None` rather than a silently invented conversion."""
+
+    requirement_id: uuid.UUID
+    required_quantity: Decimal
+    required_uom: UomSummary
+    contributing_batch_count: int
+    batches_with_current_forecast_count: int
+    forecast_comparable: bool
+    forecast_low_quantity: Decimal | None
+    forecast_expected_quantity: Decimal | None
+    forecast_high_quantity: Decimal | None
+    coverage_gap_quantity: Decimal | None
+    actual_harvested_comparable: bool
+    actual_harvested_quantity: Decimal | None
+    actual_harvested_weight_kg: Decimal

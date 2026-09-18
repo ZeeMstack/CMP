@@ -4,6 +4,7 @@ from app.models.asset_type import AssetType
 from app.models.audit_event import AuditEvent
 from app.models.batch_carrier_assignment import BatchCarrierAssignment
 from app.models.batch_carrier_population_checkpoint import BatchCarrierPopulationCheckpoint
+from app.models.batch_harvest_forecast import BatchHarvestForecast
 from app.models.batch_stage_run import BatchStageRun
 from app.models.batch_stage_transition import BatchStageTransition
 from app.models.carrier import Carrier
@@ -86,6 +87,7 @@ from app.models.water_topology_link import (
     ReturnPointReservoirLink,
     WaterSourceReservoirLink,
 )
+from app.models.production_capacity_allocation import ProductionCapacityAllocation
 from app.models.production_disposition_command import ProductionDispositionCommand
 from app.models.production_disposition_event import ProductionDispositionEvent
 from app.models.production_disposition_event_grow_cube import ProductionDispositionEventGrowCube
