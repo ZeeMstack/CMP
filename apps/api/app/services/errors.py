@@ -2715,3 +2715,57 @@ class EquipmentIncidentCommandReusedWithDifferentPayloadError(DomainError):
 
 class EquipmentIncidentInvalidTransitionError(DomainError):
     pass
+
+
+# --- PILOT-PLAN-001A: Harvest Forecast / Capacity Planning -------------------
+
+
+class BatchHarvestForecastNotFoundError(DomainError):
+    """Raised when a Batch has no CURRENT forecast (either none was ever
+    recorded, or `forecast_id` does not resolve to one owned by this
+    tenant/farm/batch)."""
+
+    pass
+
+
+class BatchHarvestForecastValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class BatchHarvestForecastCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class ProductionCapacityAllocationNotFoundError(DomainError):
+    pass
+
+
+class ProductionCapacityAllocationValidationError(DomainError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ProductionCapacityAllocationCommandReusedWithDifferentPayloadError(DomainError):
+    pass
+
+
+class ProductionCapacityAllocationNotEditableError(DomainError):
+    """Raised when update/cancel targets an allocation whose `status` is
+    already `cancelled`."""
+
+    pass
+
+
+class CapacityAllocationExceedsAuthoritativeCapacityError(DomainError):
+    """Raised when a new/changed allocation's overlapping planned capacity
+    would exceed the target Location's authoritative capacity
+    (`locations.capacity`, DOMAIN-FARM-002). Never raised when authoritative
+    capacity is UNKNOWN/NOT CONFIGURED -- see `capacity_plan_service.
+    _effective_capacity`."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason

@@ -346,6 +346,19 @@ class Permission(StrEnum):
     EQUIPMENT_INCIDENT_MANAGE = "equipment_incident.manage"
     EQUIPMENT_INCIDENT_EXECUTE = "equipment_incident.execute"
 
+    # PILOT-PLAN-001A: Harvest Forecast / Capacity Planning. Two separate
+    # pairs, deliberately not folded into PLANNING_READ/PLANNING_MANAGE --
+    # a Batch harvest forecast is operational grower input (mirrors
+    # HARVEST_MANAGE's own "who physically works the batch" distribution),
+    # while a production capacity allocation is site-level planning
+    # authority closer to PLANNING_MANAGE's own farm_manager/head_grower
+    # ceiling. Never confused with HARVEST_MANAGE (an actual Harvest
+    # command) or MOVEMENT_MANAGE (actual Occupancy).
+    HARVEST_FORECAST_READ = "harvest_forecast.read"
+    HARVEST_FORECAST_MANAGE = "harvest_forecast.manage"
+    CAPACITY_PLAN_READ = "capacity_plan.read"
+    CAPACITY_PLAN_MANAGE = "capacity_plan.manage"
+
 
 _ALL_PERMISSIONS: frozenset[Permission] = frozenset(Permission)
 
@@ -442,6 +455,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PLANNING-OPS-001: farm_manager has full planning authority
         # alongside its existing infrastructure/master-data ownership.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-PLAN-001A: farm_manager gets planning/capacity visibility
+        # AND capacity management (owns site-level production scheduling),
+        # but not harvest_forecast.manage -- forecast entry stays with the
+        # grower/supervisory roles who actually work the Batch.
+        Permission.HARVEST_FORECAST_READ,
+        Permission.CAPACITY_PLAN_READ, Permission.CAPACITY_PLAN_MANAGE,
         # PILOT-OPS-001: farm_manager creates/assigns/cancels Work Items
         # (supervisory oversight of "Today on the Farm") but does not
         # execute routine floor work itself.
@@ -507,6 +526,12 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # Seeding Program, the same agronomic-planning tier as its existing
         # crop/workflow/batch-lifecycle authority above.
         Permission.PLANNING_READ, Permission.PLANNING_MANAGE,
+        # PILOT-PLAN-001A: head_grower gets both forecast management (the
+        # grower-owned harvest forecast) and production capacity planning
+        # -- "forecast management + production capacity planning" is this
+        # role's explicit ceiling for the new Planning domain.
+        Permission.HARVEST_FORECAST_READ, Permission.HARVEST_FORECAST_MANAGE,
+        Permission.CAPACITY_PLAN_READ, Permission.CAPACITY_PLAN_MANAGE,
         # PILOT-OPS-001: head_grower creates/assigns crop-care Work Items,
         # the same supervisory tier as farm_manager for this domain.
         Permission.FARM_WORK_ITEM_READ, Permission.FARM_WORK_ITEM_MANAGE,
@@ -565,6 +590,13 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # -- no planning.manage, matching this role's "no master-data
         # configuration" ceiling above.
         Permission.PLANNING_READ,
+        # PILOT-PLAN-001A: production_supervisor records/revises the
+        # operational harvest forecast input for batches it supervises,
+        # but only reads capacity plans -- site-level capacity scheduling
+        # stays with head_grower/farm_manager, matching this role's
+        # existing "no master-data configuration" ceiling.
+        Permission.HARVEST_FORECAST_READ, Permission.HARVEST_FORECAST_MANAGE,
+        Permission.CAPACITY_PLAN_READ,
         # PILOT-OPS-001: production_supervisor both creates/assigns Work
         # Items (floor oversight) and executes them -- the same "does the
         # same transactional commands operators perform, plus supervisory
@@ -890,6 +922,9 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # module too, matching this role's "every `.read` permission"
         # character -- zero `.manage`.
         Permission.PLANNING_READ,
+        # PILOT-PLAN-001A: identical "every `.read`, zero `.manage`"
+        # extension to Harvest Forecast / Capacity Planning.
+        Permission.HARVEST_FORECAST_READ, Permission.CAPACITY_PLAN_READ,
         # PILOT-OPS-001: read-only visibility into Work Items, matching
         # this role's "every `.read` permission, zero mutations" character.
         Permission.FARM_WORK_ITEM_READ,
@@ -935,6 +970,8 @@ _ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         # PLANNING-OPS-001: identical to `auditor`'s own addition above, by
         # the same "zero mutations" design.
         Permission.PLANNING_READ,
+        # PILOT-PLAN-001A: identical to `auditor`'s own addition above.
+        Permission.HARVEST_FORECAST_READ, Permission.CAPACITY_PLAN_READ,
         # PILOT-OPS-001: identical to `auditor`'s own addition above, by
         # the same "zero mutations" design.
         Permission.FARM_WORK_ITEM_READ,

@@ -11,6 +11,7 @@ from app.schemas.planning import (
     ProductionRequirementRead,
     ProductionRequirementStatusCommand,
     ProductionRequirementUpdate,
+    RequirementHarvestOutlook,
     SeedingProgramLineCreate,
     SeedingProgramLineDetailRead,
     SeedingProgramLineRead,
@@ -171,6 +172,24 @@ def cancel_production_requirement(
     return planning_service.get_production_requirement(
         db, tenant_id=ctx.tenant_id, farm_id=farm_id, requirement_id=requirement_id
     )
+
+
+@router.get(
+    "/farms/{farm_id}/production-requirements/{requirement_id}/harvest-outlook",
+    response_model=RequirementHarvestOutlook,
+)
+def get_requirement_harvest_outlook(
+    farm_id: uuid.UUID,
+    requirement_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.PLANNING_READ)),
+) -> RequirementHarvestOutlook:
+    try:
+        return planning_service.compute_requirement_harvest_outlook(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, requirement_id=requirement_id
+        )
+    except (FarmNotFoundError, ProductionRequirementNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
 
 
 # --- Seeding Program Lines -----------------------------------------------------------
