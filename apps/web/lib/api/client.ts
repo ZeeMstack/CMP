@@ -3461,3 +3461,111 @@ export interface EquipmentAttentionItem {
 export function getEquipmentAttention(farmId: string, signal?: AbortSignal): Promise<EquipmentAttentionItem[]> {
   return getJson<EquipmentAttentionItem[]>(`/farms/${farmId}/equipment-attention`, signal);
 }
+
+// --- PILOT-PLAN-001A/B: Harvest Forecast + Capacity Planning -----------------------
+// Planning-only overlays on top of the existing ProductionRequirement/
+// SeedingProgramLine/CropBatch/Location domain -- a Harvest Forecast is never
+// inventory, a Capacity Allocation never creates Occupancy, and neither
+// mutates a Batch or a Location. See docs/domain/HARVEST_FORECAST_CAPACITY_MODEL.md.
+
+export type BatchHarvestForecastRead = components["schemas"]["BatchHarvestForecastRead"];
+export type RecordBatchHarvestForecast = components["schemas"]["RecordBatchHarvestForecast"];
+export type BatchHarvestActualSummary = components["schemas"]["BatchHarvestActualSummary"];
+export type BatchHarvestForecastStatusRead = components["schemas"]["BatchHarvestForecastStatusRead"];
+export type ProductionCapacityAllocationRead = components["schemas"]["ProductionCapacityAllocationRead"];
+export type CreateProductionCapacityAllocation = components["schemas"]["CreateProductionCapacityAllocation"];
+export type UpdateProductionCapacityAllocation = components["schemas"]["UpdateProductionCapacityAllocation"];
+export type CapacityAllocationStatusCommand = components["schemas"]["CapacityAllocationStatusCommand"];
+export type LocationCapacitySummaryRead = components["schemas"]["LocationCapacitySummaryRead"];
+export type RequirementHarvestOutlook = components["schemas"]["RequirementHarvestOutlook"];
+
+export function getCurrentForecast(
+  farmId: string, batchId: string, signal?: AbortSignal,
+): Promise<BatchHarvestForecastRead> {
+  return getJson<BatchHarvestForecastRead>(`/farms/${farmId}/crop-batches/${batchId}/harvest-forecast`, signal);
+}
+
+export function getForecastHistory(
+  farmId: string, batchId: string, signal?: AbortSignal,
+): Promise<BatchHarvestForecastRead[]> {
+  return getJson<BatchHarvestForecastRead[]>(
+    `/farms/${farmId}/crop-batches/${batchId}/harvest-forecast/history`, signal,
+  );
+}
+
+export function getForecastStatus(
+  farmId: string, batchId: string, signal?: AbortSignal,
+): Promise<BatchHarvestForecastStatusRead> {
+  return getJson<BatchHarvestForecastStatusRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/harvest-forecast/status`, signal,
+  );
+}
+
+export function recordBatchHarvestForecast(
+  farmId: string, batchId: string, payload: RecordBatchHarvestForecast, signal?: AbortSignal,
+): Promise<BatchHarvestForecastRead> {
+  return postJson<BatchHarvestForecastRead>(
+    `/farms/${farmId}/crop-batches/${batchId}/harvest-forecast`, payload, signal,
+  );
+}
+
+export function getFarmForecastSummary(
+  farmId: string, windowStartDate: string, windowEndDate: string, signal?: AbortSignal,
+): Promise<BatchHarvestForecastStatusRead[]> {
+  const query = new URLSearchParams({ window_start_date: windowStartDate, window_end_date: windowEndDate });
+  return getJson<BatchHarvestForecastStatusRead[]>(
+    `/farms/${farmId}/harvest-forecast-summary?${query.toString()}`, signal,
+  );
+}
+
+export function getRequirementHarvestOutlook(
+  farmId: string, requirementId: string, signal?: AbortSignal,
+): Promise<RequirementHarvestOutlook> {
+  return getJson<RequirementHarvestOutlook>(
+    `/farms/${farmId}/production-requirements/${requirementId}/harvest-outlook`, signal,
+  );
+}
+
+export function listCapacityAllocations(
+  farmId: string, locationId?: string, signal?: AbortSignal,
+): Promise<ProductionCapacityAllocationRead[]> {
+  const query = locationId ? `?location_id=${locationId}` : "";
+  return getJson<ProductionCapacityAllocationRead[]>(`/farms/${farmId}/capacity-allocations${query}`, signal);
+}
+
+export function getCapacityAllocation(
+  farmId: string, allocationId: string, signal?: AbortSignal,
+): Promise<ProductionCapacityAllocationRead> {
+  return getJson<ProductionCapacityAllocationRead>(`/farms/${farmId}/capacity-allocations/${allocationId}`, signal);
+}
+
+export function createCapacityAllocation(
+  farmId: string, payload: CreateProductionCapacityAllocation, signal?: AbortSignal,
+): Promise<ProductionCapacityAllocationRead> {
+  return postJson<ProductionCapacityAllocationRead>(`/farms/${farmId}/capacity-allocations`, payload, signal);
+}
+
+export function updateCapacityAllocation(
+  farmId: string, allocationId: string, payload: UpdateProductionCapacityAllocation, signal?: AbortSignal,
+): Promise<ProductionCapacityAllocationRead> {
+  return postJson<ProductionCapacityAllocationRead>(
+    `/farms/${farmId}/capacity-allocations/${allocationId}/update`, payload, signal,
+  );
+}
+
+export function cancelCapacityAllocation(
+  farmId: string, allocationId: string, payload: CapacityAllocationStatusCommand, signal?: AbortSignal,
+): Promise<ProductionCapacityAllocationRead> {
+  return postJson<ProductionCapacityAllocationRead>(
+    `/farms/${farmId}/capacity-allocations/${allocationId}/cancel`, payload, signal,
+  );
+}
+
+export function getLocationCapacitySummary(
+  farmId: string, locationId: string, windowStartDate: string, windowEndDate: string, signal?: AbortSignal,
+): Promise<LocationCapacitySummaryRead> {
+  const query = new URLSearchParams({ window_start_date: windowStartDate, window_end_date: windowEndDate });
+  return getJson<LocationCapacitySummaryRead>(
+    `/farms/${farmId}/locations/${locationId}/capacity-summary?${query.toString()}`, signal,
+  );
+}

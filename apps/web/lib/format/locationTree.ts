@@ -21,3 +21,44 @@ export function flattenLocationTree(nodes: LocationTreeNode[], depth = 0): Flatt
   }
   return result;
 }
+
+export interface FlattenedLocationCapacityOption extends FlattenedLocationOption {
+  code: string;
+  name: string;
+  status: string;
+  occupiable: boolean;
+  /** Authoritative capacity per DOMAIN-FARM-002/PILOT-PLAN-001A -- `null`
+   * means UNKNOWN (not configured), never "unlimited". See
+   * `capacity_plan_service._effective_capacity` for the same NULL-means-1
+   * default when `occupiable` and no explicit value is set. */
+  capacity: number | null;
+}
+
+/** PILOT-PLAN-001B: same flattening as `flattenLocationTree`, but keeping
+ * `capacity`/`occupiable` so a Capacity Allocation location picker (and the
+ * Capacity Outlook worksheet's "add a location" control) can show which
+ * candidate Locations already carry an authoritative capacity fact, rather
+ * than re-fetching the tree a second time with a different shape. Additive
+ * -- does not change `flattenLocationTree`'s own existing output/callers. */
+export function flattenLocationCapacityOptions(
+  nodes: LocationTreeNode[],
+  depth = 0,
+): FlattenedLocationCapacityOption[] {
+  const result: FlattenedLocationCapacityOption[] = [];
+  for (const node of nodes) {
+    result.push({
+      id: node.id,
+      code: node.code,
+      name: node.name,
+      status: node.status,
+      occupiable: node.occupiable,
+      capacity: node.capacity,
+      label: `${"  ".repeat(depth)}${node.name} (${node.code})`,
+      depth,
+    });
+    if (node.children.length > 0) {
+      result.push(...flattenLocationCapacityOptions(node.children, depth + 1));
+    }
+  }
+  return result;
+}

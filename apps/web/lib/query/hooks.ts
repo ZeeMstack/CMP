@@ -158,6 +158,14 @@ import type {
   EquipmentIncidentAssignIn,
   EquipmentIncidentResolveIn,
   EquipmentIncidentCloseIn,
+  RecordBatchHarvestForecast,
+  BatchHarvestForecastStatusRead,
+  RequirementHarvestOutlook,
+  CreateProductionCapacityAllocation,
+  UpdateProductionCapacityAllocation,
+  CapacityAllocationStatusCommand,
+  LocationCapacitySummaryRead,
+  SeedingProgramLineDetailRead,
 } from "@/lib/api/client";
 import { useAuthBootstrap } from "@/lib/auth/AuthBootstrapProvider";
 import { AppError } from "@/lib/errors/adapter";
@@ -3591,6 +3599,27 @@ export function useSeedingProgramLine(farmId: string, lineId: string | undefined
   });
 }
 
+/** PILOT-PLAN-001B: bulk per-line detail (for `linked_sowings` -> Batch
+ * ids), backing the Requirement Coverage drill-down's "contributing
+ * Batches" panel -- mirrors `useRequirementHarvestOutlooks`'s fan-out shape
+ * (no bulk-detail backend endpoint). */
+export function useSeedingProgramLineDetails(farmId: string, lineIds: string[]) {
+  const tenantId = useSelectedTenantId();
+  const queries = useQueries({
+    queries: lineIds.map((lineId) => ({
+      queryKey: queryKeys.seedingProgramLine(tenantId ?? "", farmId, lineId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getSeedingProgramLine(farmId, lineId, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(lineId),
+    })),
+  });
+  const byLineId: Record<string, SeedingProgramLineDetailRead | undefined> = {};
+  lineIds.forEach((lineId, i) => {
+    byLineId[lineId] = queries[i]?.data;
+  });
+  return { byLineId, isLoading: queries.some((q) => q.isLoading) };
+}
+
 function invalidateSeedingProgramLine(
   queryClient: ReturnType<typeof useQueryClient>,
   tenantId: string | undefined,
@@ -5225,4 +5254,247 @@ export function useEquipmentAttention(farmId: string) {
     staleTime: STALE_LIST_MS,
     enabled: Boolean(tenantId) && Boolean(farmId),
   });
+}
+
+// --- PILOT-PLAN-001A/B: Harvest Forecast + Capacity Planning -----------------------
+
+export function useBatchHarvestForecast(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.batchHarvestForecast(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.getCurrentForecast(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+    // A Batch with no forecast yet is a 404, not an error state to surface --
+    // the panel/table renders "No forecast" instead of retrying forever.
+    retry: false,
+  });
+}
+
+export function useBatchHarvestForecastHistory(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.batchHarvestForecastHistory(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.getForecastHistory(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+export function useBatchHarvestForecastStatus(farmId: string, batchId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.batchHarvestForecastStatus(tenantId ?? "", farmId, batchId ?? ""),
+    queryFn: ({ signal }) => api.getForecastStatus(farmId, batchId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(batchId),
+  });
+}
+
+/** Bulk per-batch forecast status, for a Requirement's "contributing
+ * batches" drill-down and other rollups -- mirrors `useVarietiesByCropIds`'s
+ * own `useQueries` fan-out shape (there is no bulk-by-batch-ids backend
+ * endpoint). */
+export function useBatchHarvestForecastStatuses(farmId: string, batchIds: string[]) {
+  const tenantId = useSelectedTenantId();
+  const queries = useQueries({
+    queries: batchIds.map((batchId) => ({
+      queryKey: queryKeys.batchHarvestForecastStatus(tenantId ?? "", farmId, batchId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getForecastStatus(farmId, batchId, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(batchId),
+    })),
+  });
+  const byBatchId: Record<string, BatchHarvestForecastStatusRead | undefined> = {};
+  batchIds.forEach((batchId, i) => {
+    byBatchId[batchId] = queries[i]?.data;
+  });
+  return {
+    byBatchId,
+    isLoading: queries.some((q) => q.isLoading),
+    hasError: queries.some((q) => q.error),
+  };
+}
+
+export function useRecordBatchHarvestForecast(farmId: string, batchId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RecordBatchHarvestForecast) => api.recordBatchHarvestForecast(farmId, batchId, payload),
+    onSuccess: () => {
+      if (!tenantId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchHarvestForecast(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchHarvestForecastHistory(tenantId, farmId, batchId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.batchHarvestForecastStatus(tenantId, farmId, batchId) });
+      // The farm-wide worksheet/summary and any Requirement outlook derived
+      // from this Batch's forecast are now stale too, but their cache keys
+      // are windowed/parameterized -- invalidate every cached variant via
+      // the shared key prefix rather than guessing the active window.
+      queryClient.invalidateQueries({ queryKey: ["tenant", tenantId, "farms", farmId, "harvest-forecast-summary"] });
+      queryClient.invalidateQueries({
+        queryKey: ["tenant", tenantId, "farms", farmId, "production-requirements"],
+      });
+    },
+  });
+}
+
+/** `windowStartDate`/`windowEndDate` are inclusive-inclusive planning dates
+ * (`YYYY-MM-DD`) -- see HARVEST_FORECAST_CAPACITY_MODEL.md's Time Semantics. */
+export function useFarmHarvestForecastSummary(farmId: string, windowStartDate: string, windowEndDate: string) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStartDate}..${windowEndDate}`;
+  return useQuery({
+    queryKey: queryKeys.farmHarvestForecastSummary(tenantId ?? "", farmId, windowKey),
+    queryFn: ({ signal }) => api.getFarmForecastSummary(farmId, windowStartDate, windowEndDate, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(windowStartDate) && Boolean(windowEndDate),
+  });
+}
+
+export function useRequirementHarvestOutlook(farmId: string, requirementId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.requirementHarvestOutlook(tenantId ?? "", farmId, requirementId ?? ""),
+    queryFn: ({ signal }) => api.getRequirementHarvestOutlook(farmId, requirementId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(requirementId),
+  });
+}
+
+/** Bulk per-requirement outlook for the Requirement Coverage worksheet --
+ * there is no bulk backend endpoint (the read model is intentionally
+ * Requirement-anchored, see docs/domain/HARVEST_FORECAST_CAPACITY_MODEL.md
+ * Part 7), so this fans out one request per visible Requirement, exactly
+ * like `useBatchHarvestForecastStatuses` above. */
+export function useRequirementHarvestOutlooks(farmId: string, requirementIds: string[]) {
+  const tenantId = useSelectedTenantId();
+  const queries = useQueries({
+    queries: requirementIds.map((requirementId) => ({
+      queryKey: queryKeys.requirementHarvestOutlook(tenantId ?? "", farmId, requirementId),
+      queryFn: ({ signal }: { signal: AbortSignal }) => api.getRequirementHarvestOutlook(farmId, requirementId, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(requirementId),
+    })),
+  });
+  const byRequirementId: Record<string, RequirementHarvestOutlook | undefined> = {};
+  requirementIds.forEach((requirementId, i) => {
+    byRequirementId[requirementId] = queries[i]?.data;
+  });
+  return {
+    byRequirementId,
+    isLoading: queries.some((q) => q.isLoading),
+    hasError: queries.some((q) => q.error),
+  };
+}
+
+export function useCapacityAllocations(farmId: string, locationId?: string) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.capacityAllocations(tenantId ?? "", farmId, locationId ?? ""),
+    queryFn: ({ signal }) => api.listCapacityAllocations(farmId, locationId, signal),
+    staleTime: STALE_LIST_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId),
+  });
+}
+
+export function useCapacityAllocation(farmId: string, allocationId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.capacityAllocation(tenantId ?? "", farmId, allocationId ?? ""),
+    queryFn: ({ signal }) => api.getCapacityAllocation(farmId, allocationId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(allocationId),
+  });
+}
+
+function invalidateCapacity(
+  queryClient: ReturnType<typeof useQueryClient>,
+  tenantId: string | undefined,
+  farmId: string,
+  locationId: string,
+  allocationId?: string,
+) {
+  if (!tenantId) return;
+  queryClient.invalidateQueries({ queryKey: queryKeys.capacityAllocations(tenantId, farmId, locationId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.capacityAllocations(tenantId, farmId, "") });
+  if (allocationId) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.capacityAllocation(tenantId, farmId, allocationId) });
+  }
+  // Windowed capacity-summary caches are parameterized by window -- drop
+  // every cached window for this Location rather than guessing which one
+  // is currently on screen.
+  queryClient.invalidateQueries({
+    queryKey: ["tenant", tenantId, "farms", farmId, "locations", locationId, "capacity-summary"],
+  });
+}
+
+export function useCreateCapacityAllocation(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateProductionCapacityAllocation) => api.createCapacityAllocation(farmId, payload),
+    onSuccess: (result) => invalidateCapacity(queryClient, tenantId, farmId, result.location_id),
+  });
+}
+
+export function useUpdateCapacityAllocation(farmId: string, allocationId: string, locationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateProductionCapacityAllocation) =>
+      api.updateCapacityAllocation(farmId, allocationId, payload),
+    onSuccess: () => invalidateCapacity(queryClient, tenantId, farmId, locationId, allocationId),
+  });
+}
+
+export function useCancelCapacityAllocation(farmId: string, allocationId: string, locationId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CapacityAllocationStatusCommand) => api.cancelCapacityAllocation(farmId, allocationId, payload),
+    onSuccess: () => invalidateCapacity(queryClient, tenantId, farmId, locationId, allocationId),
+  });
+}
+
+/** `windowStartDate`/`windowEndDate` are half-open `[start, end)` planning
+ * dates -- see HARVEST_FORECAST_CAPACITY_MODEL.md's Time Semantics. */
+export function useLocationCapacitySummary(
+  farmId: string, locationId: string | undefined, windowStartDate: string, windowEndDate: string,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStartDate}..${windowEndDate}`;
+  return useQuery({
+    queryKey: queryKeys.locationCapacitySummary(tenantId ?? "", farmId, locationId ?? "", windowKey),
+    queryFn: ({ signal }) => api.getLocationCapacitySummary(farmId, locationId as string, windowStartDate, windowEndDate, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(locationId) && Boolean(windowStartDate) && Boolean(windowEndDate),
+  });
+}
+
+/** Bulk per-location capacity summary for the Capacity Outlook worksheet --
+ * mirrors `useRequirementHarvestOutlooks`'s fan-out shape (no bulk backend
+ * endpoint; the read model is deliberately Location+window-scoped). */
+export function useLocationCapacitySummaries(
+  farmId: string, locationIds: string[], windowStartDate: string, windowEndDate: string,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStartDate}..${windowEndDate}`;
+  const queries = useQueries({
+    queries: locationIds.map((locationId) => ({
+      queryKey: queryKeys.locationCapacitySummary(tenantId ?? "", farmId, locationId, windowKey),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        api.getLocationCapacitySummary(farmId, locationId, windowStartDate, windowEndDate, signal),
+      staleTime: STALE_DETAIL_MS,
+      enabled: Boolean(tenantId) && Boolean(locationId) && Boolean(windowStartDate) && Boolean(windowEndDate),
+    })),
+  });
+  const byLocationId: Record<string, LocationCapacitySummaryRead | undefined> = {};
+  locationIds.forEach((locationId, i) => {
+    byLocationId[locationId] = queries[i]?.data;
+  });
+  return {
+    byLocationId,
+    isLoading: queries.some((q) => q.isLoading),
+    hasError: queries.some((q) => q.error),
+  };
 }

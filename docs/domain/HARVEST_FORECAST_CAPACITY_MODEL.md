@@ -246,11 +246,91 @@ does not hold `planning.read` today either).
   (gated on `planning.read`, since it is a `ProductionRequirement`-anchored
   extension).
 
+## Part 14 — Frontend: the Planning management worksheet (PILOT-PLAN-001B)
+
+Evolves the existing Planning workspace (`app/farms/[farmId]/planning`,
+PLANNING-OPS-001) rather than adding a second Planning surface: the same
+page gains three tabs — **Overview**, **Forecast**, **Capacity** —
+alongside its existing **Requirements**/**Seeding Program** tabs. No
+backend change was needed; every screen is a pure composition of the
+PILOT-PLAN-001A read/write endpoints above.
+
+- **Requirement Coverage** (`components/planning/RequirementsTable.tsx`,
+  optional `outlookByRequirementId` prop): additively renders
+  Forecast/Harvested/Outlook columns next to the existing seeding-plan
+  Demand/Planned/Gap columns — never replacing them, since Planned
+  (seeding coverage) and Forecast (harvest outlook) answer different
+  questions. Coverage status (`SHORT`/`COVERED`/`OVER`/`NOT_COMPARABLE`/
+  `NO_FORECAST`, `lib/format/forecastCoverage.ts`) is derived purely from
+  `RequirementHarvestOutlook`'s own quantities/booleans — the backend
+  itself carries no status enum, and this derivation never invents a
+  conversion or a percentage.
+- **Requirement drill-down**
+  (`components/planning/RequirementContributingBatchesPanel.tsx`): composes
+  Seeding Program Line detail's `linked_sowings` with per-Batch forecast
+  status to show every contributing Batch and its own forecast/actual —
+  the full lineage a manager needs to answer "why is this requirement
+  short," with no new backend read model.
+- **Harvest Forecast Worksheet** (`HarvestForecastWorksheetTable.tsx`) and
+  **Weekly Timeline** (`HarvestForecastTimeline.tsx`, `lib/format/
+  forecastTimeline.ts`): `GET /harvest-forecast-summary` only returns
+  Batches whose *current* forecast window overlaps the selected period, so
+  a Batch with a forecast outside the window is indistinguishable from one
+  with none using that endpoint alone. The worksheet's "no forecast" filter
+  cross-checks every active Batch's own forecast status directly (a
+  bounded per-farm fan-out, `useBatchHarvestForecastStatuses`) rather than
+  silently misreporting an out-of-window forecast as "none". The Timeline
+  never sums quantities across different forecast UOMs — it groups by
+  (week, UOM) instead of inventing a conversion.
+- **Record/Revise Forecast** (`HarvestForecastForm.tsx`,
+  `lib/validation/harvestForecast.ts`): one command, mirroring the
+  backend's own record-or-supersede endpoint; a revision explicitly states
+  "This creates a new forecast revision. Previous forecasts remain in
+  history." and the action is labeled **Revise Forecast**, never *Edit*.
+  History (`HarvestForecastHistoryList.tsx`) is collapsed by default.
+- **Risk signal** (`RiskSignalBadge.tsx`): renders only `open_crop_issue_count`
+  (nothing else), and opens the single matching open Crop Issue's own page
+  only when there is exactly one — with several open issues there is no
+  single correct link target, so it stays a plain, non-interactive marker
+  rather than guessing one. Never adjusts a forecast or infers severity.
+- **Capacity Outlook** (`CapacityOutlookTable.tsx`): there is no farm-wide
+  capacity endpoint (the read model is deliberately Location+window
+  scoped), and a farm's Location tree can be very large, so this worksheet
+  never blindly queries every Location. It tracks Locations that already
+  have at least one active Capacity Allocation, plus any a manager
+  explicitly adds via the picker — a truthful "what's currently part of
+  capacity planning" view, not "every Location that could theoretically be
+  allocated." `UNKNOWN` capacity always renders "Capacity not configured",
+  never a fabricated number or "Unlimited" (`lib/format/capacityStatus.ts`).
+  Actual occupancy is omitted entirely (never fabricated) — no existing
+  API safely exposes a Location-scoped actual-occupancy figure comparable
+  to planned capacity in one read.
+- **Create/Update/Cancel Allocation**
+  (`CapacityAllocationForm.tsx`/`CapacityAllocationUpdateForm.tsx`/
+  `CapacityAllocationList.tsx`): the pre-submit preview
+  (Configured/Already planned/Requested/Remaining) is computed client-side
+  from the same `GET .../capacity-summary` read the backend enforces
+  against, since the 409 rejection body is an unstructured `detail:
+  string` with no machine-parseable fields. Cancellation is a deliberate,
+  confirmed action that states plainly it "does not delete the record or
+  change actual occupancy."
+- **Batch integration** (`components/planning/BatchHarvestForecastPanel.tsx`,
+  a new "Harvest Forecast" tab on the Batch detail page): mirrors
+  `BatchProtocolPanel`'s existing current-status-plus-inline-form shape.
+- **Permissions**: this codebase has no client-side permission hook
+  anywhere (see `app/farms/[farmId]/crop-issues/[issueId]/page.tsx`'s own
+  comment) — every mutation control here is rendered unconditionally and
+  relies on the backend's `harvest_forecast.manage`/`capacity_plan.manage`
+  check to reject an unauthorized attempt, exactly like every other command
+  in this app. Introducing a new, ticket-local permission-gating pattern
+  would have been inconsistent with the rest of the codebase.
+
 ## Deferred / out of scope
 
 AI yield prediction, ML, weather forecasting, financial revenue forecast,
 automatic demand acceptance, optimization/scheduling solvers, controller
-integration, new crop catalog, a new Harvest model, frontend planning
-dashboard, Customer/CRM, commercial orders, pack specifications — all
-explicitly out of scope per the ticket, deferred to PILOT-COMM-001 or a
-dedicated future ticket where named.
+integration, new crop catalog, a new Harvest model, Customer/CRM,
+commercial orders, pack specifications — all explicitly out of scope per
+the ticket, deferred to PILOT-COMM-001 or a dedicated future ticket where
+named. (The frontend planning dashboard/worksheet itself, deferred by
+PILOT-PLAN-001A, is now built by PILOT-PLAN-001B, Part 14 above.)

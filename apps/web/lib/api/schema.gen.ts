@@ -2789,6 +2789,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/production-requirements/{requirement_id}/harvest-outlook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Requirement Harvest Outlook */
+        get: operations["get_requirement_harvest_outlook_farms__farm_id__production_requirements__requirement_id__harvest_outlook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/farms/{farm_id}/production-requirements/{requirement_id}/seeding-program-lines": {
         parameters: {
             query?: never;
@@ -2869,6 +2886,161 @@ export interface paths {
         put?: never;
         /** Cancel Seeding Program Line */
         post: operations["cancel_seeding_program_line_farms__farm_id__seeding_program_lines__line_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/harvest-forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Forecast */
+        get: operations["get_current_forecast_farms__farm_id__crop_batches__batch_id__harvest_forecast_get"];
+        put?: never;
+        /** Record Batch Harvest Forecast */
+        post: operations["record_batch_harvest_forecast_farms__farm_id__crop_batches__batch_id__harvest_forecast_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/harvest-forecast/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Forecast History */
+        get: operations["get_forecast_history_farms__farm_id__crop_batches__batch_id__harvest_forecast_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/crop-batches/{batch_id}/harvest-forecast/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Forecast Status */
+        get: operations["get_forecast_status_farms__farm_id__crop_batches__batch_id__harvest_forecast_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/harvest-forecast-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Farm Forecast Summary */
+        get: operations["get_farm_forecast_summary_farms__farm_id__harvest_forecast_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/capacity-allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Capacity Allocations */
+        get: operations["list_capacity_allocations_farms__farm_id__capacity_allocations_get"];
+        put?: never;
+        /** Create Capacity Allocation */
+        post: operations["create_capacity_allocation_farms__farm_id__capacity_allocations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/capacity-allocations/{allocation_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Capacity Allocation */
+        post: operations["update_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/capacity-allocations/{allocation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Capacity Allocation */
+        post: operations["cancel_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/capacity-allocations/{allocation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Capacity Allocation */
+        get: operations["get_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/locations/{location_id}/capacity-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Location Capacity Summary */
+        get: operations["get_location_capacity_summary_farms__farm_id__locations__location_id__capacity_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5445,6 +5617,384 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/assets/{asset_id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset Readiness */
+        get: operations["get_asset_readiness_farms__farm_id__assets__asset_id__readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/carriers/{carrier_id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Carrier Readiness */
+        get: operations["get_carrier_readiness_farms__farm_id__carriers__carrier_id__readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Equipment Readiness */
+        get: operations["list_equipment_readiness_farms__farm_id__equipment_readiness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/awaiting-cleaning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Awaiting Cleaning
+         * @description PART 19: the Cleaning Queue.
+         */
+        get: operations["list_awaiting_cleaning_farms__farm_id__equipment_readiness_awaiting_cleaning_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Readiness History */
+        get: operations["get_readiness_history_farms__farm_id__equipment_readiness__state_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/cleaning-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cleaning Events */
+        get: operations["list_cleaning_events_farms__farm_id__cleaning_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/mark-awaiting-cleaning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Awaiting Cleaning */
+        post: operations["mark_awaiting_cleaning_farms__farm_id__equipment_readiness__state_id__mark_awaiting_cleaning_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/record-cleaning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Cleaning */
+        post: operations["record_cleaning_farms__farm_id__equipment_readiness__state_id__record_cleaning_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/mark-ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Ready */
+        post: operations["mark_ready_farms__farm_id__equipment_readiness__state_id__mark_ready_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/report-damage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Damage */
+        post: operations["report_damage_farms__farm_id__equipment_readiness__state_id__report_damage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/send-to-maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send To Maintenance */
+        post: operations["send_to_maintenance_farms__farm_id__equipment_readiness__state_id__send_to_maintenance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/return-from-maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return From Maintenance */
+        post: operations["return_from_maintenance_farms__farm_id__equipment_readiness__state_id__return_from_maintenance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-readiness/{state_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire */
+        post: operations["retire_farms__farm_id__equipment_readiness__state_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Incidents */
+        get: operations["list_incidents_farms__farm_id__equipment_incidents_get"];
+        put?: never;
+        /** Open Incident */
+        post: operations["open_incident_farms__farm_id__equipment_incidents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Incident */
+        get: operations["get_incident_farms__farm_id__equipment_incidents__incident_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Incident History */
+        get: operations["get_incident_history_farms__farm_id__equipment_incidents__incident_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge Incident */
+        post: operations["acknowledge_incident_farms__farm_id__equipment_incidents__incident_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/action-in-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Action In Progress */
+        post: operations["mark_action_in_progress_farms__farm_id__equipment_incidents__incident_id__action_in_progress_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Incident */
+        post: operations["assign_incident_farms__farm_id__equipment_incidents__incident_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Incident */
+        post: operations["resolve_incident_farms__farm_id__equipment_incidents__incident_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-incidents/{incident_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Incident */
+        post: operations["close_incident_farms__farm_id__equipment_incidents__incident_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/equipment-attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Equipment Attention */
+        get: operations["get_equipment_attention_farms__farm_id__equipment_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/growing-protocols": {
         parameters: {
             query?: never;
@@ -6486,6 +7036,122 @@ export interface components {
             /** Recorded Carrier Assignment Count */
             recorded_carrier_assignment_count: number;
         };
+        /**
+         * BatchHarvestActualSummary
+         * @description READ-ONLY comparison against the current forecast -- never written
+         *     back to the forecast row, and never derived by mutating it. Harvest
+         *     weight is always recorded in kg (`harvested_produce_lots.total_
+         *     harvested_weight_kg`, the codebase-wide harvest convention); `comparable`
+         *     is false, and the *_in_forecast_uom fields are None, whenever no UOM
+         *     conversion path exists from kg to the forecast's own UOM (never a
+         *     silently invented conversion).
+         */
+        BatchHarvestActualSummary: {
+            /** Total Harvested Weight Kg */
+            total_harvested_weight_kg: string;
+            /** First Harvest Date */
+            first_harvest_date: string | null;
+            /** Latest Harvest Date */
+            latest_harvest_date: string | null;
+            /** Comparable To Forecast Uom */
+            comparable_to_forecast_uom: boolean;
+            /** Actual Quantity In Forecast Uom */
+            actual_quantity_in_forecast_uom: string | null;
+            /** Remaining Forecast Quantity In Forecast Uom */
+            remaining_forecast_quantity_in_forecast_uom: string | null;
+        };
+        /** BatchHarvestForecastRead */
+        BatchHarvestForecastRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Is Current */
+            is_current: boolean;
+            /** Superseded At */
+            superseded_at: string | null;
+            /** Superseded By Forecast Id */
+            superseded_by_forecast_id: string | null;
+            /**
+             * Window Start Date
+             * Format: date
+             */
+            window_start_date: string;
+            /**
+             * Window End Date
+             * Format: date
+             */
+            window_end_date: string;
+            /** Low Quantity */
+            low_quantity: string;
+            /** Expected Quantity */
+            expected_quantity: string;
+            /** High Quantity */
+            high_quantity: string;
+            uom: components["schemas"]["UomSummary"];
+            /** Basis */
+            basis: string;
+            /** Notes */
+            notes: string | null;
+            /** Revision Reason */
+            revision_reason: string | null;
+            /**
+             * Recorded By User Id
+             * Format: uuid
+             */
+            recorded_by_user_id: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /**
+             * Recorded Time
+             * Format: date-time
+             */
+            recorded_time: string;
+        };
+        /**
+         * BatchHarvestForecastStatusRead
+         * @description PILOT-PLAN-001A Part 2 read model -- forecast vs actual, plus risk
+         *     signals. A pure computed read; nothing here is persisted.
+         */
+        BatchHarvestForecastStatusRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch Code */
+            batch_code: string;
+            crop: components["schemas"]["CropSummary"];
+            variety: components["schemas"]["VarietySummary"] | null;
+            current_stage: components["schemas"]["StageSummary"];
+            current_forecast: components["schemas"]["BatchHarvestForecastRead"] | null;
+            actual: components["schemas"]["BatchHarvestActualSummary"];
+            /** Open Crop Issue Count */
+            open_crop_issue_count: number;
+            /** Active Location Codes */
+            active_location_codes: string[];
+        };
         /** BatchLineageEventRead */
         BatchLineageEventRead: {
             /**
@@ -6851,6 +7517,14 @@ export interface components {
             /** Notes */
             notes: string | null;
         };
+        /** CapacityAllocationStatusCommand */
+        CapacityAllocationStatusCommand: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
         /** CarrierBulkCreate */
         CarrierBulkCreate: {
             /** Carrier Type Code */
@@ -7111,6 +7785,57 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** CleaningEventRead */
+        CleaningEventRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "asset" | "carrier";
+            /** Asset Id */
+            asset_id: string | null;
+            /** Carrier Id */
+            carrier_id: string | null;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /**
+             * Performed By User Id
+             * Format: uuid
+             */
+            performed_by_user_id: string;
+            /** Method */
+            method: string | null;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "completed" | "needs_rework";
+            /** Notes */
+            notes: string | null;
+        };
         /** CohortStorageBreakdownRead */
         CohortStorageBreakdownRead: {
             /**
@@ -7255,6 +7980,46 @@ export interface components {
             effective_time: string;
             /** Note */
             note?: string | null;
+        };
+        /**
+         * CreateProductionCapacityAllocation
+         * @description PILOT-PLAN-001A Part 5: a PLANNING reservation of future
+         *     occupant-slot capacity at one Location. `planned_start_date`/
+         *     `planned_end_date` are a half-open `[start, end)` window -- the
+         *     allocation covers calendar dates `planned_start_date` through
+         *     `planned_end_date - 1 day` inclusive.
+         */
+        CreateProductionCapacityAllocation: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Production System Id */
+            production_system_id?: string | null;
+            /**
+             * Planned Start Date
+             * Format: date
+             */
+            planned_start_date: string;
+            /**
+             * Planned End Date
+             * Format: date
+             */
+            planned_end_date: string;
+            /** Planned Capacity Amount */
+            planned_capacity_amount: number;
+            /** Source Seeding Program Line Id */
+            source_seeding_program_line_id?: string | null;
+            /** Source Crop Batch Id */
+            source_crop_batch_id?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /** CropBatchCreate */
         CropBatchCreate: {
@@ -7816,6 +8581,349 @@ export interface components {
             /** Last Satisfied At */
             last_satisfied_at: string | null;
         };
+        /** EquipmentAttentionItem */
+        EquipmentAttentionItem: {
+            /** Kind */
+            kind: string;
+            /** Message */
+            message: string;
+            /** Asset Id */
+            asset_id?: string | null;
+            /** Carrier Id */
+            carrier_id?: string | null;
+            /** Code */
+            code?: string | null;
+            /** Equipment Incident Id */
+            equipment_incident_id?: string | null;
+            /** Severity */
+            severity?: string | null;
+            /** Criticality */
+            criticality?: string | null;
+        };
+        /** EquipmentIncidentAcknowledgeIn */
+        EquipmentIncidentAcknowledgeIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** EquipmentIncidentActionInProgressIn */
+        EquipmentIncidentActionInProgressIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
+        /** EquipmentIncidentAssetSummary */
+        EquipmentIncidentAssetSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Criticality */
+            criticality: string;
+        };
+        /** EquipmentIncidentAssignIn */
+        EquipmentIncidentAssignIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Assigned Owner User Id */
+            assigned_owner_user_id?: string | null;
+        };
+        /** EquipmentIncidentCloseIn */
+        EquipmentIncidentCloseIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Close Note */
+            close_note?: string | null;
+        };
+        /** EquipmentIncidentHistoryEntryRead */
+        EquipmentIncidentHistoryEntryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Action */
+            action: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Event Data */
+            event_data: {
+                [key: string]: unknown;
+            };
+        };
+        /** EquipmentIncidentLocationSummary */
+        EquipmentIncidentLocationSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** EquipmentIncidentOpenIn */
+        EquipmentIncidentOpenIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Location Id */
+            location_id?: string | null;
+            /** Potentially Impacted Location Id */
+            potentially_impacted_location_id?: string | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "cooling" | "ventilation" | "irrigation_water" | "fertigation_dosing" | "ro_plant" | "reservoir" | "germination_chamber" | "seeding_equipment" | "scale" | "cold_store" | "other";
+            /** Description */
+            description: string;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Assigned Owner User Id */
+            assigned_owner_user_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** EquipmentIncidentRead */
+        EquipmentIncidentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            asset?: components["schemas"]["EquipmentIncidentAssetSummary"] | null;
+            /** Location Id */
+            location_id: string | null;
+            location?: components["schemas"]["EquipmentIncidentLocationSummary"] | null;
+            /** Potentially Impacted Location Id */
+            potentially_impacted_location_id: string | null;
+            potentially_impacted_location?: components["schemas"]["EquipmentIncidentLocationSummary"] | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high" | "critical";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "cooling" | "ventilation" | "irrigation_water" | "fertigation_dosing" | "ro_plant" | "reservoir" | "germination_chamber" | "seeding_equipment" | "scale" | "cold_store" | "other";
+            /** Description */
+            description: string;
+            /**
+             * Detected By User Id
+             * Format: uuid
+             */
+            detected_by_user_id: string;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "acknowledged" | "action_in_progress" | "resolved" | "closed";
+            /**
+             * Opened By User Id
+             * Format: uuid
+             */
+            opened_by_user_id: string;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Assigned Owner User Id */
+            assigned_owner_user_id: string | null;
+            /** Acknowledged By User Id */
+            acknowledged_by_user_id: string | null;
+            /** Acknowledged At */
+            acknowledged_at: string | null;
+            /** Resolved By User Id */
+            resolved_by_user_id: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolution Note */
+            resolution_note: string | null;
+            /** Closed By User Id */
+            closed_by_user_id: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Close Note */
+            close_note: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** EquipmentIncidentResolveIn */
+        EquipmentIncidentResolveIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Resolution Note */
+            resolution_note: string;
+        };
+        /** EquipmentReadinessHistoryEntryRead */
+        EquipmentReadinessHistoryEntryRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Action */
+            action: string;
+            /** Actor User Id */
+            actor_user_id: string | null;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Event Data */
+            event_data: {
+                [key: string]: unknown;
+            };
+        };
+        /** EquipmentReadinessReportDamageIn */
+        EquipmentReadinessReportDamageIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note: string;
+        };
+        /** EquipmentReadinessStateRead */
+        EquipmentReadinessStateRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "asset" | "carrier";
+            /** Asset Id */
+            asset_id: string | null;
+            /** Carrier Id */
+            carrier_id: string | null;
+            /**
+             * Current State
+             * @enum {string}
+             */
+            current_state: "unknown" | "awaiting_cleaning" | "cleaning_completed" | "ready" | "damaged" | "maintenance" | "retired";
+            /**
+             * State Changed At
+             * Format: date-time
+             */
+            state_changed_at: string;
+            /** State Changed By User Id */
+            state_changed_by_user_id: string | null;
+            /** State Note */
+            state_note: string | null;
+            /** Last Cleaning Event Id */
+            last_cleaning_event_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * EquipmentReadinessTransitionIn
+         * @description Shared shape for `mark_awaiting_cleaning`/`mark_ready`/
+         *     `send_to_maintenance`/`return_from_maintenance`/`retire`. `report_damage`
+         *     has its own `note` requirement below.
+         */
+        EquipmentReadinessTransitionIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /** Note */
+            note?: string | null;
+        };
         /** ExposedPlacementRead */
         ExposedPlacementRead: {
             /**
@@ -8038,6 +9146,8 @@ export interface components {
             asset_id?: string | null;
             /** Crop Issue Id */
             crop_issue_id?: string | null;
+            /** Equipment Incident Id */
+            equipment_incident_id?: string | null;
             /** Quantity */
             quantity?: number | string | null;
             /** Quantity Uom Id */
@@ -8153,6 +9263,7 @@ export interface components {
             carrier: components["schemas"]["WorkItemCarrierSummary"] | null;
             asset: components["schemas"]["WorkItemAssetSummary"] | null;
             crop_issue?: components["schemas"]["WorkItemCropIssueSummary"] | null;
+            equipment_incident?: components["schemas"]["WorkItemEquipmentIncidentSummary"] | null;
             /** Quantity */
             quantity: string | null;
             quantity_uom: components["schemas"]["WorkItemUomSummary"] | null;
@@ -12012,6 +13123,48 @@ export interface components {
             /** Capacity */
             capacity?: number | null;
         };
+        /**
+         * LocationCapacitySummaryRead
+         * @description PILOT-PLAN-001A Part 5/6: PLANNED / ACTUAL / AVAILABLE kept as
+         *     distinct dimensions, never collapsed. `capacity_status = 'unknown'`
+         *     whenever the target Location carries no authoritative capacity fact
+         *     (never fabricated as unlimited or zero) -- see `capacity_plan_service.
+         *     _effective_capacity`.
+         */
+        LocationCapacitySummaryRead: {
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Location Code */
+            location_code: string;
+            /**
+             * Window Start Date
+             * Format: date
+             */
+            window_start_date: string;
+            /**
+             * Window End Date
+             * Format: date
+             */
+            window_end_date: string;
+            /** Capacity Status */
+            capacity_status: string;
+            /** Authoritative Capacity */
+            authoritative_capacity: number | null;
+            /**
+             * Capacity Unit
+             * @default position
+             */
+            capacity_unit: string;
+            /** Planned Used Capacity */
+            planned_used_capacity: number;
+            /** Available Planned Capacity */
+            available_planned_capacity: number | null;
+            /** Allocations */
+            allocations: components["schemas"]["ProductionCapacityAllocationRead"][];
+        };
         /** LocationCreate */
         LocationCreate: {
             /** Location Type Code */
@@ -13642,6 +14795,79 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /** ProductionCapacityAllocationRead */
+        ProductionCapacityAllocationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /** Code */
+            code: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /** Location Code */
+            location_code: string;
+            /** Production System Id */
+            production_system_id: string | null;
+            /**
+             * Planned Start Date
+             * Format: date
+             */
+            planned_start_date: string;
+            /**
+             * Planned End Date
+             * Format: date
+             */
+            planned_end_date: string;
+            /** Planned Capacity Amount */
+            planned_capacity_amount: number;
+            /**
+             * Capacity Unit
+             * @default position
+             */
+            capacity_unit: string;
+            /** Source Seeding Program Line Id */
+            source_seeding_program_line_id: string | null;
+            /** Source Crop Batch Id */
+            source_crop_batch_id: string | null;
+            /** Status */
+            status: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Created By User Id
+             * Format: uuid
+             */
+            created_by_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Cancelled By User Id */
+            cancelled_by_user_id: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+        };
         /** ProductionDispositionCorrectResult */
         ProductionDispositionCorrectResult: {
             /**
@@ -14679,6 +15905,77 @@ export interface components {
             /** Package Count */
             package_count: number;
         };
+        /**
+         * RecordBatchHarvestForecast
+         * @description PILOT-PLAN-001A: records the Batch's first forecast, or revises its
+         *     current one -- the same command handles both (mirrors `batch_stage_
+         *     runs`' "insert a new row, close the old one" shape). `window_end_date`
+         *     and `window_start_date` are farm-local planning dates, inclusive on
+         *     both ends (a human date range, not the half-open interval Capacity
+         *     Allocation uses -- see `docs/domain/HARVEST_FORECAST_CAPACITY_MODEL.md`
+         *     §Time Semantics).
+         */
+        RecordBatchHarvestForecast: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Window Start Date
+             * Format: date
+             */
+            window_start_date: string;
+            /**
+             * Window End Date
+             * Format: date
+             */
+            window_end_date: string;
+            /** Low Quantity */
+            low_quantity: number | string;
+            /** Expected Quantity */
+            expected_quantity: number | string;
+            /** High Quantity */
+            high_quantity: number | string;
+            /**
+             * Quantity Uom Id
+             * Format: uuid
+             */
+            quantity_uom_id: string;
+            /** Basis */
+            basis: string;
+            /**
+             * Effective Time
+             * Format: date-time
+             */
+            effective_time: string;
+            /** Notes */
+            notes?: string | null;
+            /** Revision Reason */
+            revision_reason?: string | null;
+        };
+        /** RecordCleaningIn */
+        RecordCleaningIn: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /** Method */
+            method?: string | null;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "completed" | "needs_rework";
+            /** Notes */
+            notes?: string | null;
+        };
         /** RecordLeafyHarvestCreate */
         RecordLeafyHarvestCreate: {
             /**
@@ -14863,6 +16160,48 @@ export interface components {
             planned_lines_count: number;
             /** Actual Sowings Count */
             actual_sowings_count: number;
+        };
+        /**
+         * RequirementHarvestOutlook
+         * @description A READ MODEL, not a second demand ledger -- kept fully separate from
+         *     `RequirementFulfillment` (which never changes). Rolls up the CURRENT
+         *     `BatchHarvestForecast` and actual harvested quantity for every Crop
+         *     Batch reached via this Requirement's Seeding Program Lines'
+         *     `SowingEvent.seeding_program_line_id` link (the existing FK chain --
+         *     see `docs/domain/HARVEST_FORECAST_CAPACITY_MODEL.md`). Never sums a
+         *     quantity whose UOM cannot be converted into the Requirement's own
+         *     `quantity_uom_id` -- `*_comparable=False` and the paired quantity is
+         *     `None` rather than a silently invented conversion.
+         */
+        RequirementHarvestOutlook: {
+            /**
+             * Requirement Id
+             * Format: uuid
+             */
+            requirement_id: string;
+            /** Required Quantity */
+            required_quantity: string;
+            required_uom: components["schemas"]["UomSummary"];
+            /** Contributing Batch Count */
+            contributing_batch_count: number;
+            /** Batches With Current Forecast Count */
+            batches_with_current_forecast_count: number;
+            /** Forecast Comparable */
+            forecast_comparable: boolean;
+            /** Forecast Low Quantity */
+            forecast_low_quantity: string | null;
+            /** Forecast Expected Quantity */
+            forecast_expected_quantity: string | null;
+            /** Forecast High Quantity */
+            forecast_high_quantity: string | null;
+            /** Coverage Gap Quantity */
+            coverage_gap_quantity: string | null;
+            /** Actual Harvested Comparable */
+            actual_harvested_comparable: boolean;
+            /** Actual Harvested Quantity */
+            actual_harvested_quantity: string | null;
+            /** Actual Harvested Weight Kg */
+            actual_harvested_weight_kg: string;
         };
         /** ReservationLineCreate */
         ReservationLineCreate: {
@@ -16937,6 +18276,36 @@ export interface components {
             quantity_kind: string;
         };
         /**
+         * UpdateProductionCapacityAllocation
+         * @description Full-replace command for the allocation's own editable fields --
+         *     only permitted while `status = 'active'`. `location_id`/source
+         *     references have no update path (identity, never corrected -- cancel
+         *     and create a new allocation instead).
+         */
+        UpdateProductionCapacityAllocation: {
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+            /**
+             * Planned Start Date
+             * Format: date
+             */
+            planned_start_date: string;
+            /**
+             * Planned End Date
+             * Format: date
+             */
+            planned_end_date: string;
+            /** Planned Capacity Amount */
+            planned_capacity_amount: number;
+            /** Production System Id */
+            production_system_id?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
          * UserLookupRead
          * @description AUTHZ-OPS-001: the minimal, administrative-only shape returned by
          *     `GET /users/lookup` -- just enough for a Tenant Admin to confirm they
@@ -18040,6 +19409,18 @@ export interface components {
         };
         /** WorkItemCropIssueSummary */
         WorkItemCropIssueSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Status */
+            status: string;
+        };
+        /** WorkItemEquipmentIncidentSummary */
+        WorkItemEquipmentIncidentSummary: {
             /**
              * Id
              * Format: uuid
@@ -25951,6 +27332,43 @@ export interface operations {
             };
         };
     };
+    get_requirement_harvest_outlook_farms__farm_id__production_requirements__requirement_id__harvest_outlook_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                requirement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequirementHarvestOutlook"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_seeding_program_lines_for_requirement_farms__farm_id__production_requirements__requirement_id__seeding_program_lines_get: {
         parameters: {
             query?: never;
@@ -26171,6 +27589,434 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SeedingProgramLineDetailRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_forecast_farms__farm_id__crop_batches__batch_id__harvest_forecast_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchHarvestForecastRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_batch_harvest_forecast_farms__farm_id__crop_batches__batch_id__harvest_forecast_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBatchHarvestForecast"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchHarvestForecastRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_forecast_history_farms__farm_id__crop_batches__batch_id__harvest_forecast_history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchHarvestForecastRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_forecast_status_farms__farm_id__crop_batches__batch_id__harvest_forecast_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchHarvestForecastStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_farm_forecast_summary_farms__farm_id__harvest_forecast_summary_get: {
+        parameters: {
+            query: {
+                window_start_date: string;
+                window_end_date: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchHarvestForecastStatusRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_capacity_allocations_farms__farm_id__capacity_allocations_get: {
+        parameters: {
+            query?: {
+                location_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionCapacityAllocationRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_capacity_allocation_farms__farm_id__capacity_allocations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductionCapacityAllocation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionCapacityAllocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductionCapacityAllocation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionCapacityAllocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapacityAllocationStatusCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionCapacityAllocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_capacity_allocation_farms__farm_id__capacity_allocations__allocation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                allocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductionCapacityAllocationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_location_capacity_summary_farms__farm_id__locations__location_id__capacity_summary_get: {
+        parameters: {
+            query: {
+                window_start_date: string;
+                window_end_date: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                location_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationCapacitySummaryRead"];
                 };
             };
             /** @description Validation Error */
@@ -32897,6 +34743,911 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FarmWorkItemRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_readiness_farms__farm_id__assets__asset_id__readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_carrier_readiness_farms__farm_id__carriers__carrier_id__readiness_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                carrier_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_equipment_readiness_farms__farm_id__equipment_readiness_get: {
+        parameters: {
+            query?: {
+                state?: string[] | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_awaiting_cleaning_farms__farm_id__equipment_readiness_awaiting_cleaning_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_readiness_history_farms__farm_id__equipment_readiness__state_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessHistoryEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cleaning_events_farms__farm_id__cleaning_events_get: {
+        parameters: {
+            query?: {
+                asset_id?: string | null;
+                carrier_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleaningEventRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_awaiting_cleaning_farms__farm_id__equipment_readiness__state_id__mark_awaiting_cleaning_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessTransitionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_cleaning_farms__farm_id__equipment_readiness__state_id__record_cleaning_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordCleaningIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_ready_farms__farm_id__equipment_readiness__state_id__mark_ready_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessTransitionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_damage_farms__farm_id__equipment_readiness__state_id__report_damage_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessReportDamageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_to_maintenance_farms__farm_id__equipment_readiness__state_id__send_to_maintenance_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessTransitionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    return_from_maintenance_farms__farm_id__equipment_readiness__state_id__return_from_maintenance_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessTransitionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_farms__farm_id__equipment_readiness__state_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                state_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentReadinessTransitionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentReadinessStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incidents_farms__farm_id__equipment_incidents_get: {
+        parameters: {
+            query?: {
+                status?: string[] | null;
+                asset_id?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_incident_farms__farm_id__equipment_incidents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentOpenIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_incident_farms__farm_id__equipment_incidents__incident_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_incident_history_farms__farm_id__equipment_incidents__incident_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentHistoryEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_incident_farms__farm_id__equipment_incidents__incident_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentAcknowledgeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_action_in_progress_farms__farm_id__equipment_incidents__incident_id__action_in_progress_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentActionInProgressIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_incident_farms__farm_id__equipment_incidents__incident_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentAssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_incident_farms__farm_id__equipment_incidents__incident_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_incident_farms__farm_id__equipment_incidents__incident_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EquipmentIncidentCloseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentIncidentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_equipment_attention_farms__farm_id__equipment_attention_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EquipmentAttentionItem"][];
                 };
             };
             /** @description Validation Error */

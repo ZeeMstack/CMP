@@ -467,4 +467,25 @@ export const queryKeys = {
     ["tenant", tenantId, "farms", farmId, "equipment-incidents", incidentId, "history"] as const,
   equipmentAttention: (tenantId: string, farmId: string) =>
     ["tenant", tenantId, "farms", farmId, "equipment-attention"] as const,
+
+  // --- PILOT-PLAN-001A/B: Harvest Forecast + Capacity Planning ---------------
+  batchHarvestForecast: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "harvest-forecast"] as const,
+  batchHarvestForecastHistory: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "harvest-forecast", "history"] as const,
+  batchHarvestForecastStatus: (tenantId: string, farmId: string, batchId: string) =>
+    ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "harvest-forecast", "status"] as const,
+  // `windowKey` bundles the [window_start_date, window_end_date) filter into
+  // one cache-distinct string, mirroring `equipmentReadinessList`'s own
+  // `filterKey` convention.
+  farmHarvestForecastSummary: (tenantId: string, farmId: string, windowKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "harvest-forecast-summary", windowKey] as const,
+  requirementHarvestOutlook: (tenantId: string, farmId: string, requirementId: string) =>
+    ["tenant", tenantId, "farms", farmId, "production-requirements", requirementId, "harvest-outlook"] as const,
+  capacityAllocations: (tenantId: string, farmId: string, locationId: string) =>
+    ["tenant", tenantId, "farms", farmId, "capacity-allocations", locationId] as const,
+  capacityAllocation: (tenantId: string, farmId: string, allocationId: string) =>
+    ["tenant", tenantId, "farms", farmId, "capacity-allocations", "detail", allocationId] as const,
+  locationCapacitySummary: (tenantId: string, farmId: string, locationId: string, windowKey: string) =>
+    ["tenant", tenantId, "farms", farmId, "locations", locationId, "capacity-summary", windowKey] as const,
 };

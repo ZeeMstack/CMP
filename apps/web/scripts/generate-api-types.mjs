@@ -25,7 +25,7 @@ function dumpOpenApiJson() {
     const result = spawnSync(
       python,
       ["-c", "import json,app.main as m;print(json.dumps(m.app.openapi()))"],
-      { cwd: apiDir, encoding: "utf-8" },
+      { cwd: apiDir, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
     );
     if (result.status === 0 && result.stdout) {
       return JSON.parse(result.stdout);
