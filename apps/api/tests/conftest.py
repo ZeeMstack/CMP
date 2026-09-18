@@ -197,6 +197,18 @@ def alembic_head_restore(test_engine):
         with test_engine.begin() as conn:
             if conn.execute(text("SELECT to_regclass('qr_identifiers')")).scalar() is not None:
                 conn.execute(text("TRUNCATE TABLE qr_identifiers"))
+            # N02A: the exact same cross-test-pollution problem this
+            # fixture already solves for `qr_identifiers` above -- Sowing,
+            # Germination Trolley placement, and Transplant destination
+            # commands now authoritatively require `ready`, so an ordinary
+            # scenario-building test (this pytest session's own, not just a
+            # real deployment's) commits real `equipment_readiness_states`/
+            # `cleaning_events` rows via the normal mark-ready lifecycle. A
+            # downgrade-guard test with nothing to do with Equipment
+            # Readiness must not be blocked by an EARLIER-in-chain PILOT-
+            # ASSET-001 guard reacting to that leftover history.
+            if conn.execute(text("SELECT to_regclass('equipment_readiness_states')")).scalar() is not None:
+                conn.execute(text("TRUNCATE TABLE equipment_readiness_states, cleaning_events"))
         return real_downgrade(cfg, *args, **kwargs)
 
     mp = pytest.MonkeyPatch()
@@ -346,6 +358,59 @@ def ensure_seed_tray_specification(db_session, *, tenant_id, actor_user_id, code
         code=code, name="Test Seed Tray Specification",
         length_mm=300, width_mm=200, height_mm=50, biological_position_count=500,
     )
+
+
+def mark_readiness_ready(db_session, *, tenant_id, farm_id, actor_user_id, asset_id=None, carrier_id=None):
+    """N02A: test-only helper bringing a freshly-registered readiness-
+    tracked Asset/Carrier from its default `unknown` state to `ready` via
+    the real domain lifecycle -- never fabricates `ready` directly. Sowing,
+    Germination Trolley placement, and Transplant destination commands now
+    authoritatively require `ready` (see `equipment_readiness_service.
+    require_ready_for_allocation`), so any scenario helper that registers a
+    Carrier/Asset for one of those roles must run it through this (or an
+    equivalent) lifecycle first -- exactly like `ensure_seed_tray_
+    specification` above, a plain function (not a fixture) so local
+    file-scoped scenario helpers can call it directly. Idempotent: a
+    caller doesn't need to know whether the entity's type `requires_
+    cleaning` -- `mark_ready` is tried directly first (succeeds for a
+    non-cleaning-required type, or is a no-op if already `ready`) and only
+    falls back to the full awaiting-cleaning/cleaning-completed cycle when
+    that direct call is rejected."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from app.services import equipment_readiness_service
+    from app.services.errors import EquipmentReadinessInvalidTransitionError
+
+    if asset_id is not None:
+        state = equipment_readiness_service.get_readiness_for_asset(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, asset_id=asset_id
+        )
+    else:
+        state = equipment_readiness_service.get_readiness_for_carrier(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, carrier_id=carrier_id
+        )
+    if state.current_state == "ready":
+        return state
+    try:
+        return equipment_readiness_service.mark_ready(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
+            client_command_id=uuid.uuid4(),
+        )
+    except EquipmentReadinessInvalidTransitionError:
+        equipment_readiness_service.mark_awaiting_cleaning(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
+            client_command_id=uuid.uuid4(),
+        )
+        equipment_readiness_service.record_cleaning_completed(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
+            client_command_id=uuid.uuid4(), effective_at=datetime.now(timezone.utc), method=None,
+            result="completed", notes=None,
+        )
+        return equipment_readiness_service.mark_ready(
+            db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
+            client_command_id=uuid.uuid4(),
+        )
 
 
 @pytest.fixture

@@ -28,7 +28,7 @@ from app.services.errors import (
     CarrierAlreadyAssignedError,
     SowingCommandReusedWithDifferentPayloadError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -107,6 +107,10 @@ def _build_committed_scenario(test_engine, *, carrier_count=4):
         )
         for n in range(1, carrier_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
 
     result = {
         "tenant_id": tenant.id, "user_id": user.id, "farm_id": farm.id, "batch_id": batch.id,

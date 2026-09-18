@@ -77,7 +77,7 @@ from app.schemas.germination import (
 )
 from app.schemas.crop_batch import CropSummary, VarietySummary
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary, SeedLotSummary
-from app.services import asset_service, carrier_service, farm_service, location_service, movement_service
+from app.services import asset_service, carrier_service, equipment_readiness_service, farm_service, location_service, movement_service
 from app.services.errors import (
     AssetPositionNotFoundError,
     FarmNotFoundError,
@@ -334,7 +334,18 @@ def place_tray(
     (not cached) on every call, before the generic Movement command is even
     attempted. `BatchCarrierAssignment`/Seed Lot/Seeds Sown are validated
     for eligibility but never written to -- this command touches only
-    `Occupancy`/`Movement` (section 18)."""
+    `Occupancy`/`Movement` (section 18).
+
+    N02A: the selected Trolley must also be authoritatively READY --
+    checked (and its EquipmentReadinessState row locked) only for a
+    genuinely new command, never for an exact replay of an already-
+    committed one. `movement_service._find_existing_movement` mirrors the
+    same lookup `_execute_movement_core`'s own idempotency check performs
+    just below; a hit here means this call is a replay -- or a same-id/
+    different-payload reuse, which `execute_movement` itself will reject --
+    either way, re-running today's eligibility against an already-decided
+    command would violate frozen rule 11 (a later readiness change must
+    never turn a valid replay into a new failure)."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     _validate_sown_tray(db, tenant_id=tenant_id, farm_id=farm_id, tray_id=tray_id)
     _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
@@ -344,6 +355,11 @@ def place_tray(
 
     if _trolleys_current_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id) is None:
         raise TrolleyNotInGerminationError(str(trolley_id))
+
+    if movement_service._find_existing_movement(db, tenant_id=tenant_id, client_command_id=client_command_id) is None:
+        equipment_readiness_service.require_ready_for_allocation(
+            db, tenant_id=tenant_id, farm_id=farm_id, asset_ids=[trolley_id]
+        )
 
     return movement_service.execute_movement(
         db,

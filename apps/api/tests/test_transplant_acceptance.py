@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.models.audit_event import AuditEvent
 from app.models.occupancy import Occupancy
 from tests._transplant_scenario import build_transplant_ready_scenario
+from tests.conftest import mark_readiness_ready
 
 
 @pytest.mark.integration
@@ -132,6 +133,10 @@ def test_core_transplant_acceptance_flow(client, active_context_with_farm, db_se
         f"/farms/{farm_id}/carriers", headers=headers,
         json={"carrier_type_code": "cultivation_plate", "code": "CP-TP-EXTRA"},
     ).json()
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        carrier_id=uuid.UUID(extra_destination["id"]),
+    )
     reuse_source_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch_id}/transplants", headers=headers,
         json={

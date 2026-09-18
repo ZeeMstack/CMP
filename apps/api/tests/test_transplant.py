@@ -36,6 +36,7 @@ from app.services.errors import (
     UnsupportedTransplantSourceCarrierTypeError,
 )
 from tests._transplant_scenario import build_transplant_ready_scenario, now as _now
+from tests.conftest import mark_readiness_ready
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
@@ -349,6 +350,9 @@ def test_source_with_ineligible_carrier_type_rejected(db_session, active_context
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="cultivation_plate", code="CP-FRESH-0001", issued_date=None,
     )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=fresh_destination.id
+    )
     with pytest.raises(UnsupportedTransplantSourceCarrierTypeError):
         _transplant(
             db_session, tenant, farm, user, s["batch"],
@@ -375,6 +379,9 @@ def test_source_assignment_already_released_rejected(db_session, active_context_
     fresh_destination = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="cultivation_plate", code="CP-FRESH-RELEASED", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=fresh_destination.id
     )
     with pytest.raises(SourceAssignmentAlreadyReleasedError):
         _transplant(

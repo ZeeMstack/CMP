@@ -32,7 +32,7 @@ from app.schemas.transplant_event import (
     TransplantEventRead,
     TransplantSourceLineRead,
 )
-from app.services import farm_service, seedling_source_lineage, transplant_source_authority
+from app.services import equipment_readiness_service, farm_service, seedling_source_lineage, transplant_source_authority
 from app.services.audit import append_audit_event
 from app.services.errors import (
     CarrierNotFoundError,
@@ -373,6 +373,23 @@ def _record_transplant_core(
                     f"destination carrier {cid}: assigned_plant_count ({assigned_plant_count}) exceeds its "
                     f"specification's biological_position_count ({specification.biological_position_count})"
                 )
+
+    # N02A: every destination carrier must be authoritatively READY --
+    # locked (via `require_ready_for_allocation`) only here, AFTER the
+    # carriers above are already locked (see that helper's own docstring
+    # for the shared Carrier/Asset-then-EquipmentReadinessState lock order),
+    # and only ever reached for a genuinely new command: this core's own
+    # pre-lock and post-lock exact-replay short-circuits above already
+    # return before this point on any replay, so a later readiness change
+    # can never turn a valid replay into a new failure (frozen rule 11).
+    # Every composite caller of this core (InterSalads Transplant, Leafy
+    # Production Transfer) is covered automatically -- neither builds its
+    # own destination-carrier validation, both call this exact core. A
+    # source carrier, or a destination carrier whose type is not
+    # readiness-tracked, is silently unaffected.
+    equipment_readiness_service.require_ready_for_allocation(
+        db, tenant_id=tenant_id, farm_id=farm_id, carrier_ids=destination_carrier_ids
+    )
 
     # Lock source assignments in deterministic order and re-validate under lock.
     assignments = list(

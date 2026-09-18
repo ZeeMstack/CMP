@@ -37,7 +37,7 @@ from app.schemas.sowing_event import (
     SowingEventLineRead,
     SowingEventRead,
 )
-from app.services import carrier_service, farm_service
+from app.services import carrier_service, equipment_readiness_service, farm_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     BatchAlreadySownError,
@@ -509,6 +509,20 @@ def _sow_batch_core(
                     f"carrier {cid}: sown_site_count ({sown_site_count}) exceeds its specification's "
                     f"biological_position_count ({specification.biological_position_count})"
                 )
+
+    # N02A: every destination Seed Tray must be authoritatively READY --
+    # locked (via `require_ready_for_allocation`) only here, AFTER the
+    # carriers above are already locked (see that helper's own docstring
+    # for the shared Carrier/Asset-then-EquipmentReadinessState lock order)
+    # and only ever reached for a genuinely new command: both `sow_batch`
+    # below and `nursery_service.sow_new_batch` already resolve their own
+    # exact-replay short-circuit before ever calling this core, so a later
+    # readiness change can never turn a valid replay into a new failure
+    # (frozen rule 11). A carrier whose type is not readiness-tracked is
+    # silently unaffected.
+    equipment_readiness_service.require_ready_for_allocation(
+        db, tenant_id=tenant_id, farm_id=farm_id, carrier_ids=sorted_carrier_ids
+    )
 
     local_sow_date = effective_time.astimezone(ZoneInfo(farm.timezone)).date()
     for sid in sorted_seed_lot_ids:

@@ -14,6 +14,7 @@ from app.services.errors import (
     BatchAlreadySownError,
     CarrierAlreadyAssignedError,
     DuplicateBatchCodeError,
+    EquipmentReadinessNotReadyError,
     FarmNotFoundError,
     InvalidSowingEffectiveTimeError,
     NoSowingWorkflowFoundError,
@@ -76,6 +77,7 @@ def sow_new_batch(
         BatchAlreadySownError,
         DuplicateBatchCodeError,
         SeedingProgramLineCancelledError,
+        EquipmentReadinessNotReadyError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (

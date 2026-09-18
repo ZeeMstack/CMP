@@ -2701,6 +2701,27 @@ class EquipmentReadinessCleaningNotCompletedError(DomainError):
     pass
 
 
+class EquipmentReadinessNotReadyError(DomainError):
+    """N02A: raised by the shared allocation-time readiness gate
+    (`equipment_readiness_service.require_ready_for_allocation`) when a
+    readiness-tracked Asset/Carrier targeted by a new Sowing, Germination
+    Trolley placement, or Transplant destination command is not currently
+    `READY` -- including a tracked entity with no `EquipmentReadinessState`
+    row at all (fail-closed: a missing row is never treated as Ready).
+    Distinct from `EquipmentReadinessStateNotFoundError` (raised by the
+    Equipment Readiness read/transition endpoints themselves): this error
+    always maps to 409 (an otherwise-valid, found resource whose current
+    readiness blocks the requested allocation), never 404. Never raised for
+    an untracked type (no readiness row is ever expected for one) or during
+    an exact-fingerprint replay of an already-committed command (the
+    allocation-time check only ever runs for a genuinely new command, per
+    each caller's own pre-existing idempotency short-circuit)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class CleaningEventCommandReusedWithDifferentPayloadError(DomainError):
     pass
 

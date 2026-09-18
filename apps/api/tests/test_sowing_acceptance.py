@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from app.models.audit_event import AuditEvent
 from app.models.occupancy import Occupancy
+from tests.conftest import mark_readiness_ready
 
 
 def _now_iso() -> str:
@@ -60,6 +61,12 @@ def test_core_sowing_acceptance_flow(client, active_context, db_session) -> None
         ).json()
         for n in range(1, 5)
     ]
+    # N02A: Sowing now authoritatively requires `ready` for every
+    # destination Carrier -- a freshly-registered one starts `unknown`.
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=_tenant.id, farm_id=farm_id, actor_user_id=_user.id, carrier_id=uuid.UUID(carrier["id"]),
+        )
 
     # 5. Create and publish a variety-specific workflow whose start stage is
     # seeding and requires seed_tray.

@@ -16,7 +16,7 @@ import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,7 @@ from app.services.errors import (
     EquipmentReadinessCleaningNotRequiredError,
     EquipmentReadinessCommandReusedWithDifferentPayloadError,
     EquipmentReadinessInvalidTransitionError,
+    EquipmentReadinessNotReadyError,
     EquipmentReadinessNotTrackedError,
     EquipmentReadinessStateNotFoundError,
     FarmNotFoundError,
@@ -185,6 +186,134 @@ def _type_info_for_state(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUI
 
 def _entity_id(state: EquipmentReadinessState) -> uuid.UUID:
     return state.asset_id if state.entity_type == "asset" else state.carrier_id
+
+
+# --- allocation-time eligibility gate (N02A) ------------------------------------------
+
+
+def require_ready_for_allocation(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    asset_ids: list[uuid.UUID] | None = None,
+    carrier_ids: list[uuid.UUID] | None = None,
+) -> None:
+    """N02A: the one shared, authoritative allocation-time readiness gate --
+    called by Sowing (every destination Seed Tray), Germination Trolley
+    placement (the selected Trolley), and Transplant (every destination
+    carrier) inside their own write transaction, AFTER the caller has
+    already resolved/locked the underlying Asset/Carrier row(s) and BEFORE
+    any new operational row (assignment/occupancy/checkpoint/audit) is
+    written. Availability reads (`list_available_seed_trays`,
+    `list_available_trolleys`, `list_available_intersalads_plates`,
+    `list_available_production_plates`, ...) already filter on the same
+    READY rule for the operator's convenience; this is the backend
+    invariant a stale selector result or a direct API call cannot bypass.
+
+    Callers must invoke this ONLY on a genuinely new command -- never on an
+    exact-fingerprint replay -- which every existing caller's own
+    pre-existing idempotency short-circuit (checked before any of this
+    validation runs) already guarantees: a later readiness change must
+    never turn a valid replay into a new failure (frozen rule 11).
+
+    Untracked entity types are silently unaffected (never queried against
+    `EquipmentReadinessState` at all -- an untracked type has no row and no
+    readiness concept, per docs/domain/EQUIPMENT_READINESS_MODEL.md). A
+    tracked entity with no readiness row is an ineligible/data-integrity
+    condition, never treated as Ready (frozen rule 9) -- fails the same way
+    as a tracked-but-non-READY entity.
+
+    Lock order (see `retire`'s own docstring for the matching half of this
+    invariant): every caller of this helper (`sowing_service._sow_batch_core`,
+    `germination_service.place_tray`, `transplant_service.
+    _record_transplant_core`) has already locked the underlying Carrier/
+    Asset row(s) with `SELECT ... FOR UPDATE` before reaching this point --
+    this helper locks ONLY `EquipmentReadinessState` rows, always AFTER
+    those Carrier/Asset locks are held, one batched query, in deterministic
+    (entity_type, asset_id, carrier_id) order. `retire` -- the only
+    readiness-transition command that also mutates the underlying Carrier/
+    Asset row -- locks in this SAME Carrier/Asset-then-EquipmentReadinessState
+    order (reordered by this ticket for exactly this reason), so no command
+    anywhere in the codebase ever acquires these two lock classes in the
+    reverse order; a reverse order on even one side would risk an AB-BA
+    deadlock between a concurrent allocation command and a concurrent
+    readiness transition targeting the same entity."""
+    unique_asset_ids = sorted(set(asset_ids or ()))
+    unique_carrier_ids = sorted(set(carrier_ids or ()))
+    if not unique_asset_ids and not unique_carrier_ids:
+        return
+
+    tracked_asset_ids: set[uuid.UUID] = set()
+    if unique_asset_ids:
+        tracked_asset_ids = set(
+            db.execute(
+                select(Asset.id)
+                .join(AssetType, AssetType.id == Asset.asset_type_id)
+                .where(
+                    Asset.id.in_(unique_asset_ids), Asset.tenant_id == tenant_id, Asset.farm_id == farm_id,
+                    AssetType.readiness_tracked.is_(True),
+                )
+            ).scalars()
+        )
+
+    tracked_carrier_ids: set[uuid.UUID] = set()
+    if unique_carrier_ids:
+        tracked_carrier_ids = set(
+            db.execute(
+                select(Carrier.id)
+                .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+                .where(
+                    Carrier.id.in_(unique_carrier_ids), Carrier.tenant_id == tenant_id, Carrier.farm_id == farm_id,
+                    CarrierType.readiness_tracked.is_(True),
+                )
+            ).scalars()
+        )
+
+    if not tracked_asset_ids and not tracked_carrier_ids:
+        return
+
+    conditions = []
+    if tracked_asset_ids:
+        conditions.append(EquipmentReadinessState.asset_id.in_(tracked_asset_ids))
+    if tracked_carrier_ids:
+        conditions.append(EquipmentReadinessState.carrier_id.in_(tracked_carrier_ids))
+
+    # One batched, deterministically-ordered lock -- never a query per
+    # entity (section 1's own explicit requirement).
+    states = list(
+        db.execute(
+            select(EquipmentReadinessState)
+            .where(
+                EquipmentReadinessState.tenant_id == tenant_id, EquipmentReadinessState.farm_id == farm_id,
+                or_(*conditions),
+            )
+            .order_by(
+                EquipmentReadinessState.entity_type, EquipmentReadinessState.asset_id,
+                EquipmentReadinessState.carrier_id,
+            )
+            .with_for_update()
+        ).scalars()
+    )
+
+    found_asset_ids = {s.asset_id for s in states if s.entity_type == "asset"}
+    found_carrier_ids = {s.carrier_id for s in states if s.entity_type == "carrier"}
+    missing_asset_ids = tracked_asset_ids - found_asset_ids
+    missing_carrier_ids = tracked_carrier_ids - found_carrier_ids
+    if missing_asset_ids or missing_carrier_ids:
+        # Frozen rule 9: a missing readiness row for a tracked entity is a
+        # data-integrity/ineligible condition, never treated as Ready.
+        offending = min(missing_asset_ids | missing_carrier_ids)
+        raise EquipmentReadinessNotReadyError(
+            f"equipment {offending} has no readiness record and cannot be allocated"
+        )
+
+    not_ready = [s for s in states if s.current_state != "ready"]
+    if not_ready:
+        offending_id = min(_entity_id(s) for s in not_ready)
+        raise EquipmentReadinessNotReadyError(
+            f"equipment {offending_id} is not ready for allocation"
+        )
 
 
 # --- generic transition runner -----------------------------------------------------
@@ -540,7 +669,22 @@ def retire(
     two "retired" facts disagreeing if the process died between them. Not
     built on the generic `_run_transition` runner for exactly this reason
     -- that helper commits before this function would get a chance to also
-    mutate the Asset/Carrier row."""
+    mutate the Asset/Carrier row.
+
+    N02A lock order: this is the only readiness-transition command that
+    also mutates the underlying Carrier/Asset row, so it locks that row
+    FIRST (via an explicit `FOR UPDATE`, before ever locking the
+    EquipmentReadinessState row) -- the same Carrier/Asset-then-
+    EquipmentReadinessState order `require_ready_for_allocation`'s callers
+    already use (they lock their Carrier/Asset rows before calling that
+    helper). Reversing this function's own prior order (which locked the
+    state row first and only implicitly locked Carrier/Asset at flush time)
+    closes an AB-BA deadlock: a concurrent allocation command holding the
+    Carrier/Asset lock while waiting on this row's readiness lock, against
+    this command holding the readiness lock while waiting on the same
+    Carrier/Asset row. The identity fields read below (entity_type/
+    asset_id/carrier_id) are frozen for life by a DB trigger (PART 8), so
+    reading them unlocked, before any lock is taken, is never stale."""
     allowed_from = ("unknown", "awaiting_cleaning", "cleaning_completed", "ready", "damaged", "maintenance")
     fingerprint = _fingerprint(tenant_id, state_id, actor_user_id, "retire", note)
 
@@ -557,6 +701,26 @@ def retire(
         if existing.retire_request_fingerprint == fingerprint:
             return existing
         raise EquipmentReadinessCommandReusedWithDifferentPayloadError(str(client_command_id))
+
+    identity = db.execute(
+        select(
+            EquipmentReadinessState.entity_type, EquipmentReadinessState.asset_id,
+            EquipmentReadinessState.carrier_id,
+        ).where(
+            EquipmentReadinessState.id == state_id, EquipmentReadinessState.tenant_id == tenant_id,
+            EquipmentReadinessState.farm_id == farm_id,
+        )
+    ).first()
+    if identity is None:
+        raise EquipmentReadinessStateNotFoundError(str(state_id))
+    entity_type, asset_id, carrier_id = identity
+
+    asset: Asset | None = None
+    carrier: Carrier | None = None
+    if entity_type == "asset":
+        asset = db.execute(select(Asset).where(Asset.id == asset_id).with_for_update()).scalar_one_or_none()
+    else:
+        carrier = db.execute(select(Carrier).where(Carrier.id == carrier_id).with_for_update()).scalar_one_or_none()
 
     state = _lock_state(db, tenant_id=tenant_id, farm_id=farm_id, state_id=state_id)
 
@@ -581,16 +745,12 @@ def retire(
     state.retire_client_command_id = client_command_id
     state.retire_request_fingerprint = fingerprint
 
-    if state.entity_type == "asset":
-        asset = db.get(Asset, state.asset_id)
-        if asset is not None and asset.status != "retired":
-            asset.status = "retired"
-            asset.retired_date = datetime.now(timezone.utc).date()
-    else:
-        carrier = db.get(Carrier, state.carrier_id)
-        if carrier is not None and carrier.status != "retired":
-            carrier.status = "retired"
-            carrier.retired_date = datetime.now(timezone.utc).date()
+    if asset is not None and asset.status != "retired":
+        asset.status = "retired"
+        asset.retired_date = datetime.now(timezone.utc).date()
+    if carrier is not None and carrier.status != "retired":
+        carrier.status = "retired"
+        carrier.retired_date = datetime.now(timezone.utc).date()
 
     try:
         db.flush()

@@ -52,7 +52,7 @@ from app.services.errors import (
     TrayNotSownError,
     TrolleyNotInGerminationError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -178,6 +178,14 @@ def _build_scenario(
             )
             trolleys.append(trolley)
 
+    # N02A: every Trolley/seed_tray Carrier produced by this shared scenario
+    # starts `unknown`, not `ready` -- Germination Trolley placement and
+    # Sowing now authoritatively require `ready`, so this helper establishes
+    # it for every caller (a readiness-specific negative test builds its own
+    # non-ready Trolley/Carrier separately, never reusing this for that).
+    for trolley in trolleys:
+        _mark_asset_ready(db_session, tenant, user, farm, trolley)
+
     seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
     carriers = [
         carrier_service.register_carrier(
@@ -186,6 +194,10 @@ def _build_scenario(
         )
         for n in range(1, tray_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
 
     event = nursery_service.sow_new_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
