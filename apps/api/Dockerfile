@@ -61,10 +61,14 @@ COPY --from=builder /install /usr/local
 COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 
-# The two production-required deployment scripts (DEPLOY-001A/D):
+# The three production-required deployment scripts (DEPLOY-001A/D,
+# PILOT-SCAN-001D):
 #   - manage_platform_admin.py: first-platform-admin bootstrap / grant / revoke
 #   - migrate_database.py: explicit, one-shot Alembic migration to head
-# so both approved procedures can run from this same deployed artifact
+#   - backfill_permanent_qr_identifiers.py: one-time (safe-to-rerun) backfill
+#     of permanent QrIdentifiers for master data created before automatic
+#     creation-time QR provisioning existed
+# so all three approved procedures can run from this same deployed artifact
 # (`docker compose run --rm api python scripts/<script> ...`) without
 # exposing managed PostgreSQL to an operator laptop or requiring a separate
 # host Python environment. Deliberately NOT the rest of apps/api/scripts/ --
@@ -73,6 +77,7 @@ COPY migrations ./migrations
 # must never ship in the production image.
 COPY scripts/manage_platform_admin.py ./scripts/manage_platform_admin.py
 COPY scripts/migrate_database.py ./scripts/migrate_database.py
+COPY scripts/backfill_permanent_qr_identifiers.py ./scripts/backfill_permanent_qr_identifiers.py
 
 RUN chown -R cmp:cmp /app
 USER cmp
