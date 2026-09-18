@@ -19,14 +19,22 @@ import {
   tableThClass,
   tableWrapperClass,
 } from "@/components/ui/table";
-import { useCrops, useGrowingProtocols, useProductionSystems } from "@/lib/query/hooks";
+import {
+  useCrops,
+  useGrowingProtocols,
+  useProductionSystems,
+  useProtocolActiveVersionMap,
+  useVarietiesForCrops,
+} from "@/lib/query/hooks";
 
 /** PILOT-AGRO-001B Part 1/13: Growing Protocol administration -- a
  * tenant-wide master-data list (mirrors Workflows' own route shape exactly,
- * see `app/workflows/page.tsx`), kept secondary to floor operations (Setup,
- * never a Today-on-the-Farm surface). Never decorates rows with per-Protocol
- * version state to avoid an N+1 -- "Open" leads to the Protocol's own detail
- * page, which shows the full version catalog. */
+ * see `app/workflows/page.tsx`). Kept secondary to floor operations (Setup,
+ * never a Today-on-the-Farm surface). Variety, Season and Active Version are
+ * this ticket's own explicit compact-table columns -- resolved via the same
+ * bounded `useQueries` reference-catalog fan-out already established by
+ * `useGradeVersionLabelMap` (tenant-wide master-data scale, not per-Batch
+ * operational scale), never a per-row detail fetch on scroll/interaction. */
 export default function GrowingProtocolsPage() {
   const protocolsQuery = useGrowingProtocols();
   const cropsQuery = useCrops();
@@ -35,6 +43,9 @@ export default function GrowingProtocolsPage() {
   const protocols = protocolsQuery.data ?? [];
   const crops = cropsQuery.data ?? [];
   const productionSystems = productionSystemsQuery.data ?? [];
+
+  const { varietyById } = useVarietiesForCrops(Array.from(new Set(protocols.map((p) => p.crop_id))));
+  const { activeVersionByProtocolId } = useProtocolActiveVersionMap(protocols.map((p) => p.id));
 
   const isLoading = protocolsQuery.isLoading || cropsQuery.isLoading || productionSystemsQuery.isLoading;
   const loadError = protocolsQuery.error ?? cropsQuery.error ?? productionSystemsQuery.error;
@@ -85,7 +96,10 @@ export default function GrowingProtocolsPage() {
                 <th className={tableThClass}>Code</th>
                 <th className={tableThClass}>Name</th>
                 <th className={tableThClass}>Crop</th>
+                <th className={tableThClass}>Variety</th>
                 <th className={tableThClass}>Production system</th>
+                <th className={tableThClass}>Season</th>
+                <th className={tableThClass}>Active version</th>
                 <th className={tableThClass}>Status</th>
                 <th className={tableThClass} />
               </tr>
@@ -94,13 +108,22 @@ export default function GrowingProtocolsPage() {
               {protocols.map((protocol) => {
                 const crop = crops.find((c) => c.id === protocol.crop_id);
                 const productionSystem = productionSystems.find((p) => p.id === protocol.production_system_id);
+                const variety = protocol.variety_id ? varietyById[protocol.variety_id] : undefined;
+                const activeVersion = activeVersionByProtocolId[protocol.id];
                 return (
                   <tr key={protocol.id} className={tableRowHoverClass}>
                     <td className={`${tableTdClass} font-medium text-wl-text`}>{protocol.code}</td>
                     <td className={`${tableTdClass} text-wl-text`}>{protocol.name}</td>
                     <td className={`${tableTdClass} text-wl-text-secondary`}>{crop ? crop.common_name : "—"}</td>
                     <td className={`${tableTdClass} text-wl-text-secondary`}>
+                      {protocol.variety_id ? (variety ? variety.name : "…") : "Any"}
+                    </td>
+                    <td className={`${tableTdClass} text-wl-text-secondary`}>
                       {productionSystem ? productionSystem.name : "Any"}
+                    </td>
+                    <td className={`${tableTdClass} text-wl-text-secondary`}>{protocol.season_context ?? "Any"}</td>
+                    <td className={`${tableTdClass} text-wl-text-secondary`}>
+                      {activeVersion ? `v${activeVersion.version_number}` : "None active"}
                     </td>
                     <td className={tableTdClass}>
                       <StatusBadge
