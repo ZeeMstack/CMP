@@ -865,23 +865,74 @@ def get_ready_asset_ids(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID
 NON_READY_STATES = ("unknown", "awaiting_cleaning", "cleaning_completed", "damaged", "maintenance", "retired")
 
 
-def non_ready_carrier_ids_subquery(*, tenant_id: uuid.UUID, farm_id: uuid.UUID):
-    """PART 16/17: the one filter every "available Carrier" read applies
-    (`Carrier.id.not_in(non_ready_carrier_ids_subquery(...))`) -- only
-    READY is eligible; UNKNOWN is excluded (UNKNOWN != READY). A Carrier
-    with no readiness row at all (non-readiness-tracked type) is never
-    included here and is therefore unaffected."""
-    return select(EquipmentReadinessState.carrier_id).where(
-        EquipmentReadinessState.tenant_id == tenant_id, EquipmentReadinessState.farm_id == farm_id,
-        EquipmentReadinessState.entity_type == "carrier",
-        EquipmentReadinessState.current_state.in_(NON_READY_STATES),
-    )
-
-
 def non_ready_asset_ids_subquery(*, tenant_id: uuid.UUID, farm_id: uuid.UUID):
-    """Asset counterpart of `non_ready_carrier_ids_subquery`."""
+    """Asset-side NOT-IN helper, kept for `get_ready_asset_ids` below (an
+    unused-in-production, future Ready-equipment-queue helper). N02A
+    review: this NOT-IN shape fails OPEN for a readiness-tracked Asset with
+    no row at all -- do not reuse this pattern for a new "available X"
+    read; use `eligible_asset_ids_subquery` below instead, which fails
+    closed for exactly that case."""
     return select(EquipmentReadinessState.asset_id).where(
         EquipmentReadinessState.tenant_id == tenant_id, EquipmentReadinessState.farm_id == farm_id,
         EquipmentReadinessState.entity_type == "asset",
         EquipmentReadinessState.current_state.in_(NON_READY_STATES),
+    )
+
+
+# --- fail-closed eligibility subqueries (N02A review correction) ---------------------
+#
+# `non_ready_carrier_ids_subquery`/`non_ready_asset_ids_subquery` above are a
+# NOT-IN pattern: a Carrier/Asset is excluded only when a MATCHING non-ready
+# row is found. That silently fails OPEN for a readiness-tracked entity with
+# NO EquipmentReadinessState row at all -- it never matches any non-ready
+# row, so NOT IN lets it through, contradicting frozen rule 9 ("a missing
+# readiness row for a readiness-tracked entity is an ineligible/data-
+# integrity condition... must not be treated as Ready") and contradicting
+# `require_ready_for_allocation`'s own fail-closed write-time behavior for
+# the identical case. The two subqueries below are the corrected,
+# fail-closed replacement for every "available X" Carrier/Asset read: they
+# return exactly the eligible ids (untracked type, unaffected either way; OR
+# a readiness row exists and is `ready`) via an explicit LEFT JOIN, so a
+# missing row for a tracked type naturally lands on the excluded side.
+
+
+def eligible_carrier_ids_subquery(*, tenant_id: uuid.UUID, farm_id: uuid.UUID):
+    """The one filter every "available Carrier" read should apply
+    (`Carrier.id.in_(eligible_carrier_ids_subquery(...))`, replacing the
+    older `NOT IN non_ready_carrier_ids_subquery` pattern): a Carrier
+    whose type is not readiness-tracked is always eligible (unaffected);
+    a readiness-tracked Carrier is eligible only when its
+    EquipmentReadinessState row exists and is `ready` -- a missing row
+    fails closed."""
+    return (
+        select(Carrier.id)
+        .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+        .outerjoin(
+            EquipmentReadinessState,
+            (EquipmentReadinessState.carrier_id == Carrier.id)
+            & (EquipmentReadinessState.tenant_id == tenant_id)
+            & (EquipmentReadinessState.farm_id == farm_id),
+        )
+        .where(
+            Carrier.tenant_id == tenant_id, Carrier.farm_id == farm_id,
+            or_(CarrierType.readiness_tracked.is_(False), EquipmentReadinessState.current_state == "ready"),
+        )
+    )
+
+
+def eligible_asset_ids_subquery(*, tenant_id: uuid.UUID, farm_id: uuid.UUID):
+    """Asset counterpart of `eligible_carrier_ids_subquery`."""
+    return (
+        select(Asset.id)
+        .join(AssetType, AssetType.id == Asset.asset_type_id)
+        .outerjoin(
+            EquipmentReadinessState,
+            (EquipmentReadinessState.asset_id == Asset.id)
+            & (EquipmentReadinessState.tenant_id == tenant_id)
+            & (EquipmentReadinessState.farm_id == farm_id),
+        )
+        .where(
+            Asset.tenant_id == tenant_id, Asset.farm_id == farm_id,
+            or_(AssetType.readiness_tracked.is_(False), EquipmentReadinessState.current_state == "ready"),
+        )
     )

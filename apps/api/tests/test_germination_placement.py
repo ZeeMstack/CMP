@@ -40,6 +40,7 @@ from app.services import (
 from app.services.errors import (
     AssetPositionNotFoundError,
     AssetNotFoundError,
+    EquipmentReadinessStateNotFoundError,
     GerminationChamberInvalidError,
     GerminationLevelNotConfiguredError,
     GerminationPlacementMustUseGerminationOperationError,
@@ -864,6 +865,47 @@ def test_list_available_trolleys_only_those_in_a_chamber(db_session, active_cont
     available_after = germination_service.list_available_trolleys(db_session, tenant_id=tenant.id, farm_id=farm.id)
     assert available_after[0].occupied_count == 1
     assert available_after[0].available_capacity == 3
+
+
+@pytest.mark.integration
+def test_list_available_trolleys_excludes_trolley_with_no_readiness_row(db_session, active_context_with_farm) -> None:
+    """N02A review correction: a `germination_trolley` Asset with NO
+    EquipmentReadinessState row at all (never provisioned, e.g. a raw-SQL
+    legacy Asset that bypassed `asset_service.register_asset`) must fail
+    closed -- excluded from "available" exactly like UNKNOWN, never
+    silently treated as eligible because no non-ready row exists to
+    match. Placed in the chamber via the real, unmodified
+    `place_trolley_in_chamber` (not readiness-gated -- only Tray placement
+    is) so the selector's own occupancy/location join is exercised
+    unchanged; only the readiness condition is under test."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, trolley_count=0, tray_count=1)
+    trolley_type_id = db_session.execute(
+        text("SELECT id FROM asset_types WHERE code = 'germination_trolley'")
+    ).scalar_one()
+    trolley_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO assets (id, tenant_id, farm_id, asset_type_id, code, name, status, criticality) "
+            "VALUES (:id, :tid, :fid, :atid, :code, 'Trolley', 'active', 'normal')"
+        ),
+        {"id": trolley_id, "tid": tenant.id, "fid": farm.id, "atid": trolley_type_id, "code": f"GT-NOROW-{uuid.uuid4().hex[:8]}"},
+    )
+    db_session.flush()
+    with pytest.raises(EquipmentReadinessStateNotFoundError):
+        equipment_readiness_service.get_readiness_for_asset(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, asset_id=trolley_id
+        )
+
+    germination_service.place_trolley_in_chamber(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        trolley_id=trolley_id, chamber_id=s["chamber_id"], effective_time=_now(), reason=None,
+    )
+
+    available = germination_service.list_available_trolleys(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert not any(t.id == trolley_id for t in available), (
+        "a tracked Trolley with no EquipmentReadinessState row at all must fail closed, not silently pass through"
+    )
 
 
 @pytest.mark.integration

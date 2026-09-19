@@ -36,7 +36,7 @@ from app.services import (
     workflow_service,
 )
 from app.services.errors import EquipmentReadinessNotTrackedError
-from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
+from tests.conftest import ensure_seed_tray_specification, insert_ready_readiness_row, mark_readiness_ready
 
 
 def now():
@@ -303,16 +303,8 @@ def build_transplant_ready_scenario(
             # provisioning` never runs for it -- insert the
             # EquipmentReadinessState row directly, already `ready`
             # (these downgrade-guard scenarios are about legacy
-            # specification shape, never about readiness), matching this
-            # block's own existing raw-SQL-legacy-row pattern.
-            db_session.execute(
-                text(
-                    "INSERT INTO equipment_readiness_states (id, tenant_id, farm_id, entity_type, carrier_id, "
-                    "current_state, state_changed_at) "
-                    "VALUES (:id, :tid, :fid, 'carrier', :cid, 'ready', now())"
-                ),
-                {"id": uuid.uuid4(), "tid": tenant.id, "fid": farm.id, "cid": carrier_id},
-            )
+            # specification shape, never about readiness).
+            insert_ready_readiness_row(db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier_id)
             carriers.append(db_session.get(Carrier, carrier_id))
     else:
         seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)

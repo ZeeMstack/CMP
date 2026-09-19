@@ -79,6 +79,7 @@ from app.schemas.crop_batch import CropSummary, VarietySummary
 from app.schemas.sowing_event import CarrierSummary, CarrierTypeSummary, SeedLotSummary
 from app.services import asset_service, carrier_service, equipment_readiness_service, farm_service, location_service, movement_service
 from app.services.errors import (
+    AssetNotFoundError,
     AssetPositionNotFoundError,
     FarmNotFoundError,
     GerminationChamberInvalidError,
@@ -129,11 +130,32 @@ def _validate_chamber(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, 
     return location
 
 
-def _validate_trolley(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID) -> Asset:
-    # `get_asset` is tenant/farm-scoped and raises the generic, existing
-    # `AssetNotFoundError` for a missing/cross-tenant/cross-farm id -- same
-    # 404-not-422 reasoning as `_validate_chamber` above.
-    asset = asset_service.get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=trolley_id)
+def _validate_trolley(
+    db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, trolley_id: uuid.UUID, lock: bool = False
+) -> Asset:
+    if lock:
+        # N02A: locks the Trolley Asset row FOR UPDATE, ahead of its own
+        # EquipmentReadinessState row -- `require_ready_for_allocation`'s
+        # own lock-order contract (Carrier/Asset row before the readiness
+        # row). Used only by `place_tray`'s genuinely-new-command path,
+        # immediately before the readiness check; re-validates status/type
+        # against the now-locked row rather than trusting the earlier
+        # unlocked read, mirroring Sowing/Transplant's own lock-then-
+        # validate discipline for destination carriers. Tenant/farm scoping
+        # and the generic 404 for a missing/cross-scope id are preserved --
+        # same reasoning as the unlocked path below.
+        asset = db.execute(
+            select(Asset)
+            .where(Asset.id == trolley_id, Asset.tenant_id == tenant_id, Asset.farm_id == farm_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if asset is None:
+            raise AssetNotFoundError(str(trolley_id))
+    else:
+        # `get_asset` is tenant/farm-scoped and raises the generic, existing
+        # `AssetNotFoundError` for a missing/cross-tenant/cross-farm id -- same
+        # 404-not-422 reasoning as `_validate_chamber` above.
+        asset = asset_service.get_asset(db, tenant_id=tenant_id, farm_id=farm_id, asset_id=trolley_id)
     if asset.status != "active":
         raise GerminationTrolleyInvalidError(str(trolley_id))
     trolley_type = asset_service._get_asset_type_by_code(db, GERMINATION_TROLLEY_ASSET_TYPE_CODE)
@@ -337,15 +359,20 @@ def place_tray(
     `Occupancy`/`Movement` (section 18).
 
     N02A: the selected Trolley must also be authoritatively READY --
-    checked (and its EquipmentReadinessState row locked) only for a
-    genuinely new command, never for an exact replay of an already-
-    committed one. `movement_service._find_existing_movement` mirrors the
-    same lookup `_execute_movement_core`'s own idempotency check performs
-    just below; a hit here means this call is a replay -- or a same-id/
-    different-payload reuse, which `execute_movement` itself will reject --
-    either way, re-running today's eligibility against an already-decided
-    command would violate frozen rule 11 (a later readiness change must
-    never turn a valid replay into a new failure)."""
+    locked and checked only for a genuinely new command, never for an
+    exact replay of an already-committed one. `movement_service.
+    _find_existing_movement` mirrors the same lookup `_execute_movement_
+    core`'s own idempotency check performs just below; a hit here means
+    this call is a replay -- or a same-id/different-payload reuse, which
+    `execute_movement` itself will reject -- either way, re-running today's
+    eligibility against an already-decided command would violate frozen
+    rule 11 (a later readiness change must never turn a valid replay into a
+    new failure). Lock order for the new-command path: the Trolley Asset
+    row first (`_validate_trolley(..., lock=True)`), then its
+    EquipmentReadinessState row (inside `require_ready_for_allocation`),
+    then whatever locks `movement_service.execute_movement` itself takes
+    below -- matching that helper's own documented Carrier/Asset-then-
+    readiness-row contract."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     _validate_sown_tray(db, tenant_id=tenant_id, farm_id=farm_id, tray_id=tray_id)
     _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
@@ -357,6 +384,7 @@ def place_tray(
         raise TrolleyNotInGerminationError(str(trolley_id))
 
     if movement_service._find_existing_movement(db, tenant_id=tenant_id, client_command_id=client_command_id) is None:
+        _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id, lock=True)
         equipment_readiness_service.require_ready_for_allocation(
             db, tenant_id=tenant_id, farm_id=farm_id, asset_ids=[trolley_id]
         )
@@ -567,7 +595,12 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
     Readiness is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/
     MAINTENANCE/RETIRED -- only READY is eligible; a dirty/damaged/
     never-assessed Trolley must never be offered as a Tray placement
-    destination. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
+    destination. N02A review correction: a Trolley with NO
+    EquipmentReadinessState row at all now also fails closed (excluded)
+    -- `at.readiness_tracked` is joined in explicitly so the condition
+    reads "not tracked, OR a ready row exists", never the older "no
+    matching non-ready row" shape that silently let a missing row through
+    as available. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -579,11 +612,11 @@ def list_available_trolleys(db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.
             "JOIN location_types clt ON clt.id = c.location_type_id AND clt.code = :chamber_code "
             "JOIN locations gh ON gh.id = c.parent_location_id AND gh.greenhouse_classification = 'nursery' "
             "WHERE a.tenant_id = :tid AND a.farm_id = :fid AND a.status = 'active' "
-            "AND NOT EXISTS ("
-            "  SELECT 1 FROM equipment_readiness_states ers "
-            "  WHERE ers.asset_id = a.id AND ers.tenant_id = a.tenant_id "
-            "  AND ers.current_state IN ('unknown', 'awaiting_cleaning', 'cleaning_completed', 'damaged', "
-            "'maintenance', 'retired')"
+            "AND ("
+            "  NOT at.readiness_tracked OR EXISTS ("
+            "    SELECT 1 FROM equipment_readiness_states ers "
+            "    WHERE ers.asset_id = a.id AND ers.tenant_id = a.tenant_id AND ers.current_state = 'ready'"
+            "  )"
             ") "
             "ORDER BY a.code"
         ),

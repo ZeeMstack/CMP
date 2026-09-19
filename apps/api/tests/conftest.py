@@ -374,8 +374,15 @@ def mark_readiness_ready(db_session, *, tenant_id, farm_id, actor_user_id, asset
     caller doesn't need to know whether the entity's type `requires_
     cleaning` -- `mark_ready` is tried directly first (succeeds for a
     non-cleaning-required type, or is a no-op if already `ready`) and only
-    falls back to the full awaiting-cleaning/cleaning-completed cycle when
-    that direct call is rejected."""
+    falls back to the full awaiting-cleaning/cleaning-completed cycle for
+    the one other known/eligible setup case this helper handles: a fresh
+    (`unknown`) cleaning-required entity. Tightened deliberately (N02A
+    review): this is a setup helper for a known fresh/eligible entity, not
+    a general force-ready escape hatch -- an invalid-transition rejection
+    from any OTHER current_state (damaged, maintenance, retired, or
+    mid-cleaning) re-raises instead of being silently retried, since that
+    always indicates a genuine test-setup error, never a state this helper
+    is entitled to paper over."""
     import uuid
     from datetime import datetime, timezone
 
@@ -398,6 +405,8 @@ def mark_readiness_ready(db_session, *, tenant_id, farm_id, actor_user_id, asset
             client_command_id=uuid.uuid4(),
         )
     except EquipmentReadinessInvalidTransitionError:
+        if state.current_state != "unknown":
+            raise
         equipment_readiness_service.mark_awaiting_cleaning(
             db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
             client_command_id=uuid.uuid4(),
@@ -411,6 +420,37 @@ def mark_readiness_ready(db_session, *, tenant_id, farm_id, actor_user_id, asset
             db_session, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, state_id=state.id,
             client_command_id=uuid.uuid4(),
         )
+
+
+def insert_ready_readiness_row(db_session, *, tenant_id, farm_id, carrier_id=None, asset_id=None):
+    """N02A: for a Carrier/Asset built via raw SQL that deliberately
+    bypasses `carrier_service.register_carrier`/`asset_service.
+    register_asset` (modeling a genuine legacy/pre-migration row shape,
+    e.g. a pre-CARRIER-CONFIG-001A seed_tray with no specification) --
+    `equipment_readiness_provisioning` never runs for such a row, so no
+    `EquipmentReadinessState` exists to bring through the real lifecycle
+    via `mark_readiness_ready`. Inserts one directly, already `ready`,
+    matching the surrounding raw-SQL-legacy-row pattern; use only where the
+    test's own purpose is that legacy shape, never as a shortcut around a
+    normal `carrier_service.register_carrier`/`asset_service.register_asset`
+    call (those should use `mark_readiness_ready` instead)."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
+    entity_type = "asset" if asset_id is not None else "carrier"
+    db_session.execute(
+        text(
+            "INSERT INTO equipment_readiness_states (id, tenant_id, farm_id, entity_type, asset_id, carrier_id, "
+            "current_state, state_changed_at) "
+            "VALUES (:id, :tid, :fid, :etype, :aid, :cid, 'ready', :now)"
+        ),
+        {
+            "id": uuid.uuid4(), "tid": tenant_id, "fid": farm_id, "etype": entity_type,
+            "aid": asset_id, "cid": carrier_id, "now": datetime.now(timezone.utc),
+        },
+    )
 
 
 @pytest.fixture

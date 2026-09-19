@@ -43,7 +43,8 @@ from app.services import (
     user_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from app.services.errors import EquipmentReadinessNotTrackedError
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def now():
@@ -229,6 +230,16 @@ def build_committed_scenario(test_engine, *, carrier_count: int = 2, lot_a_weigh
             )
             for n in range(carrier_count)
         ]
+    # N02A: Sowing now authoritatively requires `ready` for every
+    # destination Carrier -- a fresh registration starts `unknown`. Skip
+    # silently for an untracked `carrier_type_code` override.
+    for carrier in carriers:
+        try:
+            mark_readiness_ready(
+                session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+            )
+        except EquipmentReadinessNotTrackedError:
+            pass
     sowing_service.sow_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=now(), note=None,

@@ -201,7 +201,7 @@ def test_existing_cmp013_harvesting_stage_behavior_remains_valid(test_engine) ->
         sowing_service, tenant_service, user_service, workflow_service,
     )
     from app.services import harvest_service
-    from tests.conftest import ensure_seed_tray_specification
+    from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
     suffix = uuid.uuid4().hex[:8]
     conn = test_engine.connect()
@@ -287,6 +287,7 @@ def test_existing_cmp013_harvesting_stage_behavior_remains_valid(test_engine) ->
             specification_id=ensure_seed_tray_specification(session, tenant_id=tenant.id, actor_user_id=user.id).id,
             code=f"ST-{suffix}", issued_date=None,
         )
+        mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
         sowing_service.sow_batch(
             session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
             client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

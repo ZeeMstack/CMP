@@ -35,7 +35,7 @@ from app.services import (
 from tests._dispatch_scenario import pack_one
 from tests._packing_scenario import build_committed_scenario, build_packing_scaffold, cleanup_scenario, now, require_cmp_test
 from tests._storage_scenario import create_cold_store, create_cold_store_position, place_one
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _build_scenario_ready_to_harvest(session: Session, *, t_batch, t_sow, t_transition):
@@ -123,6 +123,7 @@ def _build_scenario_ready_to_harvest(session: Session, *, t_batch, t_sow, t_tran
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, specification_id=seed_tray_spec.id,
         code=f"tray-{suffix}", issued_date=None,
     )
+    mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
     sowing_service.sow_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=t_sow, note=None,

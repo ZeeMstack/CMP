@@ -43,6 +43,7 @@ from app.services.errors import (
     UnsupportedTransplantSourceCarrierTypeError,
 )
 from tests._transplant_scenario import build_transplant_ready_scenario, now as _now
+from tests.conftest import mark_readiness_ready
 
 NURSERY_PLATE_TYPE = "nursery_cultivation_plate"
 PRODUCTION_PLATE_TYPE = "production_cultivation_plate"
@@ -93,6 +94,15 @@ def _production_plates(db_session, tenant, user, farm, *, count=3, biological_po
         )
         for i in range(count)
     ]
+    # N02A: the composite's destination-carrier validation now
+    # authoritatively requires `ready` (via `_record_transplant_core` ->
+    # `require_ready_for_allocation`) for every `production_cultivation_
+    # plate`, which is readiness-tracked -- a fresh registration starts
+    # `unknown`.
+    for plate in plates:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=plate.id
+        )
     return plates, spec
 
 

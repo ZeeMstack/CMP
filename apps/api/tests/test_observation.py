@@ -24,7 +24,7 @@ from app.services.errors import (
     ObservationCommandReusedWithDifferentPayloadError,
     ObservationValidationError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
@@ -163,6 +163,8 @@ def _build_scenario(db_session, tenant, user, farm, *, suffix=None):
         )
         for n in range(1, 5)
     ]
+    for c in carriers:
+        mark_readiness_ready(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=c.id)
     sowing_event = sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

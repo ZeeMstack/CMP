@@ -25,7 +25,7 @@ from tests._traceability_scenario import (  # noqa: F401  re-exported for test f
     committed_connection,
     now,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def build_transplant_workflow_scaffold(db: Session, tenant, user, farm, *, suffix=None):
@@ -259,6 +259,8 @@ def sow_batch(
         )
         for n in range(carrier_count)
     ]
+    for tray in trays:
+        mark_readiness_ready(db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=tray.id)
     sowing_service.sow_batch(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=effective_time, note=None,

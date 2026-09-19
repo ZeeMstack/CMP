@@ -49,6 +49,7 @@ from app.services import (
 from app.services.errors import SourceAssignmentAlreadyReleasedError, TransplantCorrectionCarrierReusedError
 from tests._traceability_scenario import cleanup_traceability_scenario
 from tests._transplant_scenario import build_transplant_ready_scenario
+from tests.conftest import mark_readiness_ready
 
 
 def _now():
@@ -161,6 +162,14 @@ def test_concurrent_nursery_plate_consumptions_of_same_source_leave_one_winner_a
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
         carrier_type_code="nursery_cultivation_plate", code="NP-B", issued_date=None, specification_id=spec_b.id,
     )
+    mark_readiness_ready(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        carrier_id=plate_a.id,
+    )
+    mark_readiness_ready(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        carrier_id=plate_b.id,
+    )
     session.commit()
     # Captured as plain UUIDs before close -- both objects' attributes
     # expire on commit, and would raise DetachedInstanceError if accessed
@@ -259,6 +268,10 @@ def test_carrier_reuse_vs_correction_restoration_race_is_safe(test_engine) -> No
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
         carrier_type_code="nursery_cultivation_plate", code="NP-DEST2-C", issued_date=None,
         specification_id=spec2.id,
+    )
+    mark_readiness_ready(
+        session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
+        carrier_id=plate2.id,
     )
     chained_event = transplant_service.record_transplant(
         session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],

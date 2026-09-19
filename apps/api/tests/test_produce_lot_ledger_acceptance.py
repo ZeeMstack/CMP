@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.models.movement import Movement
 from app.models.occupancy import Occupancy
+from tests.conftest import mark_readiness_ready
 
 
 def _now_iso() -> str:
@@ -88,6 +89,11 @@ def test_produce_lot_ledger_acceptance_flow(client, active_context, db_session) 
         client.post(f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"tray-{suffix}-{n}"}).json()
         for n in range(2)
     ]
+    for c in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=_tenant.id, farm_id=uuid.UUID(farm_id), actor_user_id=_user.id,
+            carrier_id=uuid.UUID(c["id"]),
+        )
     sow_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,
         json={

@@ -25,7 +25,7 @@ from app.services import (
     user_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def now():
@@ -173,6 +173,7 @@ def build_linked_sowing_scenario(test_engine):
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=seed_tray_spec.id, code=f"ST-{suffix}-0001", issued_date=None,
     )
+    mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
 
     kg_uom = next(u for u in unit_of_measure_service.list_uoms(session) if u.code == "kg")
     seed_uom = next(u for u in unit_of_measure_service.list_uoms(session) if u.code == "SEED")

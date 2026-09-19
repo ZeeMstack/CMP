@@ -40,7 +40,7 @@ from app.services.errors import (
     PackSpecificationVersionNotUsableError,
 )
 from tests._packing_scenario import cleanup_scenario, now, require_cmp_test
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _build_tenant_farm(session, *, suffix):
@@ -122,6 +122,7 @@ def _harvest_one(session, tenant, user, farm, *, crop, variety, suffix, weight, 
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, specification_id=seed_tray_spec.id,
         code=f"tray-{suffix}", issued_date=None,
     )
+    mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
     sowing_service.sow_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=setup_time, note=None,

@@ -263,8 +263,12 @@ def list_available_intersalads_plates(
 
     PILOT-ASSET-001: additionally excludes a Plate whose Equipment
     Readiness is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/
-    MAINTENANCE/RETIRED -- only READY is eligible; see
-    docs/domain/EQUIPMENT_READINESS_MODEL.md."""
+    MAINTENANCE/RETIRED -- only READY is eligible. N02A review correction:
+    a Plate with NO EquipmentReadinessState row at all now also fails
+    closed (excluded) -- `ct.readiness_tracked` is joined in explicitly so
+    the condition reads "not tracked, OR a ready row exists", never the
+    older "no matching non-ready row" shape that silently let a missing
+    row through as available. See docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     carrier_service._require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     rows = db.execute(
         text(
@@ -279,11 +283,11 @@ def list_available_intersalads_plates(
             "  SELECT 1 FROM batch_carrier_assignments bca "
             "  WHERE bca.carrier_id = c.id AND bca.released_effective_time IS NULL"
             ") "
-            "AND NOT EXISTS ("
-            "  SELECT 1 FROM equipment_readiness_states ers "
-            "  WHERE ers.carrier_id = c.id AND ers.tenant_id = c.tenant_id "
-            "  AND ers.current_state IN ('unknown', 'awaiting_cleaning', 'cleaning_completed', 'damaged', "
-            "'maintenance', 'retired')"
+            "AND ("
+            "  NOT ct.readiness_tracked OR EXISTS ("
+            "    SELECT 1 FROM equipment_readiness_states ers "
+            "    WHERE ers.carrier_id = c.id AND ers.tenant_id = c.tenant_id AND ers.current_state = 'ready'"
+            "  )"
             ") "
             "ORDER BY c.code"
         ),

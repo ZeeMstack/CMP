@@ -6,7 +6,9 @@ tracked resource whose current readiness is not READY. See
 docs/domain/EQUIPMENT_READINESS_MODEL.md and
 `equipment_readiness_service.require_ready_for_allocation`.
 
-Six cases, matching the ticket's own required regression list exactly:
+The first six cases match the ticket's own required regression list
+exactly; a seventh (missing-row) and an eighth (concurrency) case were
+added during review to close the gaps in Corrections #2 and #3:
 1. Sowing rejects a Seed Tray in MAINTENANCE.
 2. Sowing rejects a tracked Seed Tray in UNKNOWN (never assessed).
 3. Germination rejects a Trolley that moved READY -> MAINTENANCE before
@@ -17,6 +19,12 @@ Six cases, matching the ticket's own required regression list exactly:
 6. An exact replay of an already-committed command still returns its
    original result, even though the underlying equipment's readiness has
    since changed.
+7. Sowing rejects a Seed Tray with NO EquipmentReadinessState row at all
+   (distinct from UNKNOWN) -- the write boundary fails closed on a
+   missing row, atomically.
+8. `place_tray` and a concurrent `retire` of the same Trolley genuinely
+   serialize (Correction #2's deterministic lock-order proof) -- see
+   `test_place_tray_and_retire_on_trolley_serialize_no_deadlock` below.
 """
 import threading
 import uuid
@@ -57,6 +65,8 @@ from app.services import (
 from app.services.errors import (
     EquipmentReadinessNotReadyError,
     EquipmentReadinessNotTrackedError,
+    EquipmentReadinessStateNotFoundError,
+    GerminationTrolleyInvalidError,
     SowingValidationError,
 )
 from tests._transplant_scenario import build_transplant_ready_scenario
@@ -432,7 +442,67 @@ def test_exact_replay_unaffected_by_later_readiness_change(db_session, active_co
 
 
 # =====================================================================
-# 7. Concurrency: the allocation command and a readiness transition
+# 7. N02A review correction: a tracked destination Carrier with NO
+#    EquipmentReadinessState row at all (never provisioned) must fail
+#    closed at the write boundary too, not just in the "available"
+#    selectors -- and leave no partial write behind.
+# =====================================================================
+
+
+@pytest.mark.integration
+def test_sowing_rejects_seed_tray_with_no_readiness_row_at_all(db_session, active_context_with_farm) -> None:
+    """Distinct from `test_sowing_rejects_unknown_seed_tray`: here the
+    Carrier's EquipmentReadinessState row does not exist at all (as for a
+    raw-SQL-constructed legacy Carrier that bypassed
+    `carrier_service.register_carrier`, so `equipment_readiness_
+    provisioning` never ran), not merely UNKNOWN. `require_ready_for_
+    allocation` must fail closed on the missing row exactly as it does for
+    UNKNOWN, never treat "no row to check" as "nothing to reject"."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_sowing_scenario(db_session, tenant, user, farm)
+    seed_tray_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    carrier_id = uuid.uuid4()
+    db_session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, issued_date, "
+            "retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL)"
+        ),
+        {
+            "id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id,
+            "code": f"ST-NOROW-{uuid.uuid4().hex[:8]}",
+        },
+    )
+    db_session.flush()
+    with pytest.raises(EquipmentReadinessStateNotFoundError):
+        equipment_readiness_service.get_readiness_for_carrier(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier_id
+        )
+
+    with pytest.raises(EquipmentReadinessNotReadyError):
+        sowing_service.sow_batch(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=s["batch"].id,
+            client_command_id=uuid.uuid4(), effective_time=_now_utc(), note=None,
+            lines=[
+                {
+                    "carrier_id": carrier_id, "seed_lot_id": s["seed_lot"].id, "sown_site_count": 200,
+                    "seed_count": 200, "line_note": None,
+                }
+            ],
+        )
+
+    # No SowingEvent, no BatchCarrierAssignment -- the readiness rejection
+    # must not leave a partial write behind.
+    assert db_session.execute(
+        select(func.count()).select_from(BatchCarrierAssignment).where(
+            BatchCarrierAssignment.carrier_id == carrier_id
+        )
+    ).scalar_one() == 0
+
+
+# =====================================================================
+# 8. Concurrency: the allocation command and a readiness transition
 #    genuinely serialize on the readiness row -- no deadlock, and the
 #    final state is always internally consistent with whichever one
 #    actually committed first.
@@ -638,3 +708,210 @@ def test_allocation_and_readiness_transition_serialize_no_deadlock(test_engine) 
             assert assignment_count == 0
     finally:
         _cleanup_committed_ready_sowing_scenario(test_engine, scenario["tenant_id"])
+
+
+# =====================================================================
+# 8. Concurrency: Germination `place_tray` and `retire` (on the Trolley)
+#    genuinely serialize -- no deadlock, and no partial Movement/Occupancy
+#    survives a placement that loses the race.
+# =====================================================================
+
+
+def _build_committed_ready_germination_scenario(test_engine, *, suffix):
+    """A committed, real Nursery scenario: one sown+READY seed_tray Carrier,
+    one READY Germination Trolley already occupying a Chamber, and the
+    Trolley's own first direct Level resolved -- everything `place_tray`
+    needs to succeed, built via a dedicated connection so two independent
+    sessions can genuinely race against it (mirrors this file's own
+    `_build_committed_ready_sowing_scenario` and `test_germination_
+    placement.py`'s `_build_committed_concurrency_scenario`)."""
+    conn = test_engine.connect()
+    session = Session(bind=conn)
+    tenant = tenant_service.create_tenant(session, code=f"n02a-germ-race-{suffix}", name="N02A Germ Race Tenant")
+    user = user_service.create_user(
+        session, oidc_issuer="n02a-germ-race", oidc_subject=suffix, email=f"n02a-germ-race-{suffix}@example.com",
+        display_name="N02A Germ Race User",
+    )
+    membership_service.add_membership(
+        session, tenant_id=tenant.id, user_id=user.id, role_code="tenant_admin", actor_user_id=None
+    )
+    farm = farm_service.create_farm(
+        session, tenant_id=tenant.id, actor_user_id=user.id, code=f"farm-{suffix}", name="N02A Germ Race Farm",
+        country_code="AE", city_region=None, timezone="Asia/Dubai",
+    )
+    s = _build_sowing_scenario(session, tenant, user, farm, suffix=suffix)
+    mark_readiness_ready(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=s["carrier"].id
+    )
+    _sow_one(session, tenant, user, farm, s)
+
+    setup = farm_setup_service.create_greenhouse_setup(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        payload=GreenhouseSetupCreate(
+            code=f"NUR-{suffix}", name="Nursery", classification="nursery", client_command_id=uuid.uuid4(),
+            nursery=NurserySetupConfig(
+                seeding_station=NurserySectionConfig(code=f"SEED-{suffix}"),
+                germination_chamber=GerminationChamberSetupConfig(code=f"GC-{suffix}", trolley_capacity=1),
+            ),
+        ),
+    )
+    structure = farm_setup_service.get_greenhouse_structure(
+        session.connection(), tenant_id=tenant.id, farm_id=farm.id, greenhouse_id=setup.greenhouse_id,
+    )
+    chamber_id = structure.nursery_germination_chamber.id
+
+    trolley = asset_service.register_asset(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+        asset_type_code="germination_trolley", code=f"GT-{suffix}", name="Trolley", commissioned_date=None,
+    )
+    asset_service.generate_positions(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id,
+        shelf_count=1, slots_per_shelf=1, shelf_prefix=f"SH-{suffix}-", slot_prefix="SL-",
+        shelf_pad_width=2, slot_pad_width=2,
+    )
+    slot_id = session.execute(
+        select(AssetPosition.id).where(AssetPosition.asset_id == trolley.id, AssetPosition.position_kind == "slot")
+    ).scalar_one()
+
+    trolley_state = mark_readiness_ready(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id
+    )
+    germination_service.place_trolley_in_chamber(
+        session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+        trolley_id=trolley.id, chamber_id=chamber_id, effective_time=_now_utc(), reason=None,
+    )
+    session.commit()
+
+    result = {
+        "tenant_id": tenant.id, "farm_id": farm.id, "user_id": user.id, "tray_id": s["carrier"].id,
+        "trolley_id": trolley.id, "asset_position_id": slot_id, "trolley_state_id": trolley_state.id,
+    }
+    session.close()
+    conn.close()
+    return result
+
+
+def _cleanup_committed_ready_germination_scenario(test_engine, tenant_id) -> None:
+    conn = test_engine.connect()
+    trans = conn.begin()
+    try:
+        conn.execute(text("SET session_replication_role = replica"))
+        for table in (
+            "occupancies", "movements", "sowing_event_lines", "batch_carrier_assignments", "sowing_events",
+            "equipment_readiness_states", "cleaning_events", "seed_lots", "carrier_specifications", "carriers",
+            "asset_positions", "assets", "batch_stage_runs", "batch_stage_transitions", "crop_batches",
+            "workflow_transitions", "workflow_stages", "workflow_versions", "workflows", "production_systems",
+            "varieties", "crops", "locations", "audit_events", "farms", "tenant_memberships",
+        ):
+            if table == "asset_positions":
+                conn.execute(
+                    text("DELETE FROM asset_positions WHERE asset_id IN (SELECT id FROM assets WHERE tenant_id = :tid)"),
+                    {"tid": tenant_id},
+                )
+            else:
+                conn.execute(text(f"DELETE FROM {table} WHERE tenant_id = :tid"), {"tid": tenant_id})
+        conn.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": tenant_id})
+        conn.execute(text("SET session_replication_role = DEFAULT"))
+        trans.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.integration
+def test_place_tray_and_retire_on_trolley_serialize_no_deadlock(test_engine) -> None:
+    """Proves the corrected `place_tray` lock order (Trolley Asset row
+    locked FOR UPDATE before its EquipmentReadinessState row, matching
+    `require_ready_for_allocation`'s own contract) genuinely serializes
+    against a concurrent `retire` of that same Trolley: no deadlock, the
+    registry and readiness facts end up consistent, and a placement that
+    loses the race leaves no partial Movement/Occupancy behind."""
+    suffix = uuid.uuid4().hex[:10]
+    scenario = _build_committed_ready_germination_scenario(test_engine, suffix=suffix)
+    barrier = threading.Barrier(2)
+    results: dict[str, object] = {}
+
+    def place_worker() -> None:
+        conn = test_engine.connect()
+        session = Session(bind=conn)
+        try:
+            barrier.wait(timeout=10)
+            movement = germination_service.place_tray(
+                session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+                actor_user_id=scenario["user_id"], client_command_id=uuid.uuid4(), tray_id=scenario["tray_id"],
+                trolley_id=scenario["trolley_id"], asset_position_id=scenario["asset_position_id"],
+                effective_time=_now_utc(), reason=None,
+            )
+            results["place"] = ("ok", movement.id)
+        except EquipmentReadinessNotReadyError as exc:
+            results["place"] = ("not_ready", str(exc))
+        except GerminationTrolleyInvalidError as exc:
+            # Retire also flips the Trolley's own registry `status` to
+            # `retired` in the same commit -- if `retire` wins the race,
+            # `_validate_trolley`'s own pre-existing `status == 'active'`
+            # check (which runs before the readiness check) is an equally
+            # correct, equally serialized rejection of the same fact.
+            results["place"] = ("not_ready", str(exc))
+        except Exception as exc:  # pragma: no cover - surfaced via assertion below
+            results["place"] = ("error", repr(exc))
+        finally:
+            session.close()
+            conn.close()
+
+    def retire_worker() -> None:
+        conn = test_engine.connect()
+        session = Session(bind=conn)
+        try:
+            barrier.wait(timeout=10)
+            equipment_readiness_service.retire(
+                session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+                actor_user_id=scenario["user_id"], state_id=scenario["trolley_state_id"],
+                client_command_id=uuid.uuid4(), note="retired mid-race",
+            )
+            results["retire"] = ("ok", None)
+        except Exception as exc:  # pragma: no cover - surfaced via assertion below
+            results["retire"] = ("error", repr(exc))
+        finally:
+            session.close()
+            conn.close()
+
+    t_place = threading.Thread(target=place_worker)
+    t_retire = threading.Thread(target=retire_worker)
+    t_place.start()
+    t_retire.start()
+    t_place.join(timeout=15)
+    t_retire.join(timeout=15)
+
+    try:
+        assert not t_place.is_alive() and not t_retire.is_alive()
+        # Never a deadlock/timeout, never an unexpected exception.
+        assert results["retire"][0] == "ok", results
+        assert results["place"][0] in ("ok", "not_ready"), results
+
+        with test_engine.connect() as verify_conn:
+            final_state = verify_conn.execute(
+                text("SELECT current_state FROM equipment_readiness_states WHERE id = :id"),
+                {"id": scenario["trolley_state_id"]},
+            ).scalar_one()
+            movement_count = verify_conn.execute(
+                text(
+                    "SELECT count(*) FROM movements WHERE occupant_carrier_id = :cid "
+                    "AND destination_asset_position_id = :pid"
+                ),
+                {"cid": scenario["tray_id"], "pid": scenario["asset_position_id"]},
+            ).scalar_one()
+            occupancy_count = verify_conn.execute(
+                text(
+                    "SELECT count(*) FROM occupancies WHERE occupant_carrier_id = :cid "
+                    "AND target_asset_position_id = :pid AND end_time IS NULL"
+                ),
+                {"cid": scenario["tray_id"], "pid": scenario["asset_position_id"]},
+            ).scalar_one()
+        assert final_state == "retired"
+        if results["place"][0] == "ok":
+            assert movement_count == 1
+            assert occupancy_count == 1
+        else:
+            assert movement_count == 0
+            assert occupancy_count == 0
+    finally:
+        _cleanup_committed_ready_germination_scenario(test_engine, scenario["tenant_id"])
