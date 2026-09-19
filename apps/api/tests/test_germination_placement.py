@@ -48,6 +48,7 @@ from app.services.errors import (
     GerminationTrolleyInvalidError,
     IncompatibleOccupantTargetError,
     LocationNotFoundError,
+    MovementCommandReusedWithDifferentPayloadError,
     TargetNotOccupiableError,
     TargetOccupiedError,
     TrayNotSownError,
@@ -969,6 +970,163 @@ def test_tray_placement_exact_replay_resolved_before_mutable_validation(db_sessi
         effective_time=effective_time, reason=None,
     )
     assert replay.id == first.id
+
+
+@pytest.mark.integration
+def test_place_tray_exact_replay_survives_non_ready_trolley_after_post_lock_hit(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """N02A review correction: the pre-lock replay lookup can see "not
+    found" for two identical concurrent submissions before either takes
+    the Trolley Asset lock -- monkeypatched here to force exactly that on
+    this call's OWN first lookup, standing in for the race, without a
+    sleep or a probabilistic loop. The post-lock lookup (the second call)
+    must then see the Movement this same call already committed, skip the
+    chamber recheck and readiness gate entirely, and let
+    `movement_service.execute_movement`'s own fingerprint match return
+    that original Movement -- even though the Trolley is now in
+    MAINTENANCE. If the readiness gate ran here, this call would raise
+    EquipmentReadinessNotReadyError instead of succeeding."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    _place_trolley(db_session, tenant, user, farm, s)
+    level_id = _direct_level_ids(db_session, s["trolleys"][0].id)[0]
+    command_id = uuid.uuid4()
+    effective_time = _now()
+
+    original = germination_service.place_tray(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+        tray_id=s["carriers"][0].id, trolley_id=s["trolleys"][0].id, asset_position_id=level_id,
+        effective_time=effective_time, reason=None,
+    )
+
+    trolley_state = equipment_readiness_service.get_readiness_for_asset(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, asset_id=s["trolleys"][0].id
+    )
+    equipment_readiness_service.send_to_maintenance(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, state_id=trolley_state.id,
+        client_command_id=uuid.uuid4(), note="mid-race maintenance",
+    )
+
+    from app.services import movement_service
+
+    real_find = movement_service._find_existing_movement
+    calls = {"n": 0}
+
+    def _fake_find(db, *, tenant_id, client_command_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_find(db, tenant_id=tenant_id, client_command_id=client_command_id)
+
+    monkeypatch.setattr(movement_service, "_find_existing_movement", _fake_find)
+
+    replay = germination_service.place_tray(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+        tray_id=s["carriers"][0].id, trolley_id=s["trolleys"][0].id, asset_position_id=level_id,
+        effective_time=effective_time, reason=None,
+    )
+    assert replay.id == original.id
+    assert calls["n"] >= 2
+
+
+@pytest.mark.integration
+def test_place_tray_post_lock_hit_with_different_payload_still_conflicts(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """The post-lock replay lookup finding a row must never be treated as
+    "accepted" on its own -- only `movement_service.execute_movement`'s
+    own fingerprint comparison decides that, and a reused command id with
+    a materially different payload (a different destination Level here)
+    must still raise `MovementCommandReusedWithDifferentPayloadError`,
+    with no second Movement ever created."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1, level_count=2, trays_per_level=2)
+    _place_trolley(db_session, tenant, user, farm, s)
+    level_ids = _direct_level_ids(db_session, s["trolleys"][0].id)
+    command_id = uuid.uuid4()
+    effective_time = _now()
+
+    germination_service.place_tray(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+        tray_id=s["carriers"][0].id, trolley_id=s["trolleys"][0].id, asset_position_id=level_ids[0],
+        effective_time=effective_time, reason=None,
+    )
+
+    from app.services import movement_service
+
+    real_find = movement_service._find_existing_movement
+    calls = {"n": 0}
+
+    def _fake_find(db, *, tenant_id, client_command_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_find(db, tenant_id=tenant_id, client_command_id=client_command_id)
+
+    monkeypatch.setattr(movement_service, "_find_existing_movement", _fake_find)
+
+    with pytest.raises(MovementCommandReusedWithDifferentPayloadError):
+        germination_service.place_tray(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=command_id,
+            tray_id=s["carriers"][0].id, trolley_id=s["trolleys"][0].id, asset_position_id=level_ids[1],
+            effective_time=effective_time, reason=None,
+        )
+
+    from app.models.movement import Movement
+
+    movement_count = db_session.execute(
+        select(func.count()).select_from(Movement).where(Movement.occupant_carrier_id == s["carriers"][0].id)
+    ).scalar_one()
+    assert movement_count == 1
+
+
+@pytest.mark.integration
+def test_place_tray_rechecks_chamber_after_lock_for_still_new_command(
+    db_session, active_context_with_farm, monkeypatch,
+) -> None:
+    """A still-new command (never any existing Movement) must re-verify
+    the Trolley's current Germination-Chamber occupancy after acquiring
+    the Trolley Asset lock, not only in the earlier, unlocked check --
+    monkeypatched here to simulate a concurrent Trolley movement
+    invalidating that prerequisite between the two checks. Must leave no
+    Movement or active Tray Occupancy behind."""
+    tenant, user, _headers, farm = active_context_with_farm
+    s = _build_scenario(db_session, tenant, user, farm, tray_count=1)
+    _place_trolley(db_session, tenant, user, farm, s)
+    level_id = _direct_level_ids(db_session, s["trolleys"][0].id)[0]
+
+    real_chamber = germination_service._trolleys_current_chamber
+    calls = {"n": 0}
+
+    def _fake_chamber(db, *, tenant_id, farm_id, trolley_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
+        return None
+
+    monkeypatch.setattr(germination_service, "_trolleys_current_chamber", _fake_chamber)
+
+    with pytest.raises(TrolleyNotInGerminationError):
+        germination_service.place_tray(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
+            tray_id=s["carriers"][0].id, trolley_id=s["trolleys"][0].id, asset_position_id=level_id,
+            effective_time=_now(), reason=None,
+        )
+    assert calls["n"] == 2
+
+    from app.models.movement import Movement
+
+    movement_count = db_session.execute(
+        select(func.count()).select_from(Movement).where(Movement.occupant_carrier_id == s["carriers"][0].id)
+    ).scalar_one()
+    assert movement_count == 0
+    occupancy_count = db_session.execute(
+        select(func.count()).select_from(Occupancy).where(
+            Occupancy.occupant_carrier_id == s["carriers"][0].id, Occupancy.end_time.is_(None)
+        )
+    ).scalar_one()
+    assert occupancy_count == 0
 
 
 # =====================================================================

@@ -360,19 +360,35 @@ def place_tray(
 
     N02A: the selected Trolley must also be authoritatively READY --
     locked and checked only for a genuinely new command, never for an
-    exact replay of an already-committed one. `movement_service.
-    _find_existing_movement` mirrors the same lookup `_execute_movement_
-    core`'s own idempotency check performs just below; a hit here means
-    this call is a replay -- or a same-id/different-payload reuse, which
-    `execute_movement` itself will reject -- either way, re-running today's
-    eligibility against an already-decided command would violate frozen
-    rule 11 (a later readiness change must never turn a valid replay into a
-    new failure). Lock order for the new-command path: the Trolley Asset
-    row first (`_validate_trolley(..., lock=True)`), then its
-    EquipmentReadinessState row (inside `require_ready_for_allocation`),
-    then whatever locks `movement_service.execute_movement` itself takes
-    below -- matching that helper's own documented Carrier/Asset-then-
-    readiness-row contract."""
+    exact replay of an already-committed one. Frozen rule 11 (a later
+    readiness change must never turn a valid replay into a new failure)
+    demands more than a single pre-lock lookup here, though: two identical
+    submissions can both see "not found" before either takes the Trolley
+    Asset lock, so the ordering below re-checks for a just-committed
+    winner immediately after acquiring that lock, before ever touching the
+    readiness row --
+
+    1. pre-lock replay lookup (`movement_service._find_existing_movement`);
+    2. Trolley Asset lock and validation (`_validate_trolley(...,
+       lock=True)`);
+    3. post-lock replay lookup -- the same lookup repeated now that this
+       call is serialized behind any concurrent submission of the same
+       command id sharing that Trolley;
+    4. post-lock current-chamber recheck, only for a command still new
+       after step 3 -- a concurrent Trolley movement could have moved it
+       out of Germination between the early check above and this lock;
+    5. readiness-row lock/check (`require_ready_for_allocation`), only
+       reached for a command still new after steps 3-4;
+    6. movement-layer locks and fingerprint resolution
+       (`movement_service.execute_movement`), unconditionally -- never
+       bypassed by returning a step-3 hit directly, so its own fingerprint
+       comparison remains the sole authority for exact-replay-vs-reused-
+       id-different-payload.
+
+    A step-3 hit means this call is a replay -- or a same-id/different-
+    payload reuse, which `execute_movement` itself will reject in step 6 --
+    either way, steps 4-5 must never run against an already-decided
+    command."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     _validate_sown_tray(db, tenant_id=tenant_id, farm_id=farm_id, tray_id=tray_id)
     _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id)
@@ -383,12 +399,25 @@ def place_tray(
     if _trolleys_current_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id) is None:
         raise TrolleyNotInGerminationError(str(trolley_id))
 
+    # 1. pre-lock replay lookup.
     if movement_service._find_existing_movement(db, tenant_id=tenant_id, client_command_id=client_command_id) is None:
+        # 2. Trolley Asset lock and validation.
         _validate_trolley(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id, lock=True)
-        equipment_readiness_service.require_ready_for_allocation(
-            db, tenant_id=tenant_id, farm_id=farm_id, asset_ids=[trolley_id]
-        )
+        # 3. post-lock replay lookup.
+        if (
+            movement_service._find_existing_movement(db, tenant_id=tenant_id, client_command_id=client_command_id)
+            is None
+        ):
+            # 4. post-lock current-chamber recheck (still-new command only).
+            if _trolleys_current_chamber(db, tenant_id=tenant_id, farm_id=farm_id, trolley_id=trolley_id) is None:
+                raise TrolleyNotInGerminationError(str(trolley_id))
+            # 5. readiness-row lock/check (still-new command only).
+            equipment_readiness_service.require_ready_for_allocation(
+                db, tenant_id=tenant_id, farm_id=farm_id, asset_ids=[trolley_id]
+            )
 
+    # 6. movement-layer locks and fingerprint resolution -- always the
+    # final authority, whichever path above was taken.
     return movement_service.execute_movement(
         db,
         tenant_id=tenant_id,
