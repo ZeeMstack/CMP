@@ -106,6 +106,7 @@ export default function NewSowingPage() {
     <div>
       <PageHeader
         title="New Sowing"
+        compact
         breadcrumbs={
           <Breadcrumbs
             items={[

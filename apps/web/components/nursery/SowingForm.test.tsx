@@ -97,7 +97,7 @@ describe("SowingForm", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("This Nursery has no Seeding Station configured")).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText(/seeding station is required/i)).toBeInTheDocument());
   });
 
@@ -120,7 +120,7 @@ describe("SowingForm", () => {
     const stationSelect = screen.getByLabelText(/^seeding station$/i) as HTMLSelectElement;
     expect(stationSelect.value).toBe("");
     fireEvent.change(screen.getByLabelText(/seed lot/i), { target: { value: "lot-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText(/seeding station is required/i)).toBeInTheDocument());
 
     fireEvent.change(stationSelect, { target: { value: "station-2" } });
@@ -129,11 +129,11 @@ describe("SowingForm", () => {
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
     expect(screen.getByText("SEED-02")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].seeding_station_id).toBe("station-2");
   });
@@ -156,16 +156,16 @@ describe("SowingForm", () => {
     fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "200" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByText("Nursery / Seeding Station")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
+    expect(screen.getByLabelText(/^nursery$/i)).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/already assigned/i));
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
     expect(onSubmit.mock.calls[0][0].client_command_id).toBe(onSubmit.mock.calls[1][0].client_command_id);
   });
@@ -181,7 +181,7 @@ describe("SowingForm", () => {
     fireEvent.change(screen.getByLabelText(/sown sites for st-0001/i), { target: { value: "201" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "201" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText(/exceeds this tray's known capacity/i)).toBeInTheDocument());
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -206,11 +206,11 @@ describe("SowingForm", () => {
     expect(screen.queryByRole("button", { name: "Customize" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /auto-allocate 2 trays/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
     // No fabricated "distribution" claim for the unambiguous equal case.
     expect(screen.queryByText(/seed distribution/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].trays).toEqual([
@@ -246,7 +246,7 @@ describe("SowingForm", () => {
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
     expect((screen.getByLabelText(/sown sites for st-0001/i) as HTMLInputElement).value).toBe("200");
     expect((screen.getByLabelText(/seeds sown for st-0001/i) as HTMLInputElement).value).toBe("0");
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     // Blocked by the tray schema's existing validation (unset seeds fail
     // either "at least 1" or "must be >= sown sites") -- exact wording isn't
     // the point here, only that an unset seed count can never reach Review.
@@ -274,11 +274,11 @@ describe("SowingForm", () => {
     await waitFor(() => expect(screen.getByText("3 Seed Trays")).toBeInTheDocument());
     expect(screen.getByText(/distributed proportionally to sown sites/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
     // The review must show that proportional distribution was selected.
     expect(screen.getByText(/distributed proportionally to sown sites/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const trays = onSubmit.mock.calls[0][0].trays;
@@ -343,9 +343,9 @@ describe("SowingForm", () => {
 
     fireEvent.change(screen.getByLabelText(/seeds sown for st-0001/i), { target: { value: "250" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].trays).toEqual([
@@ -371,9 +371,9 @@ describe("SowingForm", () => {
 
     fireEvent.change(screen.getByLabelText(/sown sites for st-9999/i), { target: { value: "150" } });
     fireEvent.change(screen.getByLabelText(/seeds sown for st-9999/i), { target: { value: "150" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].trays).toEqual([{ carrier_id: "tray-legacy", sown_site_count: 150, seeds_sown: 150 }]);
@@ -424,9 +424,9 @@ describe("SowingForm", () => {
       fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
       await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
       fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
-      fireEvent.click(screen.getByRole("button", { name: "Review" }));
+      fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
       await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
-      fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+      fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
       await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
       expect(onSubmit.mock.calls[0][0].seeding_program_line_id).toBe("line-1");
@@ -446,7 +446,7 @@ describe("SowingForm HOTFIX: server-authoritative sowing time", () => {
     fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
   }
 
@@ -464,7 +464,7 @@ describe("SowingForm HOTFIX: server-authoritative sowing time", () => {
     const onSubmit = vi.fn();
     render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await fillAndGoToReview();
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].effective_time).toBeNull();
@@ -485,14 +485,14 @@ describe("SowingForm HOTFIX: server-authoritative sowing time", () => {
     fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
 
     const occurredAt = screen.getByText("Occurred at").nextElementSibling;
     expect(occurredAt).toHaveTextContent("2026-01-15 09:30");
     expect(occurredAt).not.toHaveTextContent("Now");
 
-    fireEvent.click(screen.getByRole("button", { name: "Sow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Sowing" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit.mock.calls[0][0].effective_time).toBe(new Date("2026-01-15T09:30").toISOString());
   });
