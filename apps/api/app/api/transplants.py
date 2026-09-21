@@ -14,6 +14,7 @@ from app.services.errors import (
     CropBatchClosedError,
     CropBatchNotFoundError,
     DestinationCarrierAlreadyAssignedError,
+    EquipmentReadinessNotReadyError,
     FarmNotFoundError,
     InvalidTransplantEffectiveTimeError,
     SourceAssignmentAlreadyReleasedError,
@@ -103,6 +104,7 @@ def record_transplant(
         SourceAssignmentAlreadyReleasedError,
         DestinationCarrierAlreadyAssignedError,
         TransplantCommandReusedWithDifferentPayloadError,
+        EquipmentReadinessNotReadyError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (
@@ -227,6 +229,7 @@ def correct_transplant(
         DestinationCarrierAlreadyAssignedError,
         SourceAssignmentAlreadyReleasedError,
         TransplantCommandReusedWithDifferentPayloadError,
+        EquipmentReadinessNotReadyError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (

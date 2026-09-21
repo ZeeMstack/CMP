@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+from tests.conftest import mark_readiness_ready
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -91,6 +93,11 @@ def test_split_then_merge_acceptance_flow(client, active_context, db_session) ->
         ).json()
         for n in range(4)
     ]
+    for c in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=_tenant.id, farm_id=uuid.UUID(farm_id), actor_user_id=_user.id,
+            carrier_id=uuid.UUID(c["id"]),
+        )
     sow_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,
         json={
@@ -171,6 +178,10 @@ def test_split_then_merge_acceptance_flow(client, active_context, db_session) ->
     extra_carrier = client.post(
         f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"tray-extra-{suffix}"}
     ).json()
+    mark_readiness_ready(
+        db_session, tenant_id=_tenant.id, farm_id=uuid.UUID(farm_id), actor_user_id=_user.id,
+        carrier_id=uuid.UUID(extra_carrier["id"]),
+    )
     blocked_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,
         json={

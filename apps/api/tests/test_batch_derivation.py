@@ -25,7 +25,7 @@ from app.services.errors import (
     BatchDerivationValidationError,
     QualityHoldOpenError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -99,6 +99,10 @@ def _build_batch_with_assignments(db_session, tenant, user, farm, *, carrier_cou
         )
         for n in range(1, carrier_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
@@ -316,6 +320,10 @@ def test_merge_creates_one_output_and_supersedes_both_sources(db_session, active
         )
         for n in range(1, 3)
     ]
+    for carrier in carriers2:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch2.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
@@ -390,6 +398,9 @@ def test_merge_open_hold_blocks_and_release_unblocks(db_session, active_context_
         specification_id=ensure_seed_tray_specification(
             db_session, tenant_id=tenant.id, actor_user_id=user.id,
         ).id, code=f"ST-b{suffix}", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier2.id
     )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch2.id,

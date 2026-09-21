@@ -32,7 +32,7 @@ from app.services.errors import (
     SowingValidationError,
     TooManySowingLinesError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
@@ -170,6 +170,15 @@ def _build_scenario(
         )
         for n in range(1, 5)
     ]
+    # N02A: a freshly-registered seed_tray Carrier starts `unknown`, not
+    # `ready` -- Sowing now authoritatively requires `ready` for every
+    # destination Carrier, so this shared scenario must establish that for
+    # every caller (readiness-specific negative tests build their own
+    # non-ready Carrier separately, never reusing this helper for that).
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     return {
         "crop": crop, "variety": variety, "workflow": workflow, "version": published, "stages": stages,
         "transitions": transitions, "batch": batch, "seed_lot": seed_lot, "carriers": carriers,
@@ -216,6 +225,7 @@ def test_sow_batch_sown_site_count_at_capacity_succeeds(db_session, active_conte
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec.id, code=f"ST-CAP-{uuid.uuid4().hex[:8]}", issued_date=None,
     )
+    mark_readiness_ready(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
     event = _sow(
         db_session, tenant, user, farm, s["batch"],
         [_simple_line(carrier, s["seed_lot"], sown_site_count=200, seed_count=200)],

@@ -26,7 +26,7 @@ from app.services import (
 )
 from app.services.errors import DuplicateDispatchCodeError
 from tests._packing_scenario import build_packing_scaffold, grade_entire_lot
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -97,6 +97,7 @@ def _build_scenario(db_session, tenant, user, farm, *, suffix=None):
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=seed_tray_spec.id, code=f"ST-{suffix}", issued_date=None,
     )
+    mark_readiness_ready(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

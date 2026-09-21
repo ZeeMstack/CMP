@@ -21,7 +21,7 @@ from app.services.errors import (
 from tests._packing_scenario import (
     build_committed_scenario, build_packing_scaffold, cleanup_scenario, grade_entire_lot, now,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _pack(scenario, *, db, input_lines, packed_output, process_loss="0", rejected="0", code=None, package_count=1,
@@ -316,6 +316,10 @@ def test_mixed_crop_variety_inputs_rejected(test_engine) -> None:
         other_carrier = carrier_service.register_carrier(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],
             specification_id=other_seed_tray_spec.id, code=f"otray-{scenario['suffix']}", issued_date=None,
+        )
+        mark_readiness_ready(
+            session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"],
+            actor_user_id=scenario["user_id"], carrier_id=other_carrier.id,
         )
         sowing_service.sow_batch(
             session, tenant_id=scenario["tenant_id"], farm_id=scenario["farm_id"], actor_user_id=scenario["user_id"],

@@ -694,6 +694,9 @@ def test_seed_tray_specification_independent_from_sown_site_count_and_seed_count
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec.id, code=f"ST-IND-{suffix}-001", issued_date=None,
     )
+    from tests.conftest import mark_readiness_ready
+
+    mark_readiness_ready(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
 
     crop = crop_service.register_crop(
         db_session, tenant_id=tenant.id, actor_user_id=user.id, code=f"CROP-{suffix}",

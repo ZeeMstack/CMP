@@ -25,7 +25,7 @@ from app.services.errors import (
     HarvestValidationError,
     QualityHoldOpenError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 # --- Application-level (Pydantic) validation — no DB required ---
 
@@ -227,6 +227,10 @@ def _build_scenario(db_session, tenant, user, farm, *, carrier_count=4, suffix=N
         )
         for n in range(1, carrier_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,
@@ -347,6 +351,9 @@ def test_harvest_wrong_stage_rejected(db_session, active_context_with_farm) -> N
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id).id,
         code=f"ST-{suffix}", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,

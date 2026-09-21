@@ -28,7 +28,7 @@ from app.services import (
     user_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -174,6 +174,8 @@ def scenario(test_engine):
         )
         for n in range(4)
     ]
+    for c in carriers:
+        mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=c.id)
     sowing_service.sow_batch(
         session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

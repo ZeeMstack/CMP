@@ -11,6 +11,7 @@ from app.services import (
     tenant_service,
     workflow_service,
 )
+from tests.conftest import mark_readiness_ready
 
 
 def _now() -> datetime:
@@ -158,6 +159,12 @@ def test_full_trolley_tray_scenario(client, db_session, active_context_with_farm
     )
     assert tray_resp.status_code == 201
     tray_id = tray_resp.json()["id"]
+    mark_readiness_ready(
+        db_session, tenant_id=tenant_a.id, farm_id=farm.id, actor_user_id=user_a.id, carrier_id=uuid.UUID(tray_id)
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant_a.id, farm_id=farm.id, actor_user_id=user_a.id, asset_id=uuid.UUID(trolley_id)
+    )
     _sow_seed_tray(db_session, tenant_a, user_a, farm, tray_id=uuid.UUID(tray_id), seeding_station_id=uuid.UUID(seeding_station_id))
 
     # 7: Place trolley directly into Germination Chamber GC-01.

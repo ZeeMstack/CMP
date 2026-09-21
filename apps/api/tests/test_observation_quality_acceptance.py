@@ -24,6 +24,7 @@ from app.models.occupancy import Occupancy
 from app.models.quality_hold import QualityHold
 from app.models.quality_hold_release import QualityHoldRelease
 from app.models.sowing_event_line import SowingEventLine
+from tests.conftest import mark_readiness_ready
 
 
 def _now_iso() -> str:
@@ -121,6 +122,11 @@ def test_core_observation_quality_acceptance_flow(client, active_context, db_ses
         ).json()
         for n in range(1, 5)
     ]
+    for c in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=_tenant.id, farm_id=uuid.UUID(farm_id), actor_user_id=_user.id,
+            carrier_id=uuid.UUID(c["id"]),
+        )
     sow_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,
         json={

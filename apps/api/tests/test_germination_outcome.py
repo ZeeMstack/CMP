@@ -46,7 +46,7 @@ from app.services.errors import (
     ObservationCommandReusedWithDifferentPayloadError,
     ObservationValidationError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -128,6 +128,10 @@ def _build_modern_scenario(db_session, tenant, user, farm, *, suffix=None, tray_
         )
         for n in range(1, tray_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     event = nursery_service.sow_new_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
         seed_lot_id=seed_lot.id, seeding_station_id=seeding_station_id, seeding_machine_id=None,
@@ -204,6 +208,9 @@ def _build_legacy_scenario(db_session, tenant, user, farm, *, suffix=None, seed_
         specification_id=ensure_seed_tray_specification(
             db_session, tenant_id=tenant.id, actor_user_id=user.id,
         ).id, code=f"ST-{suffix}-0001", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
@@ -332,12 +339,18 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
         text("SELECT id FROM asset_positions WHERE asset_id = :aid AND position_kind = 'slot' ORDER BY code"),
         {"aid": trolley.id},
     ).scalar_one()
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id
+    )
 
     carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=ensure_seed_tray_specification(
             db_session, tenant_id=tenant.id, actor_user_id=user.id,
         ).id, code=f"ST-{suffix}-0001", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
 
     sow_time = _now() - timedelta(days=10)
@@ -391,6 +404,9 @@ def _build_release_scenario(db_session, tenant, user, farm, *, suffix=None):
     destination_carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         carrier_type_code="cultivation_plate", code=f"CP-{suffix}-0001", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=destination_carrier.id
     )
     release_time = sow_time + timedelta(days=5)
     transplant_service.record_transplant(
@@ -1422,6 +1438,9 @@ def _build_stage_history_scenario(db_session, tenant, user, farm, *, suffix=None
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id).id,
         code=f"ST-{suffix}-0001", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
     sow_time = batch_created + timedelta(hours=1)
     sowing_service.sow_batch(

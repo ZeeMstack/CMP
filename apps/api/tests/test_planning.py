@@ -11,6 +11,7 @@ from decimal import Decimal
 import pytest
 
 from app.services import membership_service
+from tests.conftest import mark_readiness_ready
 
 
 def _d(value) -> Decimal:
@@ -85,7 +86,7 @@ def _build_sowable_workflow(client, headers, farm_id, *, suffix: str):
     return crop, variety, workflow["id"], seed_lot
 
 
-def _make_carrier(client, headers, farm_id, *, code: str) -> dict:
+def _make_carrier(client, headers, farm_id, db_session, tenant_id, user_id, *, code: str) -> dict:
     spec = client.post(
         "/carrier-specifications", headers=headers,
         json={
@@ -100,9 +101,16 @@ def _make_carrier(client, headers, farm_id, *, code: str) -> dict:
         spec_id = next(s["id"] for s in specs if s["code"] == f"SPEC-{code}")
     else:
         spec_id = spec.json()["id"]
-    return client.post(
+    carrier = client.post(
         f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": spec_id, "code": code}
     ).json()
+    # N02A: Sowing now authoritatively requires `ready` for its destination
+    # Seed Tray -- a fresh registration starts `unknown`.
+    mark_readiness_ready(
+        db_session, tenant_id=tenant_id, farm_id=uuid.UUID(farm_id) if isinstance(farm_id, str) else farm_id,
+        actor_user_id=user_id, carrier_id=uuid.UUID(carrier["id"]),
+    )
+    return carrier
 
 
 def _make_batch(client, headers, farm_id, workflow_id, *, code: str) -> dict:
@@ -308,7 +316,7 @@ def test_requirement_close_and_cancel_idempotent(client, active_context_with_far
 
 
 @pytest.mark.integration
-def test_seeding_program_numeric_proof(client, active_context_with_farm) -> None:
+def test_seeding_program_numeric_proof(client, active_context_with_farm, db_session) -> None:
     """The ticket's own PLANNING NUMERIC PROOF: 30,000 kg demand; plan
     lines covering 10k+10k+5k = 25,000 kg planned coverage, 5,000 kg gap.
     Linking one actual Sowing to Plan A must NOT change demand or planned
@@ -341,7 +349,7 @@ def test_seeding_program_numeric_proof(client, active_context_with_farm) -> None
     assert fulfillment["actual_sowings_count"] == 0
     assert fulfillment["planned_lines_count"] == 3
 
-    carrier = _make_carrier(client, headers, farm.id, code="ST-PROOF-0001")
+    carrier = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-PROOF-0001")
     batch = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-PROOF-0001")
     sow_resp = _sow(
         client, headers, farm.id, batch["id"], carrier["id"], seed_lot["id"], seeding_program_line_id=plan_a_line_id
@@ -435,7 +443,7 @@ def test_seeding_program_line_crop_must_match_requirement(client, active_context
 
 
 @pytest.mark.integration
-def test_seeding_program_line_update_and_cancel(client, active_context_with_farm) -> None:
+def test_seeding_program_line_update_and_cancel(client, active_context_with_farm, db_session) -> None:
     _tenant, _user, headers, farm = active_context_with_farm
     crop, variety, workflow_id, seed_lot = _build_sowable_workflow(client, headers, farm.id, suffix="upd")
     kg = _uom_id(client, headers, "kg")
@@ -460,7 +468,7 @@ def test_seeding_program_line_update_and_cancel(client, active_context_with_farm
     assert _d(update_resp.json()["planned_quantity"]) == Decimal("22000")
 
     # Once an actual Sowing links to this line, edits must be rejected.
-    carrier = _make_carrier(client, headers, farm.id, code="ST-UPD-0001")
+    carrier = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-UPD-0001")
     batch = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-UPD-0001")
     sow_resp = _sow(
         client, headers, farm.id, batch["id"], carrier["id"], seed_lot["id"], seeding_program_line_id=line["id"]
@@ -506,10 +514,10 @@ def test_seeding_program_line_update_and_cancel(client, active_context_with_farm
 
 
 @pytest.mark.integration
-def test_unplanned_sowing_remains_valid(client, active_context_with_farm) -> None:
+def test_unplanned_sowing_remains_valid(client, active_context_with_farm, db_session) -> None:
     _tenant, _user, headers, farm = active_context_with_farm
     crop, variety, workflow_id, seed_lot = _build_sowable_workflow(client, headers, farm.id, suffix="adhoc")
-    carrier = _make_carrier(client, headers, farm.id, code="ST-ADHOC-0001")
+    carrier = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-ADHOC-0001")
     batch = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-ADHOC-0001")
 
     sow_resp = _sow(client, headers, farm.id, batch["id"], carrier["id"], seed_lot["id"])
@@ -519,7 +527,7 @@ def test_unplanned_sowing_remains_valid(client, active_context_with_farm) -> Non
 
 @pytest.mark.integration
 def test_multiple_actual_sowings_remain_separate_batches_under_one_plan_line(
-    client, active_context_with_farm
+    client, active_context_with_farm, db_session
 ) -> None:
     _tenant, _user, headers, farm = active_context_with_farm
     crop, variety, workflow_id, seed_lot = _build_sowable_workflow(client, headers, farm.id, suffix="multi")
@@ -534,12 +542,12 @@ def test_multiple_actual_sowings_remain_separate_batches_under_one_plan_line(
         json=_line_payload(crop["id"], variety["id"], seed_uom, kg),
     ).json()
 
-    carrier_1 = _make_carrier(client, headers, farm.id, code="ST-MULTI-0001")
+    carrier_1 = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-MULTI-0001")
     batch_1 = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-MULTI-0001")
     sow_1 = _sow(client, headers, farm.id, batch_1["id"], carrier_1["id"], seed_lot["id"], seeding_program_line_id=line["id"])
     assert sow_1.status_code == 201
 
-    carrier_2 = _make_carrier(client, headers, farm.id, code="ST-MULTI-0002")
+    carrier_2 = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-MULTI-0002")
     batch_2 = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-MULTI-0002")
     sow_2 = _sow(client, headers, farm.id, batch_2["id"], carrier_2["id"], seed_lot["id"], seeding_program_line_id=line["id"])
     assert sow_2.status_code == 201
@@ -554,7 +562,7 @@ def test_multiple_actual_sowings_remain_separate_batches_under_one_plan_line(
 
 
 @pytest.mark.integration
-def test_sowing_link_rejects_cancelled_line_and_crop_mismatch(client, active_context_with_farm) -> None:
+def test_sowing_link_rejects_cancelled_line_and_crop_mismatch(client, active_context_with_farm, db_session) -> None:
     _tenant, _user, headers, farm = active_context_with_farm
     crop, variety, workflow_id, seed_lot = _build_sowable_workflow(client, headers, farm.id, suffix="reject")
     kg = _uom_id(client, headers, "kg")
@@ -572,7 +580,7 @@ def test_sowing_link_rejects_cancelled_line_and_crop_mismatch(client, active_con
         json={"client_command_id": str(uuid.uuid4())},
     )
 
-    carrier = _make_carrier(client, headers, farm.id, code="ST-REJECT-0001")
+    carrier = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-REJECT-0001")
     batch = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-REJECT-0001")
     cancelled_link = _sow(
         client, headers, farm.id, batch["id"], carrier["id"], seed_lot["id"], seeding_program_line_id=line["id"]
@@ -591,7 +599,7 @@ def test_sowing_link_rejects_cancelled_line_and_crop_mismatch(client, active_con
         f"/farms/{farm.id}/production-requirements/{other_requirement['id']}/seeding-program-lines", headers=headers,
         json=_line_payload(other_crop["id"], other_variety["id"], seed_uom, kg),
     ).json()
-    mismatched_carrier = _make_carrier(client, headers, farm.id, code="ST-REJECT-0002")
+    mismatched_carrier = _make_carrier(client, headers, farm.id, db_session, _tenant.id, _user.id, code="ST-REJECT-0002")
     mismatched_batch = _make_batch(client, headers, farm.id, workflow_id, code="BATCH-REJECT-0002")
     mismatched_link = _sow(
         client, headers, farm.id, mismatched_batch["id"], mismatched_carrier["id"], seed_lot["id"],

@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import settings
 from tests._traceability_scenario import cleanup_traceability_scenario
 from tests._transplant_scenario import build_transplant_ready_scenario
+from tests.conftest import mark_readiness_ready
 
 API_ROOT = Path(__file__).resolve().parent.parent
 # Never hardcode "current head" -- resolved dynamically, same rationale as
@@ -145,6 +146,7 @@ def _build_chained_nursery_plate_checkpoint(session, tenant, user, farm, *, suff
         carrier_type_code="nursery_cultivation_plate", code=f"NP2-{suffix}", issued_date=None,
         specification_id=spec2.id,
     )
+    mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=plate2.id)
     # Deliberately PARTIAL (150 of Plate1's 200): keeps Plate1's own
     # assignment ACTIVE (remainder=50, not released) so a caller's
     # subsequent direct-SQL "invalid remainder" insert attempt reaches the

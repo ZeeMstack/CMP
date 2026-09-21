@@ -13,7 +13,7 @@ from tests.test_dispatch_acceptance import _build_finished_goods_lot, _now_iso
 
 
 @pytest.mark.integration
-def test_dispatch_requires_temperature(client, active_context) -> None:
+def test_dispatch_requires_temperature(client, active_context, db_session) -> None:
     _tenant, _user, headers = active_context
     suffix = uuid.uuid4().hex[:8].upper()
 
@@ -22,7 +22,9 @@ def test_dispatch_requires_temperature(client, active_context) -> None:
         json={"code": f"farm-{suffix}", "name": "Temp Farm", "country_code": "AE", "timezone": "Asia/Dubai"},
     ).json()
     farm_id = farm["id"]
-    fg_lot_id, _batch_id = _build_finished_goods_lot(client, headers, farm_id, suffix, package_count=10, packed_weight="8.000")
+    fg_lot_id, _batch_id = _build_finished_goods_lot(
+        client, headers, farm_id, suffix, db_session, _tenant.id, _user.id, package_count=10, packed_weight="8.000"
+    )
 
     # A: missing dispatch_temperature_c is rejected -- no default, no silent success.
     missing_temp_resp = client.post(
@@ -38,7 +40,7 @@ def test_dispatch_requires_temperature(client, active_context) -> None:
     # B: recorded value is returned on read, and C: one reading covers a
     # multi-FG-lot dispatch, and D: no line ever receives its own reading.
     fg_lot_id_2, _batch_id_2 = _build_finished_goods_lot(
-        client, headers, farm_id, suffix + "B", package_count=10, packed_weight="8.000"
+        client, headers, farm_id, suffix + "B", db_session, _tenant.id, _user.id, package_count=10, packed_weight="8.000"
     )
     command_id = str(uuid.uuid4())
     payload = {
@@ -76,7 +78,7 @@ def test_dispatch_requires_temperature(client, active_context) -> None:
 
 
 @pytest.mark.integration
-def test_dispatch_temperature_out_of_sane_range_rejected(client, active_context) -> None:
+def test_dispatch_temperature_out_of_sane_range_rejected(client, active_context, db_session) -> None:
     _tenant, _user, headers = active_context
     suffix = uuid.uuid4().hex[:8].upper()
 
@@ -85,7 +87,9 @@ def test_dispatch_temperature_out_of_sane_range_rejected(client, active_context)
         json={"code": f"farm-{suffix}", "name": "Temp Farm 2", "country_code": "AE", "timezone": "Asia/Dubai"},
     ).json()
     farm_id = farm["id"]
-    fg_lot_id, _batch_id = _build_finished_goods_lot(client, headers, farm_id, suffix, package_count=10, packed_weight="8.000")
+    fg_lot_id, _batch_id = _build_finished_goods_lot(
+        client, headers, farm_id, suffix, db_session, _tenant.id, _user.id, package_count=10, packed_weight="8.000"
+    )
 
     resp = client.post(
         f"/farms/{farm_id}/dispatches", headers=headers,

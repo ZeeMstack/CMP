@@ -29,7 +29,7 @@ from app.services import (
     user_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 def _now():
@@ -111,6 +111,8 @@ def _build_planning_committed_scenario(test_engine):
         )
         for n in range(1, 3)
     ]
+    for c in carriers:
+        mark_readiness_ready(session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=c.id)
 
     kg_uom = next(u for u in unit_of_measure_service.list_uoms(session) if u.code == "kg")
     seed_uom = next(u for u in unit_of_measure_service.list_uoms(session) if u.code == "SEED")

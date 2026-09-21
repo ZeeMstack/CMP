@@ -230,7 +230,11 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
     PILOT-ASSET-001: additionally excludes a tray whose Equipment Readiness
     is UNKNOWN/AWAITING_CLEANING/CLEANING_COMPLETED/DAMAGED/MAINTENANCE/
     RETIRED -- only READY is eligible; an empty but never-assessed/dirty/
-    damaged tray must never appear as available. See
+    damaged tray must never appear as available. N02A review correction:
+    a tray with NO EquipmentReadinessState row at all now also fails
+    closed (excluded), via `eligible_carrier_ids_subquery`'s `IN` shape,
+    rather than the older `NOT IN non_ready` shape that silently let a
+    missing row through as available. See
     docs/domain/EQUIPMENT_READINESS_MODEL.md."""
     _require_active_farm(db, tenant_id=tenant_id, farm_id=farm_id)
     seed_tray_type = db.execute(
@@ -239,7 +243,7 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
     active_assignment_carrier_ids = select(BatchCarrierAssignment.carrier_id).where(
         BatchCarrierAssignment.tenant_id == tenant_id, BatchCarrierAssignment.released_effective_time.is_(None)
     )
-    non_ready_carrier_ids = equipment_readiness_service.non_ready_carrier_ids_subquery(
+    eligible_carrier_ids = equipment_readiness_service.eligible_carrier_ids_subquery(
         tenant_id=tenant_id, farm_id=farm_id
     )
     carriers = list(
@@ -249,7 +253,7 @@ def list_available_seed_trays(db: Session, *, tenant_id: uuid.UUID, farm_id: uui
                 Carrier.tenant_id == tenant_id, Carrier.farm_id == farm_id,
                 Carrier.carrier_type_id == seed_tray_type.id, Carrier.status == "active",
                 Carrier.id.not_in(active_assignment_carrier_ids),
-                Carrier.id.not_in(non_ready_carrier_ids),
+                Carrier.id.in_(eligible_carrier_ids),
             )
             .order_by(Carrier.code)
         ).scalars()

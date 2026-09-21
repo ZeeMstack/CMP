@@ -20,7 +20,7 @@ from app.services import (
     sowing_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
 
 class _ForcedFailure(Exception):
@@ -105,6 +105,10 @@ def _build_scenario(db_session, tenant, user, farm):
         )
         for n in range(1, 3)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
     return {"batch": batch, "seed_lot": seed_lot, "carriers": carriers}
 
 

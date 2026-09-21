@@ -35,7 +35,8 @@ from app.services import (
     sowing_service,
     workflow_service,
 )
-from tests.conftest import ensure_seed_tray_specification
+from app.services.errors import EquipmentReadinessNotTrackedError
+from tests.conftest import ensure_seed_tray_specification, insert_ready_readiness_row, mark_readiness_ready
 
 
 def now():
@@ -274,6 +275,13 @@ def build_transplant_ready_scenario(
         shelf_count=2, slots_per_shelf=4, shelf_prefix=f"SH-{suffix}-", slot_prefix="SL-",
         shelf_pad_width=2, slot_pad_width=2,
     )
+    # N02A: a freshly-registered Trolley/Carrier starts `unknown`, not
+    # `ready` -- Germination Trolley placement, Sowing, and Transplant
+    # destinations now authoritatively require `ready`, so this shared
+    # scenario builder establishes it for every one of its own callers.
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id
+    )
 
     if legacy_seed_tray_no_specification:
         seed_tray_type_id = db_session.execute(
@@ -290,6 +298,13 @@ def build_transplant_ready_scenario(
                 ),
                 {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id, "code": code},
             )
+            # N02A: this raw-SQL INSERT bypasses `carrier_service.
+            # register_carrier` entirely, so `equipment_readiness_
+            # provisioning` never runs for it -- insert the
+            # EquipmentReadinessState row directly, already `ready`
+            # (these downgrade-guard scenarios are about legacy
+            # specification shape, never about readiness).
+            insert_ready_readiness_row(db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier_id)
             carriers.append(db_session.get(Carrier, carrier_id))
     else:
         seed_tray_spec = ensure_seed_tray_specification(db_session, tenant_id=tenant.id, actor_user_id=user.id)
@@ -300,6 +315,10 @@ def build_transplant_ready_scenario(
             )
             for n in range(1, tray_count + 1)
         ]
+        for carrier in carriers:
+            mark_readiness_ready(
+                db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+            )
 
     sow_time = now() - timedelta(days=5)
     event = nursery_service.sow_new_batch(
@@ -374,6 +393,18 @@ def build_transplant_ready_scenario(
         if transplanting_required_type is not None
         else []
     )
+    # N02A: Transplant destinations now authoritatively require `ready` --
+    # a destination Carrier whose type is not readiness-tracked (e.g.
+    # `grow_cube`, VINES-OPS-001A) has no EquipmentReadinessState row at
+    # all and is correctly, silently skipped here.
+    for destination_carrier in destination_carriers:
+        try:
+            mark_readiness_ready(
+                db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
+                carrier_id=destination_carrier.id,
+            )
+        except EquipmentReadinessNotTrackedError:
+            pass
 
     from app.models.crop_batch import CropBatch
 

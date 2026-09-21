@@ -102,7 +102,7 @@ from tests._traceability_scenario import (
     committed_connection,
     create_cold_store_position,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 from tests.test_leafy_production_transfer import NURSERY_PLATE_TYPE, PRODUCTION_PLATE_TYPE, _leafy_setup, _production_plates
 
 pytestmark = pytest.mark.integration
@@ -259,6 +259,7 @@ def _bootstrap_master_data(db, tenant, user, farm, *, suffix):
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         asset_type_code="germination_trolley", code=f"GT-{suffix}", name="Trolley", commissioned_date=None,
     )
+    mark_readiness_ready(db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id)
     asset_service.generate_positions(
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, asset_id=trolley.id,
         shelf_count=1, slots_per_shelf=2, shelf_prefix=f"SH-{suffix}-", slot_prefix="SL-",
@@ -280,6 +281,8 @@ def _bootstrap_master_data(db, tenant, user, farm, *, suffix):
         db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=intersalads_spec.id, code=f"IP-{suffix}-0001", issued_date=None,
     )
+    mark_readiness_ready(db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=seed_tray.id)
+    mark_readiness_ready(db, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=intersalads_plate.id)
 
     leafy_table_ids = _leafy_setup(db, tenant, user, farm, table_count=1, table_capacity=1, suffix=suffix)
     production_plates, _prod_spec = _production_plates(

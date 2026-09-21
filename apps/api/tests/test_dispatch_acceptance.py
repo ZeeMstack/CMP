@@ -13,13 +13,16 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models.audit_event import AuditEvent
+from tests.conftest import mark_readiness_ready
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _build_finished_goods_lot(client, headers, farm_id, suffix, *, package_count=10, packed_weight="8.000"):
+def _build_finished_goods_lot(
+    client, headers, farm_id, suffix, db_session, tenant_id, user_id, *, package_count=10, packed_weight="8.000"
+):
     """Farm -> crop/variety/production-system/workflow (2 stages) -> batch
     -> seed lot/carrier -> sow -> stage transition -> harvest -> pack.
     Returns (finished_goods_lot_id, batch_id)."""
@@ -93,6 +96,10 @@ def _build_finished_goods_lot(client, headers, farm_id, suffix, *, package_count
     carrier = client.post(
         f"/farms/{farm_id}/carriers", headers=headers, json={"specification_id": seed_tray_spec["id"], "code": f"tray-{suffix}"},
     ).json()
+    mark_readiness_ready(
+        db_session, tenant_id=tenant_id, farm_id=uuid.UUID(farm_id), actor_user_id=user_id,
+        carrier_id=uuid.UUID(carrier["id"]),
+    )
     sow_resp = client.post(
         f"/farms/{farm_id}/crop-batches/{batch['id']}/sowings", headers=headers,
         json={
@@ -214,7 +221,9 @@ def test_dispatch_acceptance_flow(client, active_context, db_session) -> None:
     ).json()
     farm_id = farm["id"]
 
-    fg_lot_id, batch_id = _build_finished_goods_lot(client, headers, farm_id, suffix, package_count=10, packed_weight="8.000")
+    fg_lot_id, batch_id = _build_finished_goods_lot(
+        client, headers, farm_id, suffix, db_session, _tenant.id, _user.id, package_count=10, packed_weight="8.000"
+    )
 
     audit_before = db_session.execute(select(func.count()).select_from(AuditEvent)).scalar_one()
 

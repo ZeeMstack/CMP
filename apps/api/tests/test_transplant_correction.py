@@ -743,7 +743,7 @@ def _reach_same_stage_minimal_batch(db_session, tenant, user, farm, s, *, suffix
     SAME TRANSPLANTING-category stage as `s["batch"]`."""
     from app.services import carrier_service, sowing_service
 
-    from tests.conftest import ensure_seed_tray_specification
+    from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 
     batch2 = crop_batch_service.create_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, client_command_id=uuid.uuid4(),
@@ -753,6 +753,9 @@ def _reach_same_stage_minimal_batch(db_session, tenant, user, farm, s, *, suffix
     carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=seed_tray_spec.id, code=f"ST2-{suffix}", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch2.id,

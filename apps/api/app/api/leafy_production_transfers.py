@@ -19,6 +19,7 @@ from app.services.errors import (
     CropBatchClosedError,
     CropBatchNotFoundError,
     DestinationCarrierAlreadyAssignedError,
+    EquipmentReadinessNotReadyError,
     FarmNotFoundError,
     InactiveOccupantError,
     InactiveTargetError,
@@ -130,6 +131,7 @@ def record_leafy_production_transfer(
         NoOpMovementError,
         MovementCommandReusedWithDifferentPayloadError,
         LeafyProductionTransferReplayStateConflictError,
+        EquipmentReadinessNotReadyError,
     ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (

@@ -21,6 +21,7 @@ from app.services.errors import (
     AssetNotFoundError,
     AssetPositionNotFoundError,
     CarrierNotFoundError,
+    EquipmentReadinessNotReadyError,
     FarmNotFoundError,
     GerminationChamberInvalidError,
     GerminationLevelNotConfiguredError,
@@ -67,6 +68,7 @@ _CONFLICT = (
     OccupantAlreadyActiveError,
     NoOpMovementError,
     MovementCommandReusedWithDifferentPayloadError,
+    EquipmentReadinessNotReadyError,
 )
 
 

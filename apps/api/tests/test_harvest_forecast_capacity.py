@@ -35,7 +35,7 @@ from app.services.errors import (
     CropBatchNotFoundError,
     ProductionCapacityAllocationNotFoundError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, mark_readiness_ready
 from tests.test_harvest import _build_scenario, _line, _now
 
 
@@ -387,6 +387,7 @@ def _build_batch_linked_to_line(db_session, tenant, user, farm, *, crop, variety
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, specification_id=seed_tray_spec.id,
         code=f"ST-{suffix}", issued_date=None,
     )
+    mark_readiness_ready(db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id)
     sowing_service.sow_batch(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, batch_id=batch.id,
         client_command_id=uuid.uuid4(), effective_time=_now(), note=None,

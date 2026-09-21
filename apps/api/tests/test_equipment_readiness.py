@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy import text
 
 from app.services import (
     asset_service,
@@ -216,6 +217,43 @@ def test_production_plate_availability_excludes_unknown_readiness(db_session, ac
         client_command_id=uuid.uuid4(),
     )
     assert _is_available(), "READY plate must be available"
+
+
+# --- N02A review correction: a readiness-tracked Carrier with NO
+# EquipmentReadinessState row at all (never provisioned, e.g. a raw-SQL
+# legacy Carrier that bypassed `carrier_service.register_carrier`) must
+# fail closed -- excluded from "available" exactly like UNKNOWN, never
+# silently treated as eligible because no non-ready row exists to match. ---
+
+
+@pytest.mark.integration
+def test_seed_tray_availability_excludes_carrier_with_no_readiness_row(db_session, active_context_with_farm) -> None:
+    tenant, user, _headers, farm = active_context_with_farm
+    seed_tray_type_id = db_session.execute(
+        text("SELECT id FROM carrier_types WHERE code = 'seed_tray'")
+    ).scalar_one()
+    carrier_id = uuid.uuid4()
+    # Bypasses `carrier_service.register_carrier` entirely, so
+    # `equipment_readiness_provisioning` never runs -- no
+    # EquipmentReadinessState row exists for this Carrier at all (distinct
+    # from a provisioned-but-UNKNOWN row).
+    db_session.execute(
+        text(
+            "INSERT INTO carriers (id, tenant_id, farm_id, carrier_type_id, code, status, issued_date, "
+            "retired_date) VALUES (:id, :tid, :fid, :ctid, :code, 'active', NULL, NULL)"
+        ),
+        {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id, "code": f"ST-NOROW-{uuid.uuid4().hex[:8]}"},
+    )
+    db_session.flush()
+    with pytest.raises(EquipmentReadinessStateNotFoundError):
+        equipment_readiness_service.get_readiness_for_carrier(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier_id
+        )
+
+    available = nursery_service.list_available_seed_trays(db_session, tenant_id=tenant.id, farm_id=farm.id)
+    assert not any(a.id == carrier_id for a in available), (
+        "a tracked Carrier with no EquipmentReadinessState row at all must fail closed, not silently pass through"
+    )
 
 
 # --- Proof 4: Cleaning Completed does not automatically mean READY ----------------

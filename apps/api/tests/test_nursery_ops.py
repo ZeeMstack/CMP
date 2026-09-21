@@ -39,7 +39,7 @@ from app.services.errors import (
     SowingCommandReusedWithDifferentPayloadError,
     SowingValidationError,
 )
-from tests.conftest import ensure_seed_tray_specification
+from tests.conftest import ensure_seed_tray_specification, insert_ready_readiness_row, mark_readiness_ready
 
 
 def _now():
@@ -130,6 +130,10 @@ def _build_scenario(
         )
         for n in range(1, tray_count + 1)
     ]
+    for carrier in carriers:
+        mark_readiness_ready(
+            db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+        )
 
     return {
         "crop": crop, "variety": variety, "workflow": workflow, "seed_lot": seed_lot,
@@ -287,6 +291,9 @@ def _register_capacity_spec_and_carrier(db_session, tenant, user, farm, *, biolo
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec.id, code=f"ST-CAP-{suffix}", issued_date=None,
     )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
+    )
     return spec, carrier
 
 
@@ -376,6 +383,12 @@ def test_legacy_null_specification_carrier_remains_sowable(db_session, active_co
         ),
         {"id": carrier_id, "tid": tenant.id, "fid": farm.id, "ctid": seed_tray_type_id, "code": f"ST-LEGACY-{suffix}"},
     )
+    # N02A: this raw-SQL INSERT bypasses `carrier_service.register_carrier`
+    # entirely, so `equipment_readiness_provisioning` never runs for it --
+    # insert the EquipmentReadinessState row directly, already `ready`
+    # (this test is about legacy specification shape, never about
+    # readiness).
+    insert_ready_readiness_row(db_session, tenant_id=tenant.id, farm_id=farm.id, carrier_id=carrier_id)
     db_session.flush()
 
     event = _sow(
@@ -418,6 +431,9 @@ def test_specification_with_null_capacity_does_not_block_sowing(db_session, acti
     carrier = carrier_service.register_carrier(
         db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id,
         specification_id=spec_id, code=f"ST-NOCAP-{suffix}", issued_date=None,
+    )
+    mark_readiness_ready(
+        db_session, tenant_id=tenant.id, farm_id=farm.id, actor_user_id=user.id, carrier_id=carrier.id
     )
 
     event = _sow(
