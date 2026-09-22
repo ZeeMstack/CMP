@@ -7,6 +7,10 @@ import { Controller, useFieldArray, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/EmptyState";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { ContextStrip, ContextStripFact, ContextStripItem } from "@/components/layout/ContextStrip";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import type { SowNewBatchCreate } from "@/lib/api/client";
 import {
   useAssets,
@@ -38,6 +42,18 @@ function Field({ label, error, children }: { label: string; error?: string; chil
       {children}
       {error && <span className={errorClass}>{error}</span>}
     </label>
+  );
+}
+
+/** UX-OPS-001A/R1: one line of a summary rail's fact list. `tone="danger"`
+ * is only for a truthful capacity/allocation warning already computed by
+ * the caller -- this never itself decides what counts as a problem. */
+function FactRow({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "danger" }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <dt className="text-wl-text-secondary">{label}</dt>
+      <dd className={`text-right font-medium ${tone === "danger" ? "text-danger-700" : "text-wl-text"}`}>{value}</dd>
+    </div>
   );
 }
 
@@ -331,9 +347,21 @@ export function SowingForm({
     setShowTrayDetails(true);
   }
 
+  // UX-OPS-001A/R1: a concise, honest blocker summary surfaced next to the
+  // single Review Sowing action after a failed attempt -- deliberately
+  // generic (never restating one field's own message) so it never collides
+  // with that field's own inline error text rendered next to the field
+  // itself, which remains the authoritative, specific message.
+  const [showBlockers, setShowBlockers] = useState(false);
+
   async function goToReview() {
     const valid = await trigger();
-    if (valid) setStep("review");
+    if (valid) {
+      setStep("review");
+      setShowBlockers(false);
+    } else {
+      setShowBlockers(true);
+    }
   }
 
   function submitReview() {
@@ -348,100 +376,114 @@ export function SowingForm({
     const total = totalSeedsSown(values.trays);
     const totalSites = totalSownSiteCount(values.trays);
     return (
-      <div className="flex flex-col gap-4">
+      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
         <StepIndicator step="review" />
         {planBanner}
-        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <h2 className="font-serif text-base font-semibold text-wl-text">Review before sowing</h2>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch code</dt>
-              <dd className="font-medium text-wl-text">generated on save</dd>
+        <SplitWorkspace
+          main={
+            <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="font-serif text-base font-semibold text-wl-text">Review before sowing</h2>
+              <p className="text-sm text-wl-text-secondary">
+                Confirm the summary in the panel, then record this Sowing. Its Batch code will be generated once
+                recorded -- see the summary for the exact Seed Lot, Seeding Station, and quantities this will use.
+              </p>
+              <button
+                type="button"
+                className="self-start text-xs font-medium text-wl-brand hover:underline"
+                onClick={() => setShowTrayDetails((v) => !v)}
+              >
+                {showTrayDetails ? "Hide trays" : "Show trays"}
+              </button>
+              {showTrayDetails && (
+                // UX-OPS-001A/R1: bounded so a long tray list never
+                // lengthens the Review page itself.
+                <BoundedDataRegion
+                  label="Trays in this Sowing"
+                  heading={
+                    <div className="flex items-center justify-between text-xs font-medium text-wl-text-secondary">
+                      <span>Tray</span>
+                      <span>Sites · Seeds</span>
+                    </div>
+                  }
+                  footer={
+                    <div className="flex items-center justify-between text-xs font-semibold text-wl-text">
+                      <span>{values.trays.length} tray{values.trays.length === 1 ? "" : "s"}</span>
+                      <span>
+                        {totalSites.toLocaleString()} sites · {total.toLocaleString()} seeds
+                      </span>
+                    </div>
+                  }
+                >
+                  <ul className="divide-y divide-wl-border text-sm">
+                    {values.trays.map((tray) => (
+                      <li key={tray.carrier_id} className="flex items-center justify-between px-3 py-1.5">
+                        <span className="text-wl-text">{tray.code}</span>
+                        <span className="text-wl-text-secondary">
+                          {tray.sown_site_count} sites · {tray.seeds_sown} seeds
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </BoundedDataRegion>
+              )}
             </div>
-            <div>
-              <dt className="text-wl-text-secondary">Seeding Station</dt>
-              <dd className="font-medium text-wl-text">{selectedSeedingStation?.code ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Seed Lot</dt>
-              <dd className="font-medium text-wl-text">{seedLot?.code ?? "—"}</dd>
-            </div>
-            {seedLot && (
-              <>
-                <div>
-                  <dt className="text-wl-text-secondary">Crop</dt>
-                  <dd className="font-medium text-wl-text">{seedLot.crop.common_name}</dd>
+          }
+          rail={
+            <div
+              role="region"
+              aria-label="Review summary"
+              className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4"
+            >
+              <h2 className="text-sm font-semibold text-wl-text">Summary</h2>
+              <dl className="flex flex-col gap-2">
+                <FactRow label="Seed Lot" value={seedLot?.code ?? "Not selected"} />
+                {seedLot && (
+                  <>
+                    <FactRow label="Crop" value={seedLot.crop.common_name} />
+                    <FactRow label="Variety" value={seedLot.variety.name} />
+                  </>
+                )}
+                <FactRow label="Seeding Station" value={selectedSeedingStation?.code ?? "Not selected"} />
+                {machine && <FactRow label="Seeding Machine" value={`${machine.code} (farm-level equipment)`} />}
+                <FactRow
+                  label="Occurred at"
+                  // HOTFIX (sowing effective-time clock skew): never present
+                  // an uncommitted browser-generated timestamp as though it
+                  // is already authoritative -- the server assigns and
+                  // records the real "now" only on save.
+                  value={values.use_custom_time ? `${values.effective_date} ${values.effective_time_of_day}` : "Now"}
+                />
+                <FactRow label="Trays" value={values.trays.length} />
+                <FactRow label="Total sown sites" value={totalSites.toLocaleString()} />
+                <FactRow label="Total seeds sown" value={total.toLocaleString()} />
+                {seedAllocationNote && <FactRow label="Seed distribution" value={seedAllocationNote} />}
+                <FactRow label="Batch code" value="Generated on save" />
+              </dl>
+              <StickyActionBar blockers={serverError && <p role="alert" className={errorClass}>{serverError}</p>}>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting}
+                    className="min-h-11"
+                  >
+                    Back to edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={submitReview}
+                    disabled={isSubmitting}
+                    className="min-h-11 flex-1"
+                  >
+                    {isSubmitting ? "Recording…" : "Record Sowing"}
+                  </Button>
                 </div>
-                <div>
-                  <dt className="text-wl-text-secondary">Variety</dt>
-                  <dd className="font-medium text-wl-text">{seedLot.variety.name}</dd>
-                </div>
-              </>
-            )}
-            {machine && (
-              <div>
-                <dt className="text-wl-text-secondary">Seeding Machine</dt>
-                <dd className="font-medium text-wl-text">{machine.code} (farm-level equipment)</dd>
-              </div>
-            )}
-            <div>
-              <dt className="text-wl-text-secondary">Occurred at</dt>
-              <dd className="font-medium text-wl-text">
-                {/* HOTFIX (sowing effective-time clock skew): never present
-                    an uncommitted browser-generated timestamp as though it
-                    is already authoritative -- the server assigns and
-                    records the real "now" only on save. */}
-                {values.use_custom_time ? `${values.effective_date} ${values.effective_time_of_day}` : "Now"}
-              </dd>
+              </StickyActionBar>
             </div>
-            <div>
-              <dt className="text-wl-text-secondary">Trays</dt>
-              <dd className="font-medium text-wl-text">{values.trays.length}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Total sown sites</dt>
-              <dd className="font-medium text-wl-text">{totalSites.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Total seeds sown</dt>
-              <dd className="font-medium text-wl-text">{total.toLocaleString()}</dd>
-            </div>
-            {seedAllocationNote && (
-              <div className="col-span-2 sm:col-span-3">
-                <dt className="text-wl-text-secondary">Seed distribution</dt>
-                <dd className="font-medium text-wl-text">{seedAllocationNote}</dd>
-              </div>
-            )}
-          </dl>
-          <button
-            type="button"
-            className="self-start text-xs font-medium text-wl-brand hover:underline"
-            onClick={() => setShowTrayDetails((v) => !v)}
-          >
-            {showTrayDetails ? "Hide trays" : "Show trays"}
-          </button>
-          {showTrayDetails && (
-            <ul className="divide-y divide-wl-border text-sm">
-              {values.trays.map((tray) => (
-                <li key={tray.carrier_id} className="flex items-center justify-between py-1.5">
-                  <span className="text-wl-text">{tray.code}</span>
-                  <span className="text-wl-text-secondary">
-                    {tray.sown_site_count} sites · {tray.seeds_sown} seeds
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {serverError && <p role="alert" className={errorClass}>{serverError}</p>}
-        <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
-            Back
-          </Button>
-          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
-            {isSubmitting ? "Sowing…" : "Sow"}
-          </Button>
-        </div>
+          }
+        />
       </div>
     );
   }
@@ -449,36 +491,50 @@ export function SowingForm({
   const watchedSeedLotId = watch("seed_lot_id");
   const selectedSeedLot = seedLotsQuery.data?.find((l) => l.id === watchedSeedLotId);
 
+  // UX-OPS-001A/R1: deliberately generic -- the specific field-level message
+  // stays next to its own field (see the Seeding Station/Seed Lot/trays
+  // errors above); this is only the action surface's own concise blocker
+  // summary, and reusing a field's exact wording here would just duplicate
+  // that same text a second time in the DOM.
+  const blockerMessage = showBlockers ? "Fix the highlighted fields before continuing." : null;
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         goToReview();
       }}
-      className="flex flex-col gap-6"
+      className={`flex flex-col gap-6 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
     >
       <StepIndicator step="configure" />
       {planBanner}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Nursery / Seeding Station</legend>
-        <Field label="Nursery">
-          <select
-            value={nurseryGreenhouseId}
-            onChange={(e) => {
-              setNurseryGreenhouseId(e.target.value);
-              setValue("seeding_station_id", "");
-            }}
-            className={inputClass}
-          >
-            <option value="">Select a Nursery…</option>
-            {nurseries.map((n) => (
-              <option key={n.greenhouse_id} value={n.greenhouse_id}>
-                {n.code}
-              </option>
-            ))}
-          </select>
-        </Field>
+      {/* UX-OPS-001A: compact top context/configuration -- Nursery, Seeding
+          Station, Seed Lot (+ its derived Crop/Variety/Supplier facts), and
+          effective time all live in one wrapping strip instead of three
+          full-width bordered fieldsets, so the required inputs read as
+          context for the allocation work below rather than a second,
+          equally-weighted page section. */}
+      <ContextStrip>
+        <ContextStripItem>
+          <Field label="Nursery">
+            <select
+              value={nurseryGreenhouseId}
+              onChange={(e) => {
+                setNurseryGreenhouseId(e.target.value);
+                setValue("seeding_station_id", "");
+              }}
+              className={inputClass}
+            >
+              <option value="">Select a Nursery…</option>
+              {nurseries.map((n) => (
+                <option key={n.greenhouse_id} value={n.greenhouse_id}>
+                  {n.code}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </ContextStripItem>
         <Controller
           name="seeding_station_id"
           control={control}
@@ -492,47 +548,60 @@ export function SowingForm({
             }
             if (seedingStations.length > 1) {
               return (
-                <Field label="Seeding Station" error={errors.seeding_station_id?.message}>
-                  <select
-                    value={field.value}
-                    onChange={(e) => field.onChange(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">Select a Seeding Station…</option>
-                    {seedingStations.map((station) => (
-                      <option key={station.id} value={station.id}>
-                        {station.code}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <ContextStripItem>
+                  <Field label="Seeding Station" error={errors.seeding_station_id?.message}>
+                    <select
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">Select a Seeding Station…</option>
+                      {seedingStations.map((station) => (
+                        <option key={station.id} value={station.id}>
+                          {station.code}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </ContextStripItem>
               );
             }
             return (
-              <Field label="Seeding Station" error={errors.seeding_station_id?.message}>
-                <input
-                  className={inputClass}
-                  readOnly
-                  value={
-                    !nurseryGreenhouseId
-                      ? ""
-                      : structureQuery.isLoading
-                        ? "Loading…"
-                        : seedingStations.length === 1
-                          ? seedingStations[0].code
-                          : "This Nursery has no Seeding Station configured"
-                  }
-                  placeholder="Select a Nursery first"
-                />
-              </Field>
+              <ContextStripItem>
+                <Field label="Seeding Station" error={errors.seeding_station_id?.message}>
+                  <input
+                    className={inputClass}
+                    readOnly
+                    value={
+                      !nurseryGreenhouseId
+                        ? ""
+                        : structureQuery.isLoading
+                          ? "Loading…"
+                          : seedingStations.length === 1
+                            ? seedingStations[0].code
+                            : "This Nursery has no Seeding Station configured"
+                    }
+                    placeholder="Select a Nursery first"
+                  />
+                </Field>
+              </ContextStripItem>
             );
           }}
         />
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <div className="flex items-center justify-between gap-2">
-          <legend className="px-1 text-sm font-semibold text-wl-text">Seed Lot</legend>
+        <ContextStripItem minWidth="14rem">
+          <Field label="Seed Lot" error={errors.seed_lot_id?.message}>
+            <select {...register("seed_lot_id")} className={inputClass}>
+              <option value="">Select a Seed Lot…</option>
+              {seedLotsQuery.data?.map((lot) => (
+                <option key={lot.id} value={lot.id}>
+                  {lot.code} — {lot.crop.common_name} / {lot.variety.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {/* Deliberately a sibling of the Field above, never nested inside
+              its <label> -- otherwise this link's own text would fold into
+              the Seed Lot select's accessible name. */}
           <Link
             href={`/farms/${farmId}/seed-lots/new`}
             onClick={saveDraftBeforeLeaving}
@@ -540,63 +609,40 @@ export function SowingForm({
           >
             + Add Seed Lot
           </Link>
-        </div>
-        <Field label="Seed Lot" error={errors.seed_lot_id?.message}>
-          <select {...register("seed_lot_id")} className={inputClass}>
-            <option value="">Select a Seed Lot…</option>
-            {seedLotsQuery.data?.map((lot) => (
-              <option key={lot.id} value={lot.id}>
-                {lot.code} — {lot.crop.common_name} / {lot.variety.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        </ContextStripItem>
         {selectedSeedLot && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Crop</dt>
-              <dd className="font-medium text-wl-text">{selectedSeedLot.crop.common_name}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Variety</dt>
-              <dd className="font-medium text-wl-text">{selectedSeedLot.variety.name}</dd>
-            </div>
-            {selectedSeedLot.supplier_name && (
-              <div>
-                <dt className="text-wl-text-secondary">Supplier</dt>
-                <dd className="font-medium text-wl-text">{selectedSeedLot.supplier_name}</dd>
-              </div>
-            )}
-          </dl>
-        )}
-      </fieldset>
-
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Sowing date/time</legend>
-        <label className="flex items-center gap-2 text-sm text-wl-text sm:col-span-2">
-          <input type="checkbox" {...register("use_custom_time")} className="h-4 w-4" />
-          Use a specific date/time instead of now
-        </label>
-        {watch("use_custom_time") ? (
           <>
-            <Field label="Date" error={errors.effective_date?.message}>
-              <input type="date" {...register("effective_date")} className={inputClass} />
-            </Field>
-            <Field label="Time" error={errors.effective_time_of_day?.message}>
-              <input type="time" {...register("effective_time_of_day")} className={inputClass} />
-            </Field>
+            <ContextStripFact label="Crop" value={selectedSeedLot.crop.common_name} />
+            <ContextStripFact label="Variety" value={selectedSeedLot.variety.name} />
+            {selectedSeedLot.supplier_name && <ContextStripFact label="Supplier" value={selectedSeedLot.supplier_name} />}
           </>
-        ) : (
-          // HOTFIX (sowing effective-time clock skew): default mode never
-          // shows a concrete, browser-generated timestamp as though it is
-          // already authoritative -- the server assigns the real recorded
-          // time only once the Sowing is actually saved.
-          <p className="text-sm text-wl-text-secondary sm:col-span-2">
-            Occurred at <span className="font-medium text-wl-text">Now</span> — recorded using the server&apos;s
-            current time when you save.
-          </p>
         )}
-      </fieldset>
+        <ContextStripItem minWidth="12rem">
+          <span className="text-xs font-medium text-wl-text-secondary">Effective time</span>
+          <label className="flex items-center gap-2 text-sm text-wl-text">
+            <input type="checkbox" {...register("use_custom_time")} className="h-4 w-4" />
+            Use a specific date/time instead of now
+          </label>
+          {watch("use_custom_time") ? (
+            <div className="mt-1 flex flex-wrap gap-3">
+              <Field label="Date" error={errors.effective_date?.message}>
+                <input type="date" {...register("effective_date")} className={inputClass} />
+              </Field>
+              <Field label="Time" error={errors.effective_time_of_day?.message}>
+                <input type="time" {...register("effective_time_of_day")} className={inputClass} />
+              </Field>
+            </div>
+          ) : (
+            // HOTFIX (sowing effective-time clock skew): default mode never
+            // shows a concrete, browser-generated timestamp as though it is
+            // already authoritative -- the server assigns the real recorded
+            // time only once the Sowing is actually saved.
+            <p className="mt-1 text-xs text-wl-text-secondary">
+              Occurred at <span className="font-medium text-wl-text">Now</span> — recorded at save.
+            </p>
+          )}
+        </ContextStripItem>
+      </ContextStrip>
 
       {/* PILOT-UX-006: Seeding Machine and Note are both optional,
           less-common fields -- collapsed behind one disclosure rather than
@@ -626,7 +672,9 @@ export function SowingForm({
         </div>
       </details>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+      <SplitWorkspace
+        main={
+        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
         <legend className="px-1 text-sm font-semibold text-wl-text">Seed Trays</legend>
         {!availableTraysQuery.isLoading && (availableTraysQuery.data ?? []).length === 0 ? (
           // PILOT-BLOCKER-001: distinguishes "nothing to select" from the
@@ -760,48 +808,49 @@ export function SowingForm({
             {fields.length > 0 && !manualMode && (
               // PILOT-UX-001: compact review -- individual tray rows stay
               // collapsed by default; traceability data already lives in
-              // `fields`, it's just not rendered until asked for.
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-wl-border pt-3">
-                <div>
-                  <p className="text-sm font-medium text-wl-text">
-                    {fields.length} Seed Tray{fields.length === 1 ? "" : "s"}
-                  </p>
-                  <p className="text-xs text-wl-text-secondary">
-                    {totalSownSiteCount(watch("trays")).toLocaleString()} sown sites ·{" "}
-                    {totalSeedsSown(watch("trays")).toLocaleString()} seeds
-                  </p>
-                  {seedAllocationNote && <p className="text-xs text-wl-text-secondary">{seedAllocationNote}</p>}
-                </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="secondary" onClick={() => setShowTrayDetails((v) => !v)}>
-                    {showTrayDetails ? "Hide trays" : "Show trays"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setManualMode(true);
-                      setShowTrayDetails(true);
-                      setSeedAllocationNote(null);
-                    }}
-                  >
-                    Customize allocation
-                  </Button>
-                </div>
+              // `fields`, it's just not rendered until asked for. Running
+              // totals now live once, in the summary rail, instead of being
+              // repeated here.
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-wl-border pt-3">
+                <Button type="button" variant="secondary" onClick={() => setShowTrayDetails((v) => !v)}>
+                  {showTrayDetails ? "Hide trays" : "Show trays"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setManualMode(true);
+                    setShowTrayDetails(true);
+                    setSeedAllocationNote(null);
+                  }}
+                >
+                  Customize allocation
+                </Button>
               </div>
             )}
 
             {fields.length > 0 && !manualMode && showTrayDetails && (
-              <ul className="divide-y divide-wl-border text-sm">
-                {fields.map((field) => (
-                  <li key={field.id} className="flex items-center justify-between py-1.5">
-                    <span className="text-wl-text">{field.code}</span>
-                    <span className="text-wl-text-secondary">
-                      {field.sown_site_count.toLocaleString()} sites · {field.seeds_sown.toLocaleString()} seeds
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              // UX-OPS-001A: bounded to ~6-8 rows with a sticky heading so a
+              // large allocation scrolls inside this region, never the page.
+              <BoundedDataRegion
+                heading={
+                  <div className="flex items-center justify-between text-xs font-medium text-wl-text-secondary">
+                    <span>Tray</span>
+                    <span>Sites · Seeds</span>
+                  </div>
+                }
+              >
+                <ul className="divide-y divide-wl-border text-sm">
+                  {fields.map((field) => (
+                    <li key={field.id} className="flex items-center justify-between px-3 py-1.5">
+                      <span className="text-wl-text">{field.code}</span>
+                      <span className="text-wl-text-secondary">
+                        {field.sown_site_count.toLocaleString()} sites · {field.seeds_sown.toLocaleString()} seeds
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </BoundedDataRegion>
             )}
 
             {manualMode && (
@@ -832,55 +881,62 @@ export function SowingForm({
                   </select>
                 </Field>
                 {fields.length > 0 && (
-                  <ul className="divide-y divide-wl-border">
-                    {fields.map((field, index) => (
-                      <li key={field.id} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-start sm:gap-3">
-                        <div className="min-w-24">
-                          <span className="text-sm font-medium text-wl-text">{field.code}</span>
-                          <p className="text-xs text-wl-text-secondary">
-                            {field.biological_position_count != null
-                              ? `Capacity: ${field.biological_position_count.toLocaleString()}`
-                              : "Capacity unknown"}
-                          </p>
-                        </div>
-                        <div className="flex flex-1 gap-3">
-                          <div className="flex-1">
-                            <input
-                              type="number"
-                              {...register(`trays.${index}.sown_site_count`, { valueAsNumber: true })}
-                              className={inputClass}
-                              placeholder="Sown sites"
-                              aria-label={`Sown sites for ${field.code}`}
-                            />
-                            {errors.trays?.[index]?.sown_site_count && (
-                              <span className={errorClass}>{errors.trays[index]?.sown_site_count?.message}</span>
-                            )}
+                  // UX-OPS-001A: bounded to ~6-8 rows with a sticky column
+                  // heading; totals for this allocation live once, in the
+                  // summary rail, not repeated below this list.
+                  <BoundedDataRegion
+                    heading={
+                      <div className="flex items-center gap-3 text-xs font-medium text-wl-text-secondary">
+                        <span className="min-w-24">Tray</span>
+                        <span className="flex-1">Sown sites</span>
+                        <span className="flex-1">Seeds sown</span>
+                      </div>
+                    }
+                  >
+                    <ul className="divide-y divide-wl-border">
+                      {fields.map((field, index) => (
+                        <li key={field.id} className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-start sm:gap-3">
+                          <div className="min-w-24">
+                            <span className="text-sm font-medium text-wl-text">{field.code}</span>
+                            <p className="text-xs text-wl-text-secondary">
+                              {field.biological_position_count != null
+                                ? `Capacity: ${field.biological_position_count.toLocaleString()}`
+                                : "Capacity unknown"}
+                            </p>
                           </div>
-                          <div className="flex-1">
-                            <input
-                              type="number"
-                              {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
-                              className={inputClass}
-                              placeholder="Seeds sown"
-                              aria-label={`Seeds sown for ${field.code}`}
-                            />
-                            {errors.trays?.[index]?.seeds_sown && (
-                              <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
-                            )}
+                          <div className="flex flex-1 gap-3">
+                            <div className="flex-1">
+                              <input
+                                type="number"
+                                {...register(`trays.${index}.sown_site_count`, { valueAsNumber: true })}
+                                className={inputClass}
+                                placeholder="Sown sites"
+                                aria-label={`Sown sites for ${field.code}`}
+                              />
+                              {errors.trays?.[index]?.sown_site_count && (
+                                <span className={errorClass}>{errors.trays[index]?.sown_site_count?.message}</span>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <input
+                                type="number"
+                                {...register(`trays.${index}.seeds_sown`, { valueAsNumber: true })}
+                                className={inputClass}
+                                placeholder="Seeds sown"
+                                aria-label={`Seeds sown for ${field.code}`}
+                              />
+                              {errors.trays?.[index]?.seeds_sown && (
+                                <span className={errorClass}>{errors.trays[index]?.seeds_sown?.message}</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <Button type="button" variant="secondary" onClick={() => remove(index)}>
-                          Remove
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {fields.length > 0 && (
-                  <p className="text-sm text-wl-text-secondary">
-                    {fields.length} {fields.length === 1 ? "tray" : "trays"} selected · {totalSeedsSown(watch("trays"))}{" "}
-                    total seeds sown
-                  </p>
+                          <Button type="button" variant="secondary" onClick={() => remove(index)}>
+                            Remove
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </BoundedDataRegion>
                 )}
                 <button
                   type="button"
@@ -897,13 +953,50 @@ export function SowingForm({
             )}
           </>
         )}
-      </fieldset>
-
-      <div>
-        <Button type="submit" variant="primary">
-          Review
-        </Button>
-      </div>
+        </fieldset>
+        }
+        rail={
+          <div
+            role="region"
+            aria-label="Sowing summary"
+            className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4"
+          >
+            <h2 className="text-sm font-semibold text-wl-text">Summary</h2>
+            <dl className="flex flex-col gap-2">
+              <FactRow label="Crop" value={selectedSeedLot?.crop.common_name ?? "Not selected"} />
+              <FactRow label="Variety" value={selectedSeedLot?.variety.name ?? "Not selected"} />
+              <FactRow
+                label="Seed Trays"
+                value={fields.length > 0 ? `${fields.length} Seed Tray${fields.length === 1 ? "" : "s"}` : "None selected yet"}
+              />
+              {fields.length > 0 && (
+                <>
+                  <FactRow label="Total sown sites" value={totalSownSiteCount(watch("trays")).toLocaleString()} />
+                  <FactRow label="Total seeds sown" value={totalSeedsSown(watch("trays")).toLocaleString()} />
+                </>
+              )}
+              {fields.length === 0 && selectedFastGroup && requestedSites > 0 && (
+                <FactRow
+                  label="Required vs available trays"
+                  tone={selectedFastGroup.available.length < requiredTrayCount ? "danger" : undefined}
+                  value={
+                    selectedFastGroup.available.length < requiredTrayCount
+                      ? `${requiredTrayCount} required · only ${selectedFastGroup.available.length} available`
+                      : `${requiredTrayCount} required · ${selectedFastGroup.available.length} available`
+                  }
+                />
+              )}
+              {seedAllocationNote && <FactRow label="Allocation" value={seedAllocationNote} />}
+              <FactRow label="Batch code" value="Generated on save" />
+            </dl>
+            <StickyActionBar blockers={blockerMessage && <p role="alert" className={errorClass}>{blockerMessage}</p>}>
+              <Button type="submit" variant="primary" className="min-h-11 w-full">
+                Review Sowing
+              </Button>
+            </StickyActionBar>
+          </div>
+        }
+      />
     </form>
   );
 }
