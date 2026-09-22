@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { withQueryClient } from "@/lib/test-utils";
@@ -160,6 +160,9 @@ describe("SowingForm", () => {
     await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     expect(screen.getByLabelText(/^nursery$/i)).toBeInTheDocument();
+    // UX-OPS-001A/R1: "Back to edit" must return to the SAME entered facts,
+    // never a reset form -- the Seed Lot chosen before Review stays chosen.
+    expect((screen.getByLabelText(/seed lot/i) as HTMLSelectElement).value).toBe("lot-1");
     expect(onSubmit).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
@@ -384,6 +387,69 @@ describe("SowingForm", () => {
     render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByText("NUR-01")).toBeInTheDocument());
     expect(screen.queryByText(/germinat/i)).not.toBeInTheDocument();
+  });
+
+  // --- UX-OPS-001A/R1 correction coverage -----------------------------------
+
+  it("Configure shows the compact context workspace and a completed summary rail after allocation", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+
+    fireEvent.change(screen.getByLabelText(/^sites to sow$/i), { target: { value: "400" } });
+    fireEvent.change(screen.getByLabelText(/^seeds to sow$/i), { target: { value: "400" } });
+    fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 2 trays/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /auto-allocate 2 trays/i }));
+
+    // The compact context/configuration workspace (Nursery/Seeding
+    // Station/Seed Lot) is still present alongside the allocation work.
+    expect(screen.getByLabelText(/^nursery$/i)).toBeInTheDocument();
+
+    const rail = screen.getByRole("region", { name: "Sowing summary" });
+    expect(within(rail).getByText("Iceberg Lettuce")).toBeInTheDocument();
+    expect(within(rail).getByText("Mamutik")).toBeInTheDocument();
+    expect(within(rail).getByText("2 Seed Trays")).toBeInTheDocument();
+    expect(within(rail).getByText("Generated on save")).toBeInTheDocument();
+  });
+
+  it("Configure exposes exactly one Review Sowing action, both before and after an invalid attempt, with a blocker summary once it fails", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByText("NUR-01")).toBeInTheDocument());
+    expect(screen.getAllByRole("button", { name: "Review Sowing" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
+    await waitFor(() => expect(screen.getByText("Fix the highlighted fields before continuing.")).toBeInTheDocument());
+    // Still exactly one action control -- the blocker summary is additional
+    // text next to it, never a second desktop/mobile copy of the button.
+    expect(screen.getAllByRole("button", { name: "Review Sowing" })).toHaveLength(1);
+  });
+
+  it("Review shows the split summary rail with the required final facts, bounded tray details, and exactly one Record Sowing action", async () => {
+    stubFetch();
+    render(withQueryClient(<SowingForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
+    await selectNurseryAndSeedLot();
+    fireEvent.change(screen.getByLabelText(/^sites to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/^seeds to sow$/i), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(/tray specification/i), { target: { value: "spec-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /auto-allocate 1 tray$/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /auto-allocate 1 tray$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Sowing" }));
+    await waitFor(() => expect(screen.getByText("Review before sowing")).toBeInTheDocument());
+
+    const rail = screen.getByRole("region", { name: "Review summary" });
+    expect(within(rail).getByText("RZ-MAM-2026-001")).toBeInTheDocument();
+    expect(within(rail).getByText("Iceberg Lettuce")).toBeInTheDocument();
+    expect(within(rail).getByText("Mamutik")).toBeInTheDocument();
+    expect(within(rail).getByText("SEED-01")).toBeInTheDocument();
+    expect(within(rail).getByText("Now")).toBeInTheDocument();
+    expect(within(rail).getByText("Generated on save")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Record Sowing" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show trays" }));
+    const trayRegion = screen.getByRole("region", { name: "Trays in this Sowing" });
+    expect(within(trayRegion).getByText("ST-0001")).toBeInTheDocument();
   });
 
   describe("planPrefill (PLANNING-OPS-001)", () => {
