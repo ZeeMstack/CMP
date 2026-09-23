@@ -5,20 +5,35 @@ import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { ErrorState } from "@/components/ErrorState";
+import { HomeInspector } from "@/components/home/HomeInspector";
+import { HomeQueueView } from "@/components/home/HomeQueueView";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { InspectorEmptyState } from "@/components/layout/InspectorShell";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { ViewTabs, type ViewTabItem } from "@/components/layout/ViewTabs";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
 import { Button } from "@/components/ui/Button";
 import { CreateWorkItemForm, type WorkItemContextOption } from "@/components/work-items/CreateWorkItemForm";
 import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
-import { WorkItemSection } from "@/components/work-items/WorkItemSection";
-import type { EquipmentAttentionItem, FarmWorkItemCreate } from "@/lib/api/client";
+import type { FarmWorkItemCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { computeHomeKpis } from "@/lib/format/homeKpis";
+import {
+  segmentForAttention,
+  segmentForCarryover,
+  segmentForMine,
+  segmentForReady,
+  segmentsTotalCount,
+  type HomeQueueSegment,
+  type HomeQueueSources,
+} from "@/lib/format/homeQueue";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import { flattenLocationTree } from "@/lib/format/locationTree";
 import { groupBatchesByStage } from "@/lib/format/stageOrder";
 import { bucketWorkItems } from "@/lib/format/workItemBoard";
+import { useViewState } from "@/lib/navigation/useViewState";
 import {
   useAssets,
   useCarriers,
@@ -38,18 +53,16 @@ import {
 } from "@/lib/query/hooks";
 import { useWorkingLocation } from "@/lib/scan/useWorkingLocation";
 
-/** Today on the Farm's "Equipment Attention" deep-link: `OPEN_INCIDENT` goes
- * to the Incident workspace; the four readiness kinds go to the Readiness
- * detail page for whichever entity is set (asset xor carrier, mirrors
- * `EquipmentReadinessState`'s own XOR occupant shape). */
-function equipmentAttentionHref(farmId: string, item: EquipmentAttentionItem): string {
-  if (item.kind === "OPEN_INCIDENT") {
-    return `/farms/${farmId}/equipment-incidents/${item.equipment_incident_id}`;
-  }
-  const entityType = item.asset_id ? "asset" : "carrier";
-  const entityId = item.asset_id ?? item.carrier_id;
-  return `/farms/${farmId}/equipment/${entityType}/${entityId}/readiness`;
-}
+const HOME_VIEWS = ["mine", "ready", "attention", "carryover", "overview"] as const;
+type HomeView = (typeof HOME_VIEWS)[number];
+
+const VIEW_LABELS: Record<HomeView, string> = {
+  mine: "Mine",
+  ready: "Ready",
+  attention: "Attention",
+  carryover: "Carryover",
+  overview: "Overview",
+};
 
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
@@ -76,59 +89,45 @@ function SummaryCard({ label, value, href, caption }: { label: string; value: st
   );
 }
 
-/** A failed LIVE aggregation source (Ready Now / Attention) must never be
- * silently rendered as "nothing to do" -- shows its own retry-able error
- * inline, independent of every other section on the board (CLAUDE.md
- * "Empty / Error / Loading truth"). */
-function LiveSourcePanel({
-  title,
-  isLoading,
-  error,
-  onRetry,
-  isEmpty,
-  emptyLabel,
-  children,
-}: {
-  title: string;
-  isLoading: boolean;
-  error: unknown;
-  onRetry: () => void;
-  isEmpty: boolean;
-  emptyLabel: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-6">
-      <h2 className="mb-2 font-serif text-base font-semibold text-wl-text">{title}</h2>
-      {isLoading && <LoadingSkeleton rows={2} label={`Loading ${title.toLowerCase()}`} />}
-      {!isLoading && Boolean(error) && <ErrorState error={error} onRetry={onRetry} />}
-      {!isLoading && !error && isEmpty && <p className="text-sm text-wl-text-secondary">{emptyLabel}</p>}
-      {!isLoading && !error && !isEmpty && children}
-    </section>
+/** Compact operational-context stat -- always visible outside the current
+ * view's own queue (ticket §5.3: "Keep compact In Progress, Blocked, and
+ * Carryover counts visible outside the view-specific queue"). `onOpen`,
+ * when given, switches the active durable view to that stat's own queue. */
+function ContextStat({ label, count, onOpen }: { label: string; count: number; onOpen?: () => void }) {
+  const content = (
+    <>
+      <span className="text-xs font-medium text-wl-text-secondary">{label}</span>
+      <span className="font-serif text-lg font-semibold text-wl-text">{count}</span>
+    </>
   );
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-h-11 flex-col items-start gap-0.5 rounded-lg px-2.5 py-1 text-left hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+      >
+        {content}
+      </button>
+    );
+  }
+  return <div className="flex flex-col gap-0.5 px-2.5 py-1">{content}</div>;
 }
 
 export default function FarmHomePage() {
   const { farmId } = useParams<{ farmId: string }>();
   const currentUserId = useCurrentUserId();
   const { data: farm } = useFarm(farmId);
+  const { view, selected, setView, setSelected } = useViewState<HomeView>({ views: HOME_VIEWS, defaultView: "mine" });
 
   const workItemsQuery = useWorkItems(farmId);
   const handoverQuery = useLatestShiftHandover(farmId);
   const harvestableQuery = useHarvestablePlates(farmId);
   const summaryQuery = useOperationalSummary(farmId, "active");
-  // PILOT-AGRO-001B Part 8: live agronomy readiness -- computed/read-model,
-  // never a persisted duplicate of a Farm Work Item (an "Inspection due"
-  // row here is never itself written to farm_work_items; only explicit
-  // corrective work assigned from a Crop Issue is).
   const cropIssuesQuery = useCropIssues(farmId);
   const protocolDueQuery = useFarmProtocolDueSummary(farmId);
   const waterAttentionQuery = useWaterAttention(farmId);
   const equipmentAttentionQuery = useEquipmentAttention(farmId);
-  // PILOT-OPS-001 closure: structured context option sources for manual
-  // Work Item creation -- each reuses an existing farm-scoped read
-  // (Locations tree, Batch summary already fetched above, Assets,
-  // Carriers), never a new picker or a new endpoint.
   const locationsTreeQuery = useLocationsTree(farmId);
   const assetsQuery = useAssets(farmId, "");
   const carriersQuery = useCarriers(farmId);
@@ -172,22 +171,89 @@ export default function FarmHomePage() {
     [workItemsQuery.data, currentUserId, farm?.timezone],
   );
 
-  const attentionBatches = useMemo(
-    () => (summaryQuery.data ?? []).filter((b) => b.open_quality_hold_count > 0),
-    [summaryQuery.data],
-  );
-
   const activeBatches = summaryQuery.data ?? [];
   const homeKpis = computeHomeKpis(activeBatches);
-  const stageBreakdown = useMemo(
-    () => (summaryQuery.data ? groupBatchesByStage(summaryQuery.data) : []),
-    [summaryQuery.data],
-  );
+  const stageBreakdown = useMemo(() => (summaryQuery.data ? groupBatchesByStage(summaryQuery.data) : []), [summaryQuery.data]);
   const stageNameOccurrences = useMemo(() => {
     const counts = new Map<string, number>();
     for (const group of stageBreakdown) counts.set(group.name, (counts.get(group.name) ?? 0) + 1);
     return counts;
   }, [stageBreakdown]);
+
+  const queueSources: HomeQueueSources = useMemo(
+    () => ({
+      myWorkItems: { data: board.myWork, isLoading: workItemsQuery.isLoading, error: workItemsQuery.error },
+      harvestablePlates: { data: harvestableQuery.data, isLoading: harvestableQuery.isLoading, error: harvestableQuery.error },
+      activeBatches: { data: summaryQuery.data, isLoading: summaryQuery.isLoading, error: summaryQuery.error },
+      cropIssues: { data: cropIssuesQuery.data, isLoading: cropIssuesQuery.isLoading, error: cropIssuesQuery.error },
+      inspectionsDue: { data: protocolDueQuery.data, isLoading: protocolDueQuery.isLoading, error: protocolDueQuery.error },
+      waterAttention: { data: waterAttentionQuery.data, isLoading: waterAttentionQuery.isLoading, error: waterAttentionQuery.error },
+      equipmentAttention: {
+        data: equipmentAttentionQuery.data,
+        isLoading: equipmentAttentionQuery.isLoading,
+        error: equipmentAttentionQuery.error,
+      },
+      blockedWorkItems: { data: board.blocked, isLoading: workItemsQuery.isLoading, error: workItemsQuery.error },
+      carryoverWorkItems: { data: board.carryover, isLoading: workItemsQuery.isLoading, error: workItemsQuery.error },
+    }),
+    [
+      board,
+      workItemsQuery.isLoading,
+      workItemsQuery.error,
+      harvestableQuery.data,
+      harvestableQuery.isLoading,
+      harvestableQuery.error,
+      summaryQuery.data,
+      summaryQuery.isLoading,
+      summaryQuery.error,
+      cropIssuesQuery.data,
+      cropIssuesQuery.isLoading,
+      cropIssuesQuery.error,
+      protocolDueQuery.data,
+      protocolDueQuery.isLoading,
+      protocolDueQuery.error,
+      waterAttentionQuery.data,
+      waterAttentionQuery.isLoading,
+      waterAttentionQuery.error,
+      equipmentAttentionQuery.data,
+      equipmentAttentionQuery.isLoading,
+      equipmentAttentionQuery.error,
+    ],
+  );
+
+  const mineSegments = useMemo(() => segmentForMine(queueSources), [queueSources]);
+  const readySegments = useMemo(() => segmentForReady(queueSources), [queueSources]);
+  const attentionSegments = useMemo(() => segmentForAttention(queueSources), [queueSources]);
+  const carryoverSegments = useMemo(() => segmentForCarryover(queueSources), [queueSources]);
+
+  const segmentsByView: Record<Exclude<HomeView, "overview">, HomeQueueSegment[]> = useMemo(
+    () => ({ mine: mineSegments, ready: readySegments, attention: attentionSegments, carryover: carryoverSegments }),
+    [mineSegments, readySegments, attentionSegments, carryoverSegments],
+  );
+
+  const activeSegments = useMemo(() => (view === "overview" ? [] : segmentsByView[view]), [view, segmentsByView]);
+  const selectedRow = useMemo(
+    () => (selected ? activeSegments.flatMap((s) => s.rows).find((r) => r.id === selected) ?? null : null),
+    [activeSegments, selected],
+  );
+
+  const retryBySegmentKey: Record<string, () => void> = {
+    "mine-work-items": () => workItemsQuery.refetch(),
+    "ready-harvest": () => harvestableQuery.refetch(),
+    "attention-quality-holds": () => summaryQuery.refetch(),
+    "attention-crop-issues": () => cropIssuesQuery.refetch(),
+    "attention-inspections-due": () => protocolDueQuery.refetch(),
+    "attention-water": () => waterAttentionQuery.refetch(),
+    "attention-equipment": () => equipmentAttentionQuery.refetch(),
+    "attention-blocked-work-items": () => workItemsQuery.refetch(),
+    "carryover-work-items": () => workItemsQuery.refetch(),
+  };
+
+  const viewTabs: ViewTabItem<HomeView>[] = HOME_VIEWS.map((v) => ({
+    value: v,
+    label: VIEW_LABELS[v],
+    count: v === "overview" ? undefined : segmentsTotalCount(segmentsByView[v]),
+  }));
 
   function handleCreate(payload: FarmWorkItemCreate) {
     setCreateError(null);
@@ -209,15 +275,10 @@ export default function FarmHomePage() {
       <PageHeader
         title="Today on the Farm"
         description={farm ? farm.name : undefined}
+        compact
         actions={
           !creating && (
             <div className="flex flex-wrap items-center gap-2">
-              {/* PILOT-SCAN-001E: a compact fallback for an operator whose
-                  device camera can't read a damaged/dirty label -- the
-                  physical QR itself already opens `/q/{token}` directly via
-                  the device's own native camera app, so this deliberately
-                  stays small and secondary next to "New work item", never a
-                  dominant feature of this page. */}
               <Link
                 href="/scan"
                 className="flex h-9 items-center gap-1.5 rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
@@ -232,9 +293,6 @@ export default function FarmHomePage() {
         }
       />
 
-      {/* PILOT-SCAN-001F: low-cost indicator only -- no dashboard, no new
-          section of the page's own logic; identical component to /q and
-          /scan, reused rather than duplicated. */}
       {workingLocation && (
         <div className="mb-4">
           <WorkingLocationBar workingLocation={workingLocation} onClear={clearWorkingLocation} scanLinkLabel="Scan next" />
@@ -261,177 +319,25 @@ export default function FarmHomePage() {
         </div>
       )}
 
-      <ShiftHandoverPanel farmId={farmId} latest={handoverQuery.data} openWorkItems={board.farmWide} />
+      <div className="mb-4">
+        <ShiftHandoverPanel farmId={farmId} latest={handoverQuery.data} openWorkItems={board.farmWide} />
+      </div>
 
-      <WorkItemSection title="My Work" items={board.myWork} farmId={farmId} currentUserId={currentUserId} emptyLabel="Nothing assigned to you right now." />
-
-      <LiveSourcePanel
-        title="Ready Now"
-        isLoading={harvestableQuery.isLoading}
-        error={harvestableQuery.error}
-        onRetry={() => harvestableQuery.refetch()}
-        isEmpty={(harvestableQuery.data ?? []).length === 0}
-        emptyLabel="Nothing ready to harvest right now."
+      <div
+        aria-label="Operational context"
+        className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border border-wl-border bg-wl-surface-raised px-1 py-1"
       >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {(harvestableQuery.data ?? []).map((plate) => (
-            <li key={plate.production_plate_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-              <span className="text-wl-text">
-                {plate.crop_common_name} · Batch {plate.batch_code} · {plate.production_plate_code}
-                {plate.location?.grow_table && (
-                  <span className="text-wl-text-secondary"> · {plate.location.grow_table.code}</span>
-                )}
-              </span>
-              <Link
-                href={`/farms/${farmId}/leafy-production/harvest?batchId=${plate.batch_id}`}
-                className="shrink-0 text-sm font-medium text-wl-brand hover:underline"
-              >
-                Open Harvest
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </LiveSourcePanel>
+        <ContextStat label="In Progress" count={board.inProgress.length} />
+        <ContextStat label="Blocked" count={board.blocked.length} onOpen={() => setView("attention")} />
+        <ContextStat label="Carryover" count={board.carryover.length} onOpen={() => setView("carryover")} />
+      </div>
 
-      <LiveSourcePanel
-        title="Attention"
-        isLoading={summaryQuery.isLoading}
-        error={summaryQuery.error}
-        onRetry={() => summaryQuery.refetch()}
-        isEmpty={attentionBatches.length === 0}
-        emptyLabel="No exceptions right now."
-      >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {attentionBatches.map((b) => (
-            <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-              <span className="text-wl-text">
-                Batch {b.code} · {b.open_quality_hold_count} open quality hold{b.open_quality_hold_count === 1 ? "" : "s"}
-              </span>
-              <Link href={`/farms/${farmId}/crop-batches/${b.id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
-                View batch
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </LiveSourcePanel>
+      <div className="mb-4">
+        <ViewTabs items={viewTabs} active={view} onChange={setView} />
+      </div>
 
-      <LiveSourcePanel
-        title="Crop Attention"
-        isLoading={cropIssuesQuery.isLoading}
-        error={cropIssuesQuery.error}
-        onRetry={() => cropIssuesQuery.refetch()}
-        isEmpty={(cropIssuesQuery.data ?? []).filter((i) => i.status === "open").length === 0}
-        emptyLabel="No open crop issues right now."
-      >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {(cropIssuesQuery.data ?? [])
-            .filter((i) => i.status === "open")
-            .map((issue) => (
-              <li key={issue.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <span className="text-wl-text">
-                  {issue.code} · {humanizeEnumCode(issue.category)} · {humanizeEnumCode(issue.severity)}
-                  {issue.is_follow_up_overdue && <span className="text-wl-flag-fg"> · follow-up overdue</span>}
-                </span>
-                <Link href={`/farms/${farmId}/crop-issues/${issue.id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
-                  Open issue
-                </Link>
-              </li>
-            ))}
-        </ul>
-      </LiveSourcePanel>
-
-      <LiveSourcePanel
-        title="Inspections Due"
-        isLoading={protocolDueQuery.isLoading}
-        error={protocolDueQuery.error}
-        onRetry={() => protocolDueQuery.refetch()}
-        isEmpty={(protocolDueQuery.data ?? []).length === 0}
-        emptyLabel="No inspections due right now."
-      >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {(protocolDueQuery.data ?? []).map((row) => (
-            <li key={row.batch_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-              <span className="text-wl-text">
-                Batch {row.batch_code} · {row.protocol?.name}
-                {row.overdue_count > 0 ? (
-                  <span className="text-wl-flag-fg"> · {row.overdue_count} overdue</span>
-                ) : (
-                  <span className="text-wl-text-secondary"> · {row.due_count} due</span>
-                )}
-              </span>
-              <Link href={`/farms/${farmId}/production/inspect?batchId=${row.batch_id}`} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
-                Inspect Crop
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </LiveSourcePanel>
-
-      <LiveSourcePanel
-        title="Water Attention"
-        isLoading={waterAttentionQuery.isLoading}
-        error={waterAttentionQuery.error}
-        onRetry={() => waterAttentionQuery.refetch()}
-        isEmpty={(waterAttentionQuery.data ?? []).length === 0}
-        emptyLabel="Nothing currently needs Water attention."
-      >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {(waterAttentionQuery.data ?? []).map((item, i) => (
-            <li key={`${item.kind}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-              <span className="text-wl-text">{item.message}</span>
-              <Link
-                href={item.kind === "CIRCUIT_MISSING_RESERVOIR" ? `/farms/${farmId}/water/setup` : `/farms/${farmId}/water/measurements`}
-                className="shrink-0 text-sm font-medium text-wl-brand hover:underline"
-              >
-                Open Water &amp; Nutrients
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </LiveSourcePanel>
-
-      <LiveSourcePanel
-        title="Equipment Attention"
-        isLoading={equipmentAttentionQuery.isLoading}
-        error={equipmentAttentionQuery.error}
-        onRetry={() => equipmentAttentionQuery.refetch()}
-        isEmpty={(equipmentAttentionQuery.data ?? []).length === 0}
-        emptyLabel="Nothing currently needs Equipment attention."
-      >
-        <ul className="divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-          {(equipmentAttentionQuery.data ?? []).map((item, i) => (
-            <li key={`${item.kind}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-              <span className="text-wl-text">{item.message}</span>
-              <Link href={equipmentAttentionHref(farmId, item)} className="shrink-0 text-sm font-medium text-wl-brand hover:underline">
-                {item.kind === "OPEN_INCIDENT" ? "Open Incident" : "View Readiness"}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </LiveSourcePanel>
-
-      <WorkItemSection title="In Progress" items={board.inProgress} farmId={farmId} currentUserId={currentUserId} hideWhenEmpty />
-      <WorkItemSection title="Blocked" items={board.blocked} farmId={farmId} currentUserId={currentUserId} hideWhenEmpty />
-      <WorkItemSection
-        title="Carryover"
-        items={board.carryover}
-        farmId={farmId}
-        currentUserId={currentUserId}
-        hideWhenEmpty
-      />
-      <WorkItemSection
-        title="Farm Work"
-        items={board.farmWide}
-        farmId={farmId}
-        currentUserId={currentUserId}
-        emptyLabel="No open work items for this farm."
-      />
-
-      {/* Secondary, below the operational work engine -- PILOT-UX-003's
-          deep-linking KPIs, unchanged, never the page's primary content. */}
-      {!summaryQuery.isLoading && !summaryQuery.error && (
-        <section className="mt-8 border-t border-wl-border pt-6">
-          <h2 className="mb-3 font-serif text-base font-semibold text-wl-text">Production overview</h2>
+      {view === "overview" ? (
+        <section>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <SummaryCard label="Active batches" value={homeKpis.activeCount} href={`/farms/${farmId}/crop-batches`} />
             <SummaryCard
@@ -448,24 +354,44 @@ export default function FarmHomePage() {
           </div>
 
           {stageBreakdown.length > 0 && (
-            <ul className="mt-4 divide-y divide-wl-border rounded-xl border border-wl-border bg-wl-surface-raised">
-              {stageBreakdown.map((stage) => {
-                const needsDisambiguation = (stageNameOccurrences.get(stage.name) ?? 0) > 1;
-                return (
-                  <li key={`${stage.category}-${stage.name}`} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <span className="text-wl-text">
-                      {stage.name}
-                      {needsDisambiguation && <span className="text-wl-text-secondary"> · {humanizeEnumCode(stage.category)}</span>}
-                    </span>
-                    <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-wl-brand-subtle px-2 py-0.5 text-xs font-semibold text-wl-brand">
-                      {stage.count}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <BoundedDataRegion label="Production by stage">
+              <ul className="divide-y divide-wl-border">
+                {stageBreakdown.map((stage) => {
+                  const needsDisambiguation = (stageNameOccurrences.get(stage.name) ?? 0) > 1;
+                  return (
+                    <li key={`${stage.category}-${stage.name}`} className="flex items-center justify-between gap-3 px-3.5 py-2 text-sm">
+                      <span className="text-wl-text">
+                        {stage.name}
+                        {needsDisambiguation && <span className="text-wl-text-secondary"> · {humanizeEnumCode(stage.category)}</span>}
+                      </span>
+                      <span className="inline-flex min-w-8 shrink-0 items-center justify-center rounded-full bg-wl-brand-subtle px-2 py-0.5 text-xs font-semibold text-wl-brand">
+                        {stage.count}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </BoundedDataRegion>
           )}
         </section>
+      ) : (
+        <SplitWorkspace
+          main={
+            <HomeQueueView
+              segments={activeSegments}
+              selectedId={selected}
+              onSelect={(id) => setSelected(id)}
+              onRetry={(key) => retryBySegmentKey[key]?.()}
+            />
+          }
+          rail={
+            selectedRow ? (
+              <HomeInspector row={selectedRow} farmId={farmId} currentUserId={currentUserId} onClose={() => setSelected(null)} />
+            ) : (
+              <InspectorEmptyState />
+            )
+          }
+        />
       )}
     </div>
   );

@@ -75,40 +75,54 @@ describe("SeedlingPage", () => {
     await waitFor(() => expect(screen.getByText("No Seedling Trays yet")).toBeInTheDocument());
   });
 
-  it("lists Trays with starting/current counts and a status badge, no raw UUIDs", async () => {
+  it("lists Trays in the queue with a status badge and current-living meta, no raw UUIDs", async () => {
     stubFetch();
     render(withQueryClient(<SeedlingPage />));
-    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
-    expect(screen.getByText("196")).toBeInTheDocument();
-    expect(screen.getByText("192")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/CB-0001/)).toBeInTheDocument());
+    expect(screen.getByText(/CB-0002/)).toBeInTheDocument();
+    expect(screen.getByText("192 living")).toBeInTheDocument();
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
     expect(screen.queryByText(/bca-1|tray-1|se-1/)).not.toBeInTheDocument();
+  });
+
+  it("selecting a row shows Starting Living (subordinate) and Current Living (authoritative) distinctly", async () => {
+    stubFetch();
+    render(withQueryClient(<SeedlingPage />));
+    await waitFor(() => expect(screen.getByText(/CB-0001/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /ST-0001/ }));
+    await waitFor(() => expect(screen.getByText("Starting Living")).toBeInTheDocument());
+    expect(screen.getByText("196")).toBeInTheDocument();
+    expect(screen.getByText("Current Living")).toBeInTheDocument();
+    expect(screen.getByText("192")).toBeInTheDocument();
   });
 
   it("opens the Record disposition form from the header action and returns to the list on cancel", async () => {
     stubFetch();
     render(withQueryClient(<SeedlingPage />));
-    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/CB-0001/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record biological disposition" }));
     await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByText("Record biological disposition")).toBeInTheDocument());
   });
 
-  it("opens the Record form preselected to a row's Tray", async () => {
+  it("opens the Record form preselected to a selected row's Tray, and gates it on eligibility", async () => {
     stubFetch();
     render(withQueryClient(<SeedlingPage />));
-    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
-    const recordButtons = screen.getAllByRole("button", { name: "Record" });
-    fireEvent.click(recordButtons[0]);
+    await waitFor(() => expect(screen.getByText(/CB-0001/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /ST-0001/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record disposition" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Record disposition" }));
     await waitFor(() => expect(screen.getByText(/CB-0001 — ST-0001/)).toBeInTheDocument());
     expect(screen.getByLabelText(/seed tray/i)).toBeDisabled();
   });
 
-  it("opens History for a row with recorded events and shows the un-collapsed event list", async () => {
+  it("opens History for a selected row with recorded events and shows the un-collapsed event list", async () => {
     stubFetch();
     render(withQueryClient(<SeedlingPage />));
-    await waitFor(() => expect(screen.getByText("CB-0001")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/CB-0001/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /ST-0001/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "History" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "History" }));
     await waitFor(() => expect(screen.getByText("Recorded")).toBeInTheDocument());
     expect(screen.getByText("WEAK_SEEDLING")).toBeInTheDocument();
@@ -116,10 +130,12 @@ describe("SeedlingPage", () => {
     await waitFor(() => expect(screen.getByText("Record biological disposition")).toBeInTheDocument());
   });
 
-  it("never offers History for a Tray with no recorded events", async () => {
+  it("never offers History for a selected Tray with no recorded events", async () => {
     stubFetch();
     render(withQueryClient(<SeedlingPage />));
-    await waitFor(() => expect(screen.getByText("CB-0002")).toBeInTheDocument());
-    expect(screen.getAllByRole("button", { name: "History" })).toHaveLength(1);
+    await waitFor(() => expect(screen.getByText(/CB-0002/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /ST-0002/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record disposition" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "History" })).not.toBeInTheDocument();
   });
 });

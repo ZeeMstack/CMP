@@ -47,6 +47,7 @@ export default function ReportEquipmentIncidentPage() {
     <div>
       <PageHeader
         title="Report Incident"
+        compact
         breadcrumbs={
           <Breadcrumbs
             items={[

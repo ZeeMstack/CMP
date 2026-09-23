@@ -199,21 +199,43 @@ describe("GerminationPage worklist", () => {
     await waitFor(() => expect(screen.getByText("No Sown Seed Trays yet")).toBeInTheDocument());
   });
 
-  it("renders the worklist with truthful, human-readable next actions per row -- no raw UUIDs, no fabricated action for an ineligible Tray", async () => {
+  it("renders the worklist queue with truthful, human-readable facts per row -- no raw UUIDs anywhere", async () => {
     stubFetch();
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
 
-    expect(screen.getByRole("button", { name: "Move to Germination" })).toBeInTheDocument(); // Row A (bca-1)
-    expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument(); // Row B (bca-2)
-    // Only Row C (bca-3) is truthfully ready -- never fabricated for Row B/D.
-    expect(screen.getAllByRole("button", { name: "Move to Seedling" })).toHaveLength(1);
-    // Row D (bca-4, already in Seedling): no truthful next action here.
+    expect(screen.getByText("ST-0002")).toBeInTheDocument();
+    expect(screen.getByText("ST-0003")).toBeInTheDocument();
     expect(screen.getByText("ST-0004")).toBeInTheDocument();
 
     expect(
       screen.queryByText(/batch-1|batch-2|batch-3|batch-4|bca-1|bca-2|bca-3|bca-4|tray-1|tray-2|tray-3|tray-4/),
     ).not.toBeInTheDocument();
+  });
+
+  it("selecting a row exposes only the action currently valid for that item -- never a fabricated action for an ineligible Tray", async () => {
+    stubFetch();
+    render(withQueryClient(<GerminationPage />));
+    await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+
+    // Row A (bca-1): not yet placed.
+    fireEvent.click(screen.getByRole("button", { name: /ST-0001/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move to Germination" })).toBeInTheDocument());
+
+    // Row B (bca-2): placed, never observed.
+    fireEvent.click(screen.getByRole("button", { name: /ST-0002/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Move to Germination" })).not.toBeInTheDocument();
+
+    // Row C (bca-3): final outcome recorded, ready for Seedling.
+    fireEvent.click(screen.getByRole("button", { name: /ST-0003/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move to Seedling" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Record outcome" })).not.toBeInTheDocument();
+
+    // Row D (bca-4): already moved on to Seedling -- no truthful next action, never fabricated.
+    fireEvent.click(screen.getByRole("button", { name: /ST-0004/ }));
+    await waitFor(() => expect(screen.getByText("No action currently valid for this Seed Tray.")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Move to Seedling" })).not.toBeInTheDocument();
   });
 
   it("clicking a row's Move to Germination freezes that exact Tray, and the placement receipt offers only the truthful next action", async () => {
@@ -270,6 +292,8 @@ describe("GerminationPage worklist", () => {
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
 
+    fireEvent.click(screen.getByRole("button", { name: /ST-0001/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move to Germination" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Move to Germination" }));
     await waitFor(() => expect(screen.getByText(/from the germination worklist/i)).toBeInTheDocument());
     expect(screen.queryByLabelText(/^seed tray$/i)).not.toBeInTheDocument();
@@ -311,6 +335,8 @@ describe("GerminationPage worklist", () => {
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
 
+    fireEvent.click(screen.getByRole("button", { name: /ST-0002/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record outcome" }));
     await waitFor(() => expect(screen.getByText(/from the germination worklist/i)).toBeInTheDocument());
     expect(screen.getByText("CB-0002 — ST-0002")).toBeInTheDocument();
@@ -385,6 +411,8 @@ describe("GerminationPage worklist", () => {
 
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0002")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /ST-0002/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record outcome" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record outcome" }));
     await waitFor(() => expect(screen.getByText("CB-0002 — ST-0002")).toBeInTheDocument());
 
@@ -472,6 +500,7 @@ describe("GerminationPage worklist", () => {
 
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Manual actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Move Tray to Germination" }));
     await waitFor(() => expect(screen.getByText(/2 trays ready/i)).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText(/GT-01 — GC-01/)).toBeInTheDocument());
@@ -489,11 +518,12 @@ describe("GerminationPage worklist", () => {
     expect(screen.getByRole("button", { name: "Continue Remaining" })).toBeInTheDocument();
   });
 
-  it("never represents abnormal/weak seedlings as loss anywhere in the worklist", async () => {
+  it("never represents abnormal/weak seedlings as loss anywhere in the worklist or inspector", async () => {
     stubFetch();
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0003")).toBeInTheDocument());
-    expect(screen.getByText(/180 normal \/ 10 abnormal/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /ST-0003/ }));
+    await waitFor(() => expect(screen.getByText(/180 normal \/ 10 abnormal/)).toBeInTheDocument());
     expect(screen.queryByText(/loss|weak seedling|non-germination/i)).not.toBeInTheDocument();
   });
 
@@ -508,6 +538,7 @@ describe("GerminationPage worklist", () => {
     stubFetch();
     render(withQueryClient(<GerminationPage />));
     await waitFor(() => expect(screen.getByText("ST-0001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Manual actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Place Trolley" }));
     await waitFor(() => expect(screen.getByLabelText(/^trolley$/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

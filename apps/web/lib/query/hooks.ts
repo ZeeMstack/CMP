@@ -714,13 +714,13 @@ export function useAvailableSeedTrays(farmId: string) {
   });
 }
 
-export function useBatchesForSeedLot(farmId: string, seedLotId: string) {
+export function useBatchesForSeedLot(farmId: string, seedLotId: string, enabled = true) {
   const tenantId = useSelectedTenantId();
   return useQuery({
     queryKey: queryKeys.seedLotBatches(tenantId ?? "", farmId, seedLotId),
     queryFn: ({ signal }) => api.listBatchesForSeedLot(farmId, seedLotId, signal),
     staleTime: STALE_DETAIL_MS,
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && enabled && Boolean(seedLotId),
   });
 }
 

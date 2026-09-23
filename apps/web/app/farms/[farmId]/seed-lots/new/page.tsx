@@ -19,6 +19,7 @@ export default function NewSeedLotPage() {
     <div>
       <PageHeader
         title="Add Seed Lot"
+        compact
         breadcrumbs={
           <Breadcrumbs
             items={[

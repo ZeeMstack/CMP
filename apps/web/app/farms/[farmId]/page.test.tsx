@@ -1,12 +1,42 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("next/navigation", () => ({
-  useParams: () => ({ farmId: "farm-1" }),
-}));
 
 import { writeWorkingLocation } from "@/lib/scan/workingLocation";
 import { withQueryClient } from "@/lib/test-utils";
+
+/** UX-OPS-001B: the Home page now reads/writes `?view=&selected=` via
+ * `useViewState` (next/navigation's `useSearchParams`/`useRouter`/
+ * `usePathname`), so this mock must be reactive -- `router.replace` needs
+ * to actually update what `useSearchParams` returns and trigger a
+ * re-render, mirroring a real browser URL, so "survives rerender/
+ * navigation" is provable in these tests. */
+let currentSearch = "";
+const listeners = new Set<() => void>();
+function notifyListeners() {
+  for (const listener of listeners) listener();
+}
+const replaceMock = vi.fn((url: string) => {
+  currentSearch = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+  notifyListeners();
+});
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ farmId: "farm-1" }),
+  usePathname: () => "/farms/farm-1",
+  useSearchParams: () => {
+    const snapshot = useSyncExternalStore(
+      (cb: () => void) => {
+        listeners.add(cb);
+        return () => listeners.delete(cb);
+      },
+      () => currentSearch,
+      () => currentSearch,
+    );
+    return new URLSearchParams(snapshot);
+  },
+  useRouter: () => ({ replace: replaceMock, push: replaceMock }),
+}));
 
 import FarmHomePage from "./page";
 
@@ -42,31 +72,54 @@ const batches = [
   },
 ];
 
-function stubFetch() {
+const myWorkItem = {
+  id: "wi-1",
+  code: "WI-001",
+  title: "Check reservoir",
+  status: "open",
+  priority: "normal",
+  work_type: "other",
+  completion_mode: "manual_record",
+  assigned_to_user_id: "test-user-id",
+  due_at: null,
+  created_at: "2026-01-01T00:00:00Z",
+  crop_batch: null,
+  location: null,
+  asset: null,
+  carrier: null,
+  quantity: null,
+  quantity_uom: null,
+  blocked_reason: null,
+};
+
+interface FetchOverrides {
+  workItems?: unknown;
+  equipmentAttentionStatus?: number;
+}
+
+function stubFetch(overrides: FetchOverrides = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/operational-summary")) return jsonResponse(batches);
       if (url.endsWith("/farms/farm-1")) return jsonResponse(farm);
-      // PILOT-OPS-001: Today on the Farm's own board/aggregation reads --
-      // empty by default so these tests stay focused on the KPI/stage
-      // content they were written to prove; dedicated Work Item behavior
-      // is covered by lib/format/workItemBoard.test.ts and the
-      // component-level work-item tests.
-      if (url.includes("/work-items")) return jsonResponse([]);
+      if (url.includes("/work-items")) return jsonResponse(overrides.workItems ?? []);
       if (url.includes("/shift-handovers/latest")) return jsonResponse(null);
       if (url.includes("/harvestable-plates")) return jsonResponse([]);
-      // PILOT-OPS-001 closure: manual Work Item structured-context option
-      // sources -- empty by default, same reasoning as above.
       if (url.includes("/locations/tree")) return jsonResponse([]);
       if (url.includes("/assets")) return jsonResponse([]);
       if (url.includes("/carriers")) return jsonResponse([]);
-      // PILOT-ASSET-001: Equipment Attention section + the manual Work
-      // Item "Add context" Equipment Incident option source -- empty by
-      // default, same reasoning as above.
-      if (url.includes("/equipment-attention")) return jsonResponse([]);
+      if (url.includes("/equipment-attention")) {
+        if (overrides.equipmentAttentionStatus) {
+          return jsonResponse({ detail: "Server error" }, overrides.equipmentAttentionStatus);
+        }
+        return jsonResponse([]);
+      }
       if (url.includes("/equipment-incidents")) return jsonResponse([]);
+      if (url.includes("/crop-issues")) return jsonResponse([]);
+      if (url.includes("/growing-protocols/due-summary")) return jsonResponse([]);
+      if (url.includes("/water/attention")) return jsonResponse([]);
       return jsonResponse({});
     }),
   );
@@ -75,46 +128,118 @@ function stubFetch() {
 afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  currentSearch = "";
+  replaceMock.mockClear();
 });
 
-/** UI-OPT-001 Batch B restyles this page but must not change its data
- * semantics or the accessible names pilot-happy-path.spec.ts asserts on
- * (Active batches / Harvest ready / Batches with open quality holds). */
-describe("FarmHomePage", () => {
-  it("preserves the KPI card accessible names the e2e pilot path depends on", async () => {
+describe("FarmHomePage: durable views default to actionable work", () => {
+  it("defaults to the Mine view with no ?view= param, never Overview/KPIs", async () => {
     stubFetch();
     render(withQueryClient(<FarmHomePage />));
 
-    // PILOT-OPS-001: the page's own H1 is now "Today on the Farm" (the
-    // ticket's explicit page title); the farm name is shown as descriptive
-    // text under it rather than as the heading itself.
     await waitFor(() => expect(screen.getByRole("heading", { name: "Today on the Farm" })).toBeInTheDocument());
-    expect(screen.getByText("North Farm")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Active batches/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
-    // PILOT-UX-003: now deep-links to the Batch register pre-filtered to the
-    // same authoritative field the count itself was computed from -- the
-    // accessible name (what the e2e pilot path actually asserts on) is
-    // unchanged, only the query string.
-    expect(screen.getByRole("link", { name: /Harvest ready/ })).toHaveAttribute(
-      "href", "/farms/farm-1/crop-batches?filter=harvest_ready",
-    );
-    expect(screen.getByText("Batches with open quality holds")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Mine/ })).toHaveAttribute("aria-selected", "true");
+    // Overview's KPI cards are not landing content -- they render only when
+    // the Overview view is active.
+    expect(screen.queryByRole("link", { name: /Active batches/ })).not.toBeInTheDocument();
   });
 
-  it("computes KPI values from the operational summary, unchanged by the visual pass", async () => {
+  it("falls back to Mine for an invalid ?view= value instead of breaking the route", async () => {
+    currentSearch = "view=not-a-real-view";
     stubFetch();
     render(withQueryClient(<FarmHomePage />));
-    await waitFor(() => expect(screen.getByRole("link", { name: /Active batches/ })).toBeInTheDocument());
 
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Mine/ })).toHaveAttribute("aria-selected", "true"));
+  });
+
+  it("shows the KPI cards only under the Overview view, with accessible names/hrefs unchanged for the e2e pilot path", async () => {
+    stubFetch();
+    const { rerender } = render(withQueryClient(<FarmHomePage />));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Today on the Farm" })).toBeInTheDocument());
+
+    screen.getByRole("tab", { name: /Overview/ }).click();
+    rerender(withQueryClient(<FarmHomePage />));
+
+    await waitFor(() => expect(screen.getByRole("link", { name: /Active batches/ })).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /Active batches/ })).toHaveAttribute("href", "/farms/farm-1/crop-batches");
+    expect(screen.getByRole("link", { name: /Harvest ready/ })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/crop-batches?filter=harvest_ready",
+    );
     expect(screen.getByRole("link", { name: /Active batches/ })).toHaveTextContent("2");
     expect(screen.getByRole("link", { name: /Harvest ready/ })).toHaveTextContent("1");
+    expect(screen.getByText("Batches with open quality holds")).toBeInTheDocument();
+    expect(screen.getByText("Growing")).toBeInTheDocument();
+    expect(screen.getByText("Ready to Harvest")).toBeInTheDocument();
   });
 
-  it("shows the active-production-by-stage breakdown with a visible count per stage", async () => {
+  it("keeps the selected view stable across a rerender via the URL, not local state", async () => {
+    currentSearch = "view=ready";
+    stubFetch();
+    const { rerender } = render(withQueryClient(<FarmHomePage />));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Ready/ })).toHaveAttribute("aria-selected", "true"));
+
+    rerender(withQueryClient(<FarmHomePage />));
+    expect(screen.getByRole("tab", { name: /Ready/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("switching views clears the URL to avoid stacking history entries, via router.replace", async () => {
     stubFetch();
     render(withQueryClient(<FarmHomePage />));
-    await waitFor(() => expect(screen.getByText("Growing")).toBeInTheDocument());
-    expect(screen.getByText("Ready to Harvest")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Mine/ })).toBeInTheDocument());
+
+    screen.getByRole("tab", { name: /Ready/ }).click();
+    await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+    expect(replaceMock.mock.calls[0][0]).toContain("view=ready");
+  });
+});
+
+describe("FarmHomePage: independent source failure isolation", () => {
+  it("shows an inline, source-named unavailable segment for a failed source without collapsing the rest of the Attention queue", async () => {
+    currentSearch = "view=attention";
+    stubFetch({ equipmentAttentionStatus: 500 });
+    render(withQueryClient(<FarmHomePage />));
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Attention/ })).toHaveAttribute("aria-selected", "true"));
+    // The failed segment (Equipment attention) shows its own retry-able
+    // error, never a false "nothing to do" empty state.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    // Other Attention segments (e.g. crop issues) remain usable/visible,
+    // never blanked out just because a sibling source failed.
+    expect(screen.getByText("No open crop issues right now.")).toBeInTheDocument();
+  });
+
+  it("never shows a failed source's count as zero on the view tab badge", async () => {
+    currentSearch = "view=attention";
+    stubFetch({ equipmentAttentionStatus: 500 });
+    render(withQueryClient(<FarmHomePage />));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    const attentionTab = screen.getByRole("tab", { name: /Attention/ });
+    // No numeric badge is rendered for a view with a failed segment.
+    expect(attentionTab.textContent).not.toMatch(/Attention0/);
+  });
+});
+
+describe("FarmHomePage: Mine queue and selected-item inspector", () => {
+  it("lists a Work Item assigned to the current user under Mine and opens its inspector on selection", async () => {
+    stubFetch({ workItems: [myWorkItem] });
+    render(withQueryClient(<FarmHomePage />));
+
+    await waitFor(() => expect(screen.getByText("Check reservoir")).toBeInTheDocument());
+    expect(screen.getByText("Select a row to see details and actions.")).toBeInTheDocument();
+  });
+});
+
+describe("FarmHomePage: persistent operational context", () => {
+  it("keeps In Progress/Blocked/Carryover counts visible outside the active view's own queue", async () => {
+    stubFetch();
+    render(withQueryClient(<FarmHomePage />));
+    await waitFor(() => expect(screen.getByLabelText("Operational context")).toBeInTheDocument());
+    const contextStrip = within(screen.getByLabelText("Operational context"));
+    expect(contextStrip.getByText("In Progress")).toBeInTheDocument();
+    expect(contextStrip.getByText("Blocked")).toBeInTheDocument();
+    expect(contextStrip.getByText("Carryover")).toBeInTheDocument();
   });
 });
 

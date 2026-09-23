@@ -67,6 +67,18 @@ describe("SeedLotForm", () => {
     });
   });
 
+  it("keeps optional supplier/date fields collapsed behind a 'More details' disclosure by default", async () => {
+    stubFetch();
+    render(withQueryClient(<SeedLotForm onSubmit={vi.fn()} isSubmitting={false} />));
+    await waitFor(() => expect(screen.getByText("Iceberg Lettuce")).toBeInTheDocument());
+
+    expect(screen.queryByLabelText(/supplier name/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /more details/i }));
+    expect(screen.getByLabelText(/supplier name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/received date/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/expiry date/i)).toBeInTheDocument();
+  });
+
   it("shows a server error", async () => {
     stubFetch();
     render(withQueryClient(<SeedLotForm onSubmit={vi.fn()} isSubmitting={false} serverError="Supplier lot code already exists" />));
