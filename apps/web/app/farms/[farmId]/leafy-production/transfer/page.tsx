@@ -85,6 +85,7 @@ export default function ProductionTransferPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Production Transfer"
         breadcrumbs={
           <Breadcrumbs

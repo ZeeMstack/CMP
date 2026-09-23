@@ -153,7 +153,7 @@ describe("IntervinesTransplantForm", () => {
     fireEvent.click(within(tableListbox).getByText("IV-01"));
     fireEvent.change(screen.getByLabelText(/plants to transfer/i), { target: { value: "150" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /transfer 150 plants/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText(/exceed this source's available seedlings/i)).toBeInTheDocument());
     expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
   });
@@ -172,7 +172,7 @@ describe("IntervinesTransplantForm", () => {
     fireEvent.click(within(tableListbox).getByText("IV-01"));
     fireEvent.change(screen.getByLabelText(/plants to transfer/i), { target: { value: "25" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /transfer 25 plants/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText(/exceed the available grow cubes/i)).toBeInTheDocument());
   });
 
@@ -193,9 +193,9 @@ describe("IntervinesTransplantForm", () => {
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-09-08" } });
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /transfer 72 plants/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /confirm transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record transfer/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const [batchId, payload] = onSubmit.mock.calls[0];
@@ -221,10 +221,10 @@ describe("IntervinesTransplantForm", () => {
     fireEvent.click(within(tableListbox).getByText("IV-01"));
     fireEvent.change(screen.getByLabelText(/plants to transfer/i), { target: { value: "10" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /transfer 10 plants/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /confirm transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /confirm transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record transfer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record transfer/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
     expect(onSubmit.mock.calls[0][1].client_command_id).toBe(onSubmit.mock.calls[1][1].client_command_id);
@@ -244,7 +244,7 @@ describe("IntervinesTransplantForm", () => {
     const tableListbox = await screen.findByRole("listbox");
     fireEvent.click(within(tableListbox).getByText("IV-01"));
     fireEvent.change(screen.getByLabelText(/plants to transfer/i), { target: { value: "10" } });
-    fireEvent.click(screen.getByRole("button", { name: /transfer 10 plants/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
 
     rerender(

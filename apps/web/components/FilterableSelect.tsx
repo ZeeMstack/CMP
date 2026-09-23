@@ -47,6 +47,7 @@ export function FilterableSelect({
 }) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -108,6 +109,17 @@ export function FilterableSelect({
     }
   }
 
+  // UX-OPS-001C: this list renders inline (no portal), so inside a bounded
+  // scrolling region (`BoundedDataRegion`, e.g. a transfer's destination
+  // editor) an open list near the region's bottom edge would sit below the
+  // visible area. Scrolling it into view on open -- `block: "nearest"`, so
+  // nothing moves when it is already fully visible -- keeps every option
+  // reachable without a portal. Optional-called: jsdom has no
+  // `scrollIntoView`.
+  useEffect(() => {
+    if (open) listboxRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [open]);
+
   return (
     // BROWSER QA CORRECTION 2: `isolate` alone only scopes the open list's
     // `z-10` (below) against elements INSIDE this same wrapper -- it does
@@ -155,6 +167,7 @@ export function FilterableSelect({
       />
       {open && (
         <ul
+          ref={listboxRef}
           id={listboxId}
           role="listbox"
           className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-wl-border bg-wl-surface-raised shadow-lg"

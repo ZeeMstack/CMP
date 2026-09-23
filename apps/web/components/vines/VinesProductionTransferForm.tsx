@@ -4,7 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
+import { AllocationSummaryRail } from "@/components/allocation/AllocationSummaryRail";
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { VinesProductionTransferCreate } from "@/lib/api/client";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
@@ -182,48 +185,107 @@ export function VinesProductionTransferForm({
     onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, gutter?.label ?? finalValues.gutter_code);
   }
 
+  // UX-OPS-001C: rail figures -- the server allocates the actual Grow
+  // Bags/Positions, so the operator-side reconciliation is source available
+  // vs. plants to transfer vs. what remains on the InterVines source. The
+  // two over-limit blockers mirror the schema's own refinements exactly
+  // (lib/validation/vinesProductionTransfer.ts), shown live.
+  const plantCount = Number.isFinite(values.plant_count) ? values.plant_count : 0;
+  const railStats = values.source_intervines_table_id
+    ? [
+        { label: "Available plants", value: values.current_available.toLocaleString() },
+        { label: "To transfer", value: plantCount.toLocaleString() },
+        { label: "Source remaining", value: (values.current_available - plantCount).toLocaleString() },
+        ...(values.destination_grow_gutter_id
+          ? [{ label: "Available capacity", value: `${availablePlantCapacity.toLocaleString()} plants` }]
+          : []),
+      ]
+    : [];
+  const capacityBlockers = [
+    values.source_intervines_table_id && plantCount > values.current_available
+      ? `Cannot exceed this InterVines source's available plants (${values.current_available})`
+      : null,
+    values.destination_grow_gutter_id && plantCount > availablePlantCapacity
+      ? `Cannot exceed the available Grow Bag capacity (${availablePlantCapacity})`
+      : null,
+  ].filter((b): b is string => Boolean(b));
+
   if (step === "review") {
     const reviewValues = getValues();
     const gutter = gutterOptions.find((g) => g.value === reviewValues.destination_grow_gutter_id);
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transferring</h2>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
+      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+        <SplitWorkspace
+          main={
+            <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="font-serif text-base font-semibold text-wl-text">Review before transferring</h2>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-wl-text-secondary">Batch</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Plants</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Grow Cubes retained</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Source</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.source_table_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Grow Gutter</dt>
+                  <dd className="font-medium text-wl-text">{gutter?.label ?? reviewValues.gutter_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Occurred at</dt>
+                  <dd className="font-medium text-wl-text">
+                    {reviewValues.effective_date} {reviewValues.effective_time_of_day}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs text-wl-text-secondary">
+                The server allocates the specific Grow Bags and Positions; their codes appear on the receipt.
+              </p>
             </div>
-            <div>
-              <dt className="text-wl-text-secondary">Plants</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Grow Cubes retained</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Grow Gutter</dt>
-              <dd className="font-medium text-wl-text">{gutter?.label ?? reviewValues.gutter_code}</dd>
-            </div>
-          </dl>
-        </div>
-        {serverError && (
-          <p role="alert" className={errorClass}>
-            {friendlyMutationErrorMessage(serverError)}
-          </p>
-        )}
-        <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
-            Back
-          </Button>
-          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
-            {isSubmitting ? "Transferring…" : "Confirm transfer"}
-          </Button>
-        </div>
+          }
+          rail={
+            <AllocationSummaryRail
+              heading="Reconciliation"
+              stats={railStats}
+              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+            >
+              <StickyActionBar>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                    Back to edit
+                  </Button>
+                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
+                    {isSubmitting ? "Transferring…" : "Record Transfer"}
+                  </Button>
+                </div>
+              </StickyActionBar>
+            </AllocationSummaryRail>
+          }
+        />
       </div>
     );
   }
+
+  const canReview = Boolean(
+    values.source_intervines_table_id && values.destination_grow_gutter_id &&
+    values.grow_bag_specification_id && values.plant_count,
+  );
+  const configureHint = !values.source_intervines_table_id
+    ? "Select an InterVines source to start."
+    : !values.destination_grow_gutter_id
+      ? "Select a destination Grow Gutter."
+      : !values.plant_count
+        ? "Enter the number of plants to transfer."
+        : null;
 
   return (
     <form
@@ -231,154 +293,144 @@ export function VinesProductionTransferForm({
         e.preventDefault();
         goToReview();
       }}
-      className="flex flex-col gap-6"
+      className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
     >
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Source</legend>
-        <Field label="Batch / InterVines Table" error={errors.source_intervines_table_id?.message}>
-          <FilterableSelect
-            aria-label="Batch / InterVines Table"
-            options={sourceOptions}
-            loading={intervinesQuery.isLoading}
-            value={values.source_intervines_table_id}
-            placeholder="Search InterVines Table by code…"
-            emptyMessage="No InterVines sources available"
-            onChange={selectSource}
-          />
-        </Field>
-        {values.source_intervines_table_id && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{values.batch_code}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Crop / Variety</dt>
-              <dd className="font-medium text-wl-text">
-                {values.crop_common_name}
-                {values.variety_name ? ` / ${values.variety_name}` : ""}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Available plants</dt>
-              <dd className="font-medium text-wl-text">{values.current_available.toLocaleString()}</dd>
-            </div>
-          </dl>
-        )}
-      </fieldset>
-
-      {values.source_intervines_table_id && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
-          {vinesGreenhouses.length > 1 && (
-            <Field label="Destination Greenhouse">
-              <select
-                value={values.destination_greenhouse_id}
-                onChange={(e) => {
-                  setValue("destination_greenhouse_id", e.target.value);
-                  setValue("destination_grow_gutter_id", "");
-                  setValue("gutter_code", "");
-                }}
-                className={inputClass}
-              >
-                <option value="">Select a Greenhouse…</option>
-                {vinesGreenhouses.map((gh) => (
-                  <option key={gh.greenhouse_id} value={gh.greenhouse_id}>
-                    {gh.code}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-          {vinesGreenhouses.length === 1 && values.destination_greenhouse_id !== vinesGreenhouses[0].greenhouse_id && (
-            <SingleGreenhouseAutoSelect greenhouseId={vinesGreenhouses[0].greenhouse_id} setValue={setValue} />
-          )}
-
-          {values.destination_greenhouse_id && (
-            <Field label="Grow Gutter" error={errors.destination_grow_gutter_id?.message}>
-              <FilterableSelect
-                aria-label="Grow Gutter"
-                options={gutterOptions}
-                loading={structureQuery.isLoading}
-                value={values.destination_grow_gutter_id}
-                placeholder="Search Gutter by code…"
-                emptyMessage="No Grow Gutters configured in this Greenhouse"
-                onChange={(gutterId) => {
-                  const gutter = gutterOptions.find((g) => g.value === gutterId);
-                  setValue("destination_grow_gutter_id", gutterId, { shouldValidate: true });
-                  setValue("gutter_code", gutter?.label ?? "");
-                }}
-              />
-            </Field>
-          )}
-
-          {values.destination_grow_gutter_id && (
-            <>
-              <Field label="Plants to transfer" error={errors.plant_count?.message}>
-                <input
-                  type="number" min={1} step={1} className={`${inputClassBase} w-full sm:w-40`}
-                  {...register("plant_count", { valueAsNumber: true })}
+      <SplitWorkspace
+        main={
+          <div className="flex flex-col gap-4">
+            <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Source</legend>
+              <Field label="Batch / InterVines Table" error={errors.source_intervines_table_id?.message}>
+                <FilterableSelect
+                  aria-label="Batch / InterVines Table"
+                  options={sourceOptions}
+                  loading={intervinesQuery.isLoading}
+                  value={values.source_intervines_table_id}
+                  placeholder="Search InterVines Table by code…"
+                  emptyMessage="No InterVines sources available"
+                  onChange={selectSource}
                 />
               </Field>
+            </fieldset>
 
-              {showSpecificationPicker && (
-                <Field label="Grow Bag specification" error={errors.grow_bag_specification_id?.message}>
-                  <FilterableSelect
-                    aria-label="Grow Bag specification"
-                    options={specificationOptions}
-                    loading={growBagPoolsQuery.isLoading}
-                    value={values.grow_bag_specification_id}
-                    placeholder="Search specification…"
-                    emptyMessage="No Grow Bag specifications available"
-                    onChange={(specId) => setValue("grow_bag_specification_id", specId, { shouldValidate: true })}
-                  />
-                </Field>
-              )}
+            {values.source_intervines_table_id && (
+              <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
+                {vinesGreenhouses.length > 1 && (
+                  <Field label="Destination Greenhouse">
+                    <select
+                      value={values.destination_greenhouse_id}
+                      onChange={(e) => {
+                        setValue("destination_greenhouse_id", e.target.value);
+                        setValue("destination_grow_gutter_id", "");
+                        setValue("gutter_code", "");
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Select a Greenhouse…</option>
+                      {vinesGreenhouses.map((gh) => (
+                        <option key={gh.greenhouse_id} value={gh.greenhouse_id}>
+                          {gh.code}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+                {vinesGreenhouses.length === 1 && values.destination_greenhouse_id !== vinesGreenhouses[0].greenhouse_id && (
+                  <SingleGreenhouseAutoSelect greenhouseId={vinesGreenhouses[0].greenhouse_id} setValue={setValue} />
+                )}
 
-              <dl className="text-sm">
-                <div>
-                  <dt className="text-wl-text-secondary">Available capacity</dt>
-                  <dd className="font-medium text-wl-text">{availablePlantCapacity.toLocaleString()} plants</dd>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {values.destination_greenhouse_id && (
+                    <Field label="Grow Gutter" error={errors.destination_grow_gutter_id?.message}>
+                      <FilterableSelect
+                        aria-label="Grow Gutter"
+                        options={gutterOptions}
+                        loading={structureQuery.isLoading}
+                        value={values.destination_grow_gutter_id}
+                        placeholder="Search Gutter by code…"
+                        emptyMessage="No Grow Gutters configured in this Greenhouse"
+                        onChange={(gutterId) => {
+                          const gutter = gutterOptions.find((g) => g.value === gutterId);
+                          setValue("destination_grow_gutter_id", gutterId, { shouldValidate: true });
+                          setValue("gutter_code", gutter?.label ?? "");
+                        }}
+                      />
+                    </Field>
+                  )}
+
+                  {values.destination_grow_gutter_id && (
+                    <Field label="Plants to transfer" error={errors.plant_count?.message}>
+                      <input
+                        type="number" min={1} step={1} className={`${inputClassBase} w-full sm:w-40`}
+                        {...register("plant_count", { valueAsNumber: true })}
+                      />
+                    </Field>
+                  )}
                 </div>
-              </dl>
-            </>
-          )}
-        </fieldset>
-      )}
 
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
-        <Field label="Date" error={errors.effective_date?.message}>
-          <input type="date" {...register("effective_date")} className={inputClass} />
-        </Field>
-        <Field label="Time" error={errors.effective_time_of_day?.message}>
-          <input type="time" {...register("effective_time_of_day")} className={inputClass} />
-        </Field>
-      </fieldset>
+                {values.destination_grow_gutter_id && showSpecificationPicker && (
+                  <Field label="Grow Bag specification" error={errors.grow_bag_specification_id?.message}>
+                    <FilterableSelect
+                      aria-label="Grow Bag specification"
+                      options={specificationOptions}
+                      loading={growBagPoolsQuery.isLoading}
+                      value={values.grow_bag_specification_id}
+                      placeholder="Search specification…"
+                      emptyMessage="No Grow Bag specifications available"
+                      onChange={(specId) => setValue("grow_bag_specification_id", specId, { shouldValidate: true })}
+                    />
+                  </Field>
+                )}
+              </fieldset>
+            )}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
-        <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
-      </fieldset>
-
-      {serverError && (
-        <p role="alert" className={errorClass}>
-          {friendlyMutationErrorMessage(serverError)}
-        </p>
-      )}
-
-      <div>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={
-            !values.source_intervines_table_id || !values.destination_grow_gutter_id ||
-            !values.grow_bag_specification_id || !values.plant_count
-          }
-        >
-          {values.plant_count > 0 ? `Transfer ${values.plant_count.toLocaleString()} plants` : "Transfer plants"}
-        </Button>
-      </div>
+            <fieldset className="grid grid-cols-1 gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
+              <Field label="Date" error={errors.effective_date?.message}>
+                <input type="date" {...register("effective_date")} className={inputClass} />
+              </Field>
+              <Field label="Time" error={errors.effective_time_of_day?.message}>
+                <input type="time" {...register("effective_time_of_day")} className={inputClass} />
+              </Field>
+              <details className="sm:col-span-2">
+                <summary className="cursor-pointer text-sm font-medium text-wl-text">Note (optional)</summary>
+                <textarea {...register("note")} aria-label="Note" className={`${inputClass} mt-2 min-h-20`} rows={2} />
+              </details>
+            </fieldset>
+          </div>
+        }
+        rail={
+          <AllocationSummaryRail
+            context={
+              values.source_intervines_table_id && (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Batch</dt>
+                    <dd className="font-medium text-wl-text">{values.batch_code}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Crop / Variety</dt>
+                    <dd className="font-medium text-wl-text">
+                      {values.crop_common_name}
+                      {values.variety_name ? ` / ${values.variety_name}` : ""}
+                    </dd>
+                  </div>
+                </dl>
+              )
+            }
+            stats={railStats}
+            hint={configureHint}
+            blockers={[...capacityBlockers, ...(serverError ? [friendlyMutationErrorMessage(serverError)] : [])]}
+          >
+            <StickyActionBar>
+              <Button type="submit" variant="primary" className="w-full" disabled={!canReview}>
+                Review Transfer
+              </Button>
+            </StickyActionBar>
+          </AllocationSummaryRail>
+        }
+      />
     </form>
   );
 }

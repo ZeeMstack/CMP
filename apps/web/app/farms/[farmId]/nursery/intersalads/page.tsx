@@ -64,6 +64,7 @@ export default function IntersaladsTransplantPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Transfer to Inter Leafy Greens"
         breadcrumbs={
           <Breadcrumbs

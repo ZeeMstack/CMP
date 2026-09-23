@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { ErrorState } from "@/components/ErrorState";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { IntervinesTransplantForm } from "@/components/nursery/IntervinesTransplantForm";
 import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { PageHeader } from "@/components/PageHeader";
@@ -68,6 +70,7 @@ export default function IntervinesTransplantPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Transfer to InterVines"
         breadcrumbs={
           <Breadcrumbs
@@ -151,7 +154,7 @@ export default function IntervinesTransplantPage() {
         />
       )}
 
-      <div className="mt-8">
+      <div className="mt-6">
         <h2 className="font-serif text-base font-semibold text-ink">Currently in InterVines</h2>
         <IntervinesPlacementsTable farmId={farmId} />
       </div>
@@ -166,60 +169,60 @@ function IntervinesPlacementsTable({ farmId }: { farmId: string }) {
   if (placementsQuery.isLoading) {
     return <p className="mt-2 text-sm text-ink-muted">Loading…</p>;
   }
+  if (placementsQuery.isError) {
+    return <ErrorState error={placementsQuery.error} onRetry={() => placementsQuery.refetch()} />;
+  }
   const rows = placementsQuery.data ?? [];
   if (rows.length === 0) {
     return <p className="mt-2 text-sm text-ink-muted">Nothing is currently in InterVines.</p>;
   }
 
+  // UX-OPS-001C: a bounded, compact list (never a page-lengthening table)
+  // -- still aggregated by (Batch, Table), never one row per Grow Cube.
   return (
-    <div className="mt-2 overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-      <table className="w-full min-w-[640px] text-left text-sm">
-        <thead>
-          <tr className="border-b border-border-subtle text-ink-muted">
-            <th className="p-3 font-medium">Batch</th>
-            <th className="p-3 font-medium">Crop</th>
-            <th className="p-3 font-medium">Variety</th>
-            <th className="p-3 font-medium">Table</th>
-            <th className="p-3 font-medium">Plants</th>
-            <th className="p-3 font-medium">Days in InterVines</th>
-            <th className="p-3 font-medium" />
-          </tr>
-        </thead>
-        <tbody>
+    <div className="mt-2">
+      <BoundedDataRegion
+        label="Currently in InterVines"
+        heading={
+          <div className="flex justify-between text-xs font-medium text-wl-text-secondary">
+            <span>Batch · Table · Crop</span>
+            <span>Plants · Days</span>
+          </div>
+        }
+      >
+        <ul className="divide-y divide-wl-border">
           {rows.map((row) => {
             const key = `${row.batch_id}:${row.table_id}`;
             const isExpanded = expanded?.batchId === row.batch_id && expanded?.tableId === row.table_id;
             return (
-              <>
-                <tr key={key} className="border-b border-border-subtle last:border-0">
-                  <td className="p-3 text-ink">{row.batch_code}</td>
-                  <td className="p-3 text-ink">{row.crop_common_name}</td>
-                  <td className="p-3 text-ink">{row.variety_name ?? "—"}</td>
-                  <td className="p-3 text-ink">{row.table_code}</td>
-                  <td className="p-3 text-ink">{row.plant_count.toLocaleString()}</td>
-                  <td className="p-3 text-ink">{row.days_in_intervines}</td>
-                  <td className="p-3">
-                    <button
-                      type="button"
-                      onClick={() => setExpanded(isExpanded ? null : { batchId: row.batch_id, tableId: row.table_id })}
-                      className="min-h-9 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
-                    >
-                      {isExpanded ? "Hide Grow Cubes" : "Grow Cubes"}
-                    </button>
-                  </td>
-                </tr>
-                {isExpanded && (
-                  <tr key={`${key}-detail`} className="border-b border-border-subtle bg-surface-subtle last:border-0">
-                    <td colSpan={7} className="p-3">
-                      <GrowCubeDrillDown farmId={farmId} batchId={row.batch_id} tableId={row.table_id} />
-                    </td>
-                  </tr>
-                )}
-              </>
+              <li key={key} className="flex flex-col gap-2 px-3.5 py-2">
+                <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm font-medium text-wl-text">
+                    {row.batch_code} · {row.table_code}
+                  </span>
+                  <span className="text-xs text-wl-text-secondary">
+                    {row.crop_common_name}
+                    {row.variety_name ? ` / ${row.variety_name}` : ""}
+                  </span>
+                  <span className="ml-auto text-sm font-semibold tabular-nums text-wl-text">
+                    {row.plant_count.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-wl-text-secondary">Day {row.days_in_intervines}</span>
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpanded(isExpanded ? null : { batchId: row.batch_id, tableId: row.table_id })}
+                    className="min-h-9 rounded-md border border-border-subtle px-3 text-xs font-medium text-ink hover:bg-surface-subtle"
+                  >
+                    {isExpanded ? "Hide Grow Cubes" : "Grow Cubes"}
+                  </button>
+                </div>
+                {isExpanded && <GrowCubeDrillDown farmId={farmId} batchId={row.batch_id} tableId={row.table_id} />}
+              </li>
             );
           })}
-        </tbody>
-      </table>
+        </ul>
+      </BoundedDataRegion>
     </div>
   );
 }

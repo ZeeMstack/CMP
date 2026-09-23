@@ -5,9 +5,12 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Control, UseFormSetValue, useFieldArray, useForm, useWatch } from "react-hook-form";
 
-import { AllocationTotalsBar, type AllocationTotalsStat } from "@/components/allocation/AllocationTotalsBar";
+import { AllocationSummaryRail, type AllocationTotalsStat } from "@/components/allocation/AllocationSummaryRail";
 import { CompactLossDisclosure } from "@/components/allocation/CompactLossDisclosure";
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantCreate } from "@/lib/api/client";
 import { suggestAllocations } from "@/lib/allocation/suggestAllocation";
@@ -649,105 +652,131 @@ export function IntersaladsTransplantForm({
     onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, tableCodeById);
   }
 
+  // UX-OPS-001C: the one reconciliation line shown on Review --
+  // input = transplanted + loss + remainder, all from the same helpers
+  // backing validation, so a mismatch can never be hidden by rounding or
+  // a second copy of the math.
+  const reconciliationLine = `${totalAvailable.toLocaleString()} available = ${totalAllocated.toLocaleString()} transplanted + ${totalLoss.toLocaleString()} loss + ${totalRemainder.toLocaleString()} remaining`;
+
   if (step === "review") {
     const reviewValues = getValues();
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Crop / Variety</dt>
-              <dd className="font-medium text-wl-text">
-                {reviewValues.crop_common_name} / {reviewValues.variety_name}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Occurred at</dt>
-              <dd className="font-medium text-wl-text">
-                {reviewValues.effective_date} {reviewValues.effective_time_of_day}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Total transplanted</dt>
-              <dd className="font-medium text-wl-text">{totalTransplantedCount(reviewValues).toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Total losses</dt>
-              <dd className="font-medium text-wl-text">{totalLossCount(reviewValues).toLocaleString()}</dd>
-            </div>
-          </dl>
+      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+        <StepIndicator step="review" />
+        <SplitWorkspace
+          main={
+            <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-wl-text-secondary">Batch</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Crop / Variety</dt>
+                  <dd className="font-medium text-wl-text">
+                    {reviewValues.crop_common_name} / {reviewValues.variety_name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Occurred at</dt>
+                  <dd className="font-medium text-wl-text">
+                    {reviewValues.effective_date} {reviewValues.effective_time_of_day}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Total transplanted</dt>
+                  <dd className="font-medium text-wl-text">{totalTransplantedCount(reviewValues).toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Total losses</dt>
+                  <dd className="font-medium text-wl-text">{totalLossCount(reviewValues).toLocaleString()}</dd>
+                </div>
+              </dl>
 
-          <div>
-            <h3 className="text-sm font-semibold text-wl-text">Sources</h3>
-            <ul className="divide-y divide-wl-border text-sm">
-              {reviewValues.sources.map((s) => (
-                <li key={s.source_assignment_id} className="flex flex-col gap-1 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-wl-text">{s.tray_code}</span>
-                    <span className="text-wl-text-secondary">
-                      Available {s.current_available} · Allocated{" "}
-                      {sourceAllocatedTotal(reviewValues, s.source_assignment_id)} · Remaining{" "}
-                      {sourceRemaining(reviewValues, s.source_assignment_id)}
-                    </span>
-                  </div>
-                  {s.transplant_damage_count + s.qc_rejection_count + s.sample_count + s.other_loss_count > 0 && (
-                    <span className="text-xs text-wl-text-secondary">
-                      Losses: damage {s.transplant_damage_count}, rejected {s.qc_rejection_count}, sample{" "}
-                      {s.sample_count}, other {s.other_loss_count}
-                      {s.other_loss_note ? ` (${s.other_loss_note})` : ""}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
+              <BoundedDataRegion label="Sources" heading={<h3 className="text-sm font-semibold text-wl-text">Sources</h3>}>
+                <ul className="divide-y divide-wl-border px-3 text-sm">
+                  {reviewValues.sources.map((s) => (
+                    <li key={s.source_assignment_id} className="flex flex-col gap-1 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-wl-text">{s.tray_code}</span>
+                        <span className="text-wl-text-secondary">
+                          Available {s.current_available} · Allocated{" "}
+                          {sourceAllocatedTotal(reviewValues, s.source_assignment_id)} · Remaining{" "}
+                          {sourceRemaining(reviewValues, s.source_assignment_id)}
+                        </span>
+                      </div>
+                      {s.transplant_damage_count + s.qc_rejection_count + s.sample_count + s.other_loss_count > 0 && (
+                        <span className="text-xs text-wl-text-secondary">
+                          Losses: damage {s.transplant_damage_count}, rejected {s.qc_rejection_count}, sample{" "}
+                          {s.sample_count}, other {s.other_loss_count}
+                          {s.other_loss_note ? ` (${s.other_loss_note})` : ""}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </BoundedDataRegion>
 
-          <div>
-            <h3 className="text-sm font-semibold text-wl-text">Destinations</h3>
-            <ul className="divide-y divide-wl-border text-sm">
-              {reviewValues.destinations.map((d, i) => (
-                <li key={i} className="flex flex-col gap-1 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-wl-text">
-                      {d.plate_code} → {d.table_code}
-                    </span>
-                    <span className="text-wl-text-secondary">
-                      {destinationAssignedCount(d).toLocaleString()} seedlings
-                      {d.biological_position_count != null ? ` of ${d.biological_position_count.toLocaleString()} capacity` : ""}
-                    </span>
-                  </div>
-                  <span className="text-xs text-wl-text-secondary">
-                    {d.allocations.map((a) => {
-                      const source = reviewValues.sources.find((s) => s.source_assignment_id === a.source_assignment_id);
-                      return `${source?.tray_code ?? "?"}: ${a.quantity}`;
-                    }).join(", ")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        {serverError && (
-          <p role="alert" className={errorClass}>
-            {friendlyMutationErrorMessage(serverError)}
-          </p>
-        )}
-        <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
-            Back
-          </Button>
-          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
-            {isSubmitting ? "Transplanting…" : "Confirm transplant"}
-          </Button>
-        </div>
+              <BoundedDataRegion label="Destinations" heading={<h3 className="text-sm font-semibold text-wl-text">Destinations</h3>}>
+                <ul className="divide-y divide-wl-border px-3 text-sm">
+                  {reviewValues.destinations.map((d, i) => (
+                    <li key={i} className="flex flex-col gap-1 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-wl-text">
+                          {d.plate_code} → {d.table_code}
+                        </span>
+                        <span className="text-wl-text-secondary">
+                          {destinationAssignedCount(d).toLocaleString()} seedlings
+                          {d.biological_position_count != null ? ` of ${d.biological_position_count.toLocaleString()} capacity` : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-wl-text-secondary">
+                        {d.allocations.map((a) => {
+                          const source = reviewValues.sources.find((s) => s.source_assignment_id === a.source_assignment_id);
+                          return `${source?.tray_code ?? "?"}: ${a.quantity}`;
+                        }).join(", ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </BoundedDataRegion>
+            </div>
+          }
+          rail={
+            <AllocationSummaryRail
+              heading="Reconciliation"
+              stats={totalsStats}
+              hint={reconciliationLine}
+              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+            >
+              <StickyActionBar>
+                <div className="flex gap-3">
+                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                    Back to edit
+                  </Button>
+                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
+                    {isSubmitting ? "Transplanting…" : "Record Transplant"}
+                  </Button>
+                </div>
+              </StickyActionBar>
+            </AllocationSummaryRail>
+          }
+        />
       </div>
     );
   }
+
+  const canReview = sourcesArray.fields.length > 0 && destinationsArray.fields.length > 0;
+  const configureHint =
+    sourcesArray.fields.length === 0
+      ? "Add at least one source Tray to start."
+      : destinationsArray.fields.length === 0
+        ? "Add at least one destination Plate."
+        : null;
+  const configureBlockers = [totalsWarning, serverError ? friendlyMutationErrorMessage(serverError) : null].filter(
+    (b): b is string => Boolean(b),
+  );
 
   return (
     <form
@@ -755,16 +784,18 @@ export function IntersaladsTransplantForm({
         e.preventDefault();
         goToReview();
       }}
-      className="flex flex-col gap-6"
+      className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
     >
+      <StepIndicator step="configure" />
+
       {nurseries.length > 1 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <fieldset className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3">
           <legend className="px-1 text-sm font-semibold text-wl-text">Nursery Greenhouse</legend>
           <Field label="Nursery">
             <select
               value={nurseryGreenhouseId}
               onChange={(e) => setNurseryGreenhouseId(e.target.value)}
-              className={inputClass}
+              className={`${inputClassBase} w-full sm:w-72`}
             >
               <option value="">Select a Nursery…</option>
               {nurseries.map((n) => (
@@ -777,217 +808,235 @@ export function IntersaladsTransplantForm({
         </fieldset>
       )}
 
-      {values.sources.length > 0 && <AllocationTotalsBar stats={totalsStats} warning={totalsWarning} />}
+      <SplitWorkspace
+        main={
+          <div className="flex flex-col gap-4">
+            <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Source Seedling Tray(s)</legend>
+              {errors.sources?.message && <p className={errorClass}>{errors.sources.message}</p>}
+              <Field label="Add a source Tray">
+                <FilterableSelect
+                  aria-label="Add a source Tray"
+                  options={eligibleSources.map((t) => ({
+                    value: t.batch_carrier_assignment_id,
+                    label: t.tray_code,
+                    description: `${t.batch_code} — ${t.current_source_available_count.toLocaleString()} available`,
+                  }))}
+                  value=""
+                  loading={traysQuery.isLoading}
+                  placeholder="Search Tray by code…"
+                  emptyMessage={batchId ? "No other eligible Trays on this Batch" : "No eligible source Trays"}
+                  onChange={addSource}
+                />
+              </Field>
+              {sourcesArray.fields.length > 0 && (
+                <BoundedDataRegion label="Selected source Trays">
+                  <ul className="flex flex-col gap-2 p-2">
+                    {sourcesArray.fields.map((field, index) => {
+                      // `values.sources` (from `useWatch`) can briefly lag one
+                      // render behind `sourcesArray.fields` right after an
+                      // `append()` -- falling back to `field`'s own (initial, all
+                      // -zero) data for that one render avoids a crash without
+                      // ever showing a wrong non-zero total.
+                      const sourceValues = values.sources[index] ?? field;
+                      const lossTotal =
+                        sourceValues.transplant_damage_count + sourceValues.qc_rejection_count +
+                        sourceValues.sample_count + sourceValues.other_loss_count;
+                      return (
+                        <li key={field.id} className="flex flex-col gap-2 rounded-md border border-wl-border p-3">
+                          <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                            <span className="text-sm font-medium text-wl-text">{field.tray_code}</span>
+                            <Stat label="Available" value={field.current_available.toLocaleString()} />
+                            <Stat label="Allocated" value={sourceAllocatedTotal(values, field.source_assignment_id).toLocaleString()} />
+                            <Stat label="Remaining" value={sourceRemaining(values, field.source_assignment_id).toLocaleString()} />
+                            <button
+                              type="button"
+                              onClick={() => removeSource(index)}
+                              className="ml-auto min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <CompactLossDisclosure total={lossTotal}>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                              <Field label="Damage">
+                                <input
+                                  type="number" min={0} step={1} className={inputClass}
+                                  {...register(`sources.${index}.transplant_damage_count`, { valueAsNumber: true })}
+                                />
+                              </Field>
+                              <Field label="QC rejected">
+                                <input
+                                  type="number" min={0} step={1} className={inputClass}
+                                  {...register(`sources.${index}.qc_rejection_count`, { valueAsNumber: true })}
+                                />
+                              </Field>
+                              <Field label="Sample">
+                                <input
+                                  type="number" min={0} step={1} className={inputClass}
+                                  {...register(`sources.${index}.sample_count`, { valueAsNumber: true })}
+                                />
+                              </Field>
+                              <Field label="Other">
+                                <input
+                                  type="number" min={0} step={1} className={inputClass}
+                                  {...register(`sources.${index}.other_loss_count`, { valueAsNumber: true })}
+                                />
+                              </Field>
+                            </div>
+                            <Field
+                              label={`Other loss note ${values.sources[index]?.other_loss_count > 0 ? "(required)" : "(optional)"}`}
+                              error={errors.sources?.[index]?.other_loss_note?.message}
+                            >
+                              <input className={inputClass} {...register(`sources.${index}.other_loss_note`)} />
+                            </Field>
+                          </CompactLossDisclosure>
+                          {errors.sources?.[index]?.current_available?.message && (
+                            <span className={errorClass}>{errors.sources[index]?.current_available?.message}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </BoundedDataRegion>
+              )}
+            </fieldset>
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Source Seedling Tray(s)</legend>
-        {errors.sources?.message && <p className={errorClass}>{errors.sources.message}</p>}
-        {establishedBatch && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Crop / Variety</dt>
-              <dd className="font-medium text-wl-text">
-                {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
-              </dd>
-            </div>
-          </dl>
-        )}
-        <Field label="Add a source Tray">
-          <FilterableSelect
-            aria-label="Add a source Tray"
-            options={eligibleSources.map((t) => ({
-              value: t.batch_carrier_assignment_id,
-              label: t.tray_code,
-              description: `${t.batch_code} — ${t.current_source_available_count.toLocaleString()} available`,
-            }))}
-            value=""
-            loading={traysQuery.isLoading}
-            placeholder="Search Tray by code…"
-            emptyMessage={batchId ? "No other eligible Trays on this Batch" : "No eligible source Trays"}
-            onChange={addSource}
-          />
-        </Field>
-        {sourcesArray.fields.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {sourcesArray.fields.map((field, index) => {
-              // `values.sources` (from `useWatch`) can briefly lag one
-              // render behind `sourcesArray.fields` right after an
-              // `append()` -- falling back to `field`'s own (initial, all
-              // -zero) data for that one render avoids a crash without
-              // ever showing a wrong non-zero total.
-              const sourceValues = values.sources[index] ?? field;
-              const lossTotal =
-                sourceValues.transplant_damage_count + sourceValues.qc_rejection_count +
-                sourceValues.sample_count + sourceValues.other_loss_count;
-              return (
-                <li key={field.id} className="flex flex-col gap-2 rounded-md border border-wl-border p-3">
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-                    <span className="text-sm font-medium text-wl-text">{field.tray_code}</span>
-                    <Stat label="Available" value={field.current_available.toLocaleString()} />
-                    <Stat label="Allocated" value={sourceAllocatedTotal(values, field.source_assignment_id).toLocaleString()} />
-                    <Stat label="Remaining" value={sourceRemaining(values, field.source_assignment_id).toLocaleString()} />
-                    <button
-                      type="button"
-                      onClick={() => removeSource(index)}
-                      className="ml-auto min-h-11 rounded-md border border-wl-border px-3 text-xs font-medium text-wl-text hover:bg-wl-surface-sunken"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <CompactLossDisclosure total={lossTotal}>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      <Field label="Damage">
-                        <input
-                          type="number" min={0} step={1} className={inputClass}
-                          {...register(`sources.${index}.transplant_damage_count`, { valueAsNumber: true })}
-                        />
-                      </Field>
-                      <Field label="QC rejected">
-                        <input
-                          type="number" min={0} step={1} className={inputClass}
-                          {...register(`sources.${index}.qc_rejection_count`, { valueAsNumber: true })}
-                        />
-                      </Field>
-                      <Field label="Sample">
-                        <input
-                          type="number" min={0} step={1} className={inputClass}
-                          {...register(`sources.${index}.sample_count`, { valueAsNumber: true })}
-                        />
-                      </Field>
-                      <Field label="Other">
-                        <input
-                          type="number" min={0} step={1} className={inputClass}
-                          {...register(`sources.${index}.other_loss_count`, { valueAsNumber: true })}
+            {sourcesArray.fields.length > 0 && (
+              <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                <legend className="px-1 text-sm font-semibold text-wl-text">Destination Plate(s)</legend>
+                {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
+
+                <div className="rounded-lg border border-wl-border bg-wl-surface-sunken p-3">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-wl-text-secondary">
+                    Destination area
+                  </span>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="min-w-40 flex-1">
+                      <Field label="InterSalads Table">
+                        <FilterableSelect
+                          aria-label="Destination area Table"
+                          options={tableOptions}
+                          loading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
+                          value={destinationAreaTableId}
+                          placeholder="Search Table by code…"
+                          emptyMessage="No InterSalads Tables configured in this Nursery"
+                          onChange={setDestinationAreaTableId}
                         />
                       </Field>
                     </div>
-                    <Field
-                      label={`Other loss note ${values.sources[index]?.other_loss_count > 0 ? "(required)" : "(optional)"}`}
-                      error={errors.sources?.[index]?.other_loss_note?.message}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={applyAreaTableToUnconfiguredRows}
+                      disabled={!destinationAreaTableId}
                     >
-                      <input className={inputClass} {...register(`sources.${index}.other_loss_note`)} />
-                    </Field>
-                  </CompactLossDisclosure>
-                  {errors.sources?.[index]?.current_available?.message && (
-                    <span className={errorClass}>{errors.sources[index]?.current_available?.message}</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </fieldset>
+                      Apply to unconfigured rows
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-wl-text-secondary">Applies to newly added destination rows below -- not to existing allocated ones.</p>
+                </div>
 
-      {sourcesArray.fields.length > 0 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <legend className="px-1 text-sm font-semibold text-wl-text">Destination Plate(s)</legend>
-          {errors.destinations?.message && <p className={errorClass}>{errors.destinations.message}</p>}
+                <div className="flex flex-wrap gap-3">
+                  <Button type="button" variant="secondary" onClick={addDestination}>
+                    Add destination Plate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSuggestAllocation}
+                    disabled={destinationsArray.fields.length === 0}
+                  >
+                    Suggest allocation
+                  </Button>
+                </div>
 
-          <div className="rounded-lg border border-wl-border bg-wl-surface-sunken p-3">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-wl-text-secondary">
-              Destination area
-            </span>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="min-w-40 flex-1">
-                <Field label="InterSalads Table">
-                  <FilterableSelect
-                    aria-label="Destination area Table"
-                    options={tableOptions}
-                    loading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
-                    value={destinationAreaTableId}
-                    placeholder="Search Table by code…"
-                    emptyMessage="No InterSalads Tables configured in this Nursery"
-                    onChange={setDestinationAreaTableId}
-                  />
-                </Field>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={applyAreaTableToUnconfiguredRows}
-                disabled={!destinationAreaTableId}
-              >
-                Apply to unconfigured rows
+                {destinationsArray.fields.length > 0 && (
+                  <BoundedDataRegion label="Destination assignments">
+                    <ul className="flex flex-col gap-3 p-2">
+                      {destinationsArray.fields.map((field, index) => (
+                        <DestinationRow
+                          key={field.id}
+                          farmId={farmId}
+                          control={control}
+                          setValue={setValue}
+                          index={index}
+                          onRemove={() => destinationsArray.remove(index)}
+                          allPlateOptions={allPlateOptions}
+                          usedPlateIds={usedPlateIds}
+                          plateOptionsLoading={plateOptionsQuery.isLoading}
+                          plateCapacityById={plateCapacityById}
+                          tableOptions={tableOptions}
+                          tableOptionsLoading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
+                          tableCapacityById={tableCapacityById}
+                          sourceOptions={sourceOptions}
+                          onOccupancyChange={(tableId, occ) => setOccupancyByTable((prev) => ({ ...prev, [tableId]: occ }))}
+                          errors={errors}
+                          collapsed={collapsedDestinationIds.has(field.id)}
+                          onToggleCollapsed={() => toggleDestinationCollapsed(field.id)}
+                        />
+                      ))}
+                    </ul>
+                  </BoundedDataRegion>
+                )}
+              </fieldset>
+            )}
+
+            <fieldset className="grid grid-cols-1 gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Transplant date/time</legend>
+              <Field label="Date" error={errors.effective_date?.message}>
+                <input type="date" {...register("effective_date")} className={inputClass} />
+              </Field>
+              <Field label="Time" error={errors.effective_time_of_day?.message}>
+                <input type="time" {...register("effective_time_of_day")} className={inputClass} />
+              </Field>
+              <details className="sm:col-span-2">
+                <summary className="cursor-pointer text-sm font-medium text-wl-text">Note (optional)</summary>
+                <textarea {...register("note")} aria-label="Note" className={`${inputClass} mt-2 min-h-20`} rows={2} />
+              </details>
+            </fieldset>
+          </div>
+        }
+        rail={
+          <AllocationSummaryRail
+            context={
+              establishedBatch && (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Batch</dt>
+                    <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Crop / Variety</dt>
+                    <dd className="font-medium text-wl-text">
+                      {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
+                    </dd>
+                  </div>
+                </dl>
+              )
+            }
+            stats={values.sources.length > 0 ? totalsStats : []}
+            hint={configureHint}
+            blockers={configureBlockers}
+          >
+            <StickyActionBar>
+              <Button type="submit" variant="primary" className="w-full" disabled={!canReview}>
+                Review Transplant
               </Button>
-            </div>
-            <p className="mt-2 text-xs text-wl-text-secondary">Applies to newly added destination rows below -- not to existing allocated ones.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" onClick={addDestination}>
-              Add destination Plate
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleSuggestAllocation}
-              disabled={destinationsArray.fields.length === 0}
-            >
-              Suggest allocation
-            </Button>
-          </div>
-
-          <ul className="flex flex-col gap-3">
-            {destinationsArray.fields.map((field, index) => (
-              <DestinationRow
-                key={field.id}
-                farmId={farmId}
-                control={control}
-                setValue={setValue}
-                index={index}
-                onRemove={() => destinationsArray.remove(index)}
-                allPlateOptions={allPlateOptions}
-                usedPlateIds={usedPlateIds}
-                plateOptionsLoading={plateOptionsQuery.isLoading}
-                plateCapacityById={plateCapacityById}
-                tableOptions={tableOptions}
-                tableOptionsLoading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
-                tableCapacityById={tableCapacityById}
-                sourceOptions={sourceOptions}
-                onOccupancyChange={(tableId, occ) => setOccupancyByTable((prev) => ({ ...prev, [tableId]: occ }))}
-                errors={errors}
-                collapsed={collapsedDestinationIds.has(field.id)}
-                onToggleCollapsed={() => toggleDestinationCollapsed(field.id)}
-              />
-            ))}
-          </ul>
-        </fieldset>
-      )}
-
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Transplant date/time</legend>
-        <Field label="Date" error={errors.effective_date?.message}>
-          <input type="date" {...register("effective_date")} className={inputClass} />
-        </Field>
-        <Field label="Time" error={errors.effective_time_of_day?.message}>
-          <input type="time" {...register("effective_time_of_day")} className={inputClass} />
-        </Field>
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
-        <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
-      </fieldset>
-
-      {serverError && (
-        <p role="alert" className={errorClass}>
-          {friendlyMutationErrorMessage(serverError)}
-        </p>
-      )}
-
-      <div>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={sourcesArray.fields.length === 0 || destinationsArray.fields.length === 0}
-        >
-          Review
-        </Button>
-      </div>
+            </StickyActionBar>
+          </AllocationSummaryRail>
+        }
+      />
     </form>
+  );
+}
+
+/** Purely presentational -- mirrors the Leafy Production Transfer form's
+ * own two-step indicator (configure -> review). */
+function StepIndicator({ step }: { step: "configure" | "review" }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-wl-brand">
+      Step {step === "configure" ? "1" : "2"} of 2 · {step === "configure" ? "Configure" : "Review"}
+    </p>
   );
 }

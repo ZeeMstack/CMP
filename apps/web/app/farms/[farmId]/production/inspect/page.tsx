@@ -11,8 +11,20 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { PlacementSummary } from "@/components/PlacementSummary";
 import { StatusBadge } from "@/components/StatusBadge";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { ContextStrip, ContextStripFact } from "@/components/layout/ContextStrip";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
-import type { GrowerInspectionRead, InspectionFindingIn, InspectionObservationValueIn } from "@/lib/api/client";
+import type {
+  CropIssueOpenIn,
+  GrowerInspectionCreate,
+  GrowerInspectionRead,
+  InspectionFindingIn,
+  InspectionObservationValueIn,
+} from "@/lib/api/client";
+import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
+import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { validateAffectedWithinInspected } from "@/lib/validation/growerInspection";
 import {
   useBatchOperationalContext,
@@ -62,7 +74,17 @@ interface ObservationRow {
  * pick (FROZEN, mirrors PILOT-SCAN-001E's own placement-vs-batch rule). One
  * Inspection records MULTIPLE ObservationValues in ONE ObservationEvent
  * (never one Inspection per measurement) -- see `handleSubmit` below,
- * which builds one `GrowerInspectionCreate` for the whole form. */
+ * which builds one `GrowerInspectionCreate` for the whole form.
+ *
+ * UX-OPS-001C: a guided command layout -- context strip (Batch, Stage,
+ * Placement, Protocol), inputs in the main area (Findings bounded), and a
+ * sticky summary/blocker rail with the single Record Inspection action.
+ * Command identity is now frozen per attempt (`useFrozenSubmission`): an
+ * uncertain outcome (network/5xx) is retried with the SAME
+ * `client_command_id` and byte-identical payload -- the backend replays it
+ * rather than recording a duplicate Inspection -- and inputs are locked
+ * until that attempt resolves; a definitive rejection unlocks editing and
+ * the next submit mints a new id. */
 export default function InspectCropPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const searchParams = useSearchParams();
@@ -83,6 +105,7 @@ export default function InspectCropPage() {
   const [findings, setFindings] = useState<FindingRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState<GrowerInspectionRead | null>(null);
+  const command = useFrozenSubmission<GrowerInspectionCreate & Record<string, unknown>>();
 
   const definitionsById = useMemo(
     () => new Map((definitionsQuery.data ?? []).map((d) => [d.id, d])),
@@ -179,20 +202,36 @@ export default function InspectCropPage() {
       observationValues.push(value);
     }
 
-    recordInspection.mutate(
-      {
-        client_command_id: crypto.randomUUID(),
-        batch_id: batchId,
-        batch_carrier_assignment_id: assignmentId,
-        effective_time: null,
-        inspected_count: inspected,
-        overall_assessment: overallAssessment,
-        notes: notes.trim() || null,
-        findings: findingPayloads,
-        observation_values: observationValues,
+    const payload = command.submit((clientCommandId) => ({
+      client_command_id: clientCommandId,
+      batch_id: batchId,
+      batch_carrier_assignment_id: assignmentId,
+      effective_time: null,
+      inspected_count: inspected,
+      overall_assessment: overallAssessment,
+      notes: notes.trim() || null,
+      findings: findingPayloads,
+      observation_values: observationValues,
+    }));
+    send(payload);
+  }
+
+  function send(payload: GrowerInspectionCreate) {
+    recordInspection.mutate(payload, {
+      onSuccess: (result) => {
+        command.handleSuccess();
+        setSaved(result);
       },
-      { onSuccess: (result) => setSaved(result) },
-    );
+      onError: (error) =>
+        command.handleError(
+          error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again."),
+        ),
+    });
+  }
+
+  function retry() {
+    const payload = command.retry();
+    if (payload) send(payload);
   }
 
   if (saved) {
@@ -214,10 +253,24 @@ export default function InspectCropPage() {
   }
 
   const operational = operationalQuery.data;
+  const locked = command.outcome !== "editing";
+  const requiredDue = dueRequirements.filter((r) => r.requirement.requirement_level === "required");
+  const enteredCount = dueRequirements.filter(
+    (r) => (observationRows[r.requirement.observation_definition_id]?.raw ?? "").trim() !== "",
+  ).length;
+  const blockers = [
+    formError,
+    command.error
+      ? command.outcome === "uncertain"
+        ? `${friendlyMutationErrorMessage(command.error)} The inspection may or may not have been recorded — Retry sends the exact same inspection again and can never record it twice.`
+        : friendlyMutationErrorMessage(command.error)
+      : null,
+  ].filter((b): b is string => Boolean(b));
 
   return (
-    <div>
+    <div className={STICKY_ACTION_BAR_SPACER_CLASS}>
       <PageHeader
+        compact
         title="Inspect Crop"
         breadcrumbs={
           <Breadcrumbs
@@ -232,228 +285,280 @@ export default function InspectCropPage() {
       />
 
       {/* CONTEXT */}
-      <div className="mb-6 rounded-lg border border-wl-border bg-wl-surface-raised p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-wl-text">
-              {batch.code} — {batch.crop.common_name}
-              {batch.variety ? ` / ${batch.variety.name}` : ""}
-            </p>
-            <p className="mt-0.5 text-xs text-wl-text-secondary">
-              Stage: {batch.current_stage.name}
-              {operational && (
-                <>
-                  {" · "}
-                  <PlacementSummary placement={operational.placement} />
-                </>
-              )}
-              {assignmentId && " · exact placement scan preserved"}
-            </p>
+      <div className="mb-4">
+        <ContextStrip>
+          <ContextStripFact
+            label="Batch"
+            value={`${batch.code} — ${batch.crop.common_name}${batch.variety ? ` / ${batch.variety.name}` : ""}`}
+          />
+          <ContextStripFact label="Stage" value={batch.current_stage.name} />
+          {operational && <ContextStripFact label="Placement" value={<PlacementSummary placement={operational.placement} />} />}
+          {assignmentId && <ContextStripFact label="Scope" value="Exact placement (from scan/row)" />}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-wl-text-secondary">Protocol</span>
+            {status?.protocol ? (
+              <StatusBadge
+                label={`${status.protocol.name} v${status.protocol_version?.version_number}`}
+                tone="active"
+              />
+            ) : (
+              <StatusBadge label="No protocol assigned" tone="neutral" />
+            )}
           </div>
-          {status?.protocol ? (
-            <StatusBadge
-              label={`${status.protocol.name} v${status.protocol_version?.version_number}`}
-              tone="active"
-            />
-          ) : (
-            <StatusBadge label="No protocol assigned" tone="neutral" />
-          )}
-        </div>
+        </ContextStrip>
       </div>
 
-      {/* WHAT IS DUE/WRONG + RECORD ACTION */}
-      <div className="flex flex-col gap-6">
-        <section>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Counts</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Inspected count (optional)</span>
-              <input
-                value={inspectedCount}
-                onChange={(e) => setInspectedCount(e.target.value)}
-                className={inputClass}
-                inputMode="numeric"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Overall assessment</span>
-              <select
-                value={overallAssessment}
-                onChange={(e) => setOverallAssessment(e.target.value as typeof overallAssessment)}
-                className={inputClass}
-              >
-                {OVERALL_ASSESSMENTS.map((a) => (
-                  <option key={a} value={a}>
-                    {humanize(a)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">
-            Protocol observations due at this stage
-          </h2>
-          {statusQuery.isLoading && <LoadingSkeleton rows={2} label="Loading protocol requirements" />}
-          {statusQuery.error && <ErrorState error={statusQuery.error} onRetry={() => statusQuery.refetch()} />}
-          {status && dueRequirements.length === 0 && (
-            <p className="text-sm text-wl-text-secondary">
-              {status.protocol ? "No observations required at this stage." : "No growing protocol assigned."}
-            </p>
-          )}
-          {dueRequirements.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {dueRequirements.map((r) => {
-                const definition = definitionsById.get(r.requirement.observation_definition_id);
-                const raw = observationRows[r.requirement.observation_definition_id]?.raw ?? "";
-                return (
-                  <div
-                    key={r.requirement.id}
-                    className="grid grid-cols-1 items-center gap-2 rounded-lg border border-wl-border p-2.5 sm:grid-cols-[1fr_auto_auto]"
-                  >
-                    <label className="flex flex-col gap-1">
-                      <span className={labelClass}>
-                        {r.observation_definition_name}
-                        {definition?.unit ? ` (${definition.unit})` : ""}
-                        {r.requirement.requirement_level === "required" ? " · required" : " · recommended"}
-                      </span>
-                      {definition?.value_type === "boolean" ? (
-                        <select
-                          className={inputClass}
-                          value={raw}
-                          onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                        >
-                          <option value="">Not observed</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                      ) : definition?.value_type === "text" ? (
-                        <input
-                          className={inputClass}
-                          value={raw}
-                          onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          className={inputClass}
-                          value={raw}
-                          onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                        />
-                      )}
-                    </label>
-                    {r.is_overdue ? (
-                      <StatusBadge label="Overdue" tone="critical" />
-                    ) : r.is_due ? (
-                      <StatusBadge label="Due" tone="attention" />
-                    ) : (
-                      <StatusBadge label="Not due" tone="neutral" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Findings</h2>
-            <Button variant="secondary" onClick={addFinding}>
-              + Add finding
-            </Button>
-          </div>
-          {findings.length === 0 && <p className="text-sm text-wl-text-secondary">No findings recorded.</p>}
-          <div className="flex flex-col gap-3">
-            {findings.map((f) => (
-              <div key={f.key} className="grid grid-cols-1 gap-2 rounded-lg border border-wl-border p-3 sm:grid-cols-2">
+      <SplitWorkspace
+        main={
+          // A single disabled fieldset locks every input while an attempt is
+          // in flight or uncertain, so what Retry resends can never drift
+          // from what the screen shows.
+          <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4">
+            <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Counts</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-1">
-                  <span className={labelClass}>Category</span>
-                  <select
-                    className={inputClass}
-                    value={f.category}
-                    onChange={(e) => updateFinding(f.key, { category: e.target.value as FindingRow["category"] })}
-                  >
-                    {FINDING_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {humanize(c)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={labelClass}>Severity</span>
-                  <select
-                    className={inputClass}
-                    value={f.severity}
-                    onChange={(e) => updateFinding(f.key, { severity: e.target.value as FindingRow["severity"] })}
-                  >
-                    {FINDING_SEVERITIES.map((s) => (
-                      <option key={s} value={s}>
-                        {humanize(s)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className={labelClass}>Affected count (optional)</span>
+                  <span className={labelClass}>Inspected count (optional)</span>
                   <input
+                    value={inspectedCount}
+                    onChange={(e) => setInspectedCount(e.target.value)}
                     className={inputClass}
-                    value={f.affectedCount}
-                    onChange={(e) => updateFinding(f.key, { affectedCount: e.target.value })}
                     inputMode="numeric"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className={labelClass}>Suspected cause (optional)</span>
-                  <input
+                  <span className={labelClass}>Overall assessment</span>
+                  <select
+                    value={overallAssessment}
+                    onChange={(e) => setOverallAssessment(e.target.value as typeof overallAssessment)}
                     className={inputClass}
-                    value={f.suspectedCause}
-                    onChange={(e) => updateFinding(f.key, { suspectedCause: e.target.value })}
-                  />
+                  >
+                    {OVERALL_ASSESSMENTS.map((a) => (
+                      <option key={a} value={a}>
+                        {humanize(a)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <label className="flex flex-col gap-1 sm:col-span-2">
-                  <span className={labelClass}>Notes (optional)</span>
-                  <textarea
-                    className={`${inputClass} min-h-16`}
-                    value={f.notes}
-                    onChange={(e) => updateFinding(f.key, { notes: e.target.value })}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => removeFinding(f.key)}
-                  className="self-start text-xs font-medium text-danger-700 hover:underline sm:col-span-2"
-                >
-                  Remove finding
-                </button>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        <section>
-          <label className="flex flex-col gap-1">
-            <span className={labelClass}>Notes (optional)</span>
-            <textarea className={`${inputClass} min-h-20`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-        </section>
+            <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">
+                Protocol observations due at this stage
+              </h2>
+              {statusQuery.isLoading && <LoadingSkeleton rows={2} label="Loading protocol requirements" />}
+              {statusQuery.error && <ErrorState error={statusQuery.error} onRetry={() => statusQuery.refetch()} />}
+              {status && dueRequirements.length === 0 && (
+                <p className="text-sm text-wl-text-secondary">
+                  {status.protocol ? "No observations required at this stage." : "No growing protocol assigned."}
+                </p>
+              )}
+              {dueRequirements.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {dueRequirements.map((r) => {
+                    const definition = definitionsById.get(r.requirement.observation_definition_id);
+                    const raw = observationRows[r.requirement.observation_definition_id]?.raw ?? "";
+                    return (
+                      <div
+                        key={r.requirement.id}
+                        className="grid grid-cols-1 items-center gap-2 rounded-lg border border-wl-border p-2.5 sm:grid-cols-[1fr_auto_auto]"
+                      >
+                        <label className="flex flex-col gap-1">
+                          <span className={labelClass}>
+                            {r.observation_definition_name}
+                            {definition?.unit ? ` (${definition.unit})` : ""}
+                            {r.requirement.requirement_level === "required" ? " · required" : " · recommended"}
+                          </span>
+                          {definition?.value_type === "boolean" ? (
+                            <select
+                              className={inputClass}
+                              value={raw}
+                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
+                            >
+                              <option value="">Not observed</option>
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : definition?.value_type === "text" ? (
+                            <input
+                              className={inputClass}
+                              value={raw}
+                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              className={inputClass}
+                              value={raw}
+                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
+                            />
+                          )}
+                        </label>
+                        {r.is_overdue ? (
+                          <StatusBadge label="Overdue" tone="critical" />
+                        ) : r.is_due ? (
+                          <StatusBadge label="Due" tone="attention" />
+                        ) : (
+                          <StatusBadge label="Not due" tone="neutral" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-        {formError && (
-          <p role="alert" className="text-xs text-danger-700">
-            {formError}
-          </p>
-        )}
-        {recordInspection.error && <ErrorState error={recordInspection.error} />}
+            <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Findings</h2>
+                <Button variant="secondary" onClick={addFinding}>
+                  + Add finding
+                </Button>
+              </div>
+              {findings.length === 0 && <p className="text-sm text-wl-text-secondary">No findings recorded.</p>}
+              {findings.length > 0 && (
+                <BoundedDataRegion label="Findings">
+                  <div className="flex flex-col gap-3 p-2">
+                    {findings.map((f, index) => (
+                      <div key={f.key} className="grid grid-cols-1 gap-2 rounded-lg border border-wl-border p-3 sm:grid-cols-2">
+                        <p className="text-xs font-semibold text-wl-text sm:col-span-2">Finding {index + 1}</p>
+                        <label className="flex flex-col gap-1">
+                          <span className={labelClass}>Category</span>
+                          <select
+                            className={inputClass}
+                            value={f.category}
+                            onChange={(e) => updateFinding(f.key, { category: e.target.value as FindingRow["category"] })}
+                          >
+                            {FINDING_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>
+                                {humanize(c)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className={labelClass}>Severity</span>
+                          <select
+                            className={inputClass}
+                            value={f.severity}
+                            onChange={(e) => updateFinding(f.key, { severity: e.target.value as FindingRow["severity"] })}
+                          >
+                            {FINDING_SEVERITIES.map((sv) => (
+                              <option key={sv} value={sv}>
+                                {humanize(sv)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className={labelClass}>Affected count (optional)</span>
+                          <input
+                            className={inputClass}
+                            value={f.affectedCount}
+                            onChange={(e) => updateFinding(f.key, { affectedCount: e.target.value })}
+                            inputMode="numeric"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className={labelClass}>Suspected cause (optional)</span>
+                          <input
+                            className={inputClass}
+                            value={f.suspectedCause}
+                            onChange={(e) => updateFinding(f.key, { suspectedCause: e.target.value })}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 sm:col-span-2">
+                          <span className={labelClass}>Notes (optional)</span>
+                          <textarea
+                            className={`${inputClass} min-h-16`}
+                            value={f.notes}
+                            onChange={(e) => updateFinding(f.key, { notes: e.target.value })}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeFinding(f.key)}
+                          className="self-start text-xs font-medium text-danger-700 hover:underline sm:col-span-2"
+                        >
+                          Remove finding
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </BoundedDataRegion>
+              )}
+            </section>
 
-        <div>
-          <Button variant="primary" onClick={handleSubmit} disabled={recordInspection.isPending}>
-            {recordInspection.isPending ? "Recording…" : "Record Inspection"}
-          </Button>
-        </div>
-      </div>
+            <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <label className="flex flex-col gap-1">
+                <span className={labelClass}>Notes (optional)</span>
+                <textarea className={`${inputClass} min-h-20`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </label>
+            </section>
+          </fieldset>
+        }
+        rail={
+          <section aria-label="Inspection summary" className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+            <h2 className="text-sm font-semibold text-wl-text">Summary</h2>
+            <dl className="flex flex-col divide-y divide-wl-border text-sm">
+              <div className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="text-wl-text-secondary">Assessment</dt>
+                <dd className="font-semibold text-wl-text">{humanize(overallAssessment)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="text-wl-text-secondary">Observations entered</dt>
+                <dd className="font-semibold tabular-nums text-wl-text">
+                  {enteredCount} of {dueRequirements.length}
+                  {requiredDue.length > 0 ? ` (${requiredDue.length} required)` : ""}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="text-wl-text-secondary">Findings</dt>
+                <dd className="font-semibold tabular-nums text-wl-text">{findings.length}</dd>
+              </div>
+            </dl>
+            <p className="text-xs text-wl-text-secondary">
+              Recording an inspection never changes living quantity or opens a Crop Issue by itself.
+            </p>
+            <StickyActionBar
+              blockers={
+                blockers.length > 0 && (
+                  <ul role="alert" className="flex flex-col gap-1 rounded-lg bg-wl-flag-bg px-3 py-2 text-xs font-medium text-wl-flag-fg">
+                    {blockers.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                )
+              }
+            >
+              {command.outcome === "uncertain" ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      // Refresh authoritative state before abandoning, so a
+                      // recorded-but-unconfirmed inspection shows up in due
+                      // status rather than being silently re-entered.
+                      statusQuery.refetch();
+                      command.abandon();
+                    }}
+                  >
+                    Discard attempt
+                  </Button>
+                  <Button variant="primary" className="flex-1" onClick={retry}>
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="primary" className="w-full" onClick={handleSubmit} disabled={command.outcome === "submitting"}>
+                  {command.outcome === "submitting" ? "Recording…" : "Record Inspection"}
+                </Button>
+              )}
+            </StickyActionBar>
+          </section>
+        }
+      />
     </div>
   );
 }
@@ -483,28 +588,71 @@ function InspectionSavedPanel({
     (inspection.findings[0]?.severity as (typeof FINDING_SEVERITIES)[number]) ?? "low",
   );
   const [suspectedCause, setSuspectedCause] = useState("");
+  // UX-OPS-001C: frozen per attempt -- an uncertain Open Issue retry reuses
+  // the same `client_command_id` (the backend replays it) instead of
+  // minting a new one per click, which could open a duplicate Issue.
+  const issueCommand = useFrozenSubmission<CropIssueOpenIn & Record<string, unknown>>();
 
-  async function handleOpenIssue() {
-    if (!description.trim()) return;
-    const issue = await openIssue.mutateAsync({
-      client_command_id: crypto.randomUUID(),
-      originating_grower_inspection_id: inspection.id,
-      originating_finding_id: findingId || null,
-      category,
-      severity,
-      description: description.trim(),
-      suspected_cause: suspectedCause.trim() || null,
+  function sendOpenIssue(payload: CropIssueOpenIn) {
+    openIssue.mutate(payload, {
+      onSuccess: (issue) => {
+        issueCommand.handleSuccess();
+        router.push(`/farms/${farmId}/crop-issues/${issue.id}`);
+      },
+      onError: (error) =>
+        issueCommand.handleError(
+          error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again."),
+        ),
     });
-    router.push(`/farms/${farmId}/crop-issues/${issue.id}`);
   }
+
+  function handleOpenIssue() {
+    if (!description.trim()) return;
+    if (issueCommand.outcome === "uncertain") {
+      const payload = issueCommand.retry();
+      if (payload) sendOpenIssue(payload);
+      return;
+    }
+    sendOpenIssue(
+      issueCommand.submit((clientCommandId) => ({
+        client_command_id: clientCommandId,
+        originating_grower_inspection_id: inspection.id,
+        originating_finding_id: findingId || null,
+        category,
+        severity,
+        description: description.trim(),
+        suspected_cause: suspectedCause.trim() || null,
+      })),
+    );
+  }
+  const issueLocked = issueCommand.outcome !== "editing";
 
   return (
     <div>
-      <PageHeader title="Inspection recorded" />
-      <div className="flex flex-col gap-4 rounded-lg border border-wl-border bg-wl-surface-raised p-4">
+      <PageHeader compact title="Inspection recorded" />
+      <div role="status" className="flex flex-col gap-4 rounded-lg border border-wl-border bg-wl-surface-raised p-4">
         <p className="text-sm text-wl-text">
           Inspection saved with {inspection.findings.length} finding{inspection.findings.length === 1 ? "" : "s"}.
         </p>
+        {/* Truthful receipt: only what the server returned for THIS command. */}
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Assessment</dt>
+            <dd className="font-medium text-wl-text">{humanize(inspection.overall_assessment)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Inspected</dt>
+            <dd className="font-medium tabular-nums text-wl-text">{inspection.inspected_count ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Recorded at</dt>
+            <dd className="font-medium text-wl-text">{new Date(inspection.effective_time).toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Findings</dt>
+            <dd className="font-medium tabular-nums text-wl-text">{inspection.findings.length}</dd>
+          </div>
+        </dl>
 
         {!openingIssue ? (
           <div className="flex flex-wrap gap-2">
@@ -534,6 +682,7 @@ function InspectionSavedPanel({
                 <span className={labelClass}>From finding</span>
                 <select
                   className={inputClass}
+                  disabled={issueLocked}
                   value={findingId}
                   onChange={(e) => {
                     setFindingId(e.target.value);
@@ -554,19 +703,50 @@ function InspectionSavedPanel({
             )}
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Description</span>
-              <textarea className={`${inputClass} min-h-16`} value={description} onChange={(e) => setDescription(e.target.value)} />
+              <textarea
+                className={`${inputClass} min-h-16`}
+                disabled={issueLocked}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Suspected cause (optional)</span>
-              <input className={inputClass} value={suspectedCause} onChange={(e) => setSuspectedCause(e.target.value)} />
+              <input
+                className={inputClass}
+                disabled={issueLocked}
+                value={suspectedCause}
+                onChange={(e) => setSuspectedCause(e.target.value)}
+              />
             </label>
-            {openIssue.error && <ErrorState error={openIssue.error} />}
+            {issueCommand.error && (
+              <p role="alert" className="text-xs text-danger-700">
+                {friendlyMutationErrorMessage(issueCommand.error)}
+                {issueCommand.outcome === "uncertain" &&
+                  " The Issue may or may not have been opened — Retry sends the exact same request and can never open it twice."}
+              </p>
+            )}
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setOpeningIssue(false)} disabled={openIssue.isPending}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  issueCommand.abandon();
+                  setOpeningIssue(false);
+                }}
+                disabled={issueCommand.outcome === "submitting"}
+              >
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleOpenIssue} disabled={openIssue.isPending || !description.trim()}>
-                {openIssue.isPending ? "Opening…" : "Open Issue"}
+              <Button
+                variant="primary"
+                onClick={handleOpenIssue}
+                disabled={issueCommand.outcome === "submitting" || !description.trim()}
+              >
+                {issueCommand.outcome === "submitting"
+                  ? "Opening…"
+                  : issueCommand.outcome === "uncertain"
+                    ? "Retry"
+                    : "Open Issue"}
               </Button>
             </div>
           </div>

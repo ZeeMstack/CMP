@@ -66,6 +66,7 @@ export default function VinesProductionTransferPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Transfer to Production"
         breadcrumbs={
           <Breadcrumbs

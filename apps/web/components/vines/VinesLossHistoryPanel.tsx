@@ -31,7 +31,16 @@ function VoidCorrectionConfirm({
         <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button type="button" variant="primary" onClick={() => onSubmit(eventId)} disabled={isSubmitting}>
+        <Button
+          type="button"
+          variant="primary"
+          // The failure is already surfaced through `serverError`; catching
+          // here only stops a rejected attempt becoming an unhandled
+          // rejection. The confirm stays open so Retry reuses the same
+          // attempt's command id (see the page's `correctCommandIds`).
+          onClick={() => onSubmit(eventId).catch(() => undefined)}
+          disabled={isSubmitting}
+        >
           {isSubmitting ? "Voiding…" : "Confirm void"}
         </Button>
       </div>
@@ -110,7 +119,9 @@ export function VinesLossHistoryPanel({
                         onSubmit={(eventId) => onCorrect(eventId)}
                         onCancel={() => setOpenEventId(null)}
                         isSubmitting={isSubmitting && correctingEventId === event.id}
-                        serverError={correctingEventId === event.id ? serverError : null}
+                        // The page clears `correctingEventId` once the attempt settles,
+                        // so the open confirm (not the in-flight id) owns the error.
+                        serverError={openEventId === event.id ? serverError : null}
                       />
                     ) : (
                       <Button type="button" variant="secondary" onClick={() => setOpenEventId(event.id)}>

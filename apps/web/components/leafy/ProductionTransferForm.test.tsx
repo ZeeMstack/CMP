@@ -272,7 +272,7 @@ describe("ProductionTransferForm", () => {
     stubFetch();
     render(withQueryClient(<ProductionTransferForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source nursery plate/i)).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review Transfer" })).toBeDisabled();
   });
 
   it("requires other_loss_note when other_loss_count is greater than 0", async () => {
@@ -287,7 +287,7 @@ describe("ProductionTransferForm", () => {
     const otherInputs = screen.getAllByLabelText(/^other$/i);
     fireEvent.change(otherInputs[otherInputs.length - 1], { target: { value: "5" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText(/note is required/i)).toBeInTheDocument());
   });
 
@@ -302,9 +302,9 @@ describe("ProductionTransferForm", () => {
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transferring")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transfer" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const [batchId, payload] = onSubmit.mock.calls[0];
@@ -335,29 +335,29 @@ describe("ProductionTransferForm", () => {
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transferring")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transfer" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const firstId = onSubmit.mock.calls[0][1].client_command_id as string;
 
     // Back to Configure without editing, then submit again -- same id.
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /add destination production plate/i })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transferring")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transfer" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
     expect(onSubmit.mock.calls[1][1].client_command_id).toBe(firstId);
 
     // Edit the quantity, then submit -- id must rotate.
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /add destination production plate/i })).toBeInTheDocument());
     const qtyInputs = screen.getAllByLabelText(/^Quantity for allocation/i);
     fireEvent.change(qtyInputs[qtyInputs.length - 1], { target: { value: "100" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transferring")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transfer" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(3));
     expect(onSubmit.mock.calls[2][1].client_command_id).not.toBe(firstId);
   });
