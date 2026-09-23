@@ -2,7 +2,18 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Index, Numeric, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -20,7 +31,9 @@ class WaterDeliveryEvent(Base):
     circuit is represented as one open-or-closed operating interval
     (`effective_start`/`effective_end`) rather than fabricated discrete
     pulses. Immutable, insert-only (`water_domain_reject_update`/
-    `water_domain_reject_delete` triggers)."""
+    `water_domain_reject_delete` triggers). An ongoing delivery
+    (`effective_end = NULL`) is ended only by appending a
+    `WaterDeliveryEndEvent` (UX-OPS-001D0) -- this row is never updated."""
 
     __tablename__ = "water_delivery_events"
 
@@ -57,6 +70,9 @@ class WaterDeliveryEvent(Base):
             "delivered_volume IS NULL OR delivered_volume > 0", name="ck_water_delivery_events_volume_positive"
         ),
         Index("ux_water_delivery_events_tenant_client_command_id", "tenant_id", "client_command_id", unique=True),
+        # UX-OPS-001D0: composite parent key for
+        # `water_delivery_end_events`' tenant/farm-pinned FK.
+        UniqueConstraint("tenant_id", "farm_id", "id", name="uq_water_delivery_events_tenant_farm_id"),
         ForeignKeyConstraint(
             ["tenant_id", "farm_id", "reservoir_id"],
             ["reservoirs.tenant_id", "reservoirs.farm_id", "reservoirs.id"],

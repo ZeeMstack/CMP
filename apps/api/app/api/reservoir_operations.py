@@ -10,6 +10,7 @@ from app.schemas.reservoir_operations import (
     ReservoirEventCreate,
     ReservoirEventRead,
     WaterDeliveryEventCreate,
+    WaterDeliveryEventEnd,
     WaterDeliveryEventRead,
 )
 from app.services import reservoir_operations_service
@@ -21,6 +22,10 @@ from app.services.errors import (
     ReservoirNotFoundError,
     UnitOfMeasureKindMismatchError,
     UnitOfMeasureNotFoundError,
+    WaterDeliveryEndCommandConflictError,
+    WaterDeliveryEndValidationError,
+    WaterDeliveryEventAlreadyEndedError,
+    WaterDeliveryEventNotFoundError,
     WaterDeliveryEventValidationError,
 )
 
@@ -74,7 +79,7 @@ def record_delivery_event(
     ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_MANAGE)),
 ) -> WaterDeliveryEventRead:
     try:
-        return reservoir_operations_service.record_delivery_event(
+        event = reservoir_operations_service.record_delivery_event(
             db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
             reservoir_id=payload.reservoir_id, irrigation_circuit_id=payload.irrigation_circuit_id,
             effective_start=payload.effective_start, effective_end=payload.effective_end,
@@ -88,6 +93,50 @@ def record_delivery_event(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except WaterDeliveryEventValidationError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return reservoir_operations_service.resolve_delivery_event(db, tenant_id=ctx.tenant_id, event=event)
+
+
+@router.post(
+    "/farms/{farm_id}/water-delivery-events/{water_delivery_event_id}/end", response_model=WaterDeliveryEventRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def end_delivery_event(
+    farm_id: uuid.UUID,
+    water_delivery_event_id: uuid.UUID,
+    payload: WaterDeliveryEventEnd,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_MANAGE)),
+) -> WaterDeliveryEventRead:
+    """UX-OPS-001D0: end an ongoing delivery by appending an immutable end
+    event. Returns the delivery with its resolved `effective_end`. A replay
+    of the same command returns the original result."""
+    try:
+        return reservoir_operations_service.end_delivery_event(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, actor_user_id=ctx.user_id,
+            water_delivery_event_id=water_delivery_event_id, effective_end=payload.effective_end, note=payload.note,
+            client_command_id=payload.client_command_id,
+        )
+    except WaterDeliveryEventNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Water delivery event not found") from exc
+    except (WaterDeliveryEventAlreadyEndedError, WaterDeliveryEndCommandConflictError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except WaterDeliveryEndValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+@router.get(
+    "/farms/{farm_id}/water-delivery-events/{water_delivery_event_id}", response_model=WaterDeliveryEventRead
+)
+def get_delivery_event(
+    farm_id: uuid.UUID, water_delivery_event_id: uuid.UUID, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission(Permission.NUTRIENT_OPERATIONS_READ)),
+) -> WaterDeliveryEventRead:
+    try:
+        return reservoir_operations_service.get_delivery_event(
+            db, tenant_id=ctx.tenant_id, farm_id=farm_id, water_delivery_event_id=water_delivery_event_id
+        )
+    except WaterDeliveryEventNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Water delivery event not found") from exc
 
 
 @router.get("/irrigation-circuits/{irrigation_circuit_id}/water-delivery-events", response_model=list[WaterDeliveryEventRead])
