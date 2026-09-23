@@ -116,6 +116,73 @@ def has_active_batch_carrier_assignment(db: Session, *, tenant_id: uuid.UUID, ca
     return row is not None
 
 
+def resolve_readiness_read_context(
+    db: Session, *, tenant_id: uuid.UUID, states: list[EquipmentReadinessState]
+) -> dict[str, dict]:
+    """UX-OPS-001B: bounded, batched lookups for the additive facts
+    `EquipmentReadinessStateRead` exposes (entity code/name, equipment
+    type code/name, `requires_cleaning`, Carrier in-use, latest cleaning
+    result) -- never one query per row on a list endpoint (mirrors
+    `equipment_incident_service.resolve_read_context`'s own established
+    pattern). Asset `is_in_use` is deliberately not computed here (no
+    single authoritative "in active use" signal exists for Assets today --
+    see docs/domain/EQUIPMENT_READINESS_MODEL.md's documented gap); the
+    caller leaves it `None` for `entity_type == "asset"`."""
+    asset_ids = {s.asset_id for s in states if s.asset_id}
+    carrier_ids = {s.carrier_id for s in states if s.carrier_id}
+    cleaning_event_ids = {s.last_cleaning_event_id for s in states if s.last_cleaning_event_id}
+
+    assets: dict[uuid.UUID, dict] = {}
+    if asset_ids:
+        for row in db.execute(
+            select(Asset.id, Asset.code, Asset.name, AssetType.code, AssetType.name, AssetType.requires_cleaning)
+            .join(AssetType, AssetType.id == Asset.asset_type_id)
+            .where(Asset.tenant_id == tenant_id, Asset.id.in_(asset_ids))
+        ):
+            assets[row[0]] = {
+                "entity_code": row[1], "entity_name": row[2], "equipment_type_code": row[3],
+                "equipment_type_name": row[4], "requires_cleaning": row[5],
+            }
+
+    carriers: dict[uuid.UUID, dict] = {}
+    if carrier_ids:
+        for row in db.execute(
+            select(Carrier.id, Carrier.code, CarrierType.code, CarrierType.name, CarrierType.requires_cleaning)
+            .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+            .where(Carrier.tenant_id == tenant_id, Carrier.id.in_(carrier_ids))
+        ):
+            carriers[row[0]] = {
+                "entity_code": row[1], "entity_name": None, "equipment_type_code": row[2],
+                "equipment_type_name": row[3], "requires_cleaning": row[4],
+            }
+
+    in_use_carrier_ids: set[uuid.UUID] = set()
+    if carrier_ids:
+        in_use_carrier_ids = set(
+            db.execute(
+                select(BatchCarrierAssignment.carrier_id).where(
+                    BatchCarrierAssignment.tenant_id == tenant_id,
+                    BatchCarrierAssignment.carrier_id.in_(carrier_ids),
+                    BatchCarrierAssignment.released_effective_time.is_(None),
+                )
+            ).scalars()
+        )
+
+    cleaning_results: dict[uuid.UUID, str] = {}
+    if cleaning_event_ids:
+        for row in db.execute(
+            select(CleaningEvent.id, CleaningEvent.result).where(
+                CleaningEvent.tenant_id == tenant_id, CleaningEvent.id.in_(cleaning_event_ids)
+            )
+        ):
+            cleaning_results[row[0]] = row[1]
+
+    return {
+        "assets": assets, "carriers": carriers,
+        "in_use_carrier_ids": in_use_carrier_ids, "cleaning_results": cleaning_results,
+    }
+
+
 def _require_state_for_asset(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, asset_id: uuid.UUID
 ) -> EquipmentReadinessState:

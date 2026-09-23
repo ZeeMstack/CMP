@@ -99,6 +99,25 @@ class EquipmentReadinessStateRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # UX-OPS-001B additive read-model fields (docs/domain/
+    # EQUIPMENT_READINESS_MODEL.md's "minimal additive readiness read
+    # model" allowance): the frontend queue/detail UI needs these
+    # server-owned facts to render only valid lifecycle actions without
+    # guessing or maintaining a second, driftable transition table.
+    # Tenant/farm-scoped, batch-resolved by
+    # `equipment_readiness_service.resolve_readiness_read_context` --
+    # never N+1 on a list endpoint. `is_in_use`/`latest_cleaning_result`
+    # are the only genuinely optional facts here (an Asset has no
+    # authoritative in-use signal today -- documented gap, never guessed;
+    # a state with no prior cleaning event has no latest result).
+    entity_code: str
+    entity_name: str | None = None
+    equipment_type_code: str
+    equipment_type_name: str
+    requires_cleaning: bool
+    is_in_use: bool | None = None
+    latest_cleaning_result: CleaningResult | None = None
+
 
 class CleaningEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
