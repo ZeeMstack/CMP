@@ -3208,16 +3208,41 @@ export function getWaterAttention(farmId: string, signal?: AbortSignal): Promise
 }
 
 // --- PILOT-ASSET-001: Equipment Readiness + Critical Equipment Incidents ------------------
-// This backend domain shipped without a way to regenerate `schema.gen.ts` in this sandbox
-// (no Python venv/DB available to run `npm run api:types` against). As a deliberate,
-// documented deviation from this file's normal `components["schemas"][...]` convention,
-// every type below is a hand-written plain interface mirroring the backend's Pydantic
-// schemas field-for-field (see docs/domain/EQUIPMENT_READINESS_MODEL.md and the ticket's
-// exact contract). Replace these with generated aliases once the schema can be regenerated.
+// This backend domain originally shipped without a way to regenerate
+// `schema.gen.ts` in this sandbox (no Python venv/DB available to run
+// `npm run api:types` against), so every type below is a hand-written
+// plain interface mirroring the backend's Pydantic schemas field-for-field
+// (see docs/domain/EQUIPMENT_READINESS_MODEL.md and the ticket's exact
+// contract) rather than this file's normal `components["schemas"][...]`
+// alias convention. UX-OPS-001B: regeneration now works in an environment
+// with `apps/api/.venv` set up (confirmed against the additive readiness
+// read-model fields below) -- converting this whole section to generated
+// aliases is a larger, separate follow-up left for its own ticket; kept
+// hand-written here to stay within this ticket's minimal-additive scope.
 
 export type EquipmentReadinessCurrentState =
   | "unknown" | "awaiting_cleaning" | "cleaning_completed" | "ready" | "damaged" | "maintenance" | "retired";
 
+/** R1 (blocker #3): every lifecycle-valid command for a given read's exact
+ * state -- computed once, backend-side, by
+ * `equipment_readiness_service.compute_readiness_actions`. The frontend
+ * consumes `available_actions`/`primary_action` verbatim and must never
+ * re-derive or maintain a second, driftable transition table. */
+export type ReadinessAction =
+  | "mark_awaiting_cleaning" | "record_cleaning" | "mark_ready" | "report_damage"
+  | "send_to_maintenance" | "return_from_maintenance" | "retire";
+
+/** UX-OPS-001B: `entity_code`/`entity_name`/`equipment_type_code`/
+ * `equipment_type_name`/`requires_cleaning`/`is_in_use`/
+ * `latest_cleaning_result` are additive fields the backend now resolves
+ * server-side (tenant/farm-scoped, batched -- see
+ * `equipment_readiness_service.resolve_readiness_read_context`) so the
+ * frontend queue/detail UI never guesses these facts or maintains its own
+ * transition table. `entity_name`/`is_in_use`/`latest_cleaning_result` are
+ * the only genuinely optional ones (a Carrier has no `name`; an Asset has
+ * no authoritative in-use signal; a state with no prior cleaning has no
+ * latest result). `available_actions`/`primary_action` (R1) are the same
+ * kind of additive, backend-computed fact. */
 export interface EquipmentReadinessStateRead {
   id: string; tenant_id: string; farm_id: string;
   entity_type: "asset" | "carrier";
@@ -3226,6 +3251,13 @@ export interface EquipmentReadinessStateRead {
   state_changed_at: string; state_changed_by_user_id: string | null;
   state_note: string | null; last_cleaning_event_id: string | null;
   created_at: string; updated_at: string;
+  entity_code: string; entity_name: string | null;
+  equipment_type_code: string; equipment_type_name: string;
+  requires_cleaning: boolean;
+  is_in_use: boolean | null;
+  latest_cleaning_result: "completed" | "needs_rework" | null;
+  available_actions: ReadinessAction[];
+  primary_action: ReadinessAction | null;
 }
 
 export interface CleaningEventRead {

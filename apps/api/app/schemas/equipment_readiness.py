@@ -13,6 +13,16 @@ ReadinessEntityType = Literal[READINESS_ENTITY_TYPES]  # type: ignore[valid-type
 ReadinessState = Literal[READINESS_STATES]  # type: ignore[valid-type]
 CleaningResult = Literal[CLEANING_RESULTS]  # type: ignore[valid-type]
 
+ReadinessAction = Literal[
+    "mark_awaiting_cleaning",
+    "record_cleaning",
+    "mark_ready",
+    "report_damage",
+    "send_to_maintenance",
+    "return_from_maintenance",
+    "retire",
+]
+
 
 def _require_tz_aware(v: datetime) -> datetime:
     if v.tzinfo is None:
@@ -98,6 +108,35 @@ class EquipmentReadinessStateRead(BaseModel):
     last_cleaning_event_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
+
+    # UX-OPS-001B additive read-model fields (docs/domain/
+    # EQUIPMENT_READINESS_MODEL.md's "minimal additive readiness read
+    # model" allowance): the frontend queue/detail UI needs these
+    # server-owned facts to render only valid lifecycle actions without
+    # guessing or maintaining a second, driftable transition table.
+    # Tenant/farm-scoped, batch-resolved by
+    # `equipment_readiness_service.resolve_readiness_read_context` --
+    # never N+1 on a list endpoint. `is_in_use`/`latest_cleaning_result`
+    # are the only genuinely optional facts here (an Asset has no
+    # authoritative in-use signal today -- documented gap, never guessed;
+    # a state with no prior cleaning event has no latest result).
+    entity_code: str
+    entity_name: str | None = None
+    equipment_type_code: str
+    equipment_type_name: str
+    requires_cleaning: bool
+    is_in_use: bool | None = None
+    latest_cleaning_result: CleaningResult | None = None
+
+    # R1 (blocker #3): every lifecycle-valid command for this exact state,
+    # computed once, backend-side, by
+    # `equipment_readiness_service.compute_readiness_actions` -- the
+    # frontend must consume these verbatim and never re-derive or maintain
+    # a second transition table (see that function's docstring). `[]` for
+    # `retired` (terminal). `primary_action` is the one forward-progressing
+    # action from `available_actions`, or `None` when there is none.
+    available_actions: list[ReadinessAction] = []
+    primary_action: ReadinessAction | None = None
 
 
 class CleaningEventRead(BaseModel):

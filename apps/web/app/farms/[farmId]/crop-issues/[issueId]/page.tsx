@@ -15,7 +15,6 @@ import type { FarmWorkItemRead } from "@/lib/api/client";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import {
   useConfirmCropIssueDiagnosis,
-  useCreateWorkItem,
   useCropBatch,
   useCropIssue,
   useCropIssueFollowUps,
@@ -187,7 +186,6 @@ function DiagnosisPanel({ farmId, issue }: { farmId: string; issue: NonNullable<
 function CorrectiveWorkPanel({ farmId, issue }: { farmId: string; issue: NonNullable<ReturnType<typeof useCropIssue>["data"]> }) {
   const [assigning, setAssigning] = useState(false);
   const [created, setCreated] = useState<FarmWorkItemRead | null>(null);
-  const createWorkItem = useCreateWorkItem(farmId);
   const batchQuery = useCropBatch(farmId, issue.batch_id);
 
   return (
@@ -207,11 +205,10 @@ function CorrectiveWorkPanel({ farmId, issue }: { farmId: string; issue: NonNull
         </Button>
       ) : (
         <CreateWorkItemForm
+          farmId={farmId}
           lockedCropIssue={{ id: issue.id, code: issue.code, batchId: issue.batch_id, batchLabel: batchQuery.data?.code }}
-          isSubmitting={createWorkItem.isPending}
-          serverError={createWorkItem.error ? createWorkItem.error.message : null}
           onCancel={() => setAssigning(false)}
-          onSubmit={(payload) => createWorkItem.mutate(payload, { onSuccess: (item) => setCreated(item) })}
+          onSuccess={(item) => setCreated(item)}
         />
       )}
     </section>

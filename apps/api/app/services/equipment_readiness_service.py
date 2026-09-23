@@ -116,6 +116,164 @@ def has_active_batch_carrier_assignment(db: Session, *, tenant_id: uuid.UUID, ca
     return row is not None
 
 
+def resolve_readiness_read_context(
+    db: Session, *, tenant_id: uuid.UUID, states: list[EquipmentReadinessState]
+) -> dict[str, dict]:
+    """UX-OPS-001B: bounded, batched lookups for the additive facts
+    `EquipmentReadinessStateRead` exposes (entity code/name, equipment
+    type code/name, `requires_cleaning`, Carrier in-use, latest cleaning
+    result) -- never one query per row on a list endpoint (mirrors
+    `equipment_incident_service.resolve_read_context`'s own established
+    pattern). Asset `is_in_use` is deliberately not computed here (no
+    single authoritative "in active use" signal exists for Assets today --
+    see docs/domain/EQUIPMENT_READINESS_MODEL.md's documented gap); the
+    caller leaves it `None` for `entity_type == "asset"`.
+
+    R1: every sub-query is also scoped by `farm_id` (derived from the
+    passed-in `states`, which every existing caller already resolved
+    within a single farm) alongside `tenant_id` -- defense-in-depth
+    (CLAUDE.md rule 2) so a readiness read can never resolve an Asset/
+    Carrier/CleaningEvent belonging to a different farm under the same
+    tenant, even if a future caller's own farm-scoping had a bug."""
+    farm_ids = {s.farm_id for s in states}
+    asset_ids = {s.asset_id for s in states if s.asset_id}
+    carrier_ids = {s.carrier_id for s in states if s.carrier_id}
+    cleaning_event_ids = {s.last_cleaning_event_id for s in states if s.last_cleaning_event_id}
+
+    assets: dict[uuid.UUID, dict] = {}
+    if asset_ids:
+        for row in db.execute(
+            select(Asset.id, Asset.code, Asset.name, AssetType.code, AssetType.name, AssetType.requires_cleaning)
+            .join(AssetType, AssetType.id == Asset.asset_type_id)
+            .where(Asset.tenant_id == tenant_id, Asset.farm_id.in_(farm_ids), Asset.id.in_(asset_ids))
+        ):
+            assets[row[0]] = {
+                "entity_code": row[1], "entity_name": row[2], "equipment_type_code": row[3],
+                "equipment_type_name": row[4], "requires_cleaning": row[5],
+            }
+
+    carriers: dict[uuid.UUID, dict] = {}
+    if carrier_ids:
+        for row in db.execute(
+            select(Carrier.id, Carrier.code, CarrierType.code, CarrierType.name, CarrierType.requires_cleaning)
+            .join(CarrierType, CarrierType.id == Carrier.carrier_type_id)
+            .where(Carrier.tenant_id == tenant_id, Carrier.farm_id.in_(farm_ids), Carrier.id.in_(carrier_ids))
+        ):
+            carriers[row[0]] = {
+                "entity_code": row[1], "entity_name": None, "equipment_type_code": row[2],
+                "equipment_type_name": row[3], "requires_cleaning": row[4],
+            }
+
+    in_use_carrier_ids: set[uuid.UUID] = set()
+    if carrier_ids:
+        in_use_carrier_ids = set(
+            db.execute(
+                select(BatchCarrierAssignment.carrier_id).where(
+                    BatchCarrierAssignment.tenant_id == tenant_id,
+                    BatchCarrierAssignment.farm_id.in_(farm_ids),
+                    BatchCarrierAssignment.carrier_id.in_(carrier_ids),
+                    BatchCarrierAssignment.released_effective_time.is_(None),
+                )
+            ).scalars()
+        )
+
+    cleaning_results: dict[uuid.UUID, str] = {}
+    if cleaning_event_ids:
+        for row in db.execute(
+            select(CleaningEvent.id, CleaningEvent.result).where(
+                CleaningEvent.tenant_id == tenant_id, CleaningEvent.farm_id.in_(farm_ids),
+                CleaningEvent.id.in_(cleaning_event_ids),
+            )
+        ):
+            cleaning_results[row[0]] = row[1]
+
+    return {
+        "assets": assets, "carriers": carriers,
+        "in_use_carrier_ids": in_use_carrier_ids, "cleaning_results": cleaning_results,
+    }
+
+
+# --- read-model computed actions (R1: single source of truth, backend-owned) --------
+
+
+READINESS_ACTIONS = (
+    "mark_awaiting_cleaning", "record_cleaning", "mark_ready", "report_damage",
+    "send_to_maintenance", "return_from_maintenance", "retire",
+)
+
+_FORWARD_ACTIONS = ("mark_awaiting_cleaning", "record_cleaning", "mark_ready", "return_from_maintenance")
+
+
+def compute_readiness_actions(
+    *,
+    current_state: str,
+    entity_type: str,
+    requires_cleaning: bool,
+    is_in_use: bool | None,
+    latest_cleaning_result: str | None,
+) -> list[str]:
+    """R1 (blocker #3): the single, backend-owned source of truth for which
+    readiness commands are currently valid for a state with these facts --
+    ported verbatim from the frontend's prior `computeAvailableReadinessActions`
+    (UX-OPS-001B) so behavior is unchanged, but now lives exactly once, next
+    to the transition commands themselves (`mark_awaiting_cleaning`/
+    `record_cleaning_completed`/`mark_ready`/`report_damage`/
+    `send_to_maintenance`/`return_from_maintenance`/`retire` above) so the
+    two can never drift. Mirrors docs/domain/EQUIPMENT_READINESS_MODEL.md's
+    frozen allowed-transitions table (PART 6) and ready-validation rules
+    (PART 7) exactly. This is presentation-layer guidance only -- the
+    transition commands above remain the authoritative enforcement point (a
+    409 is still possible if state changed after this read was produced)."""
+    if current_state == "retired":
+        return []
+    if current_state == "damaged":
+        return ["send_to_maintenance", "retire"]
+    if current_state == "maintenance":
+        return ["return_from_maintenance", "report_damage", "retire"]
+
+    # Carrier in-use blocks Mark Ready specifically (PART 7) -- never
+    # derived for an Asset, which has no authoritative in-use signal
+    # (`is_in_use` is `None`, not `False`, so it never participates here).
+    blocked_by_active_assignment = entity_type == "carrier" and is_in_use is True
+
+    forward: list[str] = []
+    if current_state == "unknown":
+        # Frozen rule: a cleaning-required type can NEVER go directly
+        # UNKNOWN -> READY -- it must pass through AWAITING_CLEANING first.
+        if requires_cleaning:
+            forward.append("mark_awaiting_cleaning")
+        elif not blocked_by_active_assignment:
+            forward.append("mark_ready")
+    elif current_state == "awaiting_cleaning":
+        forward.append("record_cleaning")
+    elif current_state == "cleaning_completed":
+        # Frozen rule: NEEDS_REWORK never offers Mark Ready -- only a most
+        # recent COMPLETED cleaning result does.
+        if latest_cleaning_result == "completed" and not blocked_by_active_assignment:
+            forward.append("mark_ready")
+        # Always available from CLEANING_COMPLETED (re-clean path),
+        # including to recover from a NEEDS_REWORK result -- PART 6's
+        # allowed-transitions table lists CLEANING_COMPLETED ->
+        # AWAITING_CLEANING unconditionally.
+        forward.append("mark_awaiting_cleaning")
+    elif current_state == "ready" and requires_cleaning:
+        forward.append("mark_awaiting_cleaning")
+
+    return [*forward, "report_damage", "send_to_maintenance", "retire"]
+
+
+def primary_readiness_action(available_actions: list[str]) -> str | None:
+    """The one primary, forward-progressing action from an already-computed
+    `available_actions` list (never `report_damage`/`send_to_maintenance`/
+    `retire`, which stay secondary/exceptional per ticket §7.5) -- `None`
+    when there is none (e.g. already `ready`, or blocked by an active
+    Carrier assignment)."""
+    for action in available_actions:
+        if action in _FORWARD_ACTIONS:
+            return action
+    return None
+
+
 def _require_state_for_asset(
     db: Session, *, tenant_id: uuid.UUID, farm_id: uuid.UUID, asset_id: uuid.UUID
 ) -> EquipmentReadinessState:

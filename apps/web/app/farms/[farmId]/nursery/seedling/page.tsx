@@ -1,16 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { QueueList, QueueRow } from "@/components/layout/QueueRow";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { NurseryJourney } from "@/components/nursery/NurseryJourney";
 import { RecordDispositionForm } from "@/components/nursery/RecordDispositionForm";
 import { SeedlingDispositionHistoryPanel } from "@/components/nursery/SeedlingDispositionHistoryPanel";
+import { SeedlingInspector } from "@/components/nursery/SeedlingInspector";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
@@ -25,15 +28,24 @@ function errorMessage(error: unknown): string {
  * per Tray plus biological disposition recording/correction. Deliberately
  * separate from the Germination page (which owns physical placement and
  * the Germination-outcome handoff only, not post-handoff biological
- * quantity changes). */
+ * quantity changes).
+ *
+ * UX-OPS-001B: one queue plus a selected-item inspector/action workspace
+ * (ticket §6.2), replacing the prior full-width table -- the queue/
+ * inspector split and the Record/History command forms are otherwise
+ * functionally unchanged. */
 export default function SeedlingPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const [recordingAssignmentId, setRecordingAssignmentId] = useState<string | "new" | null>(null);
   const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
 
   const traysQuery = useSeedlingBiologicalTrays(farmId);
   const recordMutation = useRecordSeedlingDisposition(farmId);
+
+  const rows = traysQuery.data ?? [];
+  const selectedRow = rows.find((r) => r.batch_carrier_assignment_id === selectedAssignmentId) ?? null;
 
   function closeForm() {
     setRecordingAssignmentId(null);
@@ -44,6 +56,7 @@ export default function SeedlingPage() {
     <div>
       <PageHeader
         title="Seedling"
+        compact
         breadcrumbs={
           <Breadcrumbs
             items={[
@@ -56,7 +69,13 @@ export default function SeedlingPage() {
         actions={
           recordingAssignmentId === null &&
           historyEntryId === null && (
-            <Button type="button" variant="primary" onClick={() => setRecordingAssignmentId("new")}>
+            // UX-OPS-001B R1: secondary, never primary -- the selected
+            // row's own "Record disposition" action (SeedlingInspector) is
+            // the sole primary action whenever a row is selected. This
+            // manual entry point (no row preselected) stays available but
+            // subordinate, so the two never compete as co-equal blue
+            // buttons on screen at once.
+            <Button type="button" variant="secondary" onClick={() => setRecordingAssignmentId("new")}>
               Record biological disposition
             </Button>
           )
@@ -93,86 +112,45 @@ export default function SeedlingPage() {
         <>
           {traysQuery.isLoading && <LoadingSkeleton />}
           {traysQuery.isError && <ErrorState error={traysQuery.error} onRetry={() => traysQuery.refetch()} />}
-          {traysQuery.isSuccess && traysQuery.data.length === 0 && (
+          {traysQuery.isSuccess && rows.length === 0 && (
             <EmptyState
               title="No Seedling Trays yet"
               description="Trays appear here once a Seedling entry has been recorded from Germination."
             />
           )}
-          {traysQuery.isSuccess && traysQuery.data.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-border-subtle bg-surface-subtle text-xs uppercase text-ink-muted">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Batch</th>
-                    <th className="px-4 py-2 font-medium">Seed Tray</th>
-                    <th className="px-4 py-2 font-medium">Table</th>
-                    <th className="px-4 py-2 font-medium">Starting Living</th>
-                    <th className="px-4 py-2 font-medium">Current Living</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 font-medium" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {traysQuery.data.map((row) => {
-                    const tone: StatusTone = row.is_depleted
-                      ? "attention"
-                      : row.assignment_active
-                        ? "active"
-                        : "closed";
-                    const label = row.is_depleted ? "Depleted" : row.assignment_active ? "Active" : "Released";
-                    return (
-                      <tr key={row.seedling_entry_id} className="hover:bg-surface-subtle">
-                        <td className="px-4 py-2 font-medium text-ink">{row.batch_code}</td>
-                        <td className="px-4 py-2 text-ink">{row.tray_code}</td>
-                        <td className="px-4 py-2 text-ink-muted">{row.seedling_table_code ?? "—"}</td>
-                        {/* Starting is historical/reconciliation context only --
-                            muted, never the authoritative figure. */}
-                        <td className="px-4 py-2 text-ink-muted">{row.starting_living_seedling_count.toLocaleString()}</td>
-                        {/* Current is the authoritative living quantity --
-                            emphasized so it's never mistaken for Starting. */}
-                        <td className="px-4 py-2 font-semibold text-ink">{row.current_living_seedling_count.toLocaleString()}</td>
-                        <td className="px-4 py-2">
-                          <StatusBadge label={label} tone={tone} />
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            {row.assignment_active && !row.is_depleted && (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => setRecordingAssignmentId(row.batch_carrier_assignment_id)}
-                              >
-                                Record
-                              </Button>
-                            )}
-                            {row.event_count > 0 && (
-                              <Button type="button" variant="secondary" onClick={() => setHistoryEntryId(row.seedling_entry_id)}>
-                                History
-                              </Button>
-                            )}
-                            {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
-                                reuses the existing generic Placement label/reprint route,
-                                which re-resolves current authoritative Batch/Carrier/
-                                Location fresh every time. Offered only while the
-                                placement is still active -- a released assignment's
-                                label is no longer this Tray's current identity. */}
-                            {row.assignment_active && (
-                              <Link
-                                href={`/farms/${farmId}/labels/batch_carrier_assignment/${row.batch_carrier_assignment_id}`}
-                                className="inline-flex h-9 items-center text-xs font-medium text-ink-muted underline hover:text-ink"
-                              >
-                                Reprint label
-                              </Link>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {traysQuery.isSuccess && rows.length > 0 && (
+            <SplitWorkspace
+              main={
+                <BoundedDataRegion label="Seedling queue">
+                  <QueueList label="Seedling queue">
+                    {rows.map((row) => {
+                      const tone: StatusTone = row.is_depleted ? "attention" : row.assignment_active ? "active" : "closed";
+                      const label = row.is_depleted ? "Depleted" : row.assignment_active ? "Active" : "Released";
+                      return (
+                        <QueueRow
+                          key={row.seedling_entry_id}
+                          isSelected={row.batch_carrier_assignment_id === selectedAssignmentId}
+                          onSelect={() => setSelectedAssignmentId(row.batch_carrier_assignment_id)}
+                          title={row.tray_code}
+                          context={`Batch ${row.batch_code}${row.seedling_table_code ? ` · ${row.seedling_table_code}` : ""}`}
+                          status={<StatusBadge label={label} tone={tone} />}
+                          meta={`${row.current_living_seedling_count.toLocaleString()} living`}
+                        />
+                      );
+                    })}
+                  </QueueList>
+                </BoundedDataRegion>
+              }
+              rail={
+                <SeedlingInspector
+                  row={selectedRow}
+                  farmId={farmId}
+                  onRecord={(assignmentId) => setRecordingAssignmentId(assignmentId)}
+                  onHistory={(seedlingEntryId) => setHistoryEntryId(seedlingEntryId)}
+                  onClose={() => setSelectedAssignmentId(null)}
+                />
+              }
+            />
           )}
         </>
       )}

@@ -1,105 +1,137 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { ReadinessInspector, READINESS_STATE_TONE } from "@/components/equipment/ReadinessInspector";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { InspectorEmptyState } from "@/components/layout/InspectorShell";
+import { QueueList, QueueRow } from "@/components/layout/QueueRow";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { ViewTabs, type ViewTabItem } from "@/components/layout/ViewTabs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
+import type { EquipmentReadinessCurrentState } from "@/lib/api/client";
+import { formatElapsedSince } from "@/lib/format/elapsed";
 import { humanizeEnumCode } from "@/lib/format/humanize";
-import { useAssets, useAwaitingCleaning, useCarriers } from "@/lib/query/hooks";
+import { useViewState } from "@/lib/navigation/useViewState";
+import { useEquipmentReadinessList } from "@/lib/query/hooks";
 
-/** PILOT-ASSET-001: the Cleaning Queue -- deliberately a compact table, not
- * a form-heavy page (per the ticket's own instruction). `EquipmentReadinessStateRead`
- * carries no `code` field, so Asset/Carrier codes are resolved client-side by
- * matching against the farm's already-fetched Asset/Carrier lists, mirroring
- * `CreateWorkItemForm`'s "reuse already-fetched farm data" convention rather
- * than adding a new backend read. */
+const READINESS_VIEWS = ["unassessed", "cleaning", "release", "attention"] as const;
+type ReadinessView = (typeof READINESS_VIEWS)[number];
+
+const VIEW_LABELS: Record<ReadinessView, string> = {
+  unassessed: "Unassessed",
+  cleaning: "Cleaning",
+  release: "Awaiting release",
+  attention: "Attention",
+};
+
+const VIEW_STATES: Record<ReadinessView, EquipmentReadinessCurrentState[]> = {
+  unassessed: ["unknown"],
+  cleaning: ["awaiting_cleaning"],
+  release: ["cleaning_completed"],
+  attention: ["damaged", "maintenance"],
+};
+
+const VIEW_EMPTY_LABEL: Record<ReadinessView, string> = {
+  unassessed: "Nothing awaiting an initial assessment.",
+  cleaning: "Nothing awaiting cleaning.",
+  release: "Nothing awaiting release to Ready.",
+  attention: "Nothing currently damaged or in maintenance.",
+};
+
+/** UX-OPS-001B §7.3: the Readiness operations workspace -- URL-backed
+ * durable views over the real lifecycle states (never a fabricated
+ * "ready"/empty reading; UNKNOWN and CLEANING_COMPLETED are frozen-rule
+ * distinct from READY). RETIRED is deliberately not one of these queues
+ * (terminal, not actionable work) -- reachable only via a specific
+ * entity's own Readiness detail/history. */
 export default function EquipmentCleaningQueuePage() {
   const { farmId } = useParams<{ farmId: string }>();
-  const queueQuery = useAwaitingCleaning(farmId);
-  // `assetType=""` lists every Asset type for this farm (mirrors
-  // app/farms/[farmId]/page.tsx's own `useAssets(farmId, "")` usage).
-  const assetsQuery = useAssets(farmId, "");
-  const carriersQuery = useCarriers(farmId);
+  const { view, selected, setView, setSelected } = useViewState<ReadinessView>({
+    views: READINESS_VIEWS,
+    defaultView: "unassessed",
+  });
 
-  const assetCodeById = useMemo(
-    () => new Map((assetsQuery.data ?? []).map((a) => [a.id, a.code])),
-    [assetsQuery.data],
-  );
-  const carrierCodeById = useMemo(
-    () => new Map((carriersQuery.data ?? []).map((c) => [c.id, c.code])),
-    [carriersQuery.data],
-  );
+  const query = useEquipmentReadinessList(farmId, VIEW_STATES[view]);
+  const rows = query.data ?? [];
+  const selectedState = rows.find((r) => r.id === selected) ?? null;
 
-  const isLoading = queueQuery.isLoading || assetsQuery.isLoading || carriersQuery.isLoading;
-  const loadError = queueQuery.error ?? assetsQuery.error ?? carriersQuery.error;
-  const rows = queueQuery.data ?? [];
+  const viewTabs: ViewTabItem<ReadinessView>[] = READINESS_VIEWS.map((v) => ({ value: v, label: VIEW_LABELS[v] }));
 
   return (
     <div>
       <PageHeader
-        title="Cleaning Queue"
-        description="Equipment awaiting cleaning, and cleaning completed but not yet released to Ready."
+        title="Equipment Readiness"
+        description="Equipment lifecycle work: initial assessment, cleaning, release to Ready, and damage/maintenance attention."
+        compact
         breadcrumbs={
-          <Breadcrumbs items={[{ label: "Home", href: `/farms/${farmId}` }, { label: "Cleaning Queue" }]} />
+          <Breadcrumbs items={[{ label: "Home", href: `/farms/${farmId}` }, { label: "Equipment Readiness" }]} />
         }
       />
 
-      {isLoading && <LoadingSkeleton rows={4} label="Loading cleaning queue" />}
-      {!isLoading && loadError && (
-        <ErrorState
-          error={loadError}
-          onRetry={() => {
-            queueQuery.refetch();
-            assetsQuery.refetch();
-            carriersQuery.refetch();
-          }}
+      <div className="mb-4">
+        <ViewTabs items={viewTabs} active={view} onChange={setView} />
+      </div>
+
+      {query.isLoading && <LoadingSkeleton rows={4} label={`Loading ${VIEW_LABELS[view].toLowerCase()}`} />}
+      {!query.isLoading && Boolean(query.error) && <ErrorState error={query.error} onRetry={() => query.refetch()} />}
+      {!query.isLoading && !query.error && rows.length === 0 && (
+        <EmptyState title={VIEW_EMPTY_LABEL[view]} description="Nothing to do in this view right now." />
+      )}
+      {!query.isLoading && !query.error && rows.length > 0 && (
+        <SplitWorkspace
+          main={
+            <BoundedDataRegion label={`${VIEW_LABELS[view]} queue`}>
+              <QueueList label={`${VIEW_LABELS[view]} queue`}>
+                {rows.map((row) => (
+                  <QueueRow
+                    key={row.id}
+                    isSelected={row.id === selected}
+                    onSelect={() => setSelected(row.id)}
+                    title={row.entity_code}
+                    context={row.equipment_type_name}
+                    status={
+                      // UX-OPS-001B R1 (blocker #6): COMPLETED and
+                      // NEEDS_REWORK share one `current_state`
+                      // (cleaning_completed) -- the row must surface the
+                      // actual cleaning result and Carrier in-use status
+                      // itself, not just the shared state, so the two
+                      // never look identical before a row is selected.
+                      <div className="flex flex-col items-end gap-1">
+                        <StatusBadge
+                          label={humanizeEnumCode(row.current_state)}
+                          tone={READINESS_STATE_TONE[row.current_state]}
+                        />
+                        {row.latest_cleaning_result && (
+                          <StatusBadge
+                            label={humanizeEnumCode(row.latest_cleaning_result)}
+                            tone={row.latest_cleaning_result === "needs_rework" ? "critical" : "active"}
+                          />
+                        )}
+                        {row.entity_type === "carrier" && row.is_in_use && (
+                          <StatusBadge label="In Use" tone="attention" />
+                        )}
+                      </div>
+                    }
+                    meta={formatElapsedSince(row.state_changed_at)}
+                  />
+                ))}
+              </QueueList>
+            </BoundedDataRegion>
+          }
+          rail={
+            selectedState ? (
+              <ReadinessInspector state={selectedState} farmId={farmId} onClose={() => setSelected(null)} />
+            ) : (
+              <InspectorEmptyState />
+            )
+          }
         />
-      )}
-      {!isLoading && !loadError && rows.length === 0 && (
-        <EmptyState title="Nothing in the Cleaning Queue" description="No equipment is currently awaiting cleaning or release." />
-      )}
-      {!isLoading && !loadError && rows.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-wl-border bg-wl-surface-raised">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-wl-border bg-wl-surface-sunken text-xs uppercase text-wl-text-secondary">
-              <tr>
-                <th className="px-4 py-2 font-medium">Code</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-wl-border">
-              {rows.map((row) => {
-                const code = row.asset_id ? assetCodeById.get(row.asset_id) : carrierCodeById.get(row.carrier_id ?? "");
-                const href = `/farms/${farmId}/equipment/${row.entity_type}/${row.asset_id ?? row.carrier_id}/readiness`;
-                return (
-                  <tr key={row.id} className="hover:bg-wl-surface-hover">
-                    <td className="px-4 py-2 font-medium text-wl-text">{code ?? "—"}</td>
-                    <td className="px-4 py-2 text-wl-text-secondary">{humanizeEnumCode(row.entity_type)}</td>
-                    <td className="px-4 py-2">
-                      <StatusBadge label={humanizeEnumCode(row.current_state)} tone="attention" />
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <Link
-                        href={row.current_state === "cleaning_completed" ? href : `${href}?action=record-cleaning`}
-                        className="text-sm font-medium text-wl-brand hover:underline"
-                      >
-                        {row.current_state === "cleaning_completed" ? "Mark Ready" : "Record Cleaning"}
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       )}
     </div>
   );

@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { QueueList, QueueRow } from "@/components/layout/QueueRow";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { GerminationInspector } from "@/components/nursery/GerminationInspector";
 import { MoveToSeedlingForm } from "@/components/nursery/MoveToSeedlingForm";
 import { MoveTrayForm } from "@/components/nursery/MoveTrayForm";
 import { NurseryJourney } from "@/components/nursery/NurseryJourney";
@@ -16,14 +20,6 @@ import { RecordOutcomeForm, type RecordOutcomeSuccessInfo } from "@/components/n
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
-import {
-  tableBodyDividerClass,
-  tableHeadRowClass,
-  tableRowHoverClass,
-  tableTdClass,
-  tableThClass,
-  tableWrapperClass,
-} from "@/components/ui/table";
 import type { GerminationTrayRead } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
 import { germinationPlacementLabel, seedlingEntryLabel } from "@/lib/labels/operationalLabel";
@@ -34,8 +30,6 @@ import {
   usePlaceTray,
   usePlaceTrolley,
   useRecordSeedlingEntry,
-  type GerminationNextAction,
-  type GerminationObservationStatus,
   type GerminationWorklistRow,
 } from "@/lib/query/hooks";
 
@@ -48,16 +42,6 @@ const PLACEMENT_TONE: Record<GerminationTrayRead["state"], StatusTone> = {
   awaiting_placement: "attention",
   elsewhere: "neutral",
   in_germination: "active",
-};
-const OBSERVATION_LABEL: Record<GerminationObservationStatus, string> = {
-  not_observed: "Not observed",
-  interim: "Interim",
-  final: "Final",
-};
-const OBSERVATION_TONE: Record<GerminationObservationStatus, StatusTone> = {
-  not_observed: "neutral",
-  interim: "attention",
-  final: "active",
 };
 
 type StatusFilter = "all" | "needs_placement" | "needs_observation" | "ready_for_seedling";
@@ -76,30 +60,8 @@ function matchesStatusFilter(row: GerminationWorklistRow, filter: StatusFilter):
   return row.nextAction.kind === "move_to_seedling";
 }
 
-function nextActionLabel(action: GerminationNextAction): string | null {
-  switch (action.kind) {
-    case "place":
-      return "Move to Germination";
-    case "record_outcome":
-      return action.isUpdate ? "Update outcome" : "Record outcome";
-    case "move_to_seedling":
-      return "Move to Seedling";
-    case "none":
-      return null;
-  }
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
-}
-
-function formatDateTime(iso: string | null): string | null {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
 }
 
 type ActiveAction =
@@ -150,7 +112,8 @@ export default function GerminationPage() {
   // it seeds the filter, it does not lock the worklist to that Batch forever.
   const [batchFilter, setBatchFilter] = useState<string>(contextBatchId ?? "");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [showMoreActions, setShowMoreActions] = useState(false);
 
   const worklist = useGerminationWorklist(farmId);
   const rows = worklist.rows;
@@ -181,14 +144,7 @@ export default function GerminationPage() {
     else if (row.nextAction.kind === "move_to_seedling") setActiveAction({ kind: "seedling", assignmentId: row.assignmentId });
   }
 
-  function toggleExpanded(assignmentId: string) {
-    setExpandedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(assignmentId)) next.delete(assignmentId);
-      else next.add(assignmentId);
-      return next;
-    });
-  }
+  const selectedRow = filteredRows.find((r) => r.assignmentId === selectedAssignmentId) ?? null;
 
   return (
     <div>
@@ -203,31 +159,36 @@ export default function GerminationPage() {
             ]}
           />
         }
+        compact
         actions={
           activeAction === null && (
-            <div className="flex flex-wrap gap-2">
-              {/* Physical placement actions (secondary) vs. the biological
-                  assessment action (primary) -- only one competing "primary"
-                  at a time, matching the existing action hierarchy. These
-                  remain manual/global entry points; the worklist rows below
-                  are the primary, continuity-preserving path (PILOT-UX-002B). */}
-              <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "trolley" })}>
-                Place Trolley
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "tray" })}>
-                Move Tray to Germination
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "outcome" })}>
-                Record Outcome (manual)
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "seedling" })}>
-                Move to Seedling (manual)
-              </Button>
-            </div>
+            <Button type="button" variant="secondary" onClick={() => setShowMoreActions((v) => !v)}>
+              {showMoreActions ? "Hide manual actions" : "Manual actions"}
+            </Button>
           )
         }
       />
       <NurseryJourney farmId={farmId} current="germination" />
+
+      {/* Global/manual entry points -- a compact secondary disclosure so
+          they never compete with the worklist rows' own continuity-
+          preserving path (PILOT-UX-002B), matching ticket §6.1. */}
+      {activeAction === null && showMoreActions && (
+        <div className="mb-4 flex flex-wrap gap-2 rounded-lg border border-wl-border bg-wl-surface-sunken p-3">
+          <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "trolley" })}>
+            Place Trolley
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "tray" })}>
+            Move Tray to Germination
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "outcome" })}>
+            Record Outcome (manual)
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setActiveAction({ kind: "seedling" })}>
+            Move to Seedling (manual)
+          </Button>
+        </div>
+      )}
 
       {activeAction?.kind === "trolley" && (
         <PlaceTrolleyForm
@@ -399,125 +360,36 @@ export default function GerminationPage() {
                   description="Clear a filter to see more Seed Trays."
                 />
               ) : (
-                <div className={tableWrapperClass}>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className={tableHeadRowClass}>
-                        <th className={tableThClass} />
-                        <th className={tableThClass}>Batch</th>
-                        <th className={tableThClass}>Seed Tray</th>
-                        <th className={tableThClass}>Placement</th>
-                        <th className={tableThClass}>Observation</th>
-                        <th className={tableThClass}>Next action</th>
-                      </tr>
-                    </thead>
-                    <tbody className={tableBodyDividerClass}>
-                      {filteredRows.map((row) => {
-                        const expanded = expandedRows.has(row.assignmentId);
-                        const actionLabel = nextActionLabel(row.nextAction);
-                        const latestObservedAt = formatDateTime(row.latestObservedAt);
-                        return (
-                          <Fragment key={row.assignmentId}>
-                            <tr className={tableRowHoverClass}>
-                              <td className={tableTdClass}>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleExpanded(row.assignmentId)}
-                                  aria-expanded={expanded}
-                                  aria-label={expanded ? "Hide details" : "Show details"}
-                                  className="text-wl-text-secondary hover:text-wl-text"
-                                >
-                                  {expanded ? "▾" : "▸"}
-                                </button>
-                              </td>
-                              <td className={`${tableTdClass} font-medium text-wl-text`}>{row.batchCode}</td>
-                              <td className={tableTdClass}>
-                                <div className="font-medium text-wl-text">{row.trayCode}</div>
-                                <div className="text-xs text-wl-text-secondary">
-                                  {row.cropName} / {row.varietyName}
-                                </div>
-                              </td>
-                              <td className={tableTdClass}>
-                                <StatusBadge
-                                  label={PLACEMENT_LABEL[row.placementState]}
-                                  tone={PLACEMENT_TONE[row.placementState]}
-                                />
-                                <div className="mt-1 text-xs text-wl-text-secondary">{row.placementLabel ?? "—"}</div>
-                              </td>
-                              <td className={tableTdClass}>
-                                <StatusBadge
-                                  label={OBSERVATION_LABEL[row.observationStatus]}
-                                  tone={OBSERVATION_TONE[row.observationStatus]}
-                                />
-                                <div className="mt-1 text-xs text-wl-text-secondary">
-                                  {row.normalCount === null && row.abnormalCount === null
-                                    ? "—"
-                                    : `${row.normalCount ?? 0} normal / ${row.abnormalCount ?? 0} abnormal`}
-                                </div>
-                              </td>
-                              <td className={tableTdClass}>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {actionLabel ? (
-                                    <Button type="button" variant="primary" onClick={() => openRowAction(row)}>
-                                      {actionLabel}
-                                    </Button>
-                                  ) : (
-                                    <span className="text-xs text-wl-text-secondary">—</span>
-                                  )}
-                                  {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
-                                      only once this Tray is actually placed (a stable placement
-                                      exists to relabel); reuses the existing generic Placement
-                                      label/reprint route, which re-resolves current authoritative
-                                      Batch/Carrier/Location fresh every time, never this row's
-                                      own possibly-stale snapshot. */}
-                                  {row.placementState === "in_germination" && (
-                                    <Link
-                                      href={`/farms/${farmId}/labels/batch_carrier_assignment/${row.assignmentId}`}
-                                      className="text-xs font-medium text-wl-text-secondary underline hover:text-wl-text"
-                                    >
-                                      Reprint label
-                                    </Link>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                            {expanded && (
-                              <tr className="bg-wl-surface-sunken">
-                                <td className={tableTdClass} />
-                                <td className={`${tableTdClass} text-xs text-wl-text-secondary`} colSpan={5}>
-                                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-                                    <div>
-                                      <dt>Seed Lot</dt>
-                                      <dd className="font-medium text-wl-text">{row.seedLotCode}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Seeds sown</dt>
-                                      <dd className="font-medium text-wl-text">{row.seedsSown.toLocaleString()}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Sown Sites</dt>
-                                      <dd className="font-medium text-wl-text">{row.sownSiteCount ?? "Not recorded"}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Prior observations</dt>
-                                      <dd className="font-medium text-wl-text">{row.historicalSnapshotCount}</dd>
-                                    </div>
-                                    {latestObservedAt && (
-                                      <div>
-                                        <dt>Latest observed at</dt>
-                                        <dd className="font-medium text-wl-text">{latestObservedAt}</dd>
-                                      </div>
-                                    )}
-                                  </dl>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <SplitWorkspace
+                  main={
+                    <BoundedDataRegion label="Germination queue">
+                      <QueueList label="Germination queue">
+                        {filteredRows.map((row) => (
+                          <QueueRow
+                            key={row.assignmentId}
+                            isSelected={row.assignmentId === selectedAssignmentId}
+                            onSelect={() => setSelectedAssignmentId(row.assignmentId)}
+                            title={row.trayCode}
+                            context={`Batch ${row.batchCode} · ${row.cropName} / ${row.varietyName}`}
+                            status={
+                              <div className="flex flex-col items-end gap-1">
+                                <StatusBadge label={PLACEMENT_LABEL[row.placementState]} tone={PLACEMENT_TONE[row.placementState]} />
+                              </div>
+                            }
+                          />
+                        ))}
+                      </QueueList>
+                    </BoundedDataRegion>
+                  }
+                  rail={
+                    <GerminationInspector
+                      row={selectedRow}
+                      farmId={farmId}
+                      onOpenAction={openRowAction}
+                      onClose={() => setSelectedAssignmentId(null)}
+                    />
+                  }
+                />
               )}
             </div>
           )}

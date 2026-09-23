@@ -65,6 +65,14 @@ test("Home shows active/harvest-ready/open-hold KPIs without superseded inflatio
   await expect(page.getByRole("heading", { name: "Today on the Farm" })).toBeVisible();
   await expect(page.getByText(fixtures.farm.name)).toBeVisible();
 
+  // UX-OPS-001B: Home now defaults to the actionable "Mine" view: the KPI
+  // cards moved to the secondary "Overview" view (ticket §5.3, "Production
+  // Overview is a secondary view, not the landing content"), so this test
+  // switches to it explicitly before asserting on them. The accessible
+  // names/hrefs/values themselves are unchanged.
+  await page.getByRole("tab", { name: /Overview/ }).click();
+  await expect(page).toHaveURL(/view=overview/);
+
   // 3 active batches (LOT-006, LOT-007A, LOT-007B) -- LOT-007 (superseded)
   // must never be counted here.
   const activeCard = page.getByRole("link", { name: /Active batches/ });

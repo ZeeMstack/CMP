@@ -43,14 +43,44 @@ _CONFLICT_ERRORS = (
 )
 
 
-def _to_read(state: EquipmentReadinessState) -> EquipmentReadinessStateRead:
+def _build_read(state: EquipmentReadinessState, context: dict) -> EquipmentReadinessStateRead:
+    if state.entity_type == "asset":
+        info = context["assets"][state.asset_id]
+        is_in_use = None
+    else:
+        info = context["carriers"][state.carrier_id]
+        is_in_use = state.carrier_id in context["in_use_carrier_ids"]
+    latest_cleaning_result = (
+        context["cleaning_results"].get(state.last_cleaning_event_id) if state.last_cleaning_event_id else None
+    )
+    available_actions = equipment_readiness_service.compute_readiness_actions(
+        current_state=state.current_state, entity_type=state.entity_type,
+        requires_cleaning=info["requires_cleaning"], is_in_use=is_in_use,
+        latest_cleaning_result=latest_cleaning_result,
+    )
+    primary_action = equipment_readiness_service.primary_readiness_action(available_actions)
     return EquipmentReadinessStateRead(
         id=state.id, tenant_id=state.tenant_id, farm_id=state.farm_id, entity_type=state.entity_type,
         asset_id=state.asset_id, carrier_id=state.carrier_id, current_state=state.current_state,
         state_changed_at=state.state_changed_at, state_changed_by_user_id=state.state_changed_by_user_id,
         state_note=state.state_note, last_cleaning_event_id=state.last_cleaning_event_id,
         created_at=state.created_at, updated_at=state.updated_at,
+        entity_code=info["entity_code"], entity_name=info["entity_name"],
+        equipment_type_code=info["equipment_type_code"], equipment_type_name=info["equipment_type_name"],
+        requires_cleaning=info["requires_cleaning"], is_in_use=is_in_use,
+        latest_cleaning_result=latest_cleaning_result,
+        available_actions=available_actions, primary_action=primary_action,
     )
+
+
+def _to_read(db: Session, *, tenant_id: uuid.UUID, state: EquipmentReadinessState) -> EquipmentReadinessStateRead:
+    context = equipment_readiness_service.resolve_readiness_read_context(db, tenant_id=tenant_id, states=[state])
+    return _build_read(state, context)
+
+
+def _to_reads(db: Session, *, tenant_id: uuid.UUID, states: list[EquipmentReadinessState]) -> list[EquipmentReadinessStateRead]:
+    context = equipment_readiness_service.resolve_readiness_read_context(db, tenant_id=tenant_id, states=states)
+    return [_build_read(s, context) for s in states]
 
 
 @router.get("/farms/{farm_id}/assets/{asset_id}/readiness", response_model=EquipmentReadinessStateRead)
@@ -64,7 +94,7 @@ def get_asset_readiness(
         )
     except _NOT_FOUND_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.get("/farms/{farm_id}/carriers/{carrier_id}/readiness", response_model=EquipmentReadinessStateRead)
@@ -78,7 +108,7 @@ def get_carrier_readiness(
         )
     except _NOT_FOUND_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.get("/farms/{farm_id}/equipment-readiness", response_model=list[EquipmentReadinessStateRead])
@@ -94,7 +124,7 @@ def list_equipment_readiness(
         )
     except FarmNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    return [_to_read(s) for s in states]
+    return _to_reads(db, tenant_id=ctx.tenant_id, states=states)
 
 
 @router.get("/farms/{farm_id}/equipment-readiness/awaiting-cleaning", response_model=list[EquipmentReadinessStateRead])
@@ -107,7 +137,7 @@ def list_awaiting_cleaning(
         states = equipment_readiness_service.list_awaiting_cleaning(db, tenant_id=ctx.tenant_id, farm_id=farm_id)
     except FarmNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
-    return [_to_read(s) for s in states]
+    return _to_reads(db, tenant_id=ctx.tenant_id, states=states)
 
 
 @router.get("/farms/{farm_id}/equipment-readiness/{state_id}/history", response_model=list[EquipmentReadinessHistoryEntryRead])
@@ -157,7 +187,7 @@ def mark_awaiting_cleaning(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post(
@@ -177,7 +207,7 @@ def record_cleaning(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post("/farms/{farm_id}/equipment-readiness/{state_id}/mark-ready", response_model=EquipmentReadinessStateRead)
@@ -194,7 +224,7 @@ def mark_ready(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post(
@@ -213,7 +243,7 @@ def report_damage(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post(
@@ -233,7 +263,7 @@ def send_to_maintenance(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post(
@@ -253,7 +283,7 @@ def return_from_maintenance(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)
 
 
 @router.post("/farms/{farm_id}/equipment-readiness/{state_id}/retire", response_model=EquipmentReadinessStateRead)
@@ -270,4 +300,4 @@ def retire(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     except _CONFLICT_ERRORS as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return _to_read(state)
+    return _to_read(db, tenant_id=ctx.tenant_id, state=state)

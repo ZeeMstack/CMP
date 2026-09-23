@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
@@ -37,11 +38,11 @@ export interface EquipmentIncidentOption {
   label: string;
 }
 
-/** PILOT-ASSET-001: Report Incident -- mirrors `PlaceTrolleyForm.tsx`'s
- * shape (single-purpose form, `client_command_id` minted once via
- * `crypto.randomUUID()`). Opened either from the QR "Report Incident"
- * action (`?assetId=` locks the Asset) or from a plain navigation link,
- * where the Asset is picked from a dropdown. */
+/** PILOT-ASSET-001/UX-OPS-001B: Report Incident -- mirrors
+ * `PlaceTrolleyForm.tsx`'s shape (single-purpose form). `client_command_id`
+ * is minted ONCE per form draft (ticket §8.2: "do not mint a new UUID on
+ * every click") and reused across a retry of the same payload -- a fresh
+ * mount (a genuinely new report) is the only thing that mints a new one. */
 export function ReportIncidentForm({
   assets,
   locationOptions,
@@ -66,9 +67,10 @@ export function ReportIncidentForm({
     defaultValues: defaultEquipmentIncidentFormValues(lockedAssetId),
     mode: "onBlur",
   });
+  const [clientCommandId] = useState(() => crypto.randomUUID());
 
   function submit(values: EquipmentIncidentFormValues) {
-    onSubmit(buildEquipmentIncidentOpenPayload(values, crypto.randomUUID()));
+    onSubmit(buildEquipmentIncidentOpenPayload(values, clientCommandId));
   }
 
   const lockedAsset = lockedAssetId ? assets.find((a) => a.id === lockedAssetId) : undefined;
