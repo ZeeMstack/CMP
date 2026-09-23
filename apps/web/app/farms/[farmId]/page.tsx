@@ -15,8 +15,6 @@ import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
 import { Button } from "@/components/ui/Button";
 import { CreateWorkItemForm, type WorkItemContextOption } from "@/components/work-items/CreateWorkItemForm";
 import { ShiftHandoverPanel } from "@/components/work-items/ShiftHandoverPanel";
-import type { FarmWorkItemCreate } from "@/lib/api/client";
-import { AppError } from "@/lib/errors/adapter";
 import { computeHomeKpis } from "@/lib/format/homeKpis";
 import {
   segmentForAttention,
@@ -35,7 +33,6 @@ import { useViewState } from "@/lib/navigation/useViewState";
 import {
   useAssets,
   useCarriers,
-  useCreateWorkItem,
   useCropIssues,
   useCurrentUserId,
   useEquipmentAttention,
@@ -61,10 +58,6 @@ const VIEW_LABELS: Record<HomeView, string> = {
   carryover: "Carryover",
   overview: "Overview",
 };
-
-function errorMessage(error: unknown): string {
-  return error instanceof AppError ? error.message : "Something went wrong. Please try again.";
-}
 
 function SummaryCard({ label, value, href, caption }: { label: string; value: string | number; href?: string; caption?: string }) {
   const cardClass = `h-full rounded-xl border border-wl-border bg-wl-surface-raised p-4 transition-colors ${href ? "hover:border-wl-brand" : ""}`;
@@ -137,8 +130,6 @@ export default function FarmHomePage() {
   });
 
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const createMutation = useCreateWorkItem(farmId);
   const { workingLocation, clearWorkingLocation } = useWorkingLocation();
 
   const locationOptions: WorkItemContextOption[] = useMemo(
@@ -256,14 +247,6 @@ export default function FarmHomePage() {
     count: v === "overview" ? undefined : segmentsTotalCount(segmentsByView[v]),
   }));
 
-  function handleCreate(payload: FarmWorkItemCreate) {
-    setCreateError(null);
-    createMutation.mutate(payload, {
-      onSuccess: () => setCreating(false),
-      onError: (error) => setCreateError(errorMessage(error)),
-    });
-  }
-
   return (
     <div>
       <PageHeader
@@ -296,19 +279,15 @@ export default function FarmHomePage() {
       {creating && (
         <div className="mb-6">
           <CreateWorkItemForm
-            isSubmitting={createMutation.isPending}
-            serverError={createError}
+            farmId={farmId}
             currentUserId={currentUserId}
             locationOptions={locationOptions}
             batchOptions={batchOptions}
             assetOptions={assetOptions}
             carrierOptions={carrierOptions}
             equipmentIncidentOptions={equipmentIncidentOptions}
-            onCancel={() => {
-              setCreating(false);
-              setCreateError(null);
-            }}
-            onSubmit={handleCreate}
+            onCancel={() => setCreating(false)}
+            onSuccess={() => setCreating(false)}
           />
         </div>
       )}

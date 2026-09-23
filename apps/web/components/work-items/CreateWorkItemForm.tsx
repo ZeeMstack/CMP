@@ -6,8 +6,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
+import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
 import { humanizeEnumCode } from "@/lib/format/humanize";
-import type { FarmWorkItemCreate } from "@/lib/api/client";
+import type { FarmWorkItemCreate, FarmWorkItemRead } from "@/lib/api/client";
+import { AppError } from "@/lib/errors/adapter";
+import { useCreateWorkItem, useInvalidateWorkItems } from "@/lib/query/hooks";
 import {
   DEFAULT_FARM_WORK_ITEM_FORM_VALUES,
   buildFarmWorkItemCreatePayload,
@@ -16,6 +19,10 @@ import {
   workItemPriorityOptions,
   type FarmWorkItemFormValues,
 } from "@/lib/validation/farmWorkItem";
+
+function toAppError(error: unknown): AppError {
+  return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
+}
 
 const inputClass =
   "min-h-11 w-full rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
@@ -77,10 +84,9 @@ function ContextSelect({
  * never a second request this form triggers itself) -- see
  * app/farms/[farmId]/page.tsx for what feeds each list. */
 export function CreateWorkItemForm({
-  onSubmit,
+  farmId,
+  onSuccess,
   onCancel,
-  isSubmitting,
-  serverError,
   currentUserId,
   locationOptions = [],
   batchOptions = [],
@@ -90,10 +96,9 @@ export function CreateWorkItemForm({
   lockedCropIssue,
   lockedEquipmentIncident,
 }: {
-  onSubmit: (payload: FarmWorkItemCreate) => void;
+  farmId: string;
+  onSuccess: (item: FarmWorkItemRead) => void;
   onCancel: () => void;
-  isSubmitting: boolean;
-  serverError?: string | null;
   currentUserId?: string;
   locationOptions?: WorkItemContextOption[];
   batchOptions?: WorkItemContextOption[];
@@ -114,11 +119,18 @@ export function CreateWorkItemForm({
   lockedEquipmentIncident?: { id: string; code: string };
 }) {
   const [showContext, setShowContext] = useState(false);
-  // UX-OPS-001B R1: minted once per form draft (this component mounts
-  // fresh each time the create form opens and unmounts on cancel/success),
-  // reused across a retry of the same payload -- never regenerated inside
-  // submit(), which react-hook-form calls again on every resubmission.
-  const [clientCommandId] = useState(() => crypto.randomUUID());
+  // R2: this form now owns its own mutation + frozen-submission instance
+  // (previously delegated to a caller-supplied onSubmit, which had no way
+  // to distinguish an uncertain network/server outcome from a definitive
+  // rejection, and rebuilt the payload from live field values on every
+  // resubmission -- reusing one client_command_id across a CHANGED
+  // payload). `submit()` freezes the whole wire payload on the first
+  // attempt; a retry after an uncertain outcome resends it byte-for-byte
+  // via `retry()`, never rebuilt from (possibly since-edited) field state.
+  const createMutation = useCreateWorkItem(farmId);
+  const invalidate = useInvalidateWorkItems(farmId);
+  const cmd = useFrozenSubmission<FarmWorkItemCreate>();
+  const uncertain = cmd.outcome === "uncertain";
   const {
     register,
     handleSubmit,
@@ -142,8 +154,29 @@ export function CreateWorkItemForm({
   });
 
   function submit(values: FarmWorkItemFormValues) {
-    onSubmit(buildFarmWorkItemCreatePayload(values, { clientCommandId, currentUserId }));
+    if (uncertain) {
+      const payload = cmd.retry();
+      if (!payload) return;
+      createMutation.mutate(payload, {
+        onSuccess: (item) => { cmd.handleSuccess(); onSuccess(item); },
+        onError: (e) => cmd.handleError(toAppError(e)),
+      });
+      return;
+    }
+    const payload = cmd.submit((clientCommandId) => buildFarmWorkItemCreatePayload(values, { clientCommandId, currentUserId }));
+    createMutation.mutate(payload, {
+      onSuccess: (item) => { cmd.handleSuccess(); onSuccess(item); },
+      onError: (e) => cmd.handleError(toAppError(e)),
+    });
   }
+
+  function cancel() {
+    if (uncertain) invalidate();
+    cmd.abandon();
+    onCancel();
+  }
+
+  const fieldsDisabled = uncertain || createMutation.isPending;
 
   // Bound once at the top level (never called inline in JSX) -- mirrors
   // this codebase's own established `watch()` convention (e.g.
@@ -174,13 +207,13 @@ export function CreateWorkItemForm({
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Title" error={errors.title?.message}>
-          <input {...register("title")} className={inputClass} placeholder="Clean Germination Trolley 03" />
+          <input {...register("title")} className={inputClass} placeholder="Clean Germination Trolley 03" disabled={fieldsDisabled} />
         </Field>
         <Field label="Work type" error={errors.workType?.message}>
-          <input {...register("workType")} className={inputClass} placeholder="cleaning" />
+          <input {...register("workType")} className={inputClass} placeholder="cleaning" disabled={fieldsDisabled} />
         </Field>
         <Field label="Category" error={errors.category?.message}>
-          <select {...register("category")} className={inputClass}>
+          <select {...register("category")} className={inputClass} disabled={fieldsDisabled}>
             {workItemCategoryOptions.map((c) => (
               <option key={c} value={c}>
                 {humanizeEnumCode(c)}
@@ -189,7 +222,7 @@ export function CreateWorkItemForm({
           </select>
         </Field>
         <Field label="Priority" error={errors.priority?.message}>
-          <select {...register("priority")} className={inputClass}>
+          <select {...register("priority")} className={inputClass} disabled={fieldsDisabled}>
             {workItemPriorityOptions.map((p) => (
               <option key={p} value={p}>
                 {humanizeEnumCode(p)}
@@ -198,22 +231,29 @@ export function CreateWorkItemForm({
           </select>
         </Field>
         <Field label="Due (optional)" error={errors.dueAt?.message}>
-          <input type="datetime-local" {...register("dueAt")} className={inputClass} />
+          <input type="datetime-local" {...register("dueAt")} className={inputClass} disabled={fieldsDisabled} />
         </Field>
         <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-wl-text">
-          <input type="checkbox" {...register("assignToMe")} className="h-4 w-4" disabled={!currentUserId} />
+          <input type="checkbox" {...register("assignToMe")} className="h-4 w-4" disabled={!currentUserId || fieldsDisabled} />
           Assign to me
         </label>
       </div>
       <Field label="Instructions (optional)" error={errors.instructions?.message}>
-        <textarea {...register("instructions")} rows={2} className={`${inputClass} min-h-0 py-2`} />
+        <textarea {...register("instructions")} rows={2} className={`${inputClass} min-h-0 py-2`} disabled={fieldsDisabled} />
       </Field>
+
+      {uncertain && (
+        <p className="text-xs text-wl-text-secondary">
+          No response yet -- fields are locked and Retry resends this exact submission.
+        </p>
+      )}
 
       {!showContext ? (
         <button
           type="button"
           onClick={() => setShowContext(true)}
-          className="self-start text-sm font-medium text-wl-brand hover:underline"
+          disabled={fieldsDisabled}
+          className="self-start text-sm font-medium text-wl-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Add context (location, batch, asset, carrier)
         </button>
@@ -227,6 +267,7 @@ export function CreateWorkItemForm({
             value={locationId ?? ""}
             options={locationOptions}
             onChange={(v) => setValue("locationId", v || null)}
+            disabled={fieldsDisabled}
           />
           {!lockedCropIssue && (
             <ContextSelect
@@ -234,6 +275,7 @@ export function CreateWorkItemForm({
               value={cropBatchId ?? ""}
               options={batchOptions}
               onChange={(v) => setValue("cropBatchId", v || null)}
+              disabled={fieldsDisabled}
             />
           )}
           <ContextSelect
@@ -241,12 +283,14 @@ export function CreateWorkItemForm({
             value={assetId ?? ""}
             options={assetOptions}
             onChange={(v) => setValue("assetId", v || null)}
+            disabled={fieldsDisabled}
           />
           <ContextSelect
             label="Carrier"
             value={carrierId ?? ""}
             options={carrierOptions}
             onChange={(v) => setValue("carrierId", v || null)}
+            disabled={fieldsDisabled}
           />
           {!lockedCropIssue && !lockedEquipmentIncident && (
             <ContextSelect
@@ -254,6 +298,7 @@ export function CreateWorkItemForm({
               value={equipmentIncidentId ?? ""}
               options={equipmentIncidentOptions}
               onChange={(v) => setValue("equipmentIncidentId", v || null)}
+              disabled={fieldsDisabled}
             />
           )}
           {!hasContextOptions && (
@@ -264,18 +309,18 @@ export function CreateWorkItemForm({
         </fieldset>
       )}
 
-      {serverError && (
+      {cmd.error && (
         <p role="alert" className={errorClass}>
-          {serverError}
+          {cmd.error.message}
         </p>
       )}
 
       <div className="flex gap-3">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={cancel} disabled={createMutation.isPending}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={isSubmitting}>
-          {isSubmitting ? "Creating…" : "Create work item"}
+        <Button type="submit" variant="primary" disabled={createMutation.isPending}>
+          {createMutation.isPending ? "Creating…" : uncertain ? "Retry" : "Create work item"}
         </Button>
       </div>
     </form>

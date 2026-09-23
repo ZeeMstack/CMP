@@ -67,7 +67,11 @@ export function WorkItemRow({ item, farmId, currentUserId }: { item: FarmWorkIte
         )}
       </td>
       <td className={tableTdClass}>
-        <WorkItemActions item={item} farmId={farmId} currentUserId={currentUserId} />
+        {/* R2: keyed by item.id so selecting a different Work Item
+            remounts WorkItemActions (and its useFrozenSubmission
+            instances) from scratch -- a frozen/uncertain command for one
+            item can never leak its client_command_id into another. */}
+        <WorkItemActions key={item.id} item={item} farmId={farmId} currentUserId={currentUserId} />
       </td>
     </tr>
   );

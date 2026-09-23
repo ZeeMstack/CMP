@@ -60,12 +60,28 @@ export function useFrozenSubmission<TPayload extends Record<string, unknown>>() 
     return frozenPayload;
   }, [frozenPayload]);
 
-  const handleSuccess = useCallback(() => {
+  /** R2: explicitly abandons the current attempt -- same end state as a
+   * success or a definitive rejection (outcome resets to `"editing"`, the
+   * frozen id/payload are cleared so the NEXT `submit()` mints a genuinely
+   * new `client_command_id`), but triggered by the operator giving up
+   * rather than by a resolved outcome. Callers must invoke this on every
+   * explicit Cancel -- never leave a stale frozen id/payload sitting
+   * around for a draft that was abandoned, or a later resubmission of
+   * edited fields would replay under the old id with new content (exactly
+   * the "changed payload, reused id" bug this hook exists to prevent). A
+   * caller cancelling out of an `"uncertain"` attempt must perform its own
+   * authoritative query refresh BEFORE calling this -- this hook owns no
+   * query client and cannot do that refresh itself. */
+  const abandon = useCallback(() => {
     setOutcome("editing");
     setError(null);
     clientCommandIdRef.current = null;
     setFrozenPayload(null);
   }, []);
+
+  const handleSuccess = useCallback(() => {
+    abandon();
+  }, [abandon]);
 
   const handleError = useCallback((err: AppError) => {
     if (err.kind === "network_error" || err.kind === "server_error") {
@@ -92,7 +108,7 @@ export function useFrozenSubmission<TPayload extends Record<string, unknown>>() 
      * background query refetch can never make the screen show values
      * different from what Retry will actually resend. */
     frozenPayload,
-    submit, retry, handleSuccess, handleError,
+    submit, retry, handleSuccess, handleError, abandon,
   };
 }
 

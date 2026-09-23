@@ -19,7 +19,6 @@ import {
   useAcknowledgeEquipmentIncident,
   useAssignEquipmentIncident,
   useCloseEquipmentIncident,
-  useCreateWorkItem,
   useEquipmentIncident,
   useEquipmentIncidentHistory,
   useMarkEquipmentIncidentActionInProgress,
@@ -368,7 +367,6 @@ function AssignOwnerPanel({ farmId, incident }: { farmId: string; incident: Equi
 function CorrectiveWorkPanel({ farmId, incident }: { farmId: string; incident: EquipmentIncidentRead }) {
   const [assigning, setAssigning] = useState(false);
   const [created, setCreated] = useState<FarmWorkItemRead | null>(null);
-  const createWorkItem = useCreateWorkItem(farmId);
 
   return (
     <section className="mb-6">
@@ -387,11 +385,10 @@ function CorrectiveWorkPanel({ farmId, incident }: { farmId: string; incident: E
         </Button>
       ) : (
         <CreateWorkItemForm
+          farmId={farmId}
           lockedEquipmentIncident={{ id: incident.id, code: incident.code }}
-          isSubmitting={createWorkItem.isPending}
-          serverError={createWorkItem.error ? createWorkItem.error.message : null}
           onCancel={() => setAssigning(false)}
-          onSubmit={(payload) => createWorkItem.mutate(payload, { onSuccess: (item) => setCreated(item) })}
+          onSuccess={(item) => setCreated(item)}
         />
       )}
     </section>

@@ -66,7 +66,12 @@ export function WorkItemInspectorPanel({
         </div>
       </dl>
       <div className="border-t border-wl-border pt-3">
-        <WorkItemActions item={item} farmId={farmId} currentUserId={currentUserId} />
+        {/* R2: keyed by item.id -- see WorkItemRow.tsx's identical
+            comment. This is the more critical of the two call sites: a
+            fixed-position inspector rail is exactly where React would
+            otherwise reuse the same WorkItemActions instance across a
+            selection change. */}
+        <WorkItemActions key={item.id} item={item} farmId={farmId} currentUserId={currentUserId} />
       </div>
     </div>
   );

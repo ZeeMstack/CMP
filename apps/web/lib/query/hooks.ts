@@ -3785,8 +3785,11 @@ export function useWorkItemHistory(farmId: string, workItemId: string, enabled =
 /** Every Farm Work Item mutation below invalidates the same board list
  * (both include-completed variants) plus the item's own detail/history
  * keys -- mirroring the Location maintenance hooks' single-invalidation-
- * target convention exactly. */
-function useInvalidateWorkItems(farmId: string) {
+ * target convention exactly. Exported (R2) so a component holding its own
+ * `useFrozenSubmission` instance can trigger the same authoritative
+ * refresh on an explicit Cancel out of an `"uncertain"` attempt, without
+ * duplicating this invalidation list. */
+export function useInvalidateWorkItems(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return (workItemId?: string) => {
@@ -3892,16 +3895,25 @@ export function useShiftHandovers(farmId: string) {
   });
 }
 
-export function useCreateShiftHandover(farmId: string) {
+/** R2: exported so `ShiftHandoverPanel` can trigger the same authoritative
+ * refresh `useCreateShiftHandover`'s own `onSuccess` already does, on an
+ * explicit Cancel out of an `"uncertain"` attempt -- never duplicated by
+ * hand at the call site. */
+export function useInvalidateShiftHandovers(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
+  return () => {
+    if (!tenantId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.latestShiftHandover(tenantId, farmId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.shiftHandovers(tenantId, farmId) });
+  };
+}
+
+export function useCreateShiftHandover(farmId: string) {
+  const invalidate = useInvalidateShiftHandovers(farmId);
   return useMutation({
     mutationFn: (payload: ShiftHandoverCreate) => api.createShiftHandover(farmId, payload),
-    onSuccess: () => {
-      if (!tenantId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.latestShiftHandover(tenantId, farmId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.shiftHandovers(tenantId, farmId) });
-    },
+    onSuccess: () => invalidate(),
   });
 }
 

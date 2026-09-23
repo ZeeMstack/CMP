@@ -67,3 +67,41 @@ export function QueueList({ children, label }: { children: ReactNode; label: str
     </ul>
   );
 }
+
+/** UX-OPS-001B R2: a compact, queue-row-height failure state for ONE
+ * segment/source inside a unified queue -- named source, concise reason,
+ * and an inline Retry, at roughly the same height as an ordinary
+ * `QueueRow` (never the global `ErrorState` card's large padding and
+ * multi-line explanatory copy, which would let a single failed source
+ * dominate a bounded region shared with working sibling segments).
+ * `role="alert"` so assistive tech still announces it despite the compact
+ * size. Purely presentational -- never disables or hides sibling
+ * segments; the caller renders this in place of just the one failed
+ * segment's own rows. */
+export function QueueSourceFailureRow({
+  sourceLabel,
+  message,
+  onRetry,
+}: {
+  sourceLabel: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex min-h-11 items-center gap-3 border-l-2 border-l-wl-flag-fg bg-wl-flag-bg px-3.5 py-2"
+    >
+      <span className="min-w-0 flex-1 truncate text-sm text-wl-flag-fg">
+        <span className="font-medium">{sourceLabel}</span> unavailable — {message}
+      </span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="shrink-0 rounded-md border border-wl-border-strong bg-wl-surface-raised px-2.5 py-1 text-xs font-medium text-wl-text hover:bg-wl-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
