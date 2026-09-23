@@ -234,7 +234,64 @@ def record_observation(
     germination_checks: list[dict],
     germination_outcomes: list[dict] | None = None,
 ) -> ObservationEvent:
-    """HOTFIX-TIME-002: `effective_time=None` is "record now" -- the server
+    """The standalone Observation command: `record_observation_in_transaction`
+    plus its own commit. Behavior is unchanged from before UX-OPS-001C/R1 --
+    same validation, idempotent replay (including the concurrent-insert
+    unique-violation replay below), audit event, and commit -- only the
+    write body moved into the composable function so another command (Grower
+    Inspection) can include it in ITS OWN single transaction."""
+    try:
+        event = record_observation_in_transaction(
+            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+            client_command_id=client_command_id, effective_time=effective_time, note=note, values=values,
+            germination_checks=germination_checks, germination_outcomes=germination_outcomes,
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if _constraint_name(exc) == "ux_observation_events_tenant_client_command_id":
+            fingerprint = _compute_observation_fingerprint(
+                tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+                effective_time=effective_time, note=note, values=values, germination_checks=germination_checks,
+                germination_outcomes=germination_outcomes or [],
+            )
+            replay = _find_existing_observation_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
+            if replay is not None and replay.request_fingerprint == fingerprint:
+                return replay
+            raise ObservationCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(event)
+    return event
+
+
+def record_observation_in_transaction(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    farm_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    batch_id: uuid.UUID,
+    client_command_id: uuid.UUID,
+    effective_time: datetime | None,
+    note: str | None,
+    values: list[dict],
+    germination_checks: list[dict],
+    germination_outcomes: list[dict] | None = None,
+) -> ObservationEvent:
+    """UX-OPS-001C/R1 (N05): the transaction-composable Observation write.
+    Validates, adds and FLUSHES the ObservationEvent, its values/checks/
+    outcomes, and the `crop_batch.observation_recorded` audit event -- but
+    never commits and never rolls back. The caller owns the transaction:
+    it must commit on success and roll back on ANY exception (including an
+    `IntegrityError` from a concurrent same-command insert, which this
+    function deliberately propagates rather than handling, since rolling
+    back here would silently discard the caller's own uncommitted work).
+    An already-committed same-command event is still returned as a replay.
+
+    HOTFIX-TIME-002: `effective_time=None` is "record now" -- the server
     resolves its own authoritative `datetime.now(timezone.utc)`, never a
     client-generated timestamp that can race ahead of server time under
     ordinary browser clock skew. Resolved only after both idempotency
@@ -598,70 +655,55 @@ def record_observation(
         client_command_id=client_command_id, request_fingerprint=fingerprint, note=note,
     )
     db.add(event)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        constraint = _constraint_name(exc)
-        if constraint == "ux_observation_events_tenant_client_command_id":
-            replay = _find_existing_observation_event(db, tenant_id=tenant_id, client_command_id=client_command_id)
-            if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
-            raise ObservationCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
-        raise
+    db.flush()
 
-    try:
-        for v in values:
-            db.add(
-                ObservationValue(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
-                    observation_definition_id=v["observation_definition_id"],
-                    batch_carrier_assignment_id=v.get("batch_carrier_assignment_id"),
-                    value_integer=v.get("value_integer"), value_decimal=v.get("value_decimal"),
-                    value_boolean=v.get("value_boolean"), value_text=v.get("value_text"), note=v.get("note"),
-                )
+    for v in values:
+        db.add(
+            ObservationValue(
+                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
+                observation_definition_id=v["observation_definition_id"],
+                batch_carrier_assignment_id=v.get("batch_carrier_assignment_id"),
+                value_integer=v.get("value_integer"), value_decimal=v.get("value_decimal"),
+                value_boolean=v.get("value_boolean"), value_text=v.get("value_text"), note=v.get("note"),
             )
-        for c in germination_checks:
-            db.add(
-                GerminationCheck(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
-                    batch_carrier_assignment_id=c["batch_carrier_assignment_id"],
-                    inspected_site_count=c["inspected_site_count"],
-                    normal_germinated_site_count=c["normal_germinated_site_count"],
-                    abnormal_germinated_site_count=c["abnormal_germinated_site_count"],
-                    failed_site_count=c["failed_site_count"], note=c.get("note"),
-                )
-            )
-        for o in germination_outcomes:
-            db.add(
-                GerminationOutcomeSnapshot(
-                    id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
-                    batch_carrier_assignment_id=o["batch_carrier_assignment_id"],
-                    normal_seedling_count=o["normal_seedling_count"],
-                    abnormal_seedling_count=o["abnormal_seedling_count"],
-                    assessment_complete=o["assessment_complete"], note=o.get("note"),
-                )
-            )
-        db.flush()
-
-        append_audit_event(
-            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.observation_recorded",
-            entity_type="observation_event", entity_id=event.id,
-            event_data={
-                "observation_event_id": str(event.id), "batch_id": str(batch.id),
-                "batch_stage_run_id": str(active_run.id), "effective_time": effective_time.isoformat(),
-                "client_command_id": str(client_command_id), "value_count": len(values),
-                "germination_check_count": len(germination_checks),
-                "germination_outcome_count": len(germination_outcomes),
-                "definition_ids": [str(did) for did in sorted_definition_ids],
-                "assignment_ids": [str(aid) for aid in assignment_ids],
-            },
         )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    db.refresh(event)
+    for c in germination_checks:
+        db.add(
+            GerminationCheck(
+                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
+                batch_carrier_assignment_id=c["batch_carrier_assignment_id"],
+                inspected_site_count=c["inspected_site_count"],
+                normal_germinated_site_count=c["normal_germinated_site_count"],
+                abnormal_germinated_site_count=c["abnormal_germinated_site_count"],
+                failed_site_count=c["failed_site_count"], note=c.get("note"),
+            )
+        )
+    for o in germination_outcomes:
+        db.add(
+            GerminationOutcomeSnapshot(
+                id=uuid.uuid4(), tenant_id=tenant_id, farm_id=farm_id, observation_event_id=event.id,
+                batch_carrier_assignment_id=o["batch_carrier_assignment_id"],
+                normal_seedling_count=o["normal_seedling_count"],
+                abnormal_seedling_count=o["abnormal_seedling_count"],
+                assessment_complete=o["assessment_complete"], note=o.get("note"),
+            )
+        )
+    db.flush()
+
+    append_audit_event(
+        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="crop_batch.observation_recorded",
+        entity_type="observation_event", entity_id=event.id,
+        event_data={
+            "observation_event_id": str(event.id), "batch_id": str(batch.id),
+            "batch_stage_run_id": str(active_run.id), "effective_time": effective_time.isoformat(),
+            "client_command_id": str(client_command_id), "value_count": len(values),
+            "germination_check_count": len(germination_checks),
+            "germination_outcome_count": len(germination_outcomes),
+            "definition_ids": [str(did) for did in sorted_definition_ids],
+            "assignment_ids": [str(aid) for aid in assignment_ids],
+        },
+    )
+    db.flush()
     return event
 
 
