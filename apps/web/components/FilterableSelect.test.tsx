@@ -137,4 +137,41 @@ describe("FilterableSelect", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(container.className).not.toMatch(/(?:^|\s)z-20(?:\s|$)/);
   });
+
+  it("UX-OPS-001C: scrolls the open list into view (block: nearest) once per open, never while closed", () => {
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(<FilterableSelect options={OPTIONS} value="" onChange={vi.fn()} />);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      const input = screen.getByRole("combobox");
+      fireEvent.focus(input);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      expect(scrollIntoView.mock.instances[0]).toBe(screen.getByRole("listbox"));
+      // Typing inside the same open list does not re-scroll.
+      fireEvent.change(input, { target: { value: "00" } });
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      // Closing then reopening scrolls again.
+      fireEvent.keyDown(input, { key: "Escape" });
+      fireEvent.change(input, { target: { value: "N" } });
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("UX-OPS-001C: opening does not throw where scrollIntoView is unavailable (e.g. jsdom)", () => {
+    const original = HTMLElement.prototype.scrollIntoView;
+    // @ts-expect-error -- simulating an environment without the API
+    delete HTMLElement.prototype.scrollIntoView;
+    try {
+      render(<FilterableSelect options={OPTIONS} value="" onChange={vi.fn()} />);
+      expect(() => fireEvent.focus(screen.getByRole("combobox"))).not.toThrow();
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
 });

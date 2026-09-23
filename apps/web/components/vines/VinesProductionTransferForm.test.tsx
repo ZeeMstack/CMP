@@ -183,9 +183,12 @@ describe("VinesProductionTransferForm", () => {
     expect(typeof payload.client_command_id).toBe("string");
   });
 
-  it("reuses the same client_command_id on an exact retry", async () => {
+  it("UX-OPS-001C/R1: a double click sends once; an uncertain outcome is retried byte-identically", async () => {
     stubFetch();
-    const onSubmit = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("network_error", "offline"))
+      .mockResolvedValueOnce(undefined);
     render(withQueryClient(<VinesProductionTransferForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/batch \/ intervines table/i)).toBeInTheDocument());
     await selectSource();
@@ -195,11 +198,16 @@ describe("VinesProductionTransferForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Review Transfer" }));
     await waitFor(() => expect(screen.getByText("Review before transferring")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /record transfer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /record transfer/i }));
+    const recordButton = screen.getByRole("button", { name: /record transfer/i });
+    fireEvent.click(recordButton);
+    fireEvent.click(recordButton);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Back to edit" })).toBeDisabled();
 
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[0][1].client_command_id).toBe(onSubmit.mock.calls[1][1].client_command_id);
+    expect(JSON.stringify(onSubmit.mock.calls[1])).toBe(JSON.stringify(onSubmit.mock.calls[0]));
   });
 
   it("maps a 403 to a permission-denied message with no backend detail leaked", async () => {

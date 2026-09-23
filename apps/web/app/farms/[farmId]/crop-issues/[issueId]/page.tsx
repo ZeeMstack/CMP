@@ -133,9 +133,9 @@ export default function CropIssueWorkspacePage() {
             issue={issue}
             activeAction={activeAction}
             onOpenAction={setActiveAction}
-            // Every close (success, cancel, or abandoning an uncertain
-            // attempt) re-reads authoritative Issue/follow-up state, so an
-            // applied-but-unconfirmed command is never shown as not applied.
+            // Every close (success, or Cancel of a never-sent draft)
+            // re-reads authoritative Issue/follow-up state. An uncertain
+            // attempt cannot close at all -- its Cancel is disabled.
             onCloseAction={() => {
               setActiveAction(null);
               issueQuery.refetch();
@@ -157,8 +157,9 @@ function toAppError(error: unknown): AppError {
 /** One frozen command attempt for one Issue action: the first `run` mints a
  * `client_command_id`; while the outcome is uncertain, `run` resends the
  * byte-identical frozen payload (never re-derived from the live fields);
- * success, a definitive rejection, or `cancel` releases it so the next
- * attempt is a genuinely new command. */
+ * success or a definitive rejection releases it so the next attempt is a
+ * genuinely new command. `cancel` is only offered while nothing is frozen
+ * (see `CommandButtons`) -- an uncertain attempt is never abandoned. */
 function useIssueCommand<T extends Record<string, unknown>>(
   send: (payload: T, handlers: { onSuccess: () => void; onError: (error: unknown) => void }) => void,
   onDone: () => void,
@@ -390,7 +391,10 @@ function CommandButtons({
     <div className="flex gap-2">
       <Button
         variant="secondary"
-        disabled={submitting}
+        // UX-OPS-001C/R1: Cancel is only possible while nothing is frozen.
+        // An in-flight or uncertain attempt can never be abandoned here --
+        // no read proves whether it applied -- so only Retry stays usable.
+        disabled={command.outcome !== "editing"}
         onClick={() => {
           command.cancel();
           onCancel();

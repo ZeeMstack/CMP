@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -66,11 +66,10 @@ export default function VinesProductionPage() {
   const correctMutation = useCorrectVinesGrowCubeDisposition(farmId);
   const [correctingEventId, setCorrectingEventId] = useState<string | null>(null);
   const [correctError, setCorrectError] = useState<AppError | null>(null);
-  // UX-OPS-001C: one `client_command_id` per void attempt on an event,
-  // reused across an uncertain (network/5xx) retry so a lost response can
-  // never void twice; cleared on success or a definitive rejection so a
-  // genuinely new attempt mints a new id.
-  const correctCommandIds = useRef<Record<string, string>>({});
+  // UX-OPS-001C/R1: true while a loss or void form holds an in-flight or
+  // unresolved attempt -- tabs and row selection would unmount it and lose
+  // its frozen Retry, so both are locked until it resolves.
+  const [commandLocked, setCommandLocked] = useState(false);
 
   return (
     <div>
@@ -91,7 +90,9 @@ export default function VinesProductionPage() {
         <Tabs
           tabs={TABS.map(({ id, label }) => ({ id, label }))}
           activeId={tab}
-          onChange={(id) => setTab(id as "population" | "history")}
+          onChange={(id) => {
+            if (!commandLocked) setTab(id as "population" | "history");
+          }}
           aria-label="Vines Production sections"
         />
       </div>
@@ -127,7 +128,9 @@ export default function VinesProductionPage() {
                         <QueueRow
                           key={key}
                           isSelected={key === selectedKey}
-                          onSelect={() => setSelectedKey(key)}
+                          onSelect={() => {
+                            if (!commandLocked) setSelectedKey(key);
+                          }}
                           title={`${row.batch_code} · ${row.gutter_code}`}
                           context={`${row.crop_common_name}${row.variety_name ? ` / ${row.variety_name}` : ""} · ${row.greenhouse_code}`}
                           status={row.lost_plant_count > 0 ? <StatusBadge label={`Lost ${row.lost_plant_count.toLocaleString()}`} tone="attention" /> : undefined}
@@ -153,7 +156,7 @@ export default function VinesProductionPage() {
                     key={groupKey(selectedGroup)}
                     title={`${selectedGroup.batch_code} · ${selectedGroup.gutter_code}`}
                     subtitle={`${selectedGroup.crop_common_name}${selectedGroup.variety_name ? ` / ${selectedGroup.variety_name}` : ""} · ${selectedGroup.greenhouse_code}`}
-                    onClose={() => setSelectedKey(null)}
+                    onClose={commandLocked ? undefined : () => setSelectedKey(null)}
                   >
                     <dl className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
                       <div>
@@ -186,7 +189,12 @@ export default function VinesProductionPage() {
                     )}
                     <div className="border-t border-wl-border pt-3">
                       <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Grow Bags</h3>
-                      <GrowBagDrillDown farmId={farmId} batchId={selectedGroup.batch_id} gutterId={selectedGroup.gutter_id} />
+                      <GrowBagDrillDown
+                        farmId={farmId}
+                        batchId={selectedGroup.batch_id}
+                        gutterId={selectedGroup.gutter_id}
+                        onCommandLockedChange={setCommandLocked}
+                      />
                     </div>
                   </InspectorShell>
                 ) : (
@@ -210,23 +218,19 @@ export default function VinesProductionPage() {
           // Backend enforces BIOLOGICAL_DISPOSITION_CORRECT authoritatively --
           // mirrors PlantLossHistoryPanel's own established rationale.
           canCorrect={true}
+          onCommandLockedChange={setCommandLocked}
           correctingEventId={correctingEventId}
           isSubmitting={correctMutation.isPending}
           serverError={correctError}
-          onCorrect={async (eventId: string) => {
+          onCorrect={async (eventId: string, payload) => {
             setCorrectingEventId(eventId);
             setCorrectError(null);
-            const clientCommandId = (correctCommandIds.current[eventId] ??= crypto.randomUUID());
             try {
-              await correctMutation.mutateAsync({ eventId, payload: { client_command_id: clientCommandId } });
-              delete correctCommandIds.current[eventId];
+              await correctMutation.mutateAsync({ eventId, payload });
             } catch (error) {
               const appError = asAppError(error);
-              if (appError.kind !== "network_error" && appError.kind !== "server_error") {
-                delete correctCommandIds.current[eventId];
-              }
               setCorrectError(appError);
-              throw error;
+              throw appError;
             } finally {
               setCorrectingEventId(null);
             }
@@ -237,7 +241,17 @@ export default function VinesProductionPage() {
   );
 }
 
-function GrowBagDrillDown({ farmId, batchId, gutterId }: { farmId: string; batchId: string; gutterId: string }) {
+function GrowBagDrillDown({
+  farmId,
+  batchId,
+  gutterId,
+  onCommandLockedChange,
+}: {
+  farmId: string;
+  batchId: string;
+  gutterId: string;
+  onCommandLockedChange: (locked: boolean) => void;
+}) {
   const detailQuery = useVinesProductionPlacementGrowBags(farmId, batchId, gutterId);
   const recordMutation = useRecordVinesGrowCubeDisposition(farmId);
   const [lossTargetBagId, setLossTargetBagId] = useState<string | null>(null);
@@ -277,6 +291,10 @@ function GrowBagDrillDown({ farmId, batchId, gutterId }: { farmId: string; batch
   if (lossTargetBag) {
     return (
       <RecordGrowCubeLossForm
+        // UX-OPS-001C/R1: keyed by target -- another Grow Bag can never
+        // reuse this one's frozen attempt.
+        key={lossTargetBag.batch_carrier_assignment_id}
+        onCommandLockedChange={onCommandLockedChange}
         growBagCode={lossTargetBag.grow_bag.code}
         batchCarrierAssignmentId={lossTargetBag.batch_carrier_assignment_id}
         livingPlantCount={lossTargetBag.living_plant_count}
@@ -289,15 +307,19 @@ function GrowBagDrillDown({ farmId, batchId, gutterId }: { farmId: string; batch
         }}
         onSubmit={(payload) => {
           setRecordError(null);
-          recordMutation.mutate(payload, {
-            onSuccess: (result) => {
+          return recordMutation.mutateAsync(payload).then(
+            (result) => {
               setRecordSuccess({
                 bagCode: lossTargetBag.grow_bag.code, resulting: result.resulting_living_population,
                 released: result.assignment_released,
               });
             },
-            onError: (error) => setRecordError(asAppError(error)),
-          });
+            (error) => {
+              const appError = asAppError(error);
+              setRecordError(appError);
+              throw appError;
+            },
+          );
         }}
       />
     );

@@ -10,6 +10,12 @@ import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { VinesProductionTransferCreate } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { useAvailableGrowBagPools, useGreenhouseSetupOverview, useGreenhouseStructure, useIntervinesPlacements } from "@/lib/query/hooks";
 import {
@@ -54,16 +60,26 @@ export function VinesProductionTransferForm({
   farmId,
   onSubmit,
   isSubmitting,
+  onCommandLockedChange,
   serverError,
 }: {
   farmId: string;
-  onSubmit: (batchId: string, payload: VinesProductionTransferCreate, gutterCode: string) => void;
+  onSubmit: (batchId: string, payload: VinesProductionTransferCreate, gutterCode: string) => void | Promise<unknown>;
   isSubmitting: boolean;
+  /** Reports an in-flight/unresolved attempt so the page can block
+   * anything that would unmount this form mid-command. */
+  onCommandLockedChange?: (locked: boolean) => void;
   serverError?: AppError | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const [lastSubmittedFingerprint, setLastSubmittedFingerprint] = useState<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission (never on
+  // Review/Back). The whole wire payload -- `client_command_id`,
+  // `effective_time`, targets, quantities -- plus the page context it is
+  // sent with is frozen on Record; an uncertain (network/5xx) outcome is
+  // retried byte-identically and locks the draft; a definitive rejection
+  // or success releases it so the next submission gets a new id.
+  const command = useFrozenSubmission<{ batchId: string; payload: VinesProductionTransferCreate; gutterCode: string } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
 
   const initial = nowDateAndTime();
   const {
@@ -169,20 +185,25 @@ export function VinesProductionTransferForm({
     if (valid) setStep("review");
   }
 
+  function sendFrozen(envelope: { batchId: string; payload: VinesProductionTransferCreate; gutterCode: string }) {
+    settleFrozenAttempt(command, onSubmit(envelope.batchId, envelope.payload, envelope.gutterCode));
+  }
+
   function submitReview() {
-    const finalValues = getValues();
-    const gutter = gutterOptions.find((g) => g.value === finalValues.destination_grow_gutter_id);
-    const payload = buildVinesProductionTransferPayload(finalValues, clientCommandId);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure to omit the key, not to use it
-    const { client_command_id: _omit, ...fingerprint } = payload;
-    const fingerprintJson = JSON.stringify(fingerprint);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprint !== null && lastSubmittedFingerprint !== fingerprintJson) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) sendFrozen(frozen);
+      return;
     }
-    setLastSubmittedFingerprint(fingerprintJson);
-    onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, gutter?.label ?? finalValues.gutter_code);
+    const finalValues = getValues();
+    const gutterCode = gutterOptions.find((g) => g.value === finalValues.destination_grow_gutter_id)?.label ?? finalValues.gutter_code;
+    sendFrozen(
+      command.submit((clientCommandId) => ({
+        batchId: finalValues.batch_id,
+        payload: buildVinesProductionTransferPayload(finalValues, clientCommandId),
+        gutterCode,
+      })),
+    );
   }
 
   // UX-OPS-001C: rail figures -- the server allocates the actual Grow
@@ -256,15 +277,33 @@ export function VinesProductionTransferForm({
             <AllocationSummaryRail
               heading="Reconciliation"
               stats={railStats}
-              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+              blockers={[
+                ...(serverError ? [friendlyMutationErrorMessage(serverError)] : []),
+                ...(command.outcome === "uncertain" ? [UNCERTAIN_OUTCOME_COPY] : []),
+              ]}
             >
               <StickyActionBar>
                 <div className="flex gap-3">
-                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting || command.outcome !== "editing"}
+                  >
                     Back to edit
                   </Button>
-                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
-                    {isSubmitting ? "Transferring…" : "Record Transfer"}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="flex-1"
+                    onClick={submitReview}
+                    disabled={isSubmitting || command.outcome === "submitting"}
+                  >
+                    {isSubmitting || command.outcome === "submitting"
+                      ? "Transferring…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Transfer"}
                   </Button>
                 </div>
               </StickyActionBar>

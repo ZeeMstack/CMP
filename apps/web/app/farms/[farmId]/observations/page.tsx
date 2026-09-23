@@ -70,6 +70,10 @@ export default function ObservationsPage() {
   const [recordedEffectiveTime, setRecordedEffectiveTime] = useState<string | null>(null);
   const [workItemLinkStatus, setWorkItemLinkStatus] = useState<"linked" | "failed" | null>(null);
   const [formDirty, setFormDirty] = useState(false);
+  // UX-OPS-001C/R1: true while the Record form holds an in-flight or
+  // unresolved attempt -- a Batch switch would unmount it and lose its
+  // frozen Retry, so the selector is locked until it resolves.
+  const [commandLocked, setCommandLocked] = useState(false);
 
   const farmQuery = useFarm(farmId);
   const batchesQuery = useOperationalSummary(farmId, "active");
@@ -112,13 +116,18 @@ export default function ObservationsPage() {
     setFormDirty(false);
   }
 
-  // UX-OPS-001C: Inspect Crop keeps an exact placement from a
-  // production-page shortcut (never widened to a Batch-wide pick), and is
-  // otherwise Batch-level.
+  // UX-OPS-001C/R1: a carried-forward placement is resolved against the
+  // Batch's own authoritative observation targets and shown as its carrier
+  // code + location -- never trusted blindly. Only a resolved placement is
+  // handed on to Inspect Crop; otherwise Inspect Crop opens without one and
+  // requires the operator to choose an exact placement there.
+  const carriedAssignmentId = selectedBatchId === prefillBatchId ? prefillAssignmentId : null;
+  const carriedTarget = carriedAssignmentId
+    ? (targetsQuery.data ?? []).find((t) => t.id === carriedAssignmentId) ?? null
+    : null;
+  const carriedTargetMissing = Boolean(carriedAssignmentId) && targetsQuery.isSuccess && !carriedTarget;
   const inspectHref = selectedBatch
-    ? `/farms/${farmId}/production/inspect?batchId=${selectedBatch.id}${
-        selectedBatchId === prefillBatchId && prefillAssignmentId ? `&assignmentId=${prefillAssignmentId}` : ""
-      }`
+    ? `/farms/${farmId}/production/inspect?batchId=${selectedBatch.id}${carriedTarget ? `&assignmentId=${carriedTarget.id}` : ""}`
     : null;
 
   return (
@@ -148,7 +157,7 @@ export default function ObservationsPage() {
               className="min-h-11 w-full max-w-md rounded-md border border-wl-border bg-wl-surface-raised px-3 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus"
               value={selectedBatchId ?? ""}
               onChange={(e) => handleSelectBatch(e.target.value)}
-              disabled={batchesQuery.isLoading}
+              disabled={batchesQuery.isLoading || commandLocked}
             >
               <option value="">{batchesQuery.isLoading ? "Loading batches…" : "Select a batch…"}</option>
               {batches.map((b) => (
@@ -163,6 +172,20 @@ export default function ObservationsPage() {
             <>
               <ContextStripFact label="Stage" value={selectedBatch.current_stage.name} />
               <ContextStripFact label="Placement" value={formatPlacementSummary(selectedBatch.placement)} />
+              {carriedAssignmentId && (
+                <ContextStripFact
+                  label="Exact placement"
+                  value={
+                    carriedTarget ? (
+                      `${carriedTarget.carrier.code}${carriedTarget.location_label ? ` — ${carriedTarget.location_label}` : ""}`
+                    ) : carriedTargetMissing ? (
+                      <span className="text-wl-flag-fg">No longer an active placement of this Batch</span>
+                    ) : (
+                      "Resolving…"
+                    )
+                  }
+                />
+              )}
             </>
           )}
         </ContextStrip>
@@ -180,6 +203,10 @@ export default function ObservationsPage() {
           main={
             showRecordForm ? (
               <RecordObservationForm
+                // Keyed by Batch: a different Batch never inherits this
+                // form's draft or frozen attempt.
+                key={selectedBatch.id}
+                onCommandLockedChange={setCommandLocked}
                 batch={selectedBatch}
                 definitions={definitionsQuery.data ?? []}
                 definitionsLoading={definitionsQuery.isLoading}
@@ -197,23 +224,26 @@ export default function ObservationsPage() {
                 onSubmit={(payload: ObservationEventCreate) => {
                   setRecordError(null);
                   const isForPrefilledWorkItem = selectedBatchId === prefillBatchId && Boolean(prefillWorkItemId);
-                  recordMutation.mutate(
+                  return recordMutation.mutateAsync(
                     {
                       batchId: selectedBatch.id,
                       payload: isForPrefilledWorkItem ? { ...payload, work_item_id: prefillWorkItemId } : payload,
                     },
-                    {
-                      onSuccess: (result) => {
-                        setShowRecordForm(false);
-                        setRecordedCount(result.values.length);
-                        // HOTFIX-TIME-002: the actual server-authoritative
-                        // recorded time, never the pre-save browser-generated
-                        // estimate the form showed while "Now" was selected.
-                        setRecordedEffectiveTime(result.effective_time);
-                        setWorkItemLinkStatus(result.work_item_link_status ?? null);
-                        setFormDirty(false);
-                      },
-                      onError: (error) => setRecordError(asAppError(error)),
+                  ).then(
+                    (result) => {
+                      setShowRecordForm(false);
+                      setRecordedCount(result.values.length);
+                      // HOTFIX-TIME-002: the actual server-authoritative
+                      // recorded time, never the pre-save browser-generated
+                      // estimate the form showed while "Now" was selected.
+                      setRecordedEffectiveTime(result.effective_time);
+                      setWorkItemLinkStatus(result.work_item_link_status ?? null);
+                      setFormDirty(false);
+                    },
+                    (error) => {
+                      const appError = asAppError(error);
+                      setRecordError(appError);
+                      throw appError;
                     },
                   );
                 }}
@@ -288,7 +318,7 @@ export default function ObservationsPage() {
               )}
               {inspectHref && (
                 <Link href={inspectHref} className="inline-flex min-h-9 items-center text-sm font-medium text-wl-brand hover:underline">
-                  Inspect Crop
+                  {carriedTarget ? `Inspect Crop — ${carriedTarget.carrier.code}` : "Inspect Crop (choose placement)"}
                 </Link>
               )}
             </InspectorShell>

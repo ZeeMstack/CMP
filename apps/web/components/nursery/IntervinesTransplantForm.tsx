@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { AllocationSummaryRail } from "@/components/allocation/AllocationSummaryRail";
@@ -10,6 +10,12 @@ import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { IntervinesTransplantCreate } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   useAvailableGrowCubePools,
@@ -61,6 +67,7 @@ export function IntervinesTransplantForm({
   restrictToBatchId,
   onSubmit,
   isSubmitting,
+  onCommandLockedChange,
   serverError,
 }: {
   farmId: string;
@@ -69,13 +76,22 @@ export function IntervinesTransplantForm({
     batchId: string,
     payload: IntervinesTransplantCreate,
     tableCode: string,
-  ) => void;
+  ) => void | Promise<unknown>;
   isSubmitting: boolean;
+  /** Reports an in-flight/unresolved attempt so the page can block
+   * anything that would unmount this form mid-command. */
+  onCommandLockedChange?: (locked: boolean) => void;
   serverError?: AppError | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission (never on
+  // Review/Back). The whole wire payload -- `client_command_id`,
+  // `effective_time`, targets, quantities -- plus the page context it is
+  // sent with is frozen on Record; an uncertain (network/5xx) outcome is
+  // retried byte-identically and locks the draft; a definitive rejection
+  // or success releases it so the next submission gets a new id.
+  const command = useFrozenSubmission<{ batchId: string; payload: IntervinesTransplantCreate; tableCode: string } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
   const [nurseryGreenhouseId, setNurseryGreenhouseId] = useState("");
 
   const initial = nowDateAndTime();
@@ -197,20 +213,25 @@ export function IntervinesTransplantForm({
     if (valid) setStep("review");
   }
 
+  function sendFrozen(envelope: { batchId: string; payload: IntervinesTransplantCreate; tableCode: string }) {
+    settleFrozenAttempt(command, onSubmit(envelope.batchId, envelope.payload, envelope.tableCode));
+  }
+
   function submitReview() {
-    const finalValues = getValues();
-    const table = intervinesTables.find((t) => t.id === finalValues.destination_location_id);
-    const payload = buildIntervinesTransplantPayload(finalValues, clientCommandId);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure to omit the key, not to use it
-    const { client_command_id: _omit, ...fingerprint } = payload;
-    const fingerprintJson = JSON.stringify(fingerprint);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprintJson) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) sendFrozen(frozen);
+      return;
     }
-    lastSubmittedFingerprintRef.current = fingerprintJson;
-    onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, table?.code ?? finalValues.table_code);
+    const finalValues = getValues();
+    const tableCode = intervinesTables.find((t) => t.id === finalValues.destination_location_id)?.code ?? finalValues.table_code;
+    sendFrozen(
+      command.submit((clientCommandId) => ({
+        batchId: finalValues.batch_id,
+        payload: buildIntervinesTransplantPayload(finalValues, clientCommandId),
+        tableCode,
+      })),
+    );
   }
 
   // UX-OPS-001C: rail figures -- the server allocates the actual Grow
@@ -283,15 +304,33 @@ export function IntervinesTransplantForm({
             <AllocationSummaryRail
               heading="Reconciliation"
               stats={railStats}
-              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+              blockers={[
+                ...(serverError ? [friendlyMutationErrorMessage(serverError)] : []),
+                ...(command.outcome === "uncertain" ? [UNCERTAIN_OUTCOME_COPY] : []),
+              ]}
             >
               <StickyActionBar>
                 <div className="flex gap-3">
-                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting || command.outcome !== "editing"}
+                  >
                     Back to edit
                   </Button>
-                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
-                    {isSubmitting ? "Transferring…" : "Record Transfer"}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="flex-1"
+                    onClick={submitReview}
+                    disabled={isSubmitting || command.outcome === "submitting"}
+                  >
+                    {isSubmitting || command.outcome === "submitting"
+                      ? "Transferring…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Transfer"}
                   </Button>
                 </div>
               </StickyActionBar>

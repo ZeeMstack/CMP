@@ -384,3 +384,90 @@ describe("ObservationsPage", () => {
     expect(screen.getAllByRole("spinbutton")).toHaveLength(6);
   });
 });
+
+describe("ObservationsPage frozen command + exact target (UX-OPS-001C/R1)", () => {
+  function stubSequenced(statuses: number[]) {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/observation-definitions")) return jsonResponse(DEFINITIONS);
+        if (url.includes("/crop-batches/operational-summary")) return jsonResponse([BATCH]);
+        if (url.includes("/observation-targets")) return jsonResponse(TARGETS);
+        if (url.match(/\/crop-batches\/[^/]+\/observations$/) && method === "POST") {
+          bodies.push(String(init?.body));
+          const status = statuses.shift() ?? 201;
+          return status >= 400 ? jsonResponse({ detail: "failure" }, status) : jsonResponse(HISTORY_EVENT, 201);
+        }
+        if (url.includes("/observations")) return jsonResponse([HISTORY_EVENT]);
+        if (url.match(/\/farms\/farm-1$/)) return jsonResponse({ id: "farm-1", timezone: "Asia/Dubai" });
+        return jsonResponse([]);
+      }),
+    );
+    return bodies;
+  }
+
+  async function openFormAndFill() {
+    await waitFor(() => expect(screen.getByText(/LET-001/)).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("combobox", { name: /batch/i }), { target: { value: "batch-1" } });
+    await waitFor(() => expect(screen.getByText(/18.5 cm/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ record observation/i }));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("spinbutton", { name: /plant height/i }), { target: { value: "21.5" } });
+  }
+
+  it("uncertain: fields, Cancel, and the Batch selector lock; Retry resends the byte-identical payload", async () => {
+    const bodies = stubSequenced([503, 201]);
+    render(withQueryClient(<ObservationsPage />));
+    await openFormAndFill();
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: /batch/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText(/recorded 1 observation/i)).toBeInTheDocument());
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+  });
+
+  it("definitive rejection unlocks editing and the edited resubmission gets a new client_command_id", async () => {
+    const bodies = stubSequenced([422, 201]);
+    render(withQueryClient(<ObservationsPage />));
+    await openFormAndFill();
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).not.toBeDisabled());
+    fireEvent.change(screen.getByRole("spinbutton", { name: /plant height/i }), { target: { value: "22" } });
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(JSON.parse(bodies[1]).client_command_id).not.toBe(JSON.parse(bodies[0]).client_command_id);
+  });
+
+  it("shows the carried placement's carrier and location, and hands exactly it to Inspect Crop", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-1");
+    stubFetch();
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() =>
+      expect(screen.getByText("Exact placement · Derived").nextElementSibling).toHaveTextContent("PP-001 — GH-01 / Z01 / S02 / T04"),
+    );
+    expect(screen.getByRole("link", { name: /inspect crop — PP-001/i })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/production/inspect?batchId=batch-1&assignmentId=bca-1",
+    );
+  });
+
+  it("a carried placement that is no longer an active target is flagged and never passed on", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-gone");
+    stubFetch();
+    render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/no longer an active placement of this batch/i)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /inspect crop \(choose placement\)/i })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/production/inspect?batchId=batch-1",
+    );
+  });
+});

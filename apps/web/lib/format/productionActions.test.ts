@@ -51,9 +51,17 @@ describe("vines actions", () => {
     expect(kinds).toEqual(["reprint_label"]);
   });
 
-  it("keeps a (Batch, Gutter) group at Batch level, never narrowed to one placement", () => {
+  it("UX-OPS-001C/R1: an aggregate (Batch, Gutter) group never offers a Batch-only Inspect Crop", () => {
     const actions = vinesGroupActions("f1", "b1", 12);
-    expect(actions.find((a) => a.kind === "inspect_crop")?.href).toBe("/farms/f1/production/inspect?batchId=b1");
+    expect(actions.map((a) => a.kind)).toEqual(["record_observation"]);
+    expect(actions.some((a) => a.href?.includes("/production/inspect"))).toBe(false);
     expect(vinesGroupActions("f1", "b1", 0)).toEqual([]);
+  });
+
+  it("a specific Grow Bag offers Inspect Crop for exactly its own assignment", () => {
+    const inspect = vinesGrowBagActions("f1", "b1", { batch_carrier_assignment_id: "gb-a1", living_plant_count: 2 }).find(
+      (a) => a.kind === "inspect_crop",
+    );
+    expect(inspect?.href).toBe("/farms/f1/production/inspect?batchId=b1&assignmentId=gb-a1");
   });
 });

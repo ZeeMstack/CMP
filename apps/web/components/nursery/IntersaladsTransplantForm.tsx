@@ -14,6 +14,12 @@ import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/la
 import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantCreate } from "@/lib/api/client";
 import { suggestAllocations } from "@/lib/allocation/suggestAllocation";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   useAvailableIntersaladsPlates,
@@ -292,6 +298,7 @@ export function IntersaladsTransplantForm({
   restrictToBatchId,
   onSubmit,
   isSubmitting,
+  onCommandLockedChange,
   serverError,
 }: {
   farmId: string;
@@ -300,20 +307,22 @@ export function IntersaladsTransplantForm({
     batchId: string,
     payload: IntersaladsTransplantCreate,
     tableCodeById: Record<string, string>,
-  ) => void;
+  ) => void | Promise<unknown>;
   isSubmitting: boolean;
+  /** Reports an in-flight/unresolved attempt so the page can block
+   * anything that would unmount this form mid-command. */
+  onCommandLockedChange?: (locked: boolean) => void;
   serverError?: AppError | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  // Section 11 (frozen): the id is reused across an exact retry (double-
-  // click, network retry, or Back-without-edit) and rotated ONLY when the
-  // next submit's payload materially differs from the last one actually
-  // submitted -- never merely because Back was clicked. `lastSubmittedFingerprintRef`
-  // holds the JSON of the last submitted wire payload with `client_command_id`
-  // itself excluded (comparing the id against itself would be meaningless);
-  // `null` means nothing has been submitted yet in this draft.
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission (never on
+  // Review/Back). The whole wire payload -- `client_command_id`,
+  // `effective_time`, targets, quantities -- plus the page context it is
+  // sent with is frozen on Record; an uncertain (network/5xx) outcome is
+  // retried byte-identically and locks the draft; a definitive rejection
+  // or success releases it so the next submission gets a new id.
+  const command = useFrozenSubmission<{ batchId: string; payload: IntersaladsTransplantCreate; tableCodeById: Record<string, string> } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
   const [nurseryGreenhouseId, setNurseryGreenhouseId] = useState("");
   const [occupancyByTable, setOccupancyByTable] = useState<Record<string, TableOccupancy>>({});
   const [collapsedDestinationIds, setCollapsedDestinationIds] = useState<Set<string>>(new Set());
@@ -631,25 +640,25 @@ export function IntersaladsTransplantForm({
     if (valid && !tableOverCapacity) setStep("review");
   }
 
+  function sendFrozen(envelope: { batchId: string; payload: IntersaladsTransplantCreate; tableCodeById: Record<string, string> }) {
+    settleFrozenAttempt(command, onSubmit(envelope.batchId, envelope.payload, envelope.tableCodeById));
+  }
+
   function submitReview() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) sendFrozen(frozen);
+      return;
+    }
     const finalValues = getValues();
     const tableCodeById = Object.fromEntries(intersaladsTables.map((t) => [t.id, t.code]));
-    const payload = buildIntersaladsTransplantPayload(finalValues, clientCommandId);
-    // Section 11 (frozen): compare the command-relevant payload (everything
-    // except client_command_id) against the last one actually submitted.
-    // Unchanged (including an unmodified Back-then-resubmit) -> reuse the
-    // same id. Materially different -> rotate to a new id BEFORE this
-    // submit, so the backend never sees a payload change under a reused id.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure to omit the key, not to use it
-    const { client_command_id: _omit, ...fingerprint } = payload;
-    const fingerprintJson = JSON.stringify(fingerprint);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprintJson) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
-    }
-    lastSubmittedFingerprintRef.current = fingerprintJson;
-    onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, tableCodeById);
+    sendFrozen(
+      command.submit((clientCommandId) => ({
+        batchId: finalValues.batch_id,
+        payload: buildIntersaladsTransplantPayload(finalValues, clientCommandId),
+        tableCodeById,
+      })),
+    );
   }
 
   // UX-OPS-001C: the one reconciliation line shown on Review --
@@ -748,15 +757,33 @@ export function IntersaladsTransplantForm({
               heading="Reconciliation"
               stats={totalsStats}
               hint={reconciliationLine}
-              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+              blockers={[
+                ...(serverError ? [friendlyMutationErrorMessage(serverError)] : []),
+                ...(command.outcome === "uncertain" ? [UNCERTAIN_OUTCOME_COPY] : []),
+              ]}
             >
               <StickyActionBar>
                 <div className="flex gap-3">
-                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting || command.outcome !== "editing"}
+                  >
                     Back to edit
                   </Button>
-                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
-                    {isSubmitting ? "Transplanting…" : "Record Transplant"}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="flex-1"
+                    onClick={submitReview}
+                    disabled={isSubmitting || command.outcome === "submitting"}
+                  >
+                    {isSubmitting || command.outcome === "submitting"
+                      ? "Transplanting…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Transplant"}
                   </Button>
                 </div>
               </StickyActionBar>

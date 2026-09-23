@@ -9,6 +9,12 @@ import type {
   ObservationEventCreate,
   ObservationTargetRead,
 } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 
 const inputClass =
@@ -61,6 +67,7 @@ export function RecordObservationForm({
   onDirtyChange,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   batch: BatchOperationalContext;
   definitions: ObservationDefinitionRead[];
@@ -81,8 +88,12 @@ export function RecordObservationForm({
    * once its match appears in `targets` -- never guessed/fabricated if it
    * never matches a real target (e.g. the assignment has since ended). */
   initialTargetId?: string | null;
-  onSubmit: (payload: ObservationEventCreate) => void;
+  onSubmit: (payload: ObservationEventCreate) => void | Promise<unknown>;
   onCancel: () => void;
+  /** UX-OPS-001C/R1: reports an in-flight/unresolved attempt so the page
+   * can block a Batch switch (which would unmount this form) until it
+   * resolves. */
+  onCommandLockedChange?: (locked: boolean) => void;
   /** PILOT-UX-003: fires whenever "has the operator entered anything worth
    * not silently discarding" changes, so the parent page can warn before a
    * Batch switch would wipe an in-progress draft. Purely a UI convenience --
@@ -104,7 +115,15 @@ export function RecordObservationForm({
   const [effectiveTime, setEffectiveTime] = useState(initial.time);
   const [note, setNote] = useState("");
   const [rows, setRows] = useState<Record<string, RowState>>({});
-  const [clientCommandId] = useState(() => crypto.randomUUID());
+  // UX-OPS-001C/R1: minted only on the actual Record click. Previously one
+  // id lived for the whole form, so an edited resubmission after a
+  // definitive rejection reused it. Now: uncertain -> fields locked, Retry
+  // resends the byte-identical payload; definitive rejection or success ->
+  // released, the next submission mints a new id.
+  const command = useFrozenSubmission<ObservationEventCreate & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const locked = command.outcome !== "editing";
+  const busy = isSubmitting || command.outcome === "submitting";
   const [rowError, setRowError] = useState<string | null>(null);
   const [primaryTargetId, setPrimaryTargetId] = useState("");
   const [showAllDefinitions, setShowAllDefinitions] = useState(false);
@@ -223,6 +242,11 @@ export function RecordObservationForm({
   }
 
   function handleSubmit() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) settleFrozenAttempt(command, onSubmit(frozen));
+      return;
+    }
     const values = buildValues();
     if (!values) return;
     // HOTFIX-TIME-002: default "record now" omits effective_time entirely
@@ -230,12 +254,13 @@ export function RecordObservationForm({
     // assigns its own authoritative current time. Only an operator's own
     // explicit date/time selection is ever sent as a concrete instant.
     const effective_time = useCustomTime ? new Date(`${effectiveDate}T${effectiveTime}`).toISOString() : null;
-    onSubmit({
+    const payload = command.submit((clientCommandId) => ({
       client_command_id: clientCommandId,
       effective_time,
       note: note.trim() || null,
       values,
-    });
+    }));
+    settleFrozenAttempt(command, onSubmit(payload));
   }
 
   return (
@@ -244,10 +269,14 @@ export function RecordObservationForm({
         <h2 className="font-serif text-base font-semibold text-wl-text">
           Record observation — {batch.code}
         </h2>
-        <Button type="button" variant="secondary" onClick={onCancel}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={busy || locked}>
           Cancel
         </Button>
       </div>
+
+      {/* Locks every input while an attempt is in flight or unresolved, so
+          what Retry resends can never drift from what the screen shows. */}
+      <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4">
 
       {definitionsLoading ? (
         <p className="text-sm text-wl-text-secondary">Loading Observation Definitions…</p>
@@ -422,6 +451,8 @@ export function RecordObservationForm({
         )}
       </fieldset>
 
+      </fieldset>
+
       {rowError && (
         <p role="alert" className={errorClass}>
           {rowError}
@@ -430,14 +461,17 @@ export function RecordObservationForm({
       {serverError && (
         <p role="alert" className={errorClass}>
           {friendlyMutationErrorMessage(serverError)}
+          {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
         </p>
       )}
 
       <div>
-        <Button type="button" variant="primary" disabled={isSubmitting} onClick={handleSubmit}>
-          {isSubmitting
+        <Button type="button" variant="primary" disabled={busy} onClick={handleSubmit}>
+          {busy
             ? "Recording…"
-            : filledCount > 0
+            : command.outcome === "uncertain"
+              ? "Retry"
+              : filledCount > 0
               ? `Record ${filledCount} observation${filledCount === 1 ? "" : "s"}`
               : "Record observation"}
         </Button>

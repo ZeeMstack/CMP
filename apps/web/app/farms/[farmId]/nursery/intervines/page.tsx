@@ -143,11 +143,15 @@ export default function IntervinesTransplantPage() {
           serverError={serverError}
           onSubmit={(batchId, payload, tableCode) => {
             setServerError(null);
-            mutation.mutate(
-              { batchId, payload },
-              {
-                onSuccess: (transplant) => setSuccess({ transplant, tableCode }),
-                onError: (error) => setServerError(asAppError(error)),
+            // UX-OPS-001C/R1: the returned promise settles the form's frozen
+            // attempt (success clears it; network/5xx keeps it for a
+            // byte-identical Retry; a definitive 4xx releases it).
+            return mutation.mutateAsync({ batchId, payload }).then(
+              (transplant) => setSuccess({ transplant, tableCode }),
+              (error) => {
+                const appError = asAppError(error);
+                setServerError(appError);
+                throw appError;
               },
             );
           }}

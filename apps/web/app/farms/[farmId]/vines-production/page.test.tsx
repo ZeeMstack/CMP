@@ -319,7 +319,7 @@ describe("VinesProductionPage", () => {
     expect(screen.getByText(/Current 2/)).toBeInTheDocument();
   });
 
-  it("UX-OPS-001C: a void retried after a lost response reuses the same client_command_id", async () => {
+  it("UX-OPS-001C/R1: an unresolved void locks Cancel/tabs and Retry resends the byte-identical payload", async () => {
     const correctBodies: string[] = [];
     let correctCalls = 0;
     vi.stubGlobal(
@@ -343,9 +343,27 @@ describe("VinesProductionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Correct" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm void" }));
     await waitFor(() => expect(correctCalls).toBe(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Confirm void" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm void" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry void" })).toBeEnabled());
+    // Unresolved: Cancel and switching sections are blocked -- no read can
+    // prove whether the void applied, so the attempt is never abandoned.
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: /population/i }));
+    expect(screen.getByRole("button", { name: "Retry void" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry void" }));
     await waitFor(() => expect(correctCalls).toBe(2));
-    expect(JSON.parse(correctBodies[1]).client_command_id).toBe(JSON.parse(correctBodies[0]).client_command_id);
+    expect(correctBodies[1]).toBe(correctBodies[0]);
+  });
+
+  it("UX-OPS-001C/R1: an aggregate Batch/Gutter row never opens a Batch-only inspection; Grow Bags carry their exact assignment", async () => {
+    stubFetch();
+    render(withQueryClient(<VinesProductionPage />));
+    await expandPopulationRow();
+    await waitFor(() => expect(screen.getByText(/GB-0001/)).toBeInTheDocument());
+    const inspectLinks = screen.getAllByRole("link", { name: "Inspect Crop" });
+    expect(inspectLinks.length).toBeGreaterThan(0);
+    for (const link of inspectLinks) {
+      expect(link.getAttribute("href")).toMatch(/assignmentId=/);
+    }
   });
 });

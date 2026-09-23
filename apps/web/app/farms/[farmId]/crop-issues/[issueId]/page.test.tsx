@@ -91,10 +91,27 @@ describe("CropIssueWorkspacePage (UX-OPS-001C)", () => {
 
     await waitFor(() => expect(within(rail).getByRole("button", { name: "Retry" })).toBeInTheDocument());
     expect(within(rail).getByLabelText(/notes/i)).toBeDisabled();
+    // UX-OPS-001C/R1: an unresolved attempt can never be cancelled/abandoned.
+    expect(within(rail).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    fireEvent.click(within(rail).getByRole("button", { name: "Cancel" }));
+    expect(within(rail).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     fireEvent.click(within(rail).getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toEqual(bodies[0]);
     await waitFor(() => expect(within(rail).queryByRole("button", { name: "Retry" })).not.toBeInTheDocument());
+  });
+
+  it("UX-OPS-001C/R1: a definitive rejection releases the attempt (Cancel re-enabled) and the next save mints a new id", async () => {
+    const bodies = stubFetch(OPEN_ISSUE, [() => jsonResponse({ detail: "invalid" }, 422)]);
+    render(withQueryClient(<CropIssueWorkspacePage />));
+    const rail = await screen.findByRole("region", { name: "Issue status" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Add Follow-up" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Save Follow-up" }));
+    await waitFor(() => expect(within(rail).getByRole("button", { name: "Cancel" })).toBeEnabled());
+    expect(within(rail).getByRole("button", { name: "Save Follow-up" })).toBeInTheDocument();
+    fireEvent.click(within(rail).getByRole("button", { name: "Save Follow-up" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].client_command_id).not.toBe(bodies[0].client_command_id);
   });
 });

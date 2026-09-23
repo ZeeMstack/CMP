@@ -275,9 +275,12 @@ describe("IntersaladsTransplantForm", () => {
     ]);
   });
 
-  it("reuses the same client_command_id on an exact retry", async () => {
+  it("UX-OPS-001C/R1: an uncertain attempt locks Back and Retry resends the byte-identical frozen payload", async () => {
     stubFetch();
-    const onSubmit = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("network_error", "offline"))
+      .mockResolvedValueOnce(undefined);
     render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
     await addSource(/TRAY-014/, "TRAY-014");
@@ -287,10 +290,15 @@ describe("IntersaladsTransplantForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
-    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    // Locked: the draft cannot be edited (or silently abandoned) while unresolved.
+    expect(screen.getByRole("button", { name: "Back to edit" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[0][1].client_command_id).toBe(onSubmit.mock.calls[1][1].client_command_id);
+    expect(onSubmit.mock.calls[1]).toEqual(onSubmit.mock.calls[0]);
+    expect(JSON.stringify(onSubmit.mock.calls[1][1])).toBe(JSON.stringify(onSubmit.mock.calls[0][1]));
   });
 
   it("shows generic conflict copy (never raw backend text) for a 409 and forces back to Configure", async () => {
@@ -345,46 +353,32 @@ describe("IntersaladsTransplantForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/other_loss_note is required/i);
   });
 
-  it("keeps the same client_command_id going Back from Review without editing anything, then resubmitting", async () => {
+  it("UX-OPS-001C/R1: Review/Back never mints an id; a definitive rejection releases the attempt and the edited resubmission gets a new id", async () => {
     stubFetch();
-    const onSubmit = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("invalid_request", "rejected", 422))
+      .mockResolvedValueOnce(undefined);
     render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
+
+    // Review -> Back -> Review without submitting: nothing sent, nothing minted.
     fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    const firstId = onSubmit.mock.calls[0][1].client_command_id;
-
-    // Back without changing anything, then straight back to Review and
-    // resubmit -- the id must NOT rotate merely because Back was clicked.
     fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[1][1].client_command_id).toBe(firstId);
-  });
+    expect(onSubmit).not.toHaveBeenCalled();
 
-  it("rotates client_command_id only when the payload materially changes after a submit", async () => {
-    stubFetch();
-    const onSubmit = vi.fn();
-    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
-    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
-    await addSource(/TRAY-014/, "TRAY-014");
-    await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
-    await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
-    await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const firstId = onSubmit.mock.calls[0][1].client_command_id;
+    // Definitive rejection -> editable again.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back to edit" })).toBeEnabled());
 
-    // Go back and materially change the allocated quantity before
-    // resubmitting -- the id MUST rotate this time.
     fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     fireEvent.change(screen.getByLabelText(/quantity for allocation 1/i), { target: { value: "160" } });
     fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));

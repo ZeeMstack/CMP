@@ -185,11 +185,15 @@ export default function IntersaladsTransplantPage() {
           serverError={serverError}
           onSubmit={(batchId, payload, tableCodeById) => {
             setServerError(null);
-            mutation.mutate(
-              { batchId, payload },
-              {
-                onSuccess: (transplant) => setSuccess({ transplant, tableCodeById }),
-                onError: (error) => setServerError(asAppError(error)),
+            // UX-OPS-001C/R1: the returned promise settles the form's frozen
+            // attempt (success clears it; network/5xx keeps it for a
+            // byte-identical Retry; a definitive 4xx releases it).
+            return mutation.mutateAsync({ batchId, payload }).then(
+              (transplant) => setSuccess({ transplant, tableCodeById }),
+              (error) => {
+                const appError = asAppError(error);
+                setServerError(appError);
+                throw appError;
               },
             );
           }}

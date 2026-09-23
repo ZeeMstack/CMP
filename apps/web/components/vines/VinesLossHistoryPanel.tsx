@@ -4,7 +4,13 @@ import { useState } from "react";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
-import type { VinesProductionDispositionHistoryRead } from "@/lib/api/client";
+import type { CorrectVinesGrowCubeDispositionCreate, VinesProductionDispositionHistoryRead } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  toCommandError,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { VINES_DISPOSITION_REASONS } from "@/lib/validation/vinesProductionDisposition";
 
@@ -15,33 +21,54 @@ const errorClass = "text-xs text-danger-700";
  * grow_cube_disposition` currently supports reversal only (see its own
  * service docstring for why replace-mode is deferred). */
 function VoidCorrectionConfirm({
-  eventId, onSubmit, onCancel, isSubmitting, serverError,
+  eventId, onSubmit, onCancel, isSubmitting, serverError, onCommandLockedChange,
 }: {
   eventId: string;
-  onSubmit: (eventId: string) => Promise<void>;
+  onSubmit: (eventId: string, payload: CorrectVinesGrowCubeDispositionCreate) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
+  // UX-OPS-001C/R1: one frozen void attempt per event. An uncertain outcome
+  // keeps the same `client_command_id` for Retry and disables Cancel -- no
+  // read here can prove whether the void applied, so it is never abandoned.
+  const command = useFrozenSubmission<CorrectVinesGrowCubeDispositionCreate & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const busy = isSubmitting || command.outcome === "submitting";
+
+  function send(payload: CorrectVinesGrowCubeDispositionCreate) {
+    onSubmit(eventId, payload).then(
+      () => command.handleSuccess(),
+      (error) => command.handleError(toCommandError(error)),
+    );
+  }
+
+  function confirm() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) send(frozen);
+      return;
+    }
+    send(command.submit((clientCommandId) => ({ client_command_id: clientCommandId })));
+  }
+
+  const error = serverError ?? command.error;
   return (
     <div className="flex flex-col gap-2 rounded-md border border-wl-border bg-wl-surface-sunken p-3 text-sm">
       <p className="text-wl-text">Void this loss record? The named plant(s) return to living population.</p>
-      {serverError && <p className={errorClass}>{friendlyMutationErrorMessage(serverError)}</p>}
+      {error && (
+        <p role="alert" className={errorClass}>
+          {friendlyMutationErrorMessage(error)}
+          {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={busy || command.outcome !== "editing"}>
           Cancel
         </Button>
-        <Button
-          type="button"
-          variant="primary"
-          // The failure is already surfaced through `serverError`; catching
-          // here only stops a rejected attempt becoming an unhandled
-          // rejection. The confirm stays open so Retry reuses the same
-          // attempt's command id (see the page's `correctCommandIds`).
-          onClick={() => onSubmit(eventId).catch(() => undefined)}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? "Voiding…" : "Confirm void"}
+        <Button type="button" variant="primary" onClick={confirm} disabled={busy}>
+          {busy ? "Voiding…" : command.outcome === "uncertain" ? "Retry void" : "Confirm void"}
         </Button>
       </div>
     </div>
@@ -60,13 +87,15 @@ export function VinesLossHistoryPanel({
   correctingEventId,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   lineages: VinesProductionDispositionHistoryRead[];
   canCorrect: boolean;
-  onCorrect: (eventId: string) => Promise<void>;
+  onCorrect: (eventId: string, payload: CorrectVinesGrowCubeDispositionCreate) => Promise<void>;
   correctingEventId: string | null;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const [openEventId, setOpenEventId] = useState<string | null>(null);
 
@@ -116,12 +145,13 @@ export function VinesLossHistoryPanel({
                     {openEventId === event.id ? (
                       <VoidCorrectionConfirm
                         eventId={event.id}
-                        onSubmit={(eventId) => onCorrect(eventId)}
+                        onSubmit={(eventId, payload) => onCorrect(eventId, payload)}
                         onCancel={() => setOpenEventId(null)}
                         isSubmitting={isSubmitting && correctingEventId === event.id}
                         // The page clears `correctingEventId` once the attempt settles,
                         // so the open confirm (not the in-flight id) owns the error.
                         serverError={openEventId === event.id ? serverError : null}
+                        onCommandLockedChange={onCommandLockedChange}
                       />
                     ) : (
                       <Button type="button" variant="secondary" onClick={() => setOpenEventId(event.id)}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppError } from "@/lib/errors/adapter";
 
@@ -121,3 +121,46 @@ export function useFrozenSubmission<TPayload extends Record<string, unknown>>() 
 export type UseFrozenSubmissionResult<TPayload extends Record<string, unknown>> = ReturnType<
   typeof useFrozenSubmission<TPayload>
 >;
+
+/** UX-OPS-001C/R1: normalizes whatever a command's submit promise rejected
+ * with into an `AppError`. A non-`AppError` (e.g. a thrown TypeError from a
+ * dropped connection) is treated as a SERVER-side unknown -- i.e. an
+ * uncertain outcome -- never as a definitive rejection, so it can never
+ * silently release a frozen attempt that may already have been applied. */
+export function toCommandError(error: unknown): AppError {
+  return error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again.");
+}
+
+/** UX-OPS-001C/R1: settles one frozen attempt from the caller's own submit
+ * result (a promise from `mutateAsync`, or `undefined` for a synchronous
+ * caller) -- success clears the attempt; a network/5xx failure keeps it
+ * frozen for a byte-identical Retry; a definitive 4xx releases it so the
+ * next submission mints a new `client_command_id`. */
+export function settleFrozenAttempt(
+  command: { handleSuccess: () => void; handleError: (error: AppError) => void },
+  result: unknown,
+): void {
+  Promise.resolve(result).then(
+    () => command.handleSuccess(),
+    (error) => command.handleError(toCommandError(error)),
+  );
+}
+
+/** Reports "this form holds an in-flight or unresolved attempt" to a parent
+ * that can otherwise close/replace the form (tabs, target switch, batch
+ * switch), so the parent can block those paths until the attempt resolves. */
+export function useReportCommandLocked(outcome: FrozenSubmissionOutcome, onLockedChange?: (locked: boolean) => void) {
+  const locked = outcome !== "editing";
+  const callbackRef = useRef(onLockedChange);
+  useEffect(() => {
+    callbackRef.current = onLockedChange;
+  });
+  useEffect(() => {
+    callbackRef.current?.(locked);
+  }, [locked]);
+  useEffect(() => () => callbackRef.current?.(false), []);
+}
+
+/** Shared operator copy for an unresolved (uncertain) attempt. */
+export const UNCERTAIN_OUTCOME_COPY =
+  "The outcome is unconfirmed — Retry sends the exact same request and can never apply it twice.";

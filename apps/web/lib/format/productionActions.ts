@@ -50,14 +50,15 @@ export function vinesGrowBagActions(farmId: string, batchId: string, bag: VinesG
   return actions;
 }
 
-/** A Vines (Batch, Gutter) aggregate row -- Batch-level navigation only,
- * since the aggregate spans several placements (never silently narrowed to
- * one arbitrary Grow Bag). */
+/** A Vines (Batch, Gutter) aggregate row -- Batch-level Observation only.
+ * UX-OPS-001C/R1: never Inspect Crop here. The aggregate spans several
+ * placements, and an inspection must start from ONE exact placement (a
+ * specific Grow Bag, via `vinesGrowBagActions`) -- never a Batch-only
+ * inspection, and never silently narrowed to an arbitrary Grow Bag. */
 export function vinesGroupActions(farmId: string, batchId: string, livingPlantCount: number): ProductionAction[] {
   if (livingPlantCount <= 0) return [];
   return [
     { kind: "record_observation", label: "Record observation", href: `/farms/${farmId}/observations?batchId=${batchId}` },
-    { kind: "inspect_crop", label: "Inspect Crop", href: `/farms/${farmId}/production/inspect?batchId=${batchId}` },
   ];
 }
 

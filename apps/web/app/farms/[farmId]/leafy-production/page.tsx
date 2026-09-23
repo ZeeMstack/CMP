@@ -68,6 +68,10 @@ export default function LeafyProductionPage() {
   // Plate whose Record Plant Loss form is open) so opening/closing a
   // command form never loses which row the operator was working on.
   const [inspectedPlateId, setInspectedPlateId] = useState<string | null>(null);
+  // UX-OPS-001C/R1: true while any open command form holds an in-flight or
+  // unresolved (uncertain) attempt -- switching sections would unmount that
+  // form and lose its frozen Retry, so the section tabs are locked.
+  const [commandLocked, setCommandLocked] = useState(false);
 
   const activePlatesQuery = useActiveProductionPlates(farmId);
   const historyQuery = useProductionDispositionHistory(farmId);
@@ -123,7 +127,9 @@ export default function LeafyProductionPage() {
         <Tabs
           tabs={TABS.map(({ id, label }) => ({ id, label }))}
           activeId={tab}
-          onChange={(id) => setTab(id as "active" | "history")}
+          onChange={(id) => {
+            if (!commandLocked) setTab(id as "active" | "history");
+          }}
           aria-label="Leafy Production sections"
         />
       </div>
@@ -194,6 +200,10 @@ export default function LeafyProductionPage() {
             </div>
           ) : selectedPlate ? (
             <RecordPlantLossForm
+              // UX-OPS-001C/R1: keyed by target -- another Plate can never
+              // reuse this Plate's frozen attempt.
+              key={selectedPlate.batch_carrier_assignment_id}
+              onCommandLockedChange={setCommandLocked}
               plateCode={selectedPlate.plate_code}
               batchCarrierAssignmentId={selectedPlate.batch_carrier_assignment_id}
               currentLivingPopulation={selectedPlate.current_living_population}
@@ -205,16 +215,20 @@ export default function LeafyProductionPage() {
               }}
               onSubmit={(payload) => {
                 setRecordError(null);
-                recordMutation.mutate(payload, {
-                  onSuccess: (result) => {
+                return recordMutation.mutateAsync(payload).then(
+                  (result) => {
                     setRecordSuccess({
                       plateCode: selectedPlate.plate_code,
                       resulting: result.resulting_living_population,
                       released: result.assignment_released,
                     });
                   },
-                  onError: (error) => setRecordError(asAppError(error)),
-                });
+                  (error) => {
+                    const appError = asAppError(error);
+                    setRecordError(appError);
+                    throw appError;
+                  },
+                );
               }}
             />
           ) : selectedPlateId ? (
@@ -231,6 +245,8 @@ export default function LeafyProductionPage() {
             </div>
           ) : movingPlate ? (
             <MoveProductionPlateForm
+              key={movingPlate.batch_carrier_assignment_id}
+              onCommandLockedChange={setCommandLocked}
               farmId={farmId}
               plate={movingPlate}
               isSubmitting={relocateMutation.isPending}
@@ -241,12 +257,16 @@ export default function LeafyProductionPage() {
               }}
               onSubmit={(payload: MovementCreate, toLabel: string) => {
                 setMoveError(null);
-                relocateMutation.mutate(payload, {
-                  onSuccess: () => {
+                return relocateMutation.mutateAsync(payload).then(
+                  () => {
                     setMoveSuccess({ plateCode: movingPlate.plate_code, toLabel });
                   },
-                  onError: (error) => setMoveError(asAppError(error)),
-                });
+                  (error) => {
+                    const appError = asAppError(error);
+                    setMoveError(appError);
+                    throw appError;
+                  },
+                );
               }}
             />
           ) : movingPlateId ? (
@@ -379,6 +399,7 @@ export default function LeafyProductionPage() {
           // backend's own 403 as a normal error, consistent with every
           // other command in this app.
           canCorrect={true}
+          onCommandLockedChange={setCommandLocked}
           correctingEventId={correctingEventId}
           isSubmitting={correctMutation.isPending}
           serverError={correctError}

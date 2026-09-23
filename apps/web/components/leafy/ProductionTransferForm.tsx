@@ -15,6 +15,12 @@ import { LeafyLocationSelector, type LeafyLocationValue } from "@/components/lea
 import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferCreate } from "@/lib/api/client";
 import { suggestAllocations } from "@/lib/allocation/suggestAllocation";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   useAvailableLeafyProductionSources,
@@ -378,6 +384,7 @@ export function ProductionTransferForm({
   restrictToBatchId,
   onSubmit,
   isSubmitting,
+  onCommandLockedChange,
   serverError,
 }: {
   farmId: string;
@@ -386,13 +393,22 @@ export function ProductionTransferForm({
     batchId: string,
     payload: LeafyProductionTransferCreate,
     tableLabelById: Record<string, string>,
-  ) => void;
+  ) => void | Promise<unknown>;
   isSubmitting: boolean;
+  /** Reports an in-flight/unresolved attempt so the page can block
+   * anything that would unmount this form mid-command. */
+  onCommandLockedChange?: (locked: boolean) => void;
   serverError?: AppError | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission (never on
+  // Review/Back). The whole wire payload -- `client_command_id`,
+  // `effective_time`, targets, quantities -- plus the page context it is
+  // sent with is frozen on Record; an uncertain (network/5xx) outcome is
+  // retried byte-identically and locks the draft; a definitive rejection
+  // or success releases it so the next submission gets a new id.
+  const command = useFrozenSubmission<{ batchId: string; payload: LeafyProductionTransferCreate; tableLabelById: Record<string, string> } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
   const [occupancyByTable, setOccupancyByTable] = useState<Record<string, TableOccupancy>>({});
   const [collapsedDestinationIds, setCollapsedDestinationIds] = useState<Set<string>>(new Set());
   const [destinationArea, setDestinationArea] = useState<DestinationAreaValue>({
@@ -647,22 +663,27 @@ export function ProductionTransferForm({
     if (valid && !tableOverCapacity) setStep("review");
   }
 
+  function sendFrozen(envelope: { batchId: string; payload: LeafyProductionTransferCreate; tableLabelById: Record<string, string> }) {
+    settleFrozenAttempt(command, onSubmit(envelope.batchId, envelope.payload, envelope.tableLabelById));
+  }
+
   function submitReview() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) sendFrozen(frozen);
+      return;
+    }
     const finalValues = getValues();
     const tableLabelById = Object.fromEntries(
       finalValues.destinations.map((d) => [d.destination_location_id, d.table_label]),
     );
-    const payload = buildLeafyProductionTransferPayload(finalValues, clientCommandId);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure to omit the key, not to use it
-    const { client_command_id: _omit, ...fingerprint } = payload;
-    const fingerprintJson = JSON.stringify(fingerprint);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprintJson) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
-    }
-    lastSubmittedFingerprintRef.current = fingerprintJson;
-    onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, tableLabelById);
+    sendFrozen(
+      command.submit((clientCommandId) => ({
+        batchId: finalValues.batch_id,
+        payload: buildLeafyProductionTransferPayload(finalValues, clientCommandId),
+        tableLabelById,
+      })),
+    );
   }
 
   // UX-OPS-001C: the one reconciliation line shown on Review --
@@ -760,15 +781,33 @@ export function ProductionTransferForm({
               heading="Reconciliation"
               stats={totalsStats}
               hint={reconciliationLine}
-              blockers={serverError ? [friendlyMutationErrorMessage(serverError)] : []}
+              blockers={[
+                ...(serverError ? [friendlyMutationErrorMessage(serverError)] : []),
+                ...(command.outcome === "uncertain" ? [UNCERTAIN_OUTCOME_COPY] : []),
+              ]}
             >
               <StickyActionBar>
                 <div className="flex gap-3">
-                  <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting || command.outcome !== "editing"}
+                  >
                     Back to edit
                   </Button>
-                  <Button type="button" variant="primary" className="flex-1" onClick={submitReview} disabled={isSubmitting}>
-                    {isSubmitting ? "Transferring…" : "Record Transfer"}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="flex-1"
+                    onClick={submitReview}
+                    disabled={isSubmitting || command.outcome === "submitting"}
+                  >
+                    {isSubmitting || command.outcome === "submitting"
+                      ? "Transferring…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Transfer"}
                   </Button>
                 </div>
               </StickyActionBar>

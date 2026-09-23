@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
-import { PlacementSummary } from "@/components/PlacementSummary";
 import { StatusBadge } from "@/components/StatusBadge";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { ContextStrip, ContextStripFact } from "@/components/layout/ContextStrip";
@@ -22,15 +21,18 @@ import type {
   GrowerInspectionRead,
   InspectionFindingIn,
   InspectionObservationValueIn,
+  ObservationTargetRead,
 } from "@/lib/api/client";
-import { useFrozenSubmission } from "@/lib/commands/frozenSubmission";
-import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
+import { UNCERTAIN_OUTCOME_COPY, toCommandError, useFrozenSubmission } from "@/lib/commands/frozenSubmission";
+import { friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { validateAffectedWithinInspected } from "@/lib/validation/growerInspection";
 import {
-  useBatchOperationalContext,
+  useBatchObservationTargets,
   useBatchProtocolStatus,
   useCropBatch,
+  useLocationPath,
   useObservationDefinitions,
+  useObservationHistory,
   useOpenCropIssue,
   useRecordGrowerInspection,
 } from "@/lib/query/hooks";
@@ -45,12 +47,18 @@ const OVERALL_ASSESSMENTS = ["normal", "attention_needed", "critical"] as const;
 const inputClass =
   "min-h-10 w-full rounded-md border border-wl-border bg-wl-surface px-2.5 text-sm text-wl-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus";
 const labelClass = "text-xs font-medium text-wl-text-secondary";
+const blockerListClass =
+  "flex flex-col gap-1 rounded-lg bg-wl-flag-bg px-3 py-2 text-xs font-medium text-wl-flag-fg";
 
 function humanize(v: string) {
   return v
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+function targetLabel(target: ObservationTargetRead): string {
+  return target.location_label ? `${target.carrier.code} — ${target.location_label}` : target.carrier.code;
 }
 
 interface FindingRow {
@@ -62,63 +70,91 @@ interface FindingRow {
   suspectedCause: string;
 }
 
-interface ObservationRow {
-  raw: string;
-}
+/** Everything the Review step shows and `Record Inspection` sends, minus the
+ * `client_command_id` -- which is minted only when Record is pressed. */
+type InspectionDraft = Omit<GrowerInspectionCreate, "client_command_id">;
 
-/** PILOT-AGRO-001B Part 3: the "Inspect Crop" operator workspace.
- * CONTEXT -> WHAT IS DUE/WRONG -> RECORD ACTION -> NEXT STEP. Accepts
- * batchId (required) and optionally assignmentId from QR/Today-on-the-Farm/
- * Batch context -- when assignmentId is present it is the exact physical
- * placement this workspace targets, never silently widened to a Batch-wide
- * pick (FROZEN, mirrors PILOT-SCAN-001E's own placement-vs-batch rule). One
+type TargetState =
+  | { kind: "unselected" }
+  | { kind: "loading" }
+  | { kind: "error" }
+  | { kind: "missing"; assignmentId: string }
+  | { kind: "resolved"; target: ObservationTargetRead };
+
+/** PILOT-AGRO-001B Part 3: the "Inspect Crop" operator workspace. One
  * Inspection records MULTIPLE ObservationValues in ONE ObservationEvent
- * (never one Inspection per measurement) -- see `handleSubmit` below,
- * which builds one `GrowerInspectionCreate` for the whole form.
+ * (never one Inspection per measurement), and -- since UX-OPS-001C/R1
+ * (N05) -- the backend commits the Inspection, its Findings, and that
+ * Observation atomically.
  *
- * UX-OPS-001C: a guided command layout -- context strip (Batch, Stage,
- * Placement, Protocol), inputs in the main area (Findings bounded), and a
- * sticky summary/blocker rail with the single Record Inspection action.
- * Command identity is now frozen per attempt (`useFrozenSubmission`): an
- * uncertain outcome (network/5xx) is retried with the SAME
- * `client_command_id` and byte-identical payload -- the backend replays it
- * rather than recording a duplicate Inspection -- and inputs are locked
- * until that attempt resolves; a definitive rejection unlocks editing and
- * the next submit mints a new id. */
+ * UX-OPS-001C/R1:
+ * - Exact target: an inspection is always of ONE exact placement (Batch
+ *   Carrier Assignment). `?assignmentId=` is resolved against the Batch's
+ *   own authoritative observation targets and shown as carrier code +
+ *   location; recording is blocked while it is loading, missing/stale, or
+ *   not an active placement of THIS Batch. Opened without one, the operator
+ *   must choose an exact placement first -- never a Batch-level inspection
+ *   labelled as exact. Changing the placement clears the draft.
+ * - Configure -> Review -> Receipt. `Review Inspection` never mints an id;
+ *   the payload is frozen only when `Record Inspection` is pressed.
+ * - Frozen command: an uncertain outcome (network/5xx) locks the draft and
+ *   offers only a byte-identical Retry -- there is no Discard/Cancel,
+ *   because no read here proves whether the command applied. A definitive
+ *   rejection releases it (next Record mints a new id); success clears it. */
 export default function InspectCropPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
   const batchId = searchParams.get("batchId");
-  const assignmentId = searchParams.get("assignmentId");
+  const urlAssignmentId = searchParams.get("assignmentId");
 
   const batchQuery = useCropBatch(farmId, batchId ?? "");
-  const operationalQuery = useBatchOperationalContext(farmId, batchId ?? "");
   const statusQuery = useBatchProtocolStatus(farmId, batchId ?? undefined);
   const definitionsQuery = useObservationDefinitions();
+  const targetsQuery = useBatchObservationTargets(farmId, batchId);
   const recordInspection = useRecordGrowerInspection(farmId, batchId ?? "");
 
+  const [chosenAssignmentId, setChosenAssignmentId] = useState<string | null>(null);
+  const [step, setStep] = useState<"configure" | "review">("configure");
   const [inspectedCount, setInspectedCount] = useState("");
   const [overallAssessment, setOverallAssessment] = useState<(typeof OVERALL_ASSESSMENTS)[number]>("normal");
   const [notes, setNotes] = useState("");
-  const [observationRows, setObservationRows] = useState<Record<string, ObservationRow>>({});
+  const [observationRows, setObservationRows] = useState<Record<string, string>>({});
   const [findings, setFindings] = useState<FindingRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<GrowerInspectionRead | null>(null);
+  const [draft, setDraft] = useState<InspectionDraft | null>(null);
+  const [saved, setSaved] = useState<{ inspection: GrowerInspectionRead; target: ObservationTargetRead | null } | null>(
+    null,
+  );
   const command = useFrozenSubmission<GrowerInspectionCreate & Record<string, unknown>>();
+  const locked = command.outcome !== "editing";
 
   const definitionsById = useMemo(
     () => new Map((definitionsQuery.data ?? []).map((d) => [d.id, d])),
     [definitionsQuery.data],
   );
 
+  const targetAssignmentId = chosenAssignmentId ?? urlAssignmentId;
+  const targets = targetsQuery.data ?? [];
+  const targetState: TargetState = !targetAssignmentId
+    ? { kind: "unselected" }
+    : targetsQuery.isLoading
+      ? { kind: "loading" }
+      : targetsQuery.isError
+        ? { kind: "error" }
+        : (() => {
+            const target = targets.find((t) => t.id === targetAssignmentId);
+            return target ? { kind: "resolved", target } : { kind: "missing", assignmentId: targetAssignmentId };
+          })();
+  const resolvedTarget = targetState.kind === "resolved" ? targetState.target : null;
+
   if (!batchId) {
     return (
       <div>
-        <PageHeader title="Inspect Crop" />
+        <PageHeader compact title="Inspect Crop" />
         <EmptyState
           title="No Batch selected"
-          description="Open Inspect Crop from a Batch page, Today on the Farm, or by scanning a Batch/Placement/Carrier QR code."
+          description="Open Inspect Crop from a Plate, Grow Bag, or placement QR code so the exact placement is known."
         />
       </div>
     );
@@ -132,8 +168,24 @@ export default function InspectCropPage() {
   const status = statusQuery.data;
   const dueRequirements = status?.due_observation_requirements ?? [];
 
-  function setObservationRaw(requirementDefinitionId: string, raw: string) {
-    setObservationRows((prev) => ({ ...prev, [requirementDefinitionId]: { raw } }));
+  function resetDraft() {
+    setStep("configure");
+    setInspectedCount("");
+    setOverallAssessment("normal");
+    setNotes("");
+    setObservationRows({});
+    setFindings([]);
+    setFormError(null);
+    setDraft(null);
+  }
+
+  /** Changing scope is a different inspection: clear the draft and any
+   * released attempt (only reachable while nothing is frozen). */
+  function chooseTarget(assignmentId: string) {
+    if (locked) return;
+    command.abandon();
+    resetDraft();
+    setChosenAssignmentId(assignmentId || null);
   }
 
   function addFinding() {
@@ -151,8 +203,10 @@ export default function InspectCropPage() {
     setFindings((prev) => prev.filter((f) => f.key !== key));
   }
 
-  function handleSubmit() {
-    if (!batchId) return;
+  /** Validates the Configure inputs and builds the Review draft. Never mints
+   * a `client_command_id`. */
+  function goToReview() {
+    if (!batchId || !resolvedTarget) return;
     setFormError(null);
     const inspected = inspectedCount.trim() ? Number(inspectedCount) : null;
     if (inspectedCount.trim() && (!Number.isInteger(inspected) || (inspected as number) < 0)) {
@@ -183,12 +237,14 @@ export default function InspectCropPage() {
 
     const observationValues: InspectionObservationValueIn[] = [];
     for (const req of dueRequirements) {
-      const raw = observationRows[req.requirement.observation_definition_id]?.raw?.trim();
+      const raw = observationRows[req.requirement.observation_definition_id]?.trim();
       if (!raw) continue;
       const definition = definitionsById.get(req.requirement.observation_definition_id);
       const value: InspectionObservationValueIn = {
         observation_definition_id: req.requirement.observation_definition_id,
-        batch_carrier_assignment_id: assignmentId,
+        // The exact placement for every definition that can take one; a
+        // crop_batch-scoped definition must carry none (backend rule).
+        batch_carrier_assignment_id: definition?.target_scope === "crop_batch" ? null : resolvedTarget.id,
       };
       if (definition?.value_type === "integer") {
         value.value_integer = Number(raw);
@@ -202,118 +258,298 @@ export default function InspectCropPage() {
       observationValues.push(value);
     }
 
-    const payload = command.submit((clientCommandId) => ({
-      client_command_id: clientCommandId,
+    setDraft({
       batch_id: batchId,
-      batch_carrier_assignment_id: assignmentId,
+      batch_carrier_assignment_id: resolvedTarget.id,
       effective_time: null,
       inspected_count: inspected,
       overall_assessment: overallAssessment,
       notes: notes.trim() || null,
       findings: findingPayloads,
       observation_values: observationValues,
-    }));
-    send(payload);
+    });
+    setStep("review");
   }
 
   function send(payload: GrowerInspectionCreate) {
-    recordInspection.mutate(payload, {
-      onSuccess: (result) => {
+    const target = resolvedTarget;
+    recordInspection.mutateAsync(payload).then(
+      (result) => {
         command.handleSuccess();
-        setSaved(result);
+        setSaved({ inspection: result, target });
       },
-      onError: (error) =>
-        command.handleError(
-          error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again."),
-        ),
-    });
+      (error) => command.handleError(toCommandError(error)),
+    );
   }
 
-  function retry() {
-    const payload = command.retry();
-    if (payload) send(payload);
+  function recordInspectionCommand() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) send(frozen);
+      return;
+    }
+    if (!draft) return;
+    // Frozen HERE -- the first actual submission -- never on Review/Back.
+    send(command.submit((clientCommandId) => ({ ...draft, client_command_id: clientCommandId })));
   }
 
   if (saved) {
     return (
-      <InspectionSavedPanel
+      <InspectionReceipt
         farmId={farmId}
         batchId={batchId}
-        inspection={saved}
+        batchCode={batch.code}
+        inspection={saved.inspection}
+        target={saved.target}
         onDone={() => router.push(`/farms/${farmId}/crop-batches/${batchId}`)}
         onRecordAnother={() => {
           setSaved(null);
-          setInspectedCount("");
-          setNotes("");
-          setObservationRows({});
-          setFindings([]);
+          resetDraft();
         }}
       />
     );
   }
 
-  const operational = operationalQuery.data;
-  const locked = command.outcome !== "editing";
-  const requiredDue = dueRequirements.filter((r) => r.requirement.requirement_level === "required");
-  const enteredCount = dueRequirements.filter(
-    (r) => (observationRows[r.requirement.observation_definition_id]?.raw ?? "").trim() !== "",
-  ).length;
-  const blockers = [
+  const targetBlocker =
+    targetState.kind === "unselected"
+      ? "Choose the exact placement being inspected."
+      : targetState.kind === "loading"
+        ? "Resolving the placement…"
+        : targetState.kind === "error"
+          ? "The placement could not be resolved. Retry loading before inspecting."
+          : targetState.kind === "missing"
+            ? "That placement is not an active placement of this Batch (it may have moved, been released, or belong to another Batch). Choose an exact placement."
+            : null;
+  const errorLines = [
     formError,
     command.error
-      ? command.outcome === "uncertain"
-        ? `${friendlyMutationErrorMessage(command.error)} The inspection may or may not have been recorded — Retry sends the exact same inspection again and can never record it twice.`
-        : friendlyMutationErrorMessage(command.error)
+      ? `${friendlyMutationErrorMessage(command.error)}${command.outcome === "uncertain" ? ` ${UNCERTAIN_OUTCOME_COPY}` : ""}`
       : null,
   ].filter((b): b is string => Boolean(b));
+  const showTargetPicker = !urlAssignmentId || targetState.kind === "missing" || chosenAssignmentId !== null;
+  const requiredDue = dueRequirements.filter((r) => r.requirement.requirement_level === "required");
+  const enteredCount = dueRequirements.filter((r) => (observationRows[r.requirement.observation_definition_id] ?? "").trim() !== "").length;
+
+  const header = (
+    <PageHeader
+      compact
+      title="Inspect Crop"
+      breadcrumbs={
+        <Breadcrumbs
+          items={[
+            { label: "Home", href: `/farms/${farmId}` },
+            { label: "Batches", href: `/farms/${farmId}/crop-batches` },
+            { label: batch.code, href: `/farms/${farmId}/crop-batches/${batchId}` },
+            { label: "Inspect Crop" },
+          ]}
+        />
+      }
+    />
+  );
+
+  const context = (
+    <div className="mb-4">
+      <ContextStrip>
+        <ContextStripFact
+          label="Batch"
+          value={`${batch.code} — ${batch.crop.common_name}${batch.variety ? ` / ${batch.variety.name}` : ""}`}
+        />
+        <ContextStripFact label="Stage" value={batch.current_stage.name} />
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-wl-text-secondary">Exact placement</span>
+          {resolvedTarget ? (
+            <span className="text-sm font-medium text-wl-text" data-testid="inspection-target">
+              {resolvedTarget.carrier.code}
+              {resolvedTarget.location_label ? ` — ${resolvedTarget.location_label}` : " — no current location on record"}
+            </span>
+          ) : (
+            <span className="text-sm font-medium text-wl-flag-fg">
+              {targetState.kind === "loading" ? "Resolving…" : "Not selected"}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-wl-text-secondary">Protocol</span>
+          {status?.protocol ? (
+            <StatusBadge label={`${status.protocol.name} v${status.protocol_version?.version_number}`} tone="active" />
+          ) : (
+            <StatusBadge label={statusQuery.isLoading ? "Loading…" : "No protocol assigned"} tone="neutral" />
+          )}
+        </div>
+      </ContextStrip>
+    </div>
+  );
+
+  if (step === "review" && draft && resolvedTarget) {
+    return (
+      <div className={STICKY_ACTION_BAR_SPACER_CLASS}>
+        {header}
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-wl-brand">Step 2 of 2 · Review</p>
+        {context}
+        <SplitWorkspace
+          main={
+            <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="font-serif text-base font-semibold text-wl-text">Review before recording</h2>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-wl-text-secondary">Batch</dt>
+                  <dd className="font-medium text-wl-text">{batch.code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Carrier</dt>
+                  <dd className="font-medium text-wl-text">{resolvedTarget.carrier.code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Location</dt>
+                  <dd className="font-medium text-wl-text">{resolvedTarget.location_label ?? "No current location on record"}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Inspected count</dt>
+                  <dd className="font-medium tabular-nums text-wl-text">{draft.inspected_count ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Assessment</dt>
+                  <dd className="font-medium text-wl-text">{humanize(draft.overall_assessment)}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Occurs at</dt>
+                  <dd className="font-medium text-wl-text">Now (server time on record)</dd>
+                </div>
+              </dl>
+
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-wl-text">Observations ({draft.observation_values?.length ?? 0})</h3>
+                {(draft.observation_values ?? []).length === 0 ? (
+                  <p className="text-sm text-wl-text-secondary">None entered.</p>
+                ) : (
+                  <ul className="divide-y divide-wl-border text-sm">
+                    {(draft.observation_values ?? []).map((v) => {
+                      const req = dueRequirements.find((r) => r.requirement.observation_definition_id === v.observation_definition_id);
+                      const value = v.value_integer ?? v.value_decimal ?? (v.value_boolean == null ? v.value_text : v.value_boolean ? "Yes" : "No");
+                      return (
+                        <li key={v.observation_definition_id} className="flex justify-between gap-3 py-1.5">
+                          <span className="text-wl-text">{req?.observation_definition_name ?? "Observation"}</span>
+                          <span className="font-medium text-wl-text">
+                            {String(value)}
+                            {definitionsById.get(v.observation_definition_id)?.unit ? ` ${definitionsById.get(v.observation_definition_id)?.unit}` : ""}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-wl-text">Findings ({draft.findings?.length ?? 0})</h3>
+                {(draft.findings ?? []).length === 0 ? (
+                  <p className="text-sm text-wl-text-secondary">No findings.</p>
+                ) : (
+                  <BoundedDataRegion label="Findings to record">
+                    <ul className="divide-y divide-wl-border px-3 text-sm">
+                      {(draft.findings ?? []).map((f, i) => (
+                        <li key={i} className="flex flex-col gap-0.5 py-2">
+                          <span className="font-medium text-wl-text">
+                            {humanize(f.category)} · {humanize(f.severity)} · Affected {f.affected_count ?? "—"}
+                          </span>
+                          {f.suspected_cause && <span className="text-xs text-wl-text-secondary">Suspected cause: {f.suspected_cause}</span>}
+                          {f.notes && <span className="text-xs text-wl-text-secondary">{f.notes}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </BoundedDataRegion>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-1 text-sm font-semibold text-wl-text">Notes</h3>
+                <p className="text-sm text-wl-text">{draft.notes ?? "—"}</p>
+              </section>
+            </div>
+          }
+          rail={
+            <section aria-label="Inspection summary" className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="text-sm font-semibold text-wl-text">Record this inspection</h2>
+              <p className="text-xs text-wl-text-secondary">
+                Recording never changes living quantity or opens a Crop Issue by itself.
+              </p>
+              <StickyActionBar
+                blockers={
+                  errorLines.length > 0 && (
+                    <ul role="alert" className={blockerListClass}>
+                      {errorLines.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                  )
+                }
+              >
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => setStep("configure")} disabled={locked}>
+                    Back to edit
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="flex-1"
+                    onClick={recordInspectionCommand}
+                    disabled={command.outcome === "submitting"}
+                  >
+                    {command.outcome === "submitting"
+                      ? "Recording…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Inspection"}
+                  </Button>
+                </div>
+              </StickyActionBar>
+            </section>
+          }
+        />
+      </div>
+    );
+  }
+
+  const configureBlockers = [targetBlocker, ...errorLines].filter((b): b is string => Boolean(b));
 
   return (
     <div className={STICKY_ACTION_BAR_SPACER_CLASS}>
-      <PageHeader
-        compact
-        title="Inspect Crop"
-        breadcrumbs={
-          <Breadcrumbs
-            items={[
-              { label: "Home", href: `/farms/${farmId}` },
-              { label: "Batches", href: `/farms/${farmId}/crop-batches` },
-              { label: batch.code, href: `/farms/${farmId}/crop-batches/${batchId}` },
-              { label: "Inspect Crop" },
-            ]}
-          />
-        }
-      />
-
-      {/* CONTEXT */}
-      <div className="mb-4">
-        <ContextStrip>
-          <ContextStripFact
-            label="Batch"
-            value={`${batch.code} — ${batch.crop.common_name}${batch.variety ? ` / ${batch.variety.name}` : ""}`}
-          />
-          <ContextStripFact label="Stage" value={batch.current_stage.name} />
-          {operational && <ContextStripFact label="Placement" value={<PlacementSummary placement={operational.placement} />} />}
-          {assignmentId && <ContextStripFact label="Scope" value="Exact placement (from scan/row)" />}
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-wl-text-secondary">Protocol</span>
-            {status?.protocol ? (
-              <StatusBadge
-                label={`${status.protocol.name} v${status.protocol_version?.version_number}`}
-                tone="active"
-              />
-            ) : (
-              <StatusBadge label="No protocol assigned" tone="neutral" />
-            )}
-          </div>
-        </ContextStrip>
-      </div>
+      {header}
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-wl-brand">Step 1 of 2 · Configure</p>
+      {context}
 
       <SplitWorkspace
         main={
-          // A single disabled fieldset locks every input while an attempt is
-          // in flight or uncertain, so what Retry resends can never drift
-          // from what the screen shows.
           <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4">
+            {showTargetPicker && (
+              <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                <label className="flex flex-col gap-1">
+                  <span className={labelClass}>Exact placement being inspected (required)</span>
+                  <select
+                    className={inputClass}
+                    value={resolvedTarget?.id ?? ""}
+                    disabled={targetsQuery.isLoading}
+                    onChange={(e) => chooseTarget(e.target.value)}
+                  >
+                    <option value="">{targetsQuery.isLoading ? "Loading placements…" : "Select a placement…"}</option>
+                    {targets.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {targetLabel(t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {targetsQuery.isSuccess && targets.length === 0 && (
+                  <p className="mt-2 text-xs text-wl-text-secondary">This Batch has no active placements to inspect.</p>
+                )}
+                {targetsQuery.isError && (
+                  <div className="mt-2">
+                    <ErrorState error={targetsQuery.error} onRetry={() => targetsQuery.refetch()} />
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-wl-text-secondary">Changing the placement clears this draft.</p>
+              </section>
+            )}
+
             <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
               <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-wl-text-secondary">Counts</h2>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -358,11 +594,13 @@ export default function InspectCropPage() {
                 <div className="flex flex-col gap-2">
                   {dueRequirements.map((r) => {
                     const definition = definitionsById.get(r.requirement.observation_definition_id);
-                    const raw = observationRows[r.requirement.observation_definition_id]?.raw ?? "";
+                    const raw = observationRows[r.requirement.observation_definition_id] ?? "";
+                    const setRaw = (value: string) =>
+                      setObservationRows((prev) => ({ ...prev, [r.requirement.observation_definition_id]: value }));
                     return (
                       <div
                         key={r.requirement.id}
-                        className="grid grid-cols-1 items-center gap-2 rounded-lg border border-wl-border p-2.5 sm:grid-cols-[1fr_auto_auto]"
+                        className="grid grid-cols-1 items-center gap-2 rounded-lg border border-wl-border p-2.5 sm:grid-cols-[1fr_auto]"
                       >
                         <label className="flex flex-col gap-1">
                           <span className={labelClass}>
@@ -371,28 +609,15 @@ export default function InspectCropPage() {
                             {r.requirement.requirement_level === "required" ? " · required" : " · recommended"}
                           </span>
                           {definition?.value_type === "boolean" ? (
-                            <select
-                              className={inputClass}
-                              value={raw}
-                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                            >
+                            <select className={inputClass} value={raw} onChange={(e) => setRaw(e.target.value)}>
                               <option value="">Not observed</option>
                               <option value="true">Yes</option>
                               <option value="false">No</option>
                             </select>
                           ) : definition?.value_type === "text" ? (
-                            <input
-                              className={inputClass}
-                              value={raw}
-                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                            />
+                            <input className={inputClass} value={raw} onChange={(e) => setRaw(e.target.value)} />
                           ) : (
-                            <input
-                              type="number"
-                              className={inputClass}
-                              value={raw}
-                              onChange={(e) => setObservationRaw(r.requirement.observation_definition_id, e.target.value)}
-                            />
+                            <input type="number" className={inputClass} value={raw} onChange={(e) => setRaw(e.target.value)} />
                           )}
                         </label>
                         {r.is_overdue ? (
@@ -503,6 +728,10 @@ export default function InspectCropPage() {
             <h2 className="text-sm font-semibold text-wl-text">Summary</h2>
             <dl className="flex flex-col divide-y divide-wl-border text-sm">
               <div className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="text-wl-text-secondary">Placement</dt>
+                <dd className="text-right font-semibold text-wl-text">{resolvedTarget?.carrier.code ?? "—"}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 py-1.5">
                 <dt className="text-wl-text-secondary">Assessment</dt>
                 <dd className="font-semibold text-wl-text">{humanize(overallAssessment)}</dd>
               </div>
@@ -518,43 +747,20 @@ export default function InspectCropPage() {
                 <dd className="font-semibold tabular-nums text-wl-text">{findings.length}</dd>
               </div>
             </dl>
-            <p className="text-xs text-wl-text-secondary">
-              Recording an inspection never changes living quantity or opens a Crop Issue by itself.
-            </p>
             <StickyActionBar
               blockers={
-                blockers.length > 0 && (
-                  <ul role="alert" className="flex flex-col gap-1 rounded-lg bg-wl-flag-bg px-3 py-2 text-xs font-medium text-wl-flag-fg">
-                    {blockers.map((b) => (
+                configureBlockers.length > 0 && (
+                  <ul role="alert" className={blockerListClass}>
+                    {configureBlockers.map((b) => (
                       <li key={b}>{b}</li>
                     ))}
                   </ul>
                 )
               }
             >
-              {command.outcome === "uncertain" ? (
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      // Refresh authoritative state before abandoning, so a
-                      // recorded-but-unconfirmed inspection shows up in due
-                      // status rather than being silently re-entered.
-                      statusQuery.refetch();
-                      command.abandon();
-                    }}
-                  >
-                    Discard attempt
-                  </Button>
-                  <Button variant="primary" className="flex-1" onClick={retry}>
-                    Retry
-                  </Button>
-                </div>
-              ) : (
-                <Button variant="primary" className="w-full" onClick={handleSubmit} disabled={command.outcome === "submitting"}>
-                  {command.outcome === "submitting" ? "Recording…" : "Record Inspection"}
-                </Button>
-              )}
+              <Button variant="primary" className="w-full" onClick={goToReview} disabled={!resolvedTarget || locked}>
+                Review Inspection
+              </Button>
             </StickyActionBar>
           </section>
         }
@@ -563,21 +769,36 @@ export default function InspectCropPage() {
   );
 }
 
-function InspectionSavedPanel({
+/** UX-OPS-001C/R1: rendered from the authoritative server response. The
+ * carrier comes from the Batch's own target read for the response's
+ * `batch_carrier_assignment_id`; the location is the snapshot the server
+ * stored (`location_id`), resolved through the generic location-path read;
+ * the observation count is read back from the recorded ObservationEvent. */
+function InspectionReceipt({
   farmId,
   batchId,
+  batchCode,
   inspection,
+  target,
   onDone,
   onRecordAnother,
 }: {
   farmId: string;
   batchId: string;
+  batchCode: string;
   inspection: GrowerInspectionRead;
+  target: ObservationTargetRead | null;
   onDone: () => void;
   onRecordAnother: () => void;
 }) {
   const router = useRouter();
   const openIssue = useOpenCropIssue(farmId, batchId);
+  const locationQuery = useLocationPath(farmId, inspection.location_id);
+  const historyQuery = useObservationHistory(farmId, inspection.observation_event_id ? batchId : null);
+  const recordedEvent = (historyQuery.data ?? []).find((e) => e.id === inspection.observation_event_id);
+  const receiptCarrier =
+    target && target.id === inspection.batch_carrier_assignment_id ? target.carrier.code : null;
+
   const [openingIssue, setOpeningIssue] = useState(false);
   const [findingId, setFindingId] = useState<string>(inspection.findings[0]?.id ?? "");
   const [description, setDescription] = useState("");
@@ -588,31 +809,28 @@ function InspectionSavedPanel({
     (inspection.findings[0]?.severity as (typeof FINDING_SEVERITIES)[number]) ?? "low",
   );
   const [suspectedCause, setSuspectedCause] = useState("");
-  // UX-OPS-001C: frozen per attempt -- an uncertain Open Issue retry reuses
-  // the same `client_command_id` (the backend replays it) instead of
-  // minting a new one per click, which could open a duplicate Issue.
+  // Same frozen-command rules as Record Inspection: an uncertain Open Issue
+  // keeps its id + payload for Retry and can't be cancelled.
   const issueCommand = useFrozenSubmission<CropIssueOpenIn & Record<string, unknown>>();
+  const issueLocked = issueCommand.outcome !== "editing";
 
   function sendOpenIssue(payload: CropIssueOpenIn) {
-    openIssue.mutate(payload, {
-      onSuccess: (issue) => {
+    openIssue.mutateAsync(payload).then(
+      (issue) => {
         issueCommand.handleSuccess();
         router.push(`/farms/${farmId}/crop-issues/${issue.id}`);
       },
-      onError: (error) =>
-        issueCommand.handleError(
-          error instanceof AppError ? error : new AppError("server_error", "Something went wrong. Please try again."),
-        ),
-    });
+      (error) => issueCommand.handleError(toCommandError(error)),
+    );
   }
 
   function handleOpenIssue() {
-    if (!description.trim()) return;
     if (issueCommand.outcome === "uncertain") {
       const payload = issueCommand.retry();
       if (payload) sendOpenIssue(payload);
       return;
     }
+    if (!description.trim()) return;
     sendOpenIssue(
       issueCommand.submit((clientCommandId) => ({
         client_command_id: clientCommandId,
@@ -625,7 +843,6 @@ function InspectionSavedPanel({
       })),
     );
   }
-  const issueLocked = issueCommand.outcome !== "editing";
 
   return (
     <div>
@@ -634,8 +851,27 @@ function InspectionSavedPanel({
         <p className="text-sm text-wl-text">
           Inspection saved with {inspection.findings.length} finding{inspection.findings.length === 1 ? "" : "s"}.
         </p>
-        {/* Truthful receipt: only what the server returned for THIS command. */}
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Batch</dt>
+            <dd className="font-medium text-wl-text">{batchCode}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Carrier / placement</dt>
+            <dd className="font-medium text-wl-text">{receiptCarrier ?? (inspection.batch_carrier_assignment_id ? "Recorded placement" : "—")}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Location (stored snapshot)</dt>
+            <dd className="font-medium text-wl-text">
+              {!inspection.location_id
+                ? "No location on record"
+                : locationQuery.data?.path_string ?? (locationQuery.isLoading ? "Loading…" : "Unavailable")}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-wl-text-secondary">Recorded at</dt>
+            <dd className="font-medium text-wl-text">{new Date(inspection.effective_time).toLocaleString()}</dd>
+          </div>
           <div>
             <dt className="text-xs text-wl-text-secondary">Assessment</dt>
             <dd className="font-medium text-wl-text">{humanize(inspection.overall_assessment)}</dd>
@@ -645,8 +881,16 @@ function InspectionSavedPanel({
             <dd className="font-medium tabular-nums text-wl-text">{inspection.inspected_count ?? "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs text-wl-text-secondary">Recorded at</dt>
-            <dd className="font-medium text-wl-text">{new Date(inspection.effective_time).toLocaleString()}</dd>
+            <dt className="text-xs text-wl-text-secondary">Observations</dt>
+            <dd className="font-medium tabular-nums text-wl-text">
+              {!inspection.observation_event_id
+                ? 0
+                : recordedEvent
+                  ? recordedEvent.values.length
+                  : historyQuery.isLoading
+                    ? "Loading…"
+                    : "Recorded"}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-wl-text-secondary">Findings</dt>
@@ -675,14 +919,13 @@ function InspectionSavedPanel({
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 rounded-lg border border-wl-border p-3">
-            <p className="text-sm font-medium text-wl-text">Open Crop Issue</p>
+          <fieldset disabled={issueLocked} className="flex flex-col gap-3 rounded-lg border border-wl-border p-3">
+            <legend className="px-1 text-sm font-medium text-wl-text">Open Crop Issue</legend>
             {inspection.findings.length > 1 && (
               <label className="flex flex-col gap-1">
                 <span className={labelClass}>From finding</span>
                 <select
                   className={inputClass}
-                  disabled={issueLocked}
                   value={findingId}
                   onChange={(e) => {
                     setFindingId(e.target.value);
@@ -703,27 +946,20 @@ function InspectionSavedPanel({
             )}
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Description</span>
-              <textarea
-                className={`${inputClass} min-h-16`}
-                disabled={issueLocked}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
+              <textarea className={`${inputClass} min-h-16`} value={description} onChange={(e) => setDescription(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1">
               <span className={labelClass}>Suspected cause (optional)</span>
-              <input
-                className={inputClass}
-                disabled={issueLocked}
-                value={suspectedCause}
-                onChange={(e) => setSuspectedCause(e.target.value)}
-              />
+              <input className={inputClass} value={suspectedCause} onChange={(e) => setSuspectedCause(e.target.value)} />
             </label>
+          </fieldset>
+        )}
+        {openingIssue && (
+          <>
             {issueCommand.error && (
               <p role="alert" className="text-xs text-danger-700">
                 {friendlyMutationErrorMessage(issueCommand.error)}
-                {issueCommand.outcome === "uncertain" &&
-                  " The Issue may or may not have been opened — Retry sends the exact same request and can never open it twice."}
+                {issueCommand.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
               </p>
             )}
             <div className="flex gap-2">
@@ -733,14 +969,15 @@ function InspectionSavedPanel({
                   issueCommand.abandon();
                   setOpeningIssue(false);
                 }}
-                disabled={issueCommand.outcome === "submitting"}
+                // Never abandon an in-flight or unresolved Open Issue.
+                disabled={issueLocked}
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={handleOpenIssue}
-                disabled={issueCommand.outcome === "submitting" || !description.trim()}
+                disabled={issueCommand.outcome === "submitting" || (!issueLocked && !description.trim())}
               >
                 {issueCommand.outcome === "submitting"
                   ? "Opening…"
@@ -749,7 +986,7 @@ function InspectionSavedPanel({
                     : "Open Issue"}
               </Button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
