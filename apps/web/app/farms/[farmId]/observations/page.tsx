@@ -63,6 +63,15 @@ export default function ObservationsPage() {
   // other entry point into this page.
   const prefillWorkItemId = searchParams.get("workItemId");
 
+  // UX-OPS-001C/R2: the URL prefill (Batch / assignment / Work Item) that
+  // is actually in effect. A same-route query change re-applies it --
+  // selecting the new Batch and resetting the draft, carried target, and
+  // Work Item link -- so an old Batch/assignment/work item can never stay
+  // active. Deferred (never forced) while the Record form holds an
+  // in-flight or unresolved attempt; it applies once that resolves.
+  const [applied, setApplied] = useState({
+    batchId: prefillBatchId, assignmentId: prefillAssignmentId, workItemId: prefillWorkItemId,
+  });
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(prefillBatchId);
   const [showRecordForm, setShowRecordForm] = useState(Boolean(prefillBatchId));
   const [recordError, setRecordError] = useState<AppError | null>(null);
@@ -74,6 +83,21 @@ export default function ObservationsPage() {
   // unresolved attempt -- a Batch switch would unmount it and lose its
   // frozen Retry, so the selector is locked until it resolves.
   const [commandLocked, setCommandLocked] = useState(false);
+  if (
+    !commandLocked &&
+    (applied.batchId !== prefillBatchId ||
+      applied.assignmentId !== prefillAssignmentId ||
+      applied.workItemId !== prefillWorkItemId)
+  ) {
+    setApplied({ batchId: prefillBatchId, assignmentId: prefillAssignmentId, workItemId: prefillWorkItemId });
+    setSelectedBatchId(prefillBatchId);
+    setShowRecordForm(Boolean(prefillBatchId));
+    setRecordError(null);
+    setRecordedCount(null);
+    setRecordedEffectiveTime(null);
+    setWorkItemLinkStatus(null);
+    setFormDirty(false);
+  }
 
   const farmQuery = useFarm(farmId);
   const batchesQuery = useOperationalSummary(farmId, "active");
@@ -121,7 +145,7 @@ export default function ObservationsPage() {
   // code + location -- never trusted blindly. Only a resolved placement is
   // handed on to Inspect Crop; otherwise Inspect Crop opens without one and
   // requires the operator to choose an exact placement there.
-  const carriedAssignmentId = selectedBatchId === prefillBatchId ? prefillAssignmentId : null;
+  const carriedAssignmentId = selectedBatchId === applied.batchId ? applied.assignmentId : null;
   const carriedTarget = carriedAssignmentId
     ? (targetsQuery.data ?? []).find((t) => t.id === carriedAssignmentId) ?? null
     : null;
@@ -203,16 +227,17 @@ export default function ObservationsPage() {
           main={
             showRecordForm ? (
               <RecordObservationForm
-                // Keyed by Batch: a different Batch never inherits this
-                // form's draft or frozen attempt.
-                key={selectedBatch.id}
+                // Keyed by Batch AND applied prefill: a different Batch or
+                // URL scope never inherits this form's draft or frozen attempt.
+                key={`${selectedBatch.id}|${applied.batchId ?? ""}|${applied.assignmentId ?? ""}|${applied.workItemId ?? ""}`}
                 onCommandLockedChange={setCommandLocked}
                 batch={selectedBatch}
                 definitions={definitionsQuery.data ?? []}
                 definitionsLoading={definitionsQuery.isLoading}
                 targets={targetsQuery.data ?? []}
                 targetsLoading={targetsQuery.isLoading}
-                initialTargetId={selectedBatchId === prefillBatchId ? prefillAssignmentId : null}
+                initialTargetId={carriedAssignmentId}
+                workItemId={selectedBatchId === applied.batchId ? applied.workItemId : null}
                 isSubmitting={recordMutation.isPending}
                 serverError={recordError}
                 onDirtyChange={setFormDirty}
@@ -223,11 +248,12 @@ export default function ObservationsPage() {
                 }}
                 onSubmit={(payload: ObservationEventCreate) => {
                   setRecordError(null);
-                  const isForPrefilledWorkItem = selectedBatchId === prefillBatchId && Boolean(prefillWorkItemId);
                   return recordMutation.mutateAsync(
                     {
                       batchId: selectedBatch.id,
-                      payload: isForPrefilledWorkItem ? { ...payload, work_item_id: prefillWorkItemId } : payload,
+                      // `work_item_id` is part of the form's frozen payload,
+                      // so a Retry can never pick up a different Work Item.
+                      payload,
                     },
                   ).then(
                     (result) => {

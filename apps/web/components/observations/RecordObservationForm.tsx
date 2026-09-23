@@ -68,6 +68,7 @@ export function RecordObservationForm({
   isSubmitting,
   serverError,
   onCommandLockedChange,
+  workItemId,
 }: {
   batch: BatchOperationalContext;
   definitions: ObservationDefinitionRead[];
@@ -94,6 +95,9 @@ export function RecordObservationForm({
    * can block a Batch switch (which would unmount this form) until it
    * resolves. */
   onCommandLockedChange?: (locked: boolean) => void;
+  /** PILOT-OPS-001: a Work Item this Observation completes. Frozen into the
+   * submitted payload (UX-OPS-001C/R2) so a Retry always links the same one. */
+  workItemId?: string | null;
   /** PILOT-UX-003: fires whenever "has the operator entered anything worth
    * not silently discarding" changes, so the parent page can warn before a
    * Batch switch would wipe an in-progress draft. Purely a UI convenience --
@@ -259,6 +263,7 @@ export function RecordObservationForm({
       effective_time,
       note: note.trim() || null,
       values,
+      ...(workItemId ? { work_item_id: workItemId } : {}),
     }));
     settleFrozenAttempt(command, onSubmit(payload));
   }

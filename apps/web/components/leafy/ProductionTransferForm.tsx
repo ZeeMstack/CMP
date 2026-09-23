@@ -10,7 +10,7 @@ import { CompactLossDisclosure } from "@/components/allocation/CompactLossDisclo
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
-import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import { LeafyLocationSelector, type LeafyLocationValue } from "@/components/leafy/LeafyLocationSelector";
 import { Button } from "@/components/ui/Button";
 import type { LeafyProductionTransferCreate } from "@/lib/api/client";
@@ -694,7 +694,7 @@ export function ProductionTransferForm({
   if (step === "review") {
     const reviewValues = getValues();
     return (
-      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+      <div className="flex flex-col gap-4">
         <StepIndicator step="review" />
         <SplitWorkspace
           main={
@@ -835,7 +835,7 @@ export function ProductionTransferForm({
         e.preventDefault();
         goToReview();
       }}
-      className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
+      className="flex flex-col gap-4"
     >
       <StepIndicator step="configure" />
 

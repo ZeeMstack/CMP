@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -13,7 +13,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { ContextStrip, ContextStripFact } from "@/components/layout/ContextStrip";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
-import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type {
   CropIssueOpenIn,
@@ -102,11 +102,44 @@ type TargetState =
  *   because no read here proves whether the command applied. A definitive
  *   rejection releases it (next Record mints a new id); success clears it. */
 export default function InspectCropPage() {
-  const { farmId } = useParams<{ farmId: string }>();
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const batchId = searchParams.get("batchId");
+  const urlBatchId = searchParams.get("batchId");
   const urlAssignmentId = searchParams.get("assignmentId");
+  // UX-OPS-001C/R2: the scope (Batch + exact assignment) a workspace was
+  // opened for is fixed for that workspace's whole life -- each scope gets
+  // its own keyed `InspectCropWorkspace`, so its draft, Review, frozen
+  // command, and receipt can never mix with another scope. A same-route
+  // query change (A -> B) remounts a fresh workspace for B only while the
+  // current one is `pinned` = nothing in flight/unresolved and no receipt
+  // on screen. An in-flight or uncertain attempt is never abandoned
+  // because the URL changed: it keeps its original target and its
+  // byte-identical Retry, and B is applied once it resolves.
+  const [applied, setApplied] = useState({ batchId: urlBatchId, assignmentId: urlAssignmentId });
+  const [pinned, setPinned] = useState(false);
+  if (!pinned && (applied.batchId !== urlBatchId || applied.assignmentId !== urlAssignmentId)) {
+    setApplied({ batchId: urlBatchId, assignmentId: urlAssignmentId });
+  }
+  return (
+    <InspectCropWorkspace
+      key={`${applied.batchId ?? ""}|${applied.assignmentId ?? ""}`}
+      batchId={applied.batchId}
+      urlAssignmentId={applied.assignmentId}
+      onPinnedChange={setPinned}
+    />
+  );
+}
+
+function InspectCropWorkspace({
+  batchId,
+  urlAssignmentId,
+  onPinnedChange,
+}: {
+  batchId: string | null;
+  urlAssignmentId: string | null;
+  onPinnedChange: (pinned: boolean) => void;
+}) {
+  const { farmId } = useParams<{ farmId: string }>();
+  const router = useRouter();
 
   const batchQuery = useCropBatch(farmId, batchId ?? "");
   const statusQuery = useBatchProtocolStatus(farmId, batchId ?? undefined);
@@ -122,12 +155,23 @@ export default function InspectCropPage() {
   const [observationRows, setObservationRows] = useState<Record<string, string>>({});
   const [findings, setFindings] = useState<FindingRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<InspectionDraft | null>(null);
+  // The Review draft carries the exact target it was built for -- Review and
+  // the receipt render THIS, never whichever target happens to be live.
+  const [draft, setDraft] = useState<{ payload: InspectionDraft; target: ObservationTargetRead } | null>(null);
   const [saved, setSaved] = useState<{ inspection: GrowerInspectionRead; target: ObservationTargetRead | null } | null>(
     null,
   );
   const command = useFrozenSubmission<GrowerInspectionCreate & Record<string, unknown>>();
   const locked = command.outcome !== "editing";
+  const pinned = locked || saved !== null;
+  const pinnedCallbackRef = useRef(onPinnedChange);
+  useEffect(() => {
+    pinnedCallbackRef.current = onPinnedChange;
+  });
+  useEffect(() => {
+    pinnedCallbackRef.current(pinned);
+  }, [pinned]);
+  useEffect(() => () => pinnedCallbackRef.current(false), []);
 
   const definitionsById = useMemo(
     () => new Map((definitionsQuery.data ?? []).map((d) => [d.id, d])),
@@ -259,20 +303,24 @@ export default function InspectCropPage() {
     }
 
     setDraft({
-      batch_id: batchId,
-      batch_carrier_assignment_id: resolvedTarget.id,
-      effective_time: null,
-      inspected_count: inspected,
-      overall_assessment: overallAssessment,
-      notes: notes.trim() || null,
-      findings: findingPayloads,
-      observation_values: observationValues,
+      target: resolvedTarget,
+      payload: {
+        batch_id: batchId,
+        batch_carrier_assignment_id: resolvedTarget.id,
+        effective_time: null,
+        inspected_count: inspected,
+        overall_assessment: overallAssessment,
+        notes: notes.trim() || null,
+        findings: findingPayloads,
+        observation_values: observationValues,
+      },
     });
     setStep("review");
   }
 
-  function send(payload: GrowerInspectionCreate) {
-    const target = resolvedTarget;
+  /** `target` is the frozen command's own target (the draft's), never the
+   * live `resolvedTarget` at settle time. */
+  function send(payload: GrowerInspectionCreate, target: ObservationTargetRead) {
     recordInspection.mutateAsync(payload).then(
       (result) => {
         command.handleSuccess();
@@ -283,14 +331,14 @@ export default function InspectCropPage() {
   }
 
   function recordInspectionCommand() {
+    if (!draft) return;
     if (command.outcome === "uncertain") {
       const frozen = command.retry();
-      if (frozen) send(frozen);
+      if (frozen) send(frozen, draft.target);
       return;
     }
-    if (!draft) return;
     // Frozen HERE -- the first actual submission -- never on Review/Back.
-    send(command.submit((clientCommandId) => ({ ...draft, client_command_id: clientCommandId })));
+    send(command.submit((clientCommandId) => ({ ...draft.payload, client_command_id: clientCommandId })), draft.target);
   }
 
   if (saved) {
@@ -316,7 +364,7 @@ export default function InspectCropPage() {
       : targetState.kind === "loading"
         ? "Resolving the placement…"
         : targetState.kind === "error"
-          ? "The placement could not be resolved. Retry loading before inspecting."
+          ? "The placement could not be resolved. Use Retry to load it again before inspecting."
           : targetState.kind === "missing"
             ? "That placement is not an active placement of this Batch (it may have moved, been released, or belong to another Batch). Choose an exact placement."
             : null;
@@ -380,12 +428,32 @@ export default function InspectCropPage() {
     </div>
   );
 
-  if (step === "review" && draft && resolvedTarget) {
+  if (step === "review" && draft) {
+    const reviewTarget = draft.target;
+    const reviewPayload = draft.payload;
+    const reviewContext = (
+      <div className="mb-4">
+        <ContextStrip>
+          <ContextStripFact
+            label="Batch"
+            value={`${batch.code} — ${batch.crop.common_name}${batch.variety ? ` / ${batch.variety.name}` : ""}`}
+          />
+          <ContextStripFact label="Stage" value={batch.current_stage.name} />
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-wl-text-secondary">Exact placement</span>
+            <span className="text-sm font-medium text-wl-text" data-testid="inspection-target">
+              {reviewTarget.carrier.code}
+              {reviewTarget.location_label ? ` — ${reviewTarget.location_label}` : " — no current location on record"}
+            </span>
+          </div>
+        </ContextStrip>
+      </div>
+    );
     return (
-      <div className={STICKY_ACTION_BAR_SPACER_CLASS}>
+      <div>
         {header}
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-wl-brand">Step 2 of 2 · Review</p>
-        {context}
+        {reviewContext}
         <SplitWorkspace
           main={
             <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
@@ -397,19 +465,19 @@ export default function InspectCropPage() {
                 </div>
                 <div>
                   <dt className="text-wl-text-secondary">Carrier</dt>
-                  <dd className="font-medium text-wl-text">{resolvedTarget.carrier.code}</dd>
+                  <dd className="font-medium text-wl-text">{reviewTarget.carrier.code}</dd>
                 </div>
                 <div>
                   <dt className="text-wl-text-secondary">Location</dt>
-                  <dd className="font-medium text-wl-text">{resolvedTarget.location_label ?? "No current location on record"}</dd>
+                  <dd className="font-medium text-wl-text">{reviewTarget.location_label ?? "No current location on record"}</dd>
                 </div>
                 <div>
                   <dt className="text-wl-text-secondary">Inspected count</dt>
-                  <dd className="font-medium tabular-nums text-wl-text">{draft.inspected_count ?? "—"}</dd>
+                  <dd className="font-medium tabular-nums text-wl-text">{reviewPayload.inspected_count ?? "—"}</dd>
                 </div>
                 <div>
                   <dt className="text-wl-text-secondary">Assessment</dt>
-                  <dd className="font-medium text-wl-text">{humanize(draft.overall_assessment)}</dd>
+                  <dd className="font-medium text-wl-text">{humanize(reviewPayload.overall_assessment)}</dd>
                 </div>
                 <div>
                   <dt className="text-wl-text-secondary">Occurs at</dt>
@@ -418,12 +486,12 @@ export default function InspectCropPage() {
               </dl>
 
               <section>
-                <h3 className="mb-1 text-sm font-semibold text-wl-text">Observations ({draft.observation_values?.length ?? 0})</h3>
-                {(draft.observation_values ?? []).length === 0 ? (
+                <h3 className="mb-1 text-sm font-semibold text-wl-text">Observations ({reviewPayload.observation_values?.length ?? 0})</h3>
+                {(reviewPayload.observation_values ?? []).length === 0 ? (
                   <p className="text-sm text-wl-text-secondary">None entered.</p>
                 ) : (
                   <ul className="divide-y divide-wl-border text-sm">
-                    {(draft.observation_values ?? []).map((v) => {
+                    {(reviewPayload.observation_values ?? []).map((v) => {
                       const req = dueRequirements.find((r) => r.requirement.observation_definition_id === v.observation_definition_id);
                       const value = v.value_integer ?? v.value_decimal ?? (v.value_boolean == null ? v.value_text : v.value_boolean ? "Yes" : "No");
                       return (
@@ -441,13 +509,13 @@ export default function InspectCropPage() {
               </section>
 
               <section>
-                <h3 className="mb-1 text-sm font-semibold text-wl-text">Findings ({draft.findings?.length ?? 0})</h3>
-                {(draft.findings ?? []).length === 0 ? (
+                <h3 className="mb-1 text-sm font-semibold text-wl-text">Findings ({reviewPayload.findings?.length ?? 0})</h3>
+                {(reviewPayload.findings ?? []).length === 0 ? (
                   <p className="text-sm text-wl-text-secondary">No findings.</p>
                 ) : (
                   <BoundedDataRegion label="Findings to record">
                     <ul className="divide-y divide-wl-border px-3 text-sm">
-                      {(draft.findings ?? []).map((f, i) => (
+                      {(reviewPayload.findings ?? []).map((f, i) => (
                         <li key={i} className="flex flex-col gap-0.5 py-2">
                           <span className="font-medium text-wl-text">
                             {humanize(f.category)} · {humanize(f.severity)} · Affected {f.affected_count ?? "—"}
@@ -463,7 +531,7 @@ export default function InspectCropPage() {
 
               <section>
                 <h3 className="mb-1 text-sm font-semibold text-wl-text">Notes</h3>
-                <p className="text-sm text-wl-text">{draft.notes ?? "—"}</p>
+                <p className="text-sm text-wl-text">{reviewPayload.notes ?? "—"}</p>
               </section>
             </div>
           }
@@ -512,7 +580,7 @@ export default function InspectCropPage() {
   const configureBlockers = [targetBlocker, ...errorLines].filter((b): b is string => Boolean(b));
 
   return (
-    <div className={STICKY_ACTION_BAR_SPACER_CLASS}>
+    <div>
       {header}
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-wl-brand">Step 1 of 2 · Configure</p>
       {context}
@@ -520,7 +588,12 @@ export default function InspectCropPage() {
       <SplitWorkspace
         main={
           <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4">
-            {showTargetPicker && (
+            {/* Always offered when the placement read fails -- including for
+                a valid deep-linked assignment, where the picker is hidden. */}
+            {targetsQuery.isError && (
+              <ErrorState error={targetsQuery.error} onRetry={() => targetsQuery.refetch()} />
+            )}
+            {showTargetPicker && !targetsQuery.isError && (
               <section className="rounded-xl border border-wl-border bg-wl-surface-raised p-4">
                 <label className="flex flex-col gap-1">
                   <span className={labelClass}>Exact placement being inspected (required)</span>
@@ -540,11 +613,6 @@ export default function InspectCropPage() {
                 </label>
                 {targetsQuery.isSuccess && targets.length === 0 && (
                   <p className="mt-2 text-xs text-wl-text-secondary">This Batch has no active placements to inspect.</p>
-                )}
-                {targetsQuery.isError && (
-                  <div className="mt-2">
-                    <ErrorState error={targetsQuery.error} onRetry={() => targetsQuery.refetch()} />
-                  </div>
                 )}
                 <p className="mt-2 text-xs text-wl-text-secondary">Changing the placement clears this draft.</p>
               </section>

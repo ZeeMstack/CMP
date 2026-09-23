@@ -10,7 +10,7 @@ import { CompactLossDisclosure } from "@/components/allocation/CompactLossDisclo
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
-import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { IntersaladsTransplantCreate } from "@/lib/api/client";
 import { suggestAllocations } from "@/lib/allocation/suggestAllocation";
@@ -670,7 +670,7 @@ export function IntersaladsTransplantForm({
   if (step === "review") {
     const reviewValues = getValues();
     return (
-      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+      <div className="flex flex-col gap-4">
         <StepIndicator step="review" />
         <SplitWorkspace
           main={
@@ -811,7 +811,7 @@ export function IntersaladsTransplantForm({
         e.preventDefault();
         goToReview();
       }}
-      className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
+      className="flex flex-col gap-4"
     >
       <StepIndicator step="configure" />
 

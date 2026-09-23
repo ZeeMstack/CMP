@@ -7,7 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { AllocationSummaryRail } from "@/components/allocation/AllocationSummaryRail";
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
-import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { IntervinesTransplantCreate } from "@/lib/api/client";
 import {
@@ -262,7 +262,7 @@ export function IntervinesTransplantForm({
     const reviewValues = getValues();
     const table = intervinesTables.find((t) => t.id === reviewValues.destination_location_id);
     return (
-      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+      <div className="flex flex-col gap-4">
         <SplitWorkspace
           main={
             <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
@@ -356,7 +356,7 @@ export function IntervinesTransplantForm({
         e.preventDefault();
         goToReview();
       }}
-      className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
+      className="flex flex-col gap-4"
     >
       {nurseries.length > 1 && (
         <fieldset className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3">

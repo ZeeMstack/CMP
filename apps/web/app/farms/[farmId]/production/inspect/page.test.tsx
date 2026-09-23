@@ -59,7 +59,10 @@ function saved(body: Record<string, unknown>) {
   };
 }
 
-function stubFetch(inspectionResponses: Array<(body: Record<string, unknown>) => Response> = []) {
+function stubFetch(
+  inspectionResponses: Array<(body: Record<string, unknown>) => Response> = [],
+  targetResponses: Array<() => Response> = [],
+) {
   const bodies: Array<Record<string, unknown>> = [];
   vi.stubGlobal(
     "fetch",
@@ -71,7 +74,7 @@ function stubFetch(inspectionResponses: Array<(body: Record<string, unknown>) =>
         const next = inspectionResponses.shift();
         return next ? next(body) : jsonResponse(saved(body));
       }
-      if (url.includes("/observation-targets")) return jsonResponse(TARGETS);
+      if (url.includes("/observation-targets")) return targetResponses.shift()?.() ?? jsonResponse(TARGETS);
       if (url.includes("/protocol-status")) return jsonResponse(STATUS);
       if (url.includes("/observation-definitions")) return jsonResponse(DEFINITIONS);
       if (url.includes("/locations/loc-ta01/path")) {
@@ -255,5 +258,70 @@ describe("InspectCropPage (UX-OPS-001C/R1)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/farms/farm-1/crop-issues/issue-9"));
     expect(issueBodies[1]).toBe(issueBodies[0]);
+  });
+
+  it("UX-OPS-001C/R2: a same-route change from bca-1 to bca-2 never shows bca-2 while submitting the bca-1 draft", async () => {
+    const bodies = stubFetch();
+    const { rerender } = render(withQueryClient(<InspectCropPage />));
+    await fillAndReview();
+    expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-001");
+
+    // Query changes to bca-2 while the bca-1 Review is open (nothing sent yet).
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-2");
+    rerender(withQueryClient(<InspectCropPage />));
+
+    // The bca-1 draft is gone -- never a Review that shows one target and sends another.
+    await waitFor(() => expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-002 — LEAFY-01 / Z01 / S02 / TA07"));
+    expect(screen.queryByText("Review before recording")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/inspected count/i)).toHaveValue("");
+    expect(bodies).toHaveLength(0);
+
+    await fillAndReview();
+    expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-002");
+    fireEvent.click(screen.getByRole("button", { name: "Record Inspection" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].batch_carrier_assignment_id).toBe("bca-2");
+  });
+
+  it("UX-OPS-001C/R2: an uncertain bca-1 attempt keeps its target and byte-identical Retry across a URL change; bca-2 then gets a fresh id", async () => {
+    const bodies = stubFetch([() => jsonResponse({ detail: "upstream" }, 503)]);
+    const { rerender } = render(withQueryClient(<InspectCropPage />));
+    await fillAndReview();
+    fireEvent.click(screen.getByRole("button", { name: "Record Inspection" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-2");
+    rerender(withQueryClient(<InspectCropPage />));
+
+    // Never abandoned: still the bca-1 Review, still Retry, never showing bca-2.
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-001");
+    expect(screen.queryByText(/PP-002/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText("Inspection recorded")).toBeInTheDocument());
+    expect(JSON.stringify(bodies[1])).toBe(JSON.stringify(bodies[0]));
+    expect(bodies[1].batch_carrier_assignment_id).toBe("bca-1");
+    // Receipt context comes from the submitted scope, not the live URL.
+    expect(within(screen.getByRole("status")).getByText("PP-001")).toBeInTheDocument();
+
+    // Leaving the receipt applies the pending bca-2 scope.
+    fireEvent.click(screen.getByRole("button", { name: "Record another inspection" }));
+    await waitFor(() => expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-002"));
+    await fillAndReview();
+    fireEvent.click(screen.getByRole("button", { name: "Record Inspection" }));
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2].batch_carrier_assignment_id).toBe("bca-2");
+    expect(bodies[2].client_command_id).not.toBe(bodies[0].client_command_id);
+  });
+
+  it("UX-OPS-001C/R2: a valid deep-linked assignment whose target read fails shows a working Retry", async () => {
+    stubFetch([], [() => jsonResponse({ detail: "down" }, 500)]);
+    render(withQueryClient(<InspectCropPage />));
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    expect(screen.getByRole("button", { name: "Review Inspection" })).toBeDisabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByTestId("inspection-target")).toHaveTextContent("PP-001 — LEAFY-01 / Z01 / S01 / TA01"));
+    expect(screen.getByRole("button", { name: "Review Inspection" })).toBeEnabled();
   });
 });

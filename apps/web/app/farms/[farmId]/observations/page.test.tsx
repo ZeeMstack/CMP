@@ -471,3 +471,74 @@ describe("ObservationsPage frozen command + exact target (UX-OPS-001C/R1)", () =
     );
   });
 });
+
+describe("ObservationsPage URL prefill sync (UX-OPS-001C/R2)", () => {
+  const BATCH_2 = { ...BATCH, id: "batch-2", code: "LET-002" };
+
+  function stubTwoBatches(statuses: number[] = []) {
+    const posts: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/observation-definitions")) return jsonResponse(DEFINITIONS);
+        if (url.includes("/crop-batches/operational-summary")) return jsonResponse([BATCH, BATCH_2]);
+        if (url.includes("/observation-targets")) return jsonResponse(TARGETS);
+        if (url.match(/\/crop-batches\/[^/]+\/observations$/) && method === "POST") {
+          posts.push({ url, body: String(init?.body) });
+          const status = statuses.shift() ?? 201;
+          return status >= 400 ? jsonResponse({ detail: "failure" }, status) : jsonResponse(HISTORY_EVENT, 201);
+        }
+        if (url.includes("/observations")) return jsonResponse([HISTORY_EVENT]);
+        if (url.match(/\/farms\/farm-1$/)) return jsonResponse({ id: "farm-1", timezone: "Asia/Dubai" });
+        return jsonResponse([]);
+      }),
+    );
+    return posts;
+  }
+
+  it("a same-route query change re-applies Batch, clears the old assignment and Work Item, and remounts the form", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&assignmentId=bca-1&workItemId=wi-1");
+    const posts = stubTwoBatches();
+    const { rerender } = render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Exact placement · Derived")).toBeInTheDocument());
+
+    searchParams = new URLSearchParams("batchId=batch-2");
+    rerender(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByText(/record observation — let-002/i)).toBeInTheDocument());
+    expect(screen.getByRole("combobox", { name: /batch/i })).toHaveValue("batch-2");
+    expect(screen.queryByText("Exact placement · Derived")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("spinbutton", { name: /plant height/i }), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].url).toContain("/crop-batches/batch-2/observations");
+    expect(JSON.parse(posts[0].body).work_item_id).toBeUndefined();
+  });
+
+  it("an unresolved attempt defers the URL change and its Retry keeps the original Batch and Work Item byte-identically", async () => {
+    searchParams = new URLSearchParams("batchId=batch-1&workItemId=wi-1");
+    const posts = stubTwoBatches([503, 201]);
+    const { rerender } = render(withQueryClient(<ObservationsPage />));
+    await waitFor(() => expect(screen.getByRole("spinbutton", { name: /plant height/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByRole("spinbutton", { name: /plant height/i }), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: /^record 1 observation$/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+
+    searchParams = new URLSearchParams("batchId=batch-2");
+    rerender(withQueryClient(<ObservationsPage />));
+    expect(screen.getByText(/record observation — let-001/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1]).toEqual(posts[0]);
+    expect(JSON.parse(posts[0].body).work_item_id).toBe("wi-1");
+    // Resolved -> the deferred batch-2 scope now applies.
+    await waitFor(() => expect(screen.getByText(/record observation — let-002/i)).toBeInTheDocument());
+  });
+});
+
