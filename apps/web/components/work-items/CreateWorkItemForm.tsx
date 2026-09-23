@@ -114,6 +114,11 @@ export function CreateWorkItemForm({
   lockedEquipmentIncident?: { id: string; code: string };
 }) {
   const [showContext, setShowContext] = useState(false);
+  // UX-OPS-001B R1: minted once per form draft (this component mounts
+  // fresh each time the create form opens and unmounts on cancel/success),
+  // reused across a retry of the same payload -- never regenerated inside
+  // submit(), which react-hook-form calls again on every resubmission.
+  const [clientCommandId] = useState(() => crypto.randomUUID());
   const {
     register,
     handleSubmit,
@@ -137,7 +142,7 @@ export function CreateWorkItemForm({
   });
 
   function submit(values: FarmWorkItemFormValues) {
-    onSubmit(buildFarmWorkItemCreatePayload(values, { clientCommandId: crypto.randomUUID(), currentUserId }));
+    onSubmit(buildFarmWorkItemCreatePayload(values, { clientCommandId, currentUserId }));
   }
 
   // Bound once at the top level (never called inline in JSX) -- mirrors

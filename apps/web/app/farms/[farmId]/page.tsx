@@ -4,14 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { ErrorState } from "@/components/ErrorState";
 import { HomeInspector } from "@/components/home/HomeInspector";
 import { HomeQueueView } from "@/components/home/HomeQueueView";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { InspectorEmptyState } from "@/components/layout/InspectorShell";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { ViewTabs, type ViewTabItem } from "@/components/layout/ViewTabs";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { WorkingLocationBar } from "@/components/scan/WorkingLocationBar";
 import { Button } from "@/components/ui/Button";
@@ -92,12 +90,15 @@ function SummaryCard({ label, value, href, caption }: { label: string; value: st
 /** Compact operational-context stat -- always visible outside the current
  * view's own queue (ticket §5.3: "Keep compact In Progress, Blocked, and
  * Carryover counts visible outside the view-specific queue"). `onOpen`,
- * when given, switches the active durable view to that stat's own queue. */
-function ContextStat({ label, count, onOpen }: { label: string; count: number; onOpen?: () => void }) {
+ * when given, switches the active durable view to that stat's own queue.
+ * UX-OPS-001B R1: `count === undefined` (the Work Item source failed or is
+ * still loading) renders "—", never a false `0` -- a stat derived from a
+ * failed source must read as unavailable, not as "nothing here". */
+function ContextStat({ label, count, onOpen }: { label: string; count: number | undefined; onOpen?: () => void }) {
   const content = (
     <>
       <span className="text-xs font-medium text-wl-text-secondary">{label}</span>
-      <span className="font-serif text-lg font-semibold text-wl-text">{count}</span>
+      <span className="font-serif text-lg font-semibold text-wl-text">{count ?? "—"}</span>
     </>
   );
   if (onOpen) {
@@ -263,13 +264,6 @@ export default function FarmHomePage() {
     });
   }
 
-  if (workItemsQuery.isLoading) {
-    return <LoadingSkeleton rows={4} label="Loading today on the farm" />;
-  }
-  if (workItemsQuery.error) {
-    return <ErrorState error={workItemsQuery.error} onRetry={() => workItemsQuery.refetch()} />;
-  }
-
   return (
     <div>
       <PageHeader
@@ -327,9 +321,20 @@ export default function FarmHomePage() {
         aria-label="Operational context"
         className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border border-wl-border bg-wl-surface-raised px-1 py-1"
       >
-        <ContextStat label="In Progress" count={board.inProgress.length} />
-        <ContextStat label="Blocked" count={board.blocked.length} onOpen={() => setView("attention")} />
-        <ContextStat label="Carryover" count={board.carryover.length} onOpen={() => setView("carryover")} />
+        <ContextStat
+          label="In Progress"
+          count={workItemsQuery.isLoading || workItemsQuery.error ? undefined : board.inProgress.length}
+        />
+        <ContextStat
+          label="Blocked"
+          count={workItemsQuery.isLoading || workItemsQuery.error ? undefined : board.blocked.length}
+          onOpen={() => setView("attention")}
+        />
+        <ContextStat
+          label="Carryover"
+          count={workItemsQuery.isLoading || workItemsQuery.error ? undefined : board.carryover.length}
+          onOpen={() => setView("carryover")}
+        />
       </div>
 
       <div className="mb-4">

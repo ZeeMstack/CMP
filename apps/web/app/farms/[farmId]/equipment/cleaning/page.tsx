@@ -15,6 +15,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { EquipmentReadinessCurrentState } from "@/lib/api/client";
+import { formatElapsedSince } from "@/lib/format/elapsed";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import { useViewState } from "@/lib/navigation/useViewState";
 import { useEquipmentReadinessList } from "@/lib/query/hooks";
@@ -94,8 +95,30 @@ export default function EquipmentCleaningQueuePage() {
                     onSelect={() => setSelected(row.id)}
                     title={row.entity_code}
                     context={row.equipment_type_name}
-                    status={<StatusBadge label={humanizeEnumCode(row.current_state)} tone={READINESS_STATE_TONE[row.current_state]} />}
-                    meta={new Date(row.state_changed_at).toLocaleDateString()}
+                    status={
+                      // UX-OPS-001B R1 (blocker #6): COMPLETED and
+                      // NEEDS_REWORK share one `current_state`
+                      // (cleaning_completed) -- the row must surface the
+                      // actual cleaning result and Carrier in-use status
+                      // itself, not just the shared state, so the two
+                      // never look identical before a row is selected.
+                      <div className="flex flex-col items-end gap-1">
+                        <StatusBadge
+                          label={humanizeEnumCode(row.current_state)}
+                          tone={READINESS_STATE_TONE[row.current_state]}
+                        />
+                        {row.latest_cleaning_result && (
+                          <StatusBadge
+                            label={humanizeEnumCode(row.latest_cleaning_result)}
+                            tone={row.latest_cleaning_result === "needs_rework" ? "critical" : "active"}
+                          />
+                        )}
+                        {row.entity_type === "carrier" && row.is_in_use && (
+                          <StatusBadge label="In Use" tone="attention" />
+                        )}
+                      </div>
+                    }
+                    meta={formatElapsedSince(row.state_changed_at)}
                   />
                 ))}
               </QueueList>

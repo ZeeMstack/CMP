@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { InspectorEmptyState, InspectorShell } from "@/components/layout/InspectorShell";
-import { WorkItemRow } from "@/components/work-items/WorkItemRow";
+import { WorkItemInspectorPanel } from "@/components/work-items/WorkItemInspectorPanel";
 import type { EquipmentAttentionItem } from "@/lib/api/client";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import type { HomeQueueRow } from "@/lib/format/homeQueue";
@@ -45,11 +45,7 @@ export function HomeInspector({
   if (data.kind === "work_item") {
     return (
       <InspectorShell title={data.item.title} subtitle={data.item.code} onClose={onClose}>
-        <table className="w-full text-left text-sm">
-          <tbody>
-            <WorkItemRow item={data.item} farmId={farmId} currentUserId={currentUserId} />
-          </tbody>
-        </table>
+        <WorkItemInspectorPanel item={data.item} farmId={farmId} currentUserId={currentUserId} />
       </InspectorShell>
     );
   }

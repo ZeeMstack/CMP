@@ -8922,6 +8922,13 @@ export interface components {
             is_in_use?: boolean | null;
             /** Latest Cleaning Result */
             latest_cleaning_result?: ("completed" | "needs_rework") | null;
+            /**
+             * Available Actions
+             * @default []
+             */
+            available_actions: ("mark_awaiting_cleaning" | "record_cleaning" | "mark_ready" | "report_damage" | "send_to_maintenance" | "return_from_maintenance" | "retire")[];
+            /** Primary Action */
+            primary_action?: ("mark_awaiting_cleaning" | "record_cleaning" | "mark_ready" | "report_damage" | "send_to_maintenance" | "return_from_maintenance" | "retire") | null;
         };
         /**
          * EquipmentReadinessTransitionIn

@@ -53,6 +53,12 @@ def _build_read(state: EquipmentReadinessState, context: dict) -> EquipmentReadi
     latest_cleaning_result = (
         context["cleaning_results"].get(state.last_cleaning_event_id) if state.last_cleaning_event_id else None
     )
+    available_actions = equipment_readiness_service.compute_readiness_actions(
+        current_state=state.current_state, entity_type=state.entity_type,
+        requires_cleaning=info["requires_cleaning"], is_in_use=is_in_use,
+        latest_cleaning_result=latest_cleaning_result,
+    )
+    primary_action = equipment_readiness_service.primary_readiness_action(available_actions)
     return EquipmentReadinessStateRead(
         id=state.id, tenant_id=state.tenant_id, farm_id=state.farm_id, entity_type=state.entity_type,
         asset_id=state.asset_id, carrier_id=state.carrier_id, current_state=state.current_state,
@@ -63,6 +69,7 @@ def _build_read(state: EquipmentReadinessState, context: dict) -> EquipmentReadi
         equipment_type_code=info["equipment_type_code"], equipment_type_name=info["equipment_type_name"],
         requires_cleaning=info["requires_cleaning"], is_in_use=is_in_use,
         latest_cleaning_result=latest_cleaning_result,
+        available_actions=available_actions, primary_action=primary_action,
     )
 
 

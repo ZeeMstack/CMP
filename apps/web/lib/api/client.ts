@@ -3223,6 +3223,15 @@ export function getWaterAttention(farmId: string, signal?: AbortSignal): Promise
 export type EquipmentReadinessCurrentState =
   | "unknown" | "awaiting_cleaning" | "cleaning_completed" | "ready" | "damaged" | "maintenance" | "retired";
 
+/** R1 (blocker #3): every lifecycle-valid command for a given read's exact
+ * state -- computed once, backend-side, by
+ * `equipment_readiness_service.compute_readiness_actions`. The frontend
+ * consumes `available_actions`/`primary_action` verbatim and must never
+ * re-derive or maintain a second, driftable transition table. */
+export type ReadinessAction =
+  | "mark_awaiting_cleaning" | "record_cleaning" | "mark_ready" | "report_damage"
+  | "send_to_maintenance" | "return_from_maintenance" | "retire";
+
 /** UX-OPS-001B: `entity_code`/`entity_name`/`equipment_type_code`/
  * `equipment_type_name`/`requires_cleaning`/`is_in_use`/
  * `latest_cleaning_result` are additive fields the backend now resolves
@@ -3232,7 +3241,8 @@ export type EquipmentReadinessCurrentState =
  * transition table. `entity_name`/`is_in_use`/`latest_cleaning_result` are
  * the only genuinely optional ones (a Carrier has no `name`; an Asset has
  * no authoritative in-use signal; a state with no prior cleaning has no
- * latest result). */
+ * latest result). `available_actions`/`primary_action` (R1) are the same
+ * kind of additive, backend-computed fact. */
 export interface EquipmentReadinessStateRead {
   id: string; tenant_id: string; farm_id: string;
   entity_type: "asset" | "carrier";
@@ -3246,6 +3256,8 @@ export interface EquipmentReadinessStateRead {
   requires_cleaning: boolean;
   is_in_use: boolean | null;
   latest_cleaning_result: "completed" | "needs_rework" | null;
+  available_actions: ReadinessAction[];
+  primary_action: ReadinessAction | null;
 }
 
 export interface CleaningEventRead {

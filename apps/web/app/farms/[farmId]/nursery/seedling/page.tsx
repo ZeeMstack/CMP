@@ -69,7 +69,13 @@ export default function SeedlingPage() {
         actions={
           recordingAssignmentId === null &&
           historyEntryId === null && (
-            <Button type="button" variant="primary" onClick={() => setRecordingAssignmentId("new")}>
+            // UX-OPS-001B R1: secondary, never primary -- the selected
+            // row's own "Record disposition" action (SeedlingInspector) is
+            // the sole primary action whenever a row is selected. This
+            // manual entry point (no row preselected) stays available but
+            // subordinate, so the two never compete as co-equal blue
+            // buttons on screen at once.
+            <Button type="button" variant="secondary" onClick={() => setRecordingAssignmentId("new")}>
               Record biological disposition
             </Button>
           )

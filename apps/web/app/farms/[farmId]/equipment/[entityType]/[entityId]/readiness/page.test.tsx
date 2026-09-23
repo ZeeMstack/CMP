@@ -16,6 +16,13 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+// UX-OPS-001B R1 (blocker #3): `available_actions`/`primary_action` are now
+// computed once, backend-side, by
+// `equipment_readiness_service.compute_readiness_actions` -- these fixtures
+// hard-code the exact value the real backend would compute for each
+// scenario below (mirroring apps/api/tests/test_equipment_readiness_actions.py's
+// own hard-coded expectations) rather than recomputing it here, which would
+// recreate the very duplicated transition table this change removed.
 function makeState(overrides: Record<string, unknown> = {}) {
   return {
     id: "state-1", tenant_id: "t1", farm_id: "farm-1", entity_type: "carrier",
@@ -25,6 +32,8 @@ function makeState(overrides: Record<string, unknown> = {}) {
     created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
     entity_code: "ST-0001", entity_name: null, equipment_type_code: "seed_tray", equipment_type_name: "Seed Tray",
     requires_cleaning: true, is_in_use: false, latest_cleaning_result: null,
+    available_actions: ["mark_awaiting_cleaning", "report_damage", "send_to_maintenance", "retire"],
+    primary_action: "mark_awaiting_cleaning",
     ...overrides,
   };
 }
@@ -90,7 +99,7 @@ describe("EquipmentReadinessPage: valid-only actions per the frozen lifecycle ru
   });
 
   it("RETIRED shows no action controls at all", async () => {
-    currentState = makeState({ current_state: "retired" });
+    currentState = makeState({ current_state: "retired", available_actions: [], primary_action: null });
     stubFetch();
     render(withQueryClient(<EquipmentReadinessPage />));
     await waitFor(() => expect(screen.getByText(/Retired — terminal/)).toBeInTheDocument());
@@ -98,7 +107,11 @@ describe("EquipmentReadinessPage: valid-only actions per the frozen lifecycle ru
   });
 
   it("a `?action=` deep link pre-opens that exact valid command", async () => {
-    currentState = makeState({ current_state: "awaiting_cleaning" });
+    currentState = makeState({
+      current_state: "awaiting_cleaning",
+      available_actions: ["record_cleaning", "report_damage", "send_to_maintenance", "retire"],
+      primary_action: "record_cleaning",
+    });
     searchParams.set("action", "record_cleaning");
     stubFetch();
     render(withQueryClient(<EquipmentReadinessPage />));
@@ -108,7 +121,11 @@ describe("EquipmentReadinessPage: valid-only actions per the frozen lifecycle ru
 
 describe("EquipmentReadinessPage: stable command identity across a same-payload retry", () => {
   it("reuses the same client_command_id when Mark Ready is retried after a failed attempt", async () => {
-    currentState = makeState({ current_state: "unknown", requires_cleaning: false, is_in_use: null });
+    currentState = makeState({
+      current_state: "unknown", requires_cleaning: false, is_in_use: null,
+      available_actions: ["mark_ready", "report_damage", "send_to_maintenance", "retire"],
+      primary_action: "mark_ready",
+    });
     markReadyStatus = 409;
     stubFetch();
     render(withQueryClient(<EquipmentReadinessPage />));
@@ -131,7 +148,11 @@ describe("EquipmentReadinessPage: stable command identity across a same-payload 
   });
 
   it("mints a new client_command_id only after cancelling and reopening the action", async () => {
-    currentState = makeState({ current_state: "unknown", requires_cleaning: false, is_in_use: null });
+    currentState = makeState({
+      current_state: "unknown", requires_cleaning: false, is_in_use: null,
+      available_actions: ["mark_ready", "report_damage", "send_to_maintenance", "retire"],
+      primary_action: "mark_ready",
+    });
     markReadyStatus = 409;
     stubFetch();
     render(withQueryClient(<EquipmentReadinessPage />));

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { InspectorEmptyState, InspectorShell } from "@/components/layout/InspectorShell";
 import { StatusBadge, type StatusTone } from "@/components/StatusBadge";
 import type { EquipmentReadinessStateRead } from "@/lib/api/client";
-import { primaryReadinessAction, READINESS_ACTION_LABEL } from "@/lib/format/equipmentReadinessActions";
+import { READINESS_ACTION_LABEL } from "@/lib/format/equipmentReadinessActions";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 
 export const READINESS_STATE_TONE: Record<EquipmentReadinessStateRead["current_state"], StatusTone> = {
@@ -21,13 +21,14 @@ export function readinessDetailHref(farmId: string, state: EquipmentReadinessSta
   return `/farms/${farmId}/equipment/${state.entity_type}/${entityId}/readiness`;
 }
 
-/** UX-OPS-001B: the Readiness queue's selected-item inspector -- compact
- * identity/type/state facts plus the ONE valid primary next action (via
- * the shared `primaryReadinessAction`, never a second copy of the
- * transition table), which links into the existing Readiness detail route
- * with `?action=` pre-opening that exact command form. A state with no
- * forward action (already blocked, or terminal) links to "Open Readiness"
- * only -- never a fabricated action. */
+/** UX-OPS-001B R1: the Readiness queue's selected-item inspector -- compact
+ * identity/type/state facts plus the ONE valid primary next action, taken
+ * verbatim from the read's own server-computed `primary_action` (blocker
+ * #3: never a second, client-side copy of the transition table), which
+ * links into the existing Readiness detail route with `?action=`
+ * pre-opening that exact command form. A state with no forward action
+ * (already blocked, or terminal) links to "Open Readiness" only -- never a
+ * fabricated action. */
 export function ReadinessInspector({
   state, farmId, onClose,
 }: {
@@ -38,7 +39,7 @@ export function ReadinessInspector({
   if (!state) return <InspectorEmptyState />;
 
   const href = readinessDetailHref(farmId, state);
-  const primary = primaryReadinessAction(state);
+  const primary = state.primary_action;
 
   return (
     <InspectorShell

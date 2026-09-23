@@ -16,13 +16,9 @@ import type {
   EquipmentReadinessReportDamageIn,
   EquipmentReadinessRecordCleaningIn,
   EquipmentReadinessStateRead,
+  ReadinessAction,
 } from "@/lib/api/client";
-import {
-  computeAvailableReadinessActions,
-  primaryReadinessAction,
-  READINESS_ACTION_LABEL,
-  type ReadinessAction,
-} from "@/lib/format/equipmentReadinessActions";
+import { READINESS_ACTION_LABEL } from "@/lib/format/equipmentReadinessActions";
 import { humanizeEnumCode } from "@/lib/format/humanize";
 import {
   useAssetReadiness,
@@ -136,8 +132,12 @@ function ReadinessActions({
   state: EquipmentReadinessStateRead;
   initialAction: ReadinessAction | null;
 }) {
-  const available = computeAvailableReadinessActions(state);
-  const primary = primaryReadinessAction(state);
+  // UX-OPS-001B R1 (blocker #3): `available_actions`/`primary_action` come
+  // straight from the read model, computed once, backend-side, by
+  // `equipment_readiness_service.compute_readiness_actions` -- never
+  // re-derived here.
+  const available = state.available_actions;
+  const primary = state.primary_action;
   const secondary = available.filter((a) => a !== primary);
 
   const [active, setActive] = useState<ReadinessAction | null>(

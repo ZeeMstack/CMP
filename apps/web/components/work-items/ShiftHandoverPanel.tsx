@@ -29,6 +29,12 @@ export function ShiftHandoverPanel({
   const [note, setNote] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [serverError, setServerError] = useState<string | null>(null);
+  // UX-OPS-001B R1: minted once when composing starts (never inside
+  // submit(), which runs again on every retry) and reused across a retry
+  // of the same draft -- effective_time is captured at the same moment so
+  // a failed-then-retried save reports honestly WHEN the note was
+  // actually written, not when the retry happened to fire.
+  const [draft, setDraft] = useState<{ clientCommandId: string; effectiveTime: string } | null>(null);
   const createMutation = useCreateShiftHandover(farmId);
 
   function toggle(id: string) {
@@ -40,16 +46,22 @@ export function ShiftHandoverPanel({
     });
   }
 
+  function startComposing() {
+    setDraft({ clientCommandId: crypto.randomUUID(), effectiveTime: new Date().toISOString() });
+    setComposing(true);
+  }
+
   function submit() {
     if (!note.trim()) {
       setServerError("A note is required");
       return;
     }
+    if (!draft) return;
     setServerError(null);
     createMutation.mutate(
       {
-        client_command_id: crypto.randomUUID(),
-        effective_time: new Date().toISOString(),
+        client_command_id: draft.clientCommandId,
+        effective_time: draft.effectiveTime,
         note: note.trim(),
         work_item_ids: Array.from(selectedIds),
       },
@@ -58,6 +70,7 @@ export function ShiftHandoverPanel({
           setComposing(false);
           setNote("");
           setSelectedIds(new Set());
+          setDraft(null);
         },
         onError: (e) => setServerError(errorMessage(e)),
       },
@@ -84,7 +97,7 @@ export function ShiftHandoverPanel({
           )}
         </div>
         {!composing && (
-          <Button variant="secondary" onClick={() => setComposing(true)}>
+          <Button variant="secondary" onClick={startComposing}>
             Leave a note
           </Button>
         )}
