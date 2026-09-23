@@ -224,7 +224,7 @@ describe("IntersaladsTransplantForm", () => {
     stubFetch();
     render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={vi.fn()} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Review Transplant" })).toBeDisabled();
   });
 
   it("requires other_loss_note when other_loss_count is greater than 0", async () => {
@@ -239,7 +239,7 @@ describe("IntersaladsTransplantForm", () => {
     const otherInputs = screen.getAllByLabelText(/^other$/i);
     fireEvent.change(otherInputs[otherInputs.length - 1], { target: { value: "5" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText(/note is required/i)).toBeInTheDocument());
   });
 
@@ -254,9 +254,9 @@ describe("IntersaladsTransplantForm", () => {
     fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
     fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const [batchId, payload] = onSubmit.mock.calls[0];
@@ -275,22 +275,30 @@ describe("IntersaladsTransplantForm", () => {
     ]);
   });
 
-  it("reuses the same client_command_id on an exact retry", async () => {
+  it("UX-OPS-001C/R1: an uncertain attempt locks Back and Retry resends the byte-identical frozen payload", async () => {
     stubFetch();
-    const onSubmit = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("network_error", "offline"))
+      .mockResolvedValueOnce(undefined);
     render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    // Locked: the draft cannot be edited (or silently abandoned) while unresolved.
+    expect(screen.getByRole("button", { name: "Back to edit" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[0][1].client_command_id).toBe(onSubmit.mock.calls[1][1].client_command_id);
+    expect(onSubmit.mock.calls[1]).toEqual(onSubmit.mock.calls[0]);
+    expect(JSON.stringify(onSubmit.mock.calls[1][1])).toBe(JSON.stringify(onSubmit.mock.calls[0][1]));
   });
 
   it("shows generic conflict copy (never raw backend text) for a 409 and forces back to Configure", async () => {
@@ -302,7 +310,7 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
 
     // A 409 newly arrives (as it would after a real failed submit) --
@@ -337,7 +345,7 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
 
     // 422 does not force back to Configure -- stays on Review for the
     // operator to see the detail against their own entered data.
@@ -345,51 +353,37 @@ describe("IntersaladsTransplantForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/other_loss_note is required/i);
   });
 
-  it("keeps the same client_command_id going Back from Review without editing anything, then resubmitting", async () => {
+  it("UX-OPS-001C/R1: Review/Back never mints an id; a definitive rejection releases the attempt and the edited resubmission gets a new id", async () => {
     stubFetch();
-    const onSubmit = vi.fn();
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError("invalid_request", "rejected", 422))
+      .mockResolvedValueOnce(undefined);
     render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
     await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+
+    // Review -> Back -> Review without submitting: nothing sent, nothing minted.
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
+    await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const firstId = onSubmit.mock.calls[0][1].client_command_id;
+    // Definitive rejection -> editable again.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back to edit" })).toBeEnabled());
 
-    // Back without changing anything, then straight back to Review and
-    // resubmit -- the id must NOT rotate merely because Back was clicked.
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[1][1].client_command_id).toBe(firstId);
-  });
-
-  it("rotates client_command_id only when the payload materially changes after a submit", async () => {
-    stubFetch();
-    const onSubmit = vi.fn();
-    render(withQueryClient(<IntersaladsTransplantForm farmId="farm-1" onSubmit={onSubmit} isSubmitting={false} />));
-    await waitFor(() => expect(screen.getByLabelText(/add a source tray/i)).toBeInTheDocument());
-    await addSource(/TRAY-014/, "TRAY-014");
-    await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
-    await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    const firstId = onSubmit.mock.calls[0][1].client_command_id;
-
-    // Go back and materially change the allocated quantity before
-    // resubmitting -- the id MUST rotate this time.
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to edit" }));
     fireEvent.change(screen.getByLabelText(/quantity for allocation 1/i), { target: { value: "160" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
     expect(onSubmit.mock.calls[1][1].client_command_id).not.toBe(firstId);
     expect(onSubmit.mock.calls[1][1].allocations[0].allocated_plant_count).toBe(160);
@@ -504,9 +498,9 @@ describe("IntersaladsTransplantForm", () => {
     await addAllocationToDestination(1, "TRAY-015", 20);
     await addAllocationToDestination(2, "TRAY-014", 60);
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
 
     const [, payload] = onSubmit.mock.calls[0];
@@ -537,9 +531,9 @@ describe("IntersaladsTransplantForm", () => {
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 180);
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Confirm transplant" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Transplant" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
   });
 
@@ -560,7 +554,7 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-015/, "TRAY-015");
     await addAllocationToDestination(1, "TRAY-015", 2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText(/exceeds this Plate's capacity/i)).toBeInTheDocument());
     expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
   });
@@ -584,7 +578,7 @@ describe("IntersaladsTransplantForm", () => {
 
     // One more unit of loss now pushes remaining negative -- blocked.
     fireEvent.change(screen.getByLabelText(/^sample$/i), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText(/exceeds this source's available seedlings/i)).toBeInTheDocument());
     expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
   });
@@ -600,7 +594,7 @@ describe("IntersaladsTransplantForm", () => {
 
     const sourceRow = screen.getByText("TRAY-014").closest("li") as HTMLElement;
     await waitFor(() => expect(within(sourceRow).getByText("Remaining").nextElementSibling).toHaveTextContent("0"));
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
     expect(screen.getByText(/Remaining 0/)).toBeInTheDocument();
   });
@@ -649,7 +643,7 @@ describe("IntersaladsTransplantForm", () => {
     await addDestinationWithPlateAndTable("NP-002", "IS-A-03");
 
     await waitFor(() => expect(screen.getByText(/exceed its known capacity/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
   });
 
@@ -686,7 +680,7 @@ describe("IntersaladsTransplantForm", () => {
     await waitFor(() =>
       expect(screen.getByText(/exceed its known capacity/i)).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     expect(screen.queryByText("Review before transplanting")).not.toBeInTheDocument();
   });
 
@@ -697,7 +691,7 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
 
     expect(screen.getByRole("button", { name: "Transplanting…" })).toBeDisabled();
@@ -727,7 +721,7 @@ describe("IntersaladsTransplantForm", () => {
     await addSource(/TRAY-014/, "TRAY-014");
     await addDestinationWithPlateAndTable("NP-001", "IS-A-01");
     await addAllocationToDestination(1, "TRAY-014", 150);
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review Transplant" }));
     await waitFor(() => expect(screen.getByText("Review before transplanting")).toBeInTheDocument());
 
     rerender(

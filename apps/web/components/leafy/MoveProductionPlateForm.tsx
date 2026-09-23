@@ -5,6 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LeafyLocationSelector, type LeafyLocationValue } from "@/components/leafy/LeafyLocationSelector";
 import { Button } from "@/components/ui/Button";
 import type { ActiveProductionPlateRead, MovementCreate } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { useGreenhouseSetupOverview, useLocationPath } from "@/lib/query/hooks";
 
@@ -39,18 +45,27 @@ export function MoveProductionPlateForm({
   onCancel,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   farmId: string;
   plate: ActiveProductionPlateRead;
-  onSubmit: (payload: MovementCreate, toLabel: string) => void;
+  onSubmit: (payload: MovementCreate, toLabel: string) => void | Promise<unknown>;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
   const [destination, setDestination] = useState<LeafyLocationValue>(EMPTY_DESTINATION);
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: frozen on the actual Confirm only (never on Review/
+  // Back); an uncertain (network/5xx) outcome keeps the byte-identical
+  // payload for Retry and locks Back/Cancel; a definitive rejection or
+  // success releases it. The page keys this form by target, so another
+  // record can never reuse this attempt.
+  const command = useFrozenSubmission<{ payload: MovementCreate; toLabel: string } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const locked = command.outcome !== "editing";
+  const busy = isSubmitting || command.outcome === "submitting";
   const hasAutoFilledRef = useRef(false);
 
   const currentLocationId = plate.current_location?.id ?? null;
@@ -95,23 +110,22 @@ export function MoveProductionPlateForm({
     Boolean(destination.destination_location_id) && destination.destination_location_id !== currentLocationId;
 
   function confirm() {
-    const fingerprint = JSON.stringify({ destination_location_id: destination.destination_location_id });
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprint) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) settleFrozenAttempt(command, onSubmit(frozen.payload, frozen.toLabel));
+      return;
     }
-    lastSubmittedFingerprintRef.current = fingerprint;
-    onSubmit(
-      {
-        client_command_id: idToUse,
+    const frozen = command.submit((clientCommandId) => ({
+      payload: {
+        client_command_id: clientCommandId,
         effective_time: new Date().toISOString(),
         occupant: { kind: "carrier", id: plate.carrier_id },
         destination: { kind: "location", id: destination.destination_location_id },
         reason: null,
       },
-      destination.table_label,
-    );
+      toLabel: destination.table_label,
+    }));
+    settleFrozenAttempt(command, onSubmit(frozen.payload, frozen.toLabel));
   }
 
   if (step === "review") {
@@ -126,14 +140,15 @@ export function MoveProductionPlateForm({
         {serverError && (
           <p role="alert" className={errorClass}>
             {friendlyMutationErrorMessage(serverError)}
+            {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
           </p>
         )}
         <div className="flex gap-2">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={busy || locked}>
             Back
           </Button>
-          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
-            {isSubmitting ? "Moving…" : "Confirm move"}
+          <Button type="button" variant="primary" onClick={confirm} disabled={busy}>
+            {busy ? "Moving…" : command.outcome === "uncertain" ? "Retry move" : "Confirm move"}
           </Button>
         </div>
       </div>

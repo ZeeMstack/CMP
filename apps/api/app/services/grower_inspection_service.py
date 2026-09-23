@@ -161,55 +161,72 @@ def record_inspection(
     current_assignment = growing_protocol_service.get_current_assignment(db, tenant_id=tenant_id, batch_id=batch_id)
     growing_protocol_version_id = current_assignment.growing_protocol_version_id if current_assignment else None
 
-    observation_event_id = None
-    if observation_values:
-        event = observation_service.record_observation(
-            db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
-            client_command_id=client_command_id, effective_time=resolved_effective_time,
-            note=notes, values=observation_values, germination_checks=[],
-        )
-        observation_event_id = event.id
-
-    inspection = GrowerInspection(
-        tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id,
-        batch_carrier_assignment_id=batch_carrier_assignment_id, location_id=location_id,
-        growing_protocol_version_id=growing_protocol_version_id, inspected_by_user_id=actor_user_id,
-        effective_time=resolved_effective_time, inspected_count=inspected_count,
-        overall_assessment=overall_assessment, notes=notes, observation_event_id=observation_event_id,
-        client_command_id=client_command_id, request_fingerprint=fingerprint,
-    )
-    db.add(inspection)
+    # UX-OPS-001C/R1 (N05): ONE transaction for the whole command. The
+    # Observation write is the non-committing, transaction-composable path,
+    # so the ObservationEvent, its ObservationValues, the GrowerInspection,
+    # its InspectionFindings, and both audit events
+    # (`crop_batch.observation_recorded`, `grower_inspection.recorded`)
+    # commit together below -- or, on ANY failure, all roll back together.
+    # Previously `record_observation` committed on its own first, so a
+    # later inspection failure left an orphaned ObservationEvent behind.
     try:
+        observation_event_id = None
+        if observation_values:
+            event = observation_service.record_observation_in_transaction(
+                db, tenant_id=tenant_id, farm_id=farm_id, actor_user_id=actor_user_id, batch_id=batch_id,
+                client_command_id=client_command_id, effective_time=resolved_effective_time,
+                note=notes, values=observation_values, germination_checks=[],
+            )
+            observation_event_id = event.id
+
+        inspection = GrowerInspection(
+            tenant_id=tenant_id, farm_id=farm_id, batch_id=batch_id,
+            batch_carrier_assignment_id=batch_carrier_assignment_id, location_id=location_id,
+            growing_protocol_version_id=growing_protocol_version_id, inspected_by_user_id=actor_user_id,
+            effective_time=resolved_effective_time, inspected_count=inspected_count,
+            overall_assessment=overall_assessment, notes=notes, observation_event_id=observation_event_id,
+            client_command_id=client_command_id, request_fingerprint=fingerprint,
+        )
+        db.add(inspection)
         db.flush()
+
+        for f in findings:
+            db.add(
+                InspectionFinding(
+                    tenant_id=tenant_id, farm_id=farm_id, grower_inspection_id=inspection.id, category=f["category"],
+                    severity=f["severity"], affected_count=f.get("affected_count"), notes=f.get("notes"),
+                    suspected_cause=f.get("suspected_cause"),
+                )
+            )
+        db.flush()
+
+        append_audit_event(
+            db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="grower_inspection.recorded",
+            entity_type="grower_inspection", entity_id=inspection.id,
+            event_data={
+                "batch_id": str(batch_id), "batch_carrier_assignment_id": str(batch_carrier_assignment_id) if batch_carrier_assignment_id else None,
+                "overall_assessment": overall_assessment, "finding_count": len(findings),
+                "observation_event_id": str(observation_event_id) if observation_event_id else None,
+            },
+        )
+        db.commit()
     except IntegrityError as exc:
         db.rollback()
-        if _constraint_name(exc) == "ux_grower_inspections_tenant_client_command_id":
+        # A concurrent submission of the SAME command committed first (its
+        # Inspection and Observation share this client_command_id) -- replay
+        # it if the payload matches; never a second record.
+        if _constraint_name(exc) in (
+            "ux_grower_inspections_tenant_client_command_id",
+            "ux_observation_events_tenant_client_command_id",
+        ):
             replay = _find_by_command(db, tenant_id=tenant_id, client_command_id=client_command_id)
             if replay is not None and replay.request_fingerprint == fingerprint:
                 return replay
             raise GrowerInspectionCommandReusedWithDifferentPayloadError(str(client_command_id)) from exc
         raise
-
-    for f in findings:
-        db.add(
-            InspectionFinding(
-                tenant_id=tenant_id, farm_id=farm_id, grower_inspection_id=inspection.id, category=f["category"],
-                severity=f["severity"], affected_count=f.get("affected_count"), notes=f.get("notes"),
-                suspected_cause=f.get("suspected_cause"),
-            )
-        )
-    db.flush()
-
-    append_audit_event(
-        db, tenant_id=tenant_id, actor_user_id=actor_user_id, action="grower_inspection.recorded",
-        entity_type="grower_inspection", entity_id=inspection.id,
-        event_data={
-            "batch_id": str(batch_id), "batch_carrier_assignment_id": str(batch_carrier_assignment_id) if batch_carrier_assignment_id else None,
-            "overall_assessment": overall_assessment, "finding_count": len(findings),
-            "observation_event_id": str(observation_event_id) if observation_event_id else None,
-        },
-    )
-    db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(inspection)
     return inspection
 

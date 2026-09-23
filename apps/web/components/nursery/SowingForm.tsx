@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
 import { ContextStrip, ContextStripFact, ContextStripItem } from "@/components/layout/ContextStrip";
 import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
-import { STICKY_ACTION_BAR_SPACER_CLASS, StickyActionBar } from "@/components/layout/StickyActionBar";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import type { SowNewBatchCreate } from "@/lib/api/client";
 import {
   useAssets,
@@ -376,7 +376,7 @@ export function SowingForm({
     const total = totalSeedsSown(values.trays);
     const totalSites = totalSownSiteCount(values.trays);
     return (
-      <div className={`flex flex-col gap-4 ${STICKY_ACTION_BAR_SPACER_CLASS}`}>
+      <div className="flex flex-col gap-4">
         <StepIndicator step="review" />
         {planBanner}
         <SplitWorkspace
@@ -504,7 +504,7 @@ export function SowingForm({
         e.preventDefault();
         goToReview();
       }}
-      className={`flex flex-col gap-6 ${STICKY_ACTION_BAR_SPACER_CLASS}`}
+      className="flex flex-col gap-6"
     >
       <StepIndicator step="configure" />
       {planBanner}

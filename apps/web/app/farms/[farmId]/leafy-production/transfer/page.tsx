@@ -85,6 +85,7 @@ export default function ProductionTransferPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Production Transfer"
         breadcrumbs={
           <Breadcrumbs
@@ -188,11 +189,15 @@ export default function ProductionTransferPage() {
           serverError={serverError}
           onSubmit={(batchId, payload, tableLabelById) => {
             setServerError(null);
-            mutation.mutate(
-              { batchId, payload },
-              {
-                onSuccess: (transfer) => setSuccess({ transfer, tableLabelById }),
-                onError: (error) => setServerError(asAppError(error)),
+            // UX-OPS-001C/R1: the returned promise settles the form's frozen
+            // attempt (success clears it; network/5xx keeps it for a
+            // byte-identical Retry; a definitive 4xx releases it).
+            return mutation.mutateAsync({ batchId, payload }).then(
+              (transfer) => setSuccess({ transfer, tableLabelById }),
+              (error) => {
+                const appError = asAppError(error);
+                setServerError(appError);
+                throw appError;
               },
             );
           }}

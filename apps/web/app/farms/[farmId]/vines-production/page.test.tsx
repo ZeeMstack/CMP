@@ -156,8 +156,10 @@ afterEach(() => {
 });
 
 async function expandPopulationRow() {
-  await waitFor(() => expect(screen.getByText("VIN-0142")).toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /grow bags/i }));
+  await waitFor(() => expect(screen.getByText("VIN-0142 · GUT-001")).toBeInTheDocument());
+  // UX-OPS-001C: selecting the (Batch, Gutter) queue row opens its
+  // inspector, which lists that group's Grow Bags directly.
+  fireEvent.click(screen.getByRole("button", { name: /^VIN-0142 · GUT-001/ }));
 }
 
 describe("VinesProductionPage", () => {
@@ -166,15 +168,14 @@ describe("VinesProductionPage", () => {
   it("renders aggregated Batch/Gutter population with Living/Lost, and shows no raw UUIDs", async () => {
     stubFetch();
     render(withQueryClient(<VinesProductionPage />));
-    await waitFor(() => expect(screen.getByText("VIN-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("VIN-0142 · GUT-001")).toBeInTheDocument());
 
-    expect(screen.getByText("Tomato")).toBeInTheDocument();
-    expect(screen.getByText("Marmande")).toBeInTheDocument();
-    expect(screen.getByText("GH-04")).toBeInTheDocument();
-    expect(screen.getByText("GUT-001")).toBeInTheDocument();
+    expect(screen.getByText("Tomato / Marmande · GH-04")).toBeInTheDocument();
     expect(screen.getByText("17")).toBeInTheDocument(); // Living Plants
-    expect(screen.getByText("3")).toBeInTheDocument(); // Lost
-    expect(screen.getByText("8")).toBeInTheDocument(); // Days in Production
+    expect(screen.getByText("Lost 3")).toBeInTheDocument();
+    expect(screen.getByText("Day 8")).toBeInTheDocument(); // Days in Production
+    // Nothing selected yet -> an explicit empty inspector, never a blank rail.
+    expect(screen.getByText(/Select a Batch \/ Gutter/)).toBeInTheDocument();
 
     expect(document.body.textContent).not.toMatch(UUID_PATTERN);
   });
@@ -291,7 +292,7 @@ describe("VinesProductionPage", () => {
   it("Loss History tab renders recorded loss with operator-friendly reason/status wording", async () => {
     stubFetch({ history: HISTORY });
     render(withQueryClient(<VinesProductionPage />));
-    await waitFor(() => expect(screen.getByText("VIN-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("VIN-0142 · GUT-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/GB-0001 — VIN-0142/)).toBeInTheDocument());
@@ -304,7 +305,7 @@ describe("VinesProductionPage", () => {
   it("shows a corrected/voided record truthfully rather than as current active loss", async () => {
     stubFetch({ history: VOID_HISTORY });
     render(withQueryClient(<VinesProductionPage />));
-    await waitFor(() => expect(screen.getByText("VIN-0142")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("VIN-0142 · GUT-001")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("tab", { name: /loss history/i }));
 
     await waitFor(() => expect(screen.getByText(/Loss 1 — Dead/)).toBeInTheDocument());
@@ -316,5 +317,53 @@ describe("VinesProductionPage", () => {
     // Current living population reflects the correction (back to opening),
     // never the stale as-if-still-lost figure.
     expect(screen.getByText(/Current 2/)).toBeInTheDocument();
+  });
+
+  it("UX-OPS-001C/R1: an unresolved void locks Cancel/tabs and Retry resends the byte-identical payload", async () => {
+    const correctBodies: string[] = [];
+    let correctCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/vines-production/placements")) return jsonResponse(PLACEMENTS);
+        if (url.includes("/correct")) {
+          correctBodies.push(String(init?.body));
+          correctCalls += 1;
+          return correctCalls === 1 ? jsonResponse({ detail: "upstream" }, 503) : jsonResponse({});
+        }
+        if (url.includes("/dispositions")) return jsonResponse(HISTORY);
+        return jsonResponse([]);
+      }),
+    );
+    render(withQueryClient(<VinesProductionPage />));
+    await waitFor(() => expect(screen.getByText("VIN-0142 · GUT-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("tab", { name: /loss history/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Correct" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Correct" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm void" }));
+    await waitFor(() => expect(correctCalls).toBe(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry void" })).toBeEnabled());
+    // Unresolved: Cancel and switching sections are blocked -- no read can
+    // prove whether the void applied, so the attempt is never abandoned.
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: /population/i }));
+    expect(screen.getByRole("button", { name: "Retry void" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry void" }));
+    await waitFor(() => expect(correctCalls).toBe(2));
+    expect(correctBodies[1]).toBe(correctBodies[0]);
+  });
+
+  it("UX-OPS-001C/R1: an aggregate Batch/Gutter row never opens a Batch-only inspection; Grow Bags carry their exact assignment", async () => {
+    stubFetch();
+    render(withQueryClient(<VinesProductionPage />));
+    await expandPopulationRow();
+    await waitFor(() => expect(screen.getByText(/GB-0001/)).toBeInTheDocument());
+    const inspectLinks = screen.getAllByRole("link", { name: "Inspect Crop" });
+    expect(inspectLinks.length).toBeGreaterThan(0);
+    for (const link of inspectLinks) {
+      expect(link.getAttribute("href")).toMatch(/assignmentId=/);
+    }
   });
 });

@@ -9,6 +9,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { StatusBadge } from "@/components/StatusBadge";
+import { BoundedDataRegion } from "@/components/layout/BoundedDataRegion";
+import { InspectorEmptyState, InspectorShell } from "@/components/layout/InspectorShell";
+import { QueueList, QueueRow } from "@/components/layout/QueueRow";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
 import { MoveProductionPlateForm } from "@/components/leafy/MoveProductionPlateForm";
 import { PlantLossHistoryPanel } from "@/components/leafy/PlantLossHistoryPanel";
 import { RecordPlantLossForm } from "@/components/leafy/RecordPlantLossForm";
@@ -16,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/ui/Tabs";
 import type { ActiveProductionPlateRead, CorrectProductionDispositionCreate, MovementCreate } from "@/lib/api/client";
 import { AppError } from "@/lib/errors/adapter";
+import { leafyPlateActions } from "@/lib/format/productionActions";
 import {
   useActiveProductionPlates,
   useCorrectProductionDisposition,
@@ -37,7 +43,14 @@ function asAppError(error: unknown): AppError {
  * two sections, "Active Production Plates" (Record Plant Loss) and "Plant
  * Loss History" (correction), prioritizing greenhouse-floor operation over
  * analytics (section 40, frozen). Does not rename/remove the existing
- * Production Transfer workflow (005B), which remains its own nav entry. */
+ * Production Transfer workflow (005B), which remains its own nav entry.
+ *
+ * UX-OPS-001C: "Active Production Plates" is a bounded work queue plus a
+ * stable selected-Plate inspector (SplitWorkspace) instead of a wide table
+ * with every action on every row. The inspector offers only the actions
+ * `leafyPlateActions` derives from the row's own server facts; choosing
+ * Record Plant Loss / Move hands off to the existing, unchanged command
+ * forms exactly as before (same payloads, command identity, 409 reset). */
 export default function LeafyProductionPage() {
   const { farmId } = useParams<{ farmId: string }>();
   const [tab, setTab] = useState<"active" | "history">("active");
@@ -51,6 +64,14 @@ export default function LeafyProductionPage() {
   const [moveSuccess, setMoveSuccess] = useState<{ plateCode: string; toLabel: string } | null>(null);
   const [batchFilter, setBatchFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
+  // The inspector's selection -- distinct from `selectedPlateId` (the
+  // Plate whose Record Plant Loss form is open) so opening/closing a
+  // command form never loses which row the operator was working on.
+  const [inspectedPlateId, setInspectedPlateId] = useState<string | null>(null);
+  // UX-OPS-001C/R1: true while any open command form holds an in-flight or
+  // unresolved (uncertain) attempt -- switching sections would unmount that
+  // form and lose its frozen Retry, so the section tabs are locked.
+  const [commandLocked, setCommandLocked] = useState(false);
 
   const activePlatesQuery = useActiveProductionPlates(farmId);
   const historyQuery = useProductionDispositionHistory(farmId);
@@ -77,6 +98,7 @@ export default function LeafyProductionPage() {
   const batchOptions = Array.from(
     new Map(allActivePlates.map((p) => [p.batch_id, p.batch_code])).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
+  const inspectedPlate = allActivePlates.find((p) => p.batch_carrier_assignment_id === inspectedPlateId) ?? null;
   const visiblePlates = allActivePlates.filter((p) => {
     if (batchFilter && p.batch_id !== batchFilter) return false;
     if (locationFilter && !(p.current_location?.ancestry_label ?? "").toLowerCase().includes(locationFilter.toLowerCase())) {
@@ -88,6 +110,7 @@ export default function LeafyProductionPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Leafy Production"
         breadcrumbs={
           <Breadcrumbs
@@ -100,11 +123,13 @@ export default function LeafyProductionPage() {
         }
       />
 
-      <div className="mb-6">
+      <div className="mb-4">
         <Tabs
           tabs={TABS.map(({ id, label }) => ({ id, label }))}
           activeId={tab}
-          onChange={(id) => setTab(id as "active" | "history")}
+          onChange={(id) => {
+            if (!commandLocked) setTab(id as "active" | "history");
+          }}
           aria-label="Leafy Production sections"
         />
       </div>
@@ -175,6 +200,10 @@ export default function LeafyProductionPage() {
             </div>
           ) : selectedPlate ? (
             <RecordPlantLossForm
+              // UX-OPS-001C/R1: keyed by target -- another Plate can never
+              // reuse this Plate's frozen attempt.
+              key={selectedPlate.batch_carrier_assignment_id}
+              onCommandLockedChange={setCommandLocked}
               plateCode={selectedPlate.plate_code}
               batchCarrierAssignmentId={selectedPlate.batch_carrier_assignment_id}
               currentLivingPopulation={selectedPlate.current_living_population}
@@ -186,16 +215,20 @@ export default function LeafyProductionPage() {
               }}
               onSubmit={(payload) => {
                 setRecordError(null);
-                recordMutation.mutate(payload, {
-                  onSuccess: (result) => {
+                return recordMutation.mutateAsync(payload).then(
+                  (result) => {
                     setRecordSuccess({
                       plateCode: selectedPlate.plate_code,
                       resulting: result.resulting_living_population,
                       released: result.assignment_released,
                     });
                   },
-                  onError: (error) => setRecordError(asAppError(error)),
-                });
+                  (error) => {
+                    const appError = asAppError(error);
+                    setRecordError(appError);
+                    throw appError;
+                  },
+                );
               }}
             />
           ) : selectedPlateId ? (
@@ -212,6 +245,8 @@ export default function LeafyProductionPage() {
             </div>
           ) : movingPlate ? (
             <MoveProductionPlateForm
+              key={movingPlate.batch_carrier_assignment_id}
+              onCommandLockedChange={setCommandLocked}
               farmId={farmId}
               plate={movingPlate}
               isSubmitting={relocateMutation.isPending}
@@ -222,12 +257,16 @@ export default function LeafyProductionPage() {
               }}
               onSubmit={(payload: MovementCreate, toLabel: string) => {
                 setMoveError(null);
-                relocateMutation.mutate(payload, {
-                  onSuccess: () => {
+                return relocateMutation.mutateAsync(payload).then(
+                  () => {
                     setMoveSuccess({ plateCode: movingPlate.plate_code, toLabel });
                   },
-                  onError: (error) => setMoveError(asAppError(error)),
-                });
+                  (error) => {
+                    const appError = asAppError(error);
+                    setMoveError(appError);
+                    throw appError;
+                  },
+                );
               }}
             />
           ) : movingPlateId ? (
@@ -280,83 +319,70 @@ export default function LeafyProductionPage() {
                         onChange={(e) => setLocationFilter(e.target.value)}
                       />
                     </label>
+                    <p className="ml-auto text-xs text-wl-text-secondary">
+                      {visiblePlates.length.toLocaleString()} of {allActivePlates.length.toLocaleString()} Plates
+                    </p>
                   </div>
 
-                  {visiblePlates.length === 0 ? (
-                    <p className="text-sm text-ink-muted">No Production Plates match this filter.</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-                      <table className="w-full min-w-[760px] text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-border-subtle text-ink-muted">
-                            <th className="p-3 font-medium">Plate</th>
-                            <th className="p-3 font-medium">Batch / Variety</th>
-                            <th className="p-3 font-medium">Living</th>
-                            <th className="p-3 font-medium">Location</th>
-                            <th className="p-3 font-medium" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visiblePlates.map((plate) => (
-                            <tr key={plate.batch_carrier_assignment_id} className="border-b border-border-subtle last:border-0">
-                              <td className="p-3 font-medium text-ink">{plate.plate_code}</td>
-                              <td className="p-3 text-ink">
-                                {plate.batch_code}
-                                <span className="block text-xs text-ink-muted">
-                                  {plate.crop_common_name}
-                                  {plate.variety_name ? ` / ${plate.variety_name}` : ""}
-                                </span>
-                              </td>
-                              <td className="p-3 tabular-nums text-ink">{plate.current_living_population.toLocaleString()}</td>
-                              <td className="p-3 text-ink">
-                                {plate.current_location ? (
-                                  <span className="text-xs text-ink-muted">{plate.current_location.ancestry_label}</span>
-                                ) : (
-                                  <span className="text-xs text-red-700">No current Leafy location on record</span>
-                                )}
-                              </td>
-                              <td className="p-3">
-                                <div className="flex flex-wrap gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    disabled={!plate.current_location}
-                                    onClick={() => setMovingPlateId(plate.batch_carrier_assignment_id)}
-                                  >
-                                    Move plate
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="primary"
-                                    onClick={() => setSelectedPlateId(plate.batch_carrier_assignment_id)}
-                                  >
-                                    Record Plant Loss
-                                  </Button>
-                                  <Link
-                                    href={`/farms/${farmId}/observations?batchId=${plate.batch_id}&assignmentId=${plate.batch_carrier_assignment_id}`}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-wl-border-strong bg-wl-surface-raised px-4 text-sm font-medium text-wl-text hover:bg-wl-surface-hover"
-                                  >
-                                    Record observation
-                                  </Link>
-                                  {/* PILOT-SCAN-001B FINAL CLOSURE: "Reprint Current Label" --
-                                      reuses the existing generic Placement label/reprint route,
-                                      which re-resolves current authoritative Batch/Carrier/
-                                      Location fresh every time -- never this row's own
-                                      possibly-stale snapshot. */}
-                                  <Link
-                                    href={`/farms/${farmId}/labels/batch_carrier_assignment/${plate.batch_carrier_assignment_id}`}
-                                    className="inline-flex h-9 items-center text-xs font-medium text-ink-muted underline hover:text-ink"
-                                  >
-                                    Reprint label
-                                  </Link>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <SplitWorkspace
+                    main={
+                      visiblePlates.length === 0 ? (
+                        <p className="text-sm text-ink-muted">No Production Plates match this filter.</p>
+                      ) : (
+                        <BoundedDataRegion
+                          label="Active Production Plates"
+                          heading={
+                            <div className="flex justify-between text-xs font-medium text-wl-text-secondary">
+                              <span>Plate · Batch · Location</span>
+                              <span>Living</span>
+                            </div>
+                          }
+                        >
+                          <QueueList label="Active Production Plates">
+                            {visiblePlates.map((plate) => (
+                              <QueueRow
+                                key={plate.batch_carrier_assignment_id}
+                                isSelected={plate.batch_carrier_assignment_id === inspectedPlateId}
+                                onSelect={() => setInspectedPlateId(plate.batch_carrier_assignment_id)}
+                                title={plate.plate_code}
+                                context={
+                                  <>
+                                    {plate.batch_code} · {plate.crop_common_name}
+                                    {plate.variety_name ? ` / ${plate.variety_name}` : ""} ·{" "}
+                                    {plate.current_location ? (
+                                      <span>{plate.current_location.ancestry_label}</span>
+                                    ) : (
+                                      <span className="text-wl-flag-fg">No current Leafy location on record</span>
+                                    )}
+                                  </>
+                                }
+                                status={
+                                  plate.has_location_warning || !plate.current_location ? (
+                                    <StatusBadge label="Location warning" tone="critical" />
+                                  ) : undefined
+                                }
+                                meta={
+                                  <span className="text-sm font-semibold tabular-nums text-wl-text">
+                                    {plate.current_living_population.toLocaleString()}
+                                  </span>
+                                }
+                              />
+                            ))}
+                          </QueueList>
+                        </BoundedDataRegion>
+                      )
+                    }
+                    rail={
+                      <LeafyPlateInspector
+                        farmId={farmId}
+                        plate={inspectedPlate}
+                        isStale={Boolean(inspectedPlateId) && !inspectedPlate}
+                        onClose={() => setInspectedPlateId(null)}
+                        onRecordLoss={(id) => setSelectedPlateId(id)}
+                        onMove={(id) => setMovingPlateId(id)}
+                      />
+                    }
+                  />
                 </>
               )}
             </>
@@ -373,6 +399,7 @@ export default function LeafyProductionPage() {
           // backend's own 403 as a normal error, consistent with every
           // other command in this app.
           canCorrect={true}
+          onCommandLockedChange={setCommandLocked}
           correctingEventId={correctingEventId}
           isSubmitting={correctMutation.isPending}
           serverError={correctError}
@@ -391,5 +418,105 @@ export default function LeafyProductionPage() {
         />
       )}
     </div>
+  );
+}
+
+/** UX-OPS-001C: the selected-Plate inspector -- identity, Current Living
+ * (emphasized), opening population, recorded loss, and current location,
+ * plus ONLY the actions `leafyPlateActions` derives from those server
+ * facts. Never itself submits a command. */
+function LeafyPlateInspector({
+  farmId,
+  plate,
+  isStale,
+  onClose,
+  onRecordLoss,
+  onMove,
+}: {
+  farmId: string;
+  plate: ActiveProductionPlateRead | null;
+  isStale: boolean;
+  onClose: () => void;
+  onRecordLoss: (assignmentId: string) => void;
+  onMove: (assignmentId: string) => void;
+}) {
+  if (!plate) {
+    return (
+      <InspectorEmptyState
+        label={
+          isStale
+            ? "This Plate is no longer active — its living population may have reached zero elsewhere. Select another Plate."
+            : "Select a Plate to see its details and actions."
+        }
+      />
+    );
+  }
+  const actions = leafyPlateActions(farmId, plate);
+  const commandActions = actions.filter((a) => !a.href);
+  const linkActions = actions.filter((a) => a.href);
+  return (
+    <InspectorShell
+      title={plate.plate_code}
+      subtitle={`Batch ${plate.batch_code} · ${plate.crop_common_name}${plate.variety_name ? ` / ${plate.variety_name}` : ""}`}
+      onClose={onClose}
+    >
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="col-span-2">
+          <dt className="text-xs text-wl-text-secondary">Current Living</dt>
+          <dd className="text-xl font-semibold tabular-nums text-wl-text">
+            {plate.current_living_population.toLocaleString()}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-wl-text-secondary">Opening</dt>
+          <dd className="tabular-nums text-wl-text">{plate.opening_population.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-wl-text-secondary">Recorded loss</dt>
+          <dd className="tabular-nums text-wl-text">{plate.total_recorded_loss.toLocaleString()}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-xs text-wl-text-secondary">Location</dt>
+          <dd className="text-wl-text">
+            {plate.current_location ? (
+              plate.current_location.ancestry_label
+            ) : (
+              <span className="text-wl-flag-fg">No current Leafy location on record — Move is unavailable.</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+      {commandActions.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {commandActions.map((action, index) => (
+            <Button
+              key={action.kind}
+              type="button"
+              variant={index === 0 ? "primary" : "secondary"}
+              onClick={() =>
+                action.kind === "record_loss"
+                  ? onRecordLoss(plate.batch_carrier_assignment_id)
+                  : onMove(plate.batch_carrier_assignment_id)
+              }
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      )}
+      {linkActions.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-wl-border pt-3">
+          {linkActions.map((action) => (
+            <Link
+              key={action.kind}
+              href={action.href as string}
+              className="inline-flex min-h-9 items-center text-sm font-medium text-wl-brand hover:underline"
+            >
+              {action.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </InspectorShell>
   );
 }

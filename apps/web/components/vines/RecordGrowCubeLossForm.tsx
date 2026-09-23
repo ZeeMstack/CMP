@@ -1,9 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import type { RecordVinesGrowCubeDispositionCreate, VinesProductionPlacementGrowCubeRead } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { VINES_DISPOSITION_REASONS } from "@/lib/validation/vinesProductionDisposition";
 
@@ -48,15 +54,17 @@ export function RecordGrowCubeLossForm({
   onCancel,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   growBagCode: string;
   batchCarrierAssignmentId: string;
   livingPlantCount: number;
   growCubes: VinesProductionPlacementGrowCubeRead[];
-  onSubmit: (payload: RecordVinesGrowCubeDispositionCreate) => void;
+  onSubmit: (payload: RecordVinesGrowCubeDispositionCreate) => void | Promise<unknown>;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const livingCubes = growCubes.filter((c) => c.status === "living");
   const [step, setStep] = useState<"configure" | "review">("configure");
@@ -67,8 +75,15 @@ export function RecordGrowCubeLossForm({
   const [effectiveDate, setEffectiveDate] = useState(initial.date);
   const [effectiveTimeOfDay, setEffectiveTimeOfDay] = useState(initial.time);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: frozen on the actual Confirm only (never on Review/
+  // Back); an uncertain (network/5xx) outcome keeps the byte-identical
+  // payload for Retry and locks Back/Cancel; a definitive rejection or
+  // success releases it. The page keys this form by target, so another
+  // record can never reuse this attempt.
+  const command = useFrozenSubmission<RecordVinesGrowCubeDispositionCreate & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const locked = command.outcome !== "editing";
+  const busy = isSubmitting || command.outcome === "submitting";
 
   const [prevServerError, setPrevServerError] = useState(serverError);
   if (serverError !== prevServerError) {
@@ -98,23 +113,18 @@ export function RecordGrowCubeLossForm({
   }
 
   function confirm() {
-    const effectiveTime = new Date(`${effectiveDate}T${effectiveTimeOfDay}`).toISOString();
-    const fingerprint = JSON.stringify({
-      batch_carrier_assignment_id: batchCarrierAssignmentId,
-      grow_cube_carrier_ids: [...selectedIds].sort(),
-      reason_code: reasonCode, effective_time: effectiveTime, note: note.trim() || null,
-    });
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprint) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) settleFrozenAttempt(command, onSubmit(frozen));
+      return;
     }
-    lastSubmittedFingerprintRef.current = fingerprint;
-    onSubmit({
-      client_command_id: idToUse, batch_carrier_assignment_id: batchCarrierAssignmentId,
-      grow_cube_carrier_ids: selectedIds, reason_code: reasonCode, effective_time: effectiveTime,
+    const payload = command.submit((clientCommandId) => ({
+      client_command_id: clientCommandId, batch_carrier_assignment_id: batchCarrierAssignmentId,
+      grow_cube_carrier_ids: selectedIds, reason_code: reasonCode,
+      effective_time: new Date(`${effectiveDate}T${effectiveTimeOfDay}`).toISOString(),
       note: note.trim() || null,
-    });
+    }));
+    settleFrozenAttempt(command, onSubmit(payload));
   }
 
   const selectedCodes = growCubes
@@ -167,14 +177,15 @@ export function RecordGrowCubeLossForm({
         {serverError && (
           <p role="alert" className={errorClass}>
             {friendlyMutationErrorMessage(serverError)}
+            {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
           </p>
         )}
         <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={busy || locked}>
             Back
           </Button>
-          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
-            {isSubmitting ? "Recording…" : "Confirm"}
+          <Button type="button" variant="primary" onClick={confirm} disabled={busy}>
+            {busy ? "Recording…" : command.outcome === "uncertain" ? "Retry" : "Confirm"}
           </Button>
         </div>
       </div>

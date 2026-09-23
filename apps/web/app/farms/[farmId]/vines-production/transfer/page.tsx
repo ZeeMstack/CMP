@@ -66,6 +66,7 @@ export default function VinesProductionTransferPage() {
   return (
     <div>
       <PageHeader
+        compact
         title="Transfer to Production"
         breadcrumbs={
           <Breadcrumbs
@@ -139,11 +140,15 @@ export default function VinesProductionTransferPage() {
           serverError={serverError}
           onSubmit={(batchId, payload, gutterCode) => {
             setServerError(null);
-            mutation.mutate(
-              { batchId, payload },
-              {
-                onSuccess: (transfer) => setSuccess({ transfer, gutterCode }),
-                onError: (error) => setServerError(asAppError(error)),
+            // UX-OPS-001C/R1: the returned promise settles the form's frozen
+            // attempt (success clears it; network/5xx keeps it for a
+            // byte-identical Retry; a definitive 4xx releases it).
+            return mutation.mutateAsync({ batchId, payload }).then(
+              (transfer) => setSuccess({ transfer, gutterCode }),
+              (error) => {
+                const appError = asAppError(error);
+                setServerError(appError);
+                throw appError;
               },
             );
           }}

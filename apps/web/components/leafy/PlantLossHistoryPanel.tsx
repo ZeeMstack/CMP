@@ -1,10 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import type { CorrectProductionDispositionCreate, ProductionDispositionHistoryRead } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  toCommandError,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import { PRODUCTION_DISPOSITION_REASONS, type CorrectPlantLossFormValues } from "@/lib/validation/productionDisposition";
 
@@ -32,23 +38,47 @@ function CorrectionForm({
   onCancel,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   eventId: string;
   onSubmit: (eventId: string, payload: CorrectProductionDispositionCreate) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const initial = nowDateAndTime();
   const [values, setValues] = useState<CorrectPlantLossFormValues>({
     mode: "void", plant_loss_count: undefined, reason_code: "", note: "",
     effective_date: initial.date, effective_time_of_day: initial.time,
   });
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission of THIS event's
+  // correction (each event gets its own form instance). Uncertain -> the
+  // byte-identical payload is kept for Retry and Cancel/fields are locked;
+  // definitive rejection or success releases it.
+  const command = useFrozenSubmission<CorrectProductionDispositionCreate & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const locked = command.outcome !== "editing";
+  const busy = isSubmitting || command.outcome === "submitting";
 
-  async function submit() {
+  function send(payload: CorrectProductionDispositionCreate) {
+    onSubmit(eventId, payload).then(
+      () => {
+        command.handleSuccess();
+        onCancel(); // success -- close the form; the original event and its
+        // correction now both appear in the same history list once refetched.
+      },
+      (error) => command.handleError(toCommandError(error)),
+    );
+  }
+
+  function submit() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) send(frozen);
+      return;
+    }
     if (values.mode === "replace") {
       if (!values.plant_loss_count || values.plant_loss_count <= 0) {
         setValidationError("Corrected loss count is required");
@@ -73,25 +103,12 @@ function CorrectionForm({
             effective_time: new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString(),
             note: (values.note ?? "").trim() || null,
           };
-    const fingerprint = JSON.stringify(corrected);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprint) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
-    }
-    lastSubmittedFingerprintRef.current = fingerprint;
-    try {
-      await onSubmit(eventId, { client_command_id: idToUse, corrected });
-      onCancel(); // success -- close the form; the original event and its
-      // correction now both appear in the same history list once refetched.
-    } catch {
-      // Server error is already surfaced via the `serverError` prop; keep
-      // the form open so the operator can retry or adjust.
-    }
+    send(command.submit((clientCommandId) => ({ client_command_id: clientCommandId, corrected })));
   }
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-wl-border bg-wl-surface-sunken p-3">
+      <fieldset disabled={locked} className="flex min-w-0 flex-col gap-3">
       <div className="flex gap-4 text-sm">
         <label className="flex items-center gap-2">
           <input
@@ -155,14 +172,20 @@ function CorrectionForm({
           </label>
         </div>
       )}
+      </fieldset>
       {validationError && <p className={errorClass}>{validationError}</p>}
-      {serverError && <p className={errorClass}>{friendlyMutationErrorMessage(serverError)}</p>}
+      {(serverError ?? command.error) && (
+        <p role="alert" className={errorClass}>
+          {friendlyMutationErrorMessage((serverError ?? command.error) as AppError)}
+          {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={busy || locked}>
           Cancel
         </Button>
-        <Button type="button" variant="primary" onClick={submit} disabled={isSubmitting}>
-          {isSubmitting ? "Submitting…" : "Submit correction"}
+        <Button type="button" variant="primary" onClick={submit} disabled={busy}>
+          {busy ? "Submitting…" : command.outcome === "uncertain" ? "Retry correction" : "Submit correction"}
         </Button>
       </div>
     </div>
@@ -181,6 +204,7 @@ export function PlantLossHistoryPanel({
   correctingEventId,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   lineages: ProductionDispositionHistoryRead[];
   canCorrect: boolean;
@@ -188,6 +212,7 @@ export function PlantLossHistoryPanel({
   correctingEventId: string | null;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const [openEventId, setOpenEventId] = useState<string | null>(null);
 
@@ -247,6 +272,7 @@ export function PlantLossHistoryPanel({
                         onCancel={() => setOpenEventId(null)}
                         isSubmitting={isSubmitting && correctingEventId === event.id}
                         serverError={correctingEventId === event.id ? serverError : null}
+                        onCommandLockedChange={onCommandLockedChange}
                       />
                     ) : (
                       <Button type="button" variant="secondary" onClick={() => setOpenEventId(event.id)}>

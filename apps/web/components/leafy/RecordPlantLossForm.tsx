@@ -1,11 +1,17 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/Button";
 import type { RecordProductionDispositionCreate } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   DEFAULT_RECORD_PLANT_LOSS_FORM_VALUES,
@@ -53,18 +59,27 @@ export function RecordPlantLossForm({
   onCancel,
   isSubmitting,
   serverError,
+  onCommandLockedChange,
 }: {
   plateCode: string;
   batchCarrierAssignmentId: string;
   currentLivingPopulation: number;
-  onSubmit: (payload: RecordProductionDispositionCreate) => void;
+  onSubmit: (payload: RecordProductionDispositionCreate) => void | Promise<unknown>;
   onCancel: () => void;
   isSubmitting: boolean;
   serverError?: AppError | null;
+  onCommandLockedChange?: (locked: boolean) => void;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: frozen on the actual Confirm only (never on Review/
+  // Back); an uncertain (network/5xx) outcome keeps the byte-identical
+  // payload for Retry and locks Back/Cancel; a definitive rejection or
+  // success releases it. The page keys this form by target, so another
+  // record can never reuse this attempt.
+  const command = useFrozenSubmission<RecordProductionDispositionCreate & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
+  const locked = command.outcome !== "editing";
+  const busy = isSubmitting || command.outcome === "submitting";
   const initial = nowDateAndTime();
 
   const {
@@ -106,33 +121,21 @@ export function RecordPlantLossForm({
   }
 
   function confirm() {
-    const values = getValues();
-    const effectiveTime = new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString();
-    const fingerprint = JSON.stringify({
-      batch_carrier_assignment_id: values.batch_carrier_assignment_id,
-      plant_loss_count: values.plant_loss_count,
-      reason_code: values.reason_code,
-      effective_time: effectiveTime,
-      note: values.note.trim() || null,
-    });
-    // Same id + unchanged payload -> exact replay; any edit since the last
-    // submission rotates the id, mirroring ProductionTransferForm.tsx's own
-    // established idempotency-lifecycle pattern.
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprint) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) settleFrozenAttempt(command, onSubmit(frozen));
+      return;
     }
-    lastSubmittedFingerprintRef.current = fingerprint;
-    const payload: RecordProductionDispositionCreate = {
-      client_command_id: idToUse,
+    const values = getValues();
+    const payload = command.submit((clientCommandId) => ({
+      client_command_id: clientCommandId,
       batch_carrier_assignment_id: values.batch_carrier_assignment_id,
       plant_loss_count: values.plant_loss_count,
       reason_code: values.reason_code,
-      effective_time: effectiveTime,
+      effective_time: new Date(`${values.effective_date}T${values.effective_time_of_day}`).toISOString(),
       note: values.note.trim() || null,
-    };
-    onSubmit(payload);
+    }));
+    settleFrozenAttempt(command, onSubmit(payload));
   }
 
   if (step === "review") {
@@ -184,14 +187,15 @@ export function RecordPlantLossForm({
         {serverError && (
           <p role="alert" className={errorClass}>
             {friendlyMutationErrorMessage(serverError)}
+            {command.outcome === "uncertain" && ` ${UNCERTAIN_OUTCOME_COPY}`}
           </p>
         )}
         <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
+          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={busy || locked}>
             Back
           </Button>
-          <Button type="button" variant="primary" onClick={confirm} disabled={isSubmitting}>
-            {isSubmitting ? "Recording…" : "Confirm"}
+          <Button type="button" variant="primary" onClick={confirm} disabled={busy}>
+            {busy ? "Recording…" : command.outcome === "uncertain" ? "Retry" : "Confirm"}
           </Button>
         </div>
       </div>

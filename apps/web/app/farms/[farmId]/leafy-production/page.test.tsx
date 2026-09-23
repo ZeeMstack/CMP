@@ -110,10 +110,29 @@ describe("LeafyProductionPage", () => {
     expect(screen.getByText(/No current Leafy location on record/)).toBeInTheDocument();
   });
 
+  it("UX-OPS-001C: shows an empty inspector until a Plate is selected, then only server-valid actions", async () => {
+    stubFetch({ activePlates: [...ACTIVE_PLATES, ZERO_PLATE] });
+    render(withQueryClient(<LeafyProductionPage />));
+    await waitFor(() => expect(screen.getByText("PP-002")).toBeInTheDocument());
+    expect(screen.getByText(/Select a Plate to see its details and actions/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /record plant loss/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^PP-002/ }));
+    expect(screen.getByRole("button", { name: /^PP-002/ })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: /record plant loss/i })).toBeInTheDocument();
+    // No current location on record -> Move is never offered.
+    expect(screen.queryByRole("button", { name: /move plate/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inspect Crop" })).toHaveAttribute(
+      "href",
+      "/farms/farm-1/production/inspect?batchId=batch-1&assignmentId=bca-2",
+    );
+  });
+
   it("completes the full Record Plant Loss flow: configure -> review -> confirm -> success", async () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^PP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
@@ -135,6 +154,7 @@ describe("LeafyProductionPage", () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^PP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -152,6 +172,7 @@ describe("LeafyProductionPage", () => {
     stubFetch();
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^PP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -174,6 +195,7 @@ describe("LeafyProductionPage", () => {
     });
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^PP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
 
@@ -220,6 +242,7 @@ describe("LeafyProductionPage", () => {
 
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^PP-001/ }));
     fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
 
     await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
@@ -454,6 +477,7 @@ function stubFetchForMove(overrides: Record<string, unknown> = {}) {
 async function openMoveForm() {
   render(withQueryClient(<LeafyProductionPage />));
   await waitFor(() => expect(screen.getByText("PP-900")).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: /^PP-900/ }));
   fireEvent.click(screen.getByRole("button", { name: /move plate/i }));
   await waitFor(() => expect(screen.getByText("Move plate — PP-900")).toBeInTheDocument());
 }
@@ -480,6 +504,7 @@ describe("Move plate", () => {
     render(withQueryClient(<LeafyProductionPage />));
     await waitFor(() => expect(screen.getByText("PP-900")).toBeInTheDocument());
     expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA01")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^PP-900/ }));
     expect(screen.getByRole("button", { name: /move plate/i })).toBeEnabled();
     expect(document.body.textContent).not.toMatch(UUID_PATTERN);
   });
@@ -542,7 +567,13 @@ describe("Move plate", () => {
 
     await waitFor(() => expect(screen.getByText("Plate moved")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(screen.getByText("LEAFY-01 / Z01 / S01 / TA02")).toBeInTheDocument());
+    // UX-OPS-001C: the refreshed location shows in the queue row (and the
+    // still-selected inspector) -- assert on the queue row itself.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Active Production Plates" })).getByText("LEAFY-01 / Z01 / S01 / TA02"),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("shows a friendly error (never a raw id) on conflict, preserving the selected destination", async () => {
@@ -571,5 +602,91 @@ describe("Move plate", () => {
     fireEvent.click(screen.getByRole("button", { name: /review move/i }));
     await waitFor(() => expect(screen.getByText("Review move")).toBeInTheDocument());
     expect(document.body.textContent).not.toMatch(UUID_PATTERN);
+  });
+});
+
+describe("LeafyProductionPage frozen commands (UX-OPS-001C/R1)", () => {
+  const TWO_PLATES = [
+    ACTIVE_PLATES[0],
+    { ...ACTIVE_PLATES[0], carrier_id: "carrier-3", plate_code: "PP-003", batch_carrier_assignment_id: "bca-3", population_root_batch_carrier_assignment_id: "bca-3" },
+  ];
+
+  function stubSequencedRecord(responses: number[]) {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/leafy-production/active-plates")) return jsonResponse(TWO_PLATES);
+        if (url.includes("/leafy-production/dispositions") && init?.method === "POST") {
+          bodies.push(String(init.body));
+          const status = responses.shift() ?? 200;
+          if (status !== 200) return jsonResponse({ detail: "failure" }, status);
+          return jsonResponse({
+            command_id: "cmd-1", client_command_id: "x", batch_carrier_assignment_id: "bca-1",
+            population_root_batch_carrier_assignment_id: "bca-1", event: HISTORY[0].events[0],
+            previous_living_population: 180, resulting_living_population: 175, assignment_released: false,
+          });
+        }
+        if (url.includes("/leafy-production/dispositions")) return jsonResponse(HISTORY);
+        return jsonResponse([]);
+      }),
+    );
+    return bodies;
+  }
+
+  async function recordLossFor(code: string, count: string) {
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${code}`) }));
+    fireEvent.click(screen.getByRole("button", { name: /record plant loss/i }));
+    await waitFor(() => expect(screen.getByLabelText(/plant loss count/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/plant loss count/i), { target: { value: count } });
+    fireEvent.change(screen.getByLabelText(/^reason$/i), { target: { value: "dead" } });
+    fireEvent.change(screen.getByLabelText(/^date$/i), { target: { value: "2026-08-22" } });
+    fireEvent.change(screen.getByLabelText(/^time$/i), { target: { value: "09:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByText("Review before recording")).toBeInTheDocument());
+  }
+
+  it("uncertain Record Plant Loss: Back and section tabs locked, Retry resends the byte-identical payload", async () => {
+    const bodies = stubSequencedRecord([503, 200]);
+    render(withQueryClient(<LeafyProductionPage />));
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    await recordLossFor("PP-001", "5");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/can never apply it twice/i);
+    // Switching section would unmount the form and lose the frozen Retry.
+    fireEvent.click(screen.getByRole("tab", { name: /plant loss history/i }));
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText("Plant loss recorded")).toBeInTheDocument());
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+  });
+
+  it("definitive rejection releases the attempt; a different Plate never reuses another Plate's command id", async () => {
+    const bodies = stubSequencedRecord([422, 200]);
+    render(withQueryClient(<LeafyProductionPage />));
+    await waitFor(() => expect(screen.getByText("PP-001")).toBeInTheDocument());
+    await recordLossFor("PP-001", "5");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back" })).toBeEnabled());
+
+    // Rejected (definitive) -> free to leave; switch to a different Plate.
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByText("PP-003")).toBeInTheDocument());
+    await recordLossFor("PP-003", "2");
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+
+    const first = JSON.parse(bodies[0]);
+    const second = JSON.parse(bodies[1]);
+    expect(first.batch_carrier_assignment_id).toBe("bca-1");
+    expect(second.batch_carrier_assignment_id).toBe("bca-3");
+    expect(second.client_command_id).not.toBe(first.client_command_id);
   });
 });

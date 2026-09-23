@@ -1,12 +1,21 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
+import { AllocationSummaryRail } from "@/components/allocation/AllocationSummaryRail";
 import { FilterableSelect, type FilterableSelectOption } from "@/components/FilterableSelect";
+import { SplitWorkspace } from "@/components/layout/SplitWorkspace";
+import { StickyActionBar } from "@/components/layout/StickyActionBar";
 import { Button } from "@/components/ui/Button";
 import type { IntervinesTransplantCreate } from "@/lib/api/client";
+import {
+  UNCERTAIN_OUTCOME_COPY,
+  settleFrozenAttempt,
+  useFrozenSubmission,
+  useReportCommandLocked,
+} from "@/lib/commands/frozenSubmission";
 import { AppError, friendlyMutationErrorMessage } from "@/lib/errors/adapter";
 import {
   useAvailableGrowCubePools,
@@ -58,6 +67,7 @@ export function IntervinesTransplantForm({
   restrictToBatchId,
   onSubmit,
   isSubmitting,
+  onCommandLockedChange,
   serverError,
 }: {
   farmId: string;
@@ -66,13 +76,22 @@ export function IntervinesTransplantForm({
     batchId: string,
     payload: IntervinesTransplantCreate,
     tableCode: string,
-  ) => void;
+  ) => void | Promise<unknown>;
   isSubmitting: boolean;
+  /** Reports an in-flight/unresolved attempt so the page can block
+   * anything that would unmount this form mid-command. */
+  onCommandLockedChange?: (locked: boolean) => void;
   serverError?: AppError | null;
 }) {
   const [step, setStep] = useState<"configure" | "review">("configure");
-  const [clientCommandId, setClientCommandId] = useState(() => crypto.randomUUID());
-  const lastSubmittedFingerprintRef = useRef<string | null>(null);
+  // UX-OPS-001C/R1: one frozen attempt per actual submission (never on
+  // Review/Back). The whole wire payload -- `client_command_id`,
+  // `effective_time`, targets, quantities -- plus the page context it is
+  // sent with is frozen on Record; an uncertain (network/5xx) outcome is
+  // retried byte-identically and locks the draft; a definitive rejection
+  // or success releases it so the next submission gets a new id.
+  const command = useFrozenSubmission<{ batchId: string; payload: IntervinesTransplantCreate; tableCode: string } & Record<string, unknown>>();
+  useReportCommandLocked(command.outcome, onCommandLockedChange);
   const [nurseryGreenhouseId, setNurseryGreenhouseId] = useState("");
 
   const initial = nowDateAndTime();
@@ -194,68 +213,142 @@ export function IntervinesTransplantForm({
     if (valid) setStep("review");
   }
 
-  function submitReview() {
-    const finalValues = getValues();
-    const table = intervinesTables.find((t) => t.id === finalValues.destination_location_id);
-    const payload = buildIntervinesTransplantPayload(finalValues, clientCommandId);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure to omit the key, not to use it
-    const { client_command_id: _omit, ...fingerprint } = payload;
-    const fingerprintJson = JSON.stringify(fingerprint);
-    let idToUse = clientCommandId;
-    if (lastSubmittedFingerprintRef.current !== null && lastSubmittedFingerprintRef.current !== fingerprintJson) {
-      idToUse = crypto.randomUUID();
-      setClientCommandId(idToUse);
-    }
-    lastSubmittedFingerprintRef.current = fingerprintJson;
-    onSubmit(finalValues.batch_id, { ...payload, client_command_id: idToUse }, table?.code ?? finalValues.table_code);
+  function sendFrozen(envelope: { batchId: string; payload: IntervinesTransplantCreate; tableCode: string }) {
+    settleFrozenAttempt(command, onSubmit(envelope.batchId, envelope.payload, envelope.tableCode));
   }
+
+  function submitReview() {
+    if (command.outcome === "uncertain") {
+      const frozen = command.retry();
+      if (frozen) sendFrozen(frozen);
+      return;
+    }
+    const finalValues = getValues();
+    const tableCode = intervinesTables.find((t) => t.id === finalValues.destination_location_id)?.code ?? finalValues.table_code;
+    sendFrozen(
+      command.submit((clientCommandId) => ({
+        batchId: finalValues.batch_id,
+        payload: buildIntervinesTransplantPayload(finalValues, clientCommandId),
+        tableCode,
+      })),
+    );
+  }
+
+  // UX-OPS-001C: rail figures -- the server allocates the actual Grow
+  // Cubes, so the only operator-side reconciliation is source available
+  // vs. plants to transfer vs. what remains on the source Tray. The two
+  // over-limit blockers mirror the schema's own refinements exactly
+  // (lib/validation/intervinesTransplant.ts), shown live instead of only
+  // after Review is clicked.
+  const plantCount = Number.isFinite(values.plant_count) ? values.plant_count : 0;
+  const railStats = values.source_assignment_id
+    ? [
+        { label: "Available plants", value: values.current_available.toLocaleString() },
+        { label: "To transfer", value: plantCount.toLocaleString() },
+        { label: "Source remaining", value: (values.current_available - plantCount).toLocaleString() },
+        { label: "Available Grow Cubes", value: availableGrowCubes.toLocaleString() },
+      ]
+    : [];
+  const capacityBlockers = [
+    values.source_assignment_id && plantCount > values.current_available
+      ? `Cannot exceed this source's available seedlings (${values.current_available})`
+      : null,
+    values.source_assignment_id && plantCount > availableGrowCubes
+      ? `Cannot exceed the available Grow Cubes (${availableGrowCubes})`
+      : null,
+  ].filter((b): b is string => Boolean(b));
 
   if (step === "review") {
     const reviewValues = getValues();
     const table = intervinesTables.find((t) => t.id === reviewValues.destination_location_id);
     return (
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
+        <SplitWorkspace
+          main={
+            <div className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <h2 className="font-serif text-base font-semibold text-wl-text">Review before transplanting</h2>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-wl-text-secondary">Batch</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.batch_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Source Tray</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.tray_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Plants</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Grow Cubes</dt>
+                  <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">InterVines Table</dt>
+                  <dd className="font-medium text-wl-text">{table?.code ?? reviewValues.table_code}</dd>
+                </div>
+                <div>
+                  <dt className="text-wl-text-secondary">Occurred at</dt>
+                  <dd className="font-medium text-wl-text">
+                    {reviewValues.effective_date} {reviewValues.effective_time_of_day}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs text-wl-text-secondary">
+                The server allocates the specific Grow Cubes; their codes appear on the receipt.
+              </p>
             </div>
-            <div>
-              <dt className="text-wl-text-secondary">Source Tray</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.tray_code}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Plants</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Grow Cubes</dt>
-              <dd className="font-medium text-wl-text">{reviewValues.plant_count.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">InterVines Table</dt>
-              <dd className="font-medium text-wl-text">{table?.code ?? reviewValues.table_code}</dd>
-            </div>
-          </dl>
-        </div>
-        {serverError && (
-          <p role="alert" className={errorClass}>
-            {friendlyMutationErrorMessage(serverError)}
-          </p>
-        )}
-        <div className="flex gap-3">
-          <Button type="button" variant="secondary" onClick={() => setStep("configure")} disabled={isSubmitting}>
-            Back
-          </Button>
-          <Button type="button" variant="primary" onClick={submitReview} disabled={isSubmitting}>
-            {isSubmitting ? "Transferring…" : `Confirm transfer`}
-          </Button>
-        </div>
+          }
+          rail={
+            <AllocationSummaryRail
+              heading="Reconciliation"
+              stats={railStats}
+              blockers={[
+                ...(serverError ? [friendlyMutationErrorMessage(serverError)] : []),
+                ...(command.outcome === "uncertain" ? [UNCERTAIN_OUTCOME_COPY] : []),
+              ]}
+            >
+              <StickyActionBar>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setStep("configure")}
+                    disabled={isSubmitting || command.outcome !== "editing"}
+                  >
+                    Back to edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="flex-1"
+                    onClick={submitReview}
+                    disabled={isSubmitting || command.outcome === "submitting"}
+                  >
+                    {isSubmitting || command.outcome === "submitting"
+                      ? "Transferring…"
+                      : command.outcome === "uncertain"
+                        ? "Retry"
+                        : "Record Transfer"}
+                  </Button>
+                </div>
+              </StickyActionBar>
+            </AllocationSummaryRail>
+          }
+        />
       </div>
     );
   }
+
+  const canReview = Boolean(values.source_assignment_id && values.destination_location_id && values.plant_count);
+  const configureHint = !values.source_assignment_id
+    ? "Select a source Tray to start."
+    : !values.destination_location_id
+      ? "Select an InterVines Table."
+      : !values.plant_count
+        ? "Enter the number of plants to transfer."
+        : null;
 
   return (
     <form
@@ -263,13 +356,13 @@ export function IntervinesTransplantForm({
         e.preventDefault();
         goToReview();
       }}
-      className="flex flex-col gap-6"
+      className="flex flex-col gap-4"
     >
       {nurseries.length > 1 && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+        <fieldset className="flex flex-col gap-2 rounded-xl border border-wl-border bg-wl-surface-raised p-3">
           <legend className="px-1 text-sm font-semibold text-wl-text">Nursery Greenhouse</legend>
           <Field label="Nursery">
-            <select value={nurseryGreenhouseId} onChange={(e) => setNurseryGreenhouseId(e.target.value)} className={inputClass}>
+            <select value={nurseryGreenhouseId} onChange={(e) => setNurseryGreenhouseId(e.target.value)} className={`${inputClassBase} w-full sm:w-72`}>
               <option value="">Select a Nursery…</option>
               {nurseries.map((n) => (
                 <option key={n.greenhouse_id} value={n.greenhouse_id}>
@@ -281,122 +374,118 @@ export function IntervinesTransplantForm({
         </fieldset>
       )}
 
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Source Seed Tray</legend>
-        <Field label="Source Batch / Tray" error={errors.source_assignment_id?.message}>
-          <FilterableSelect
-            aria-label="Source Batch / Tray"
-            options={eligibleSources.map((t) => ({
-              value: t.batch_carrier_assignment_id,
-              label: t.tray_code,
-              description: `${t.batch_code} — ${t.current_source_available_count.toLocaleString()} available`,
-            }))}
-            value={values.source_assignment_id}
-            loading={traysQuery.isLoading}
-            placeholder="Search Tray by code…"
-            emptyMessage={batchId ? "No other eligible Trays on this Batch" : "No eligible source Trays"}
-            onChange={selectSource}
-          />
-        </Field>
-        {values.source_assignment_id && establishedBatch && (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-wl-text-secondary">Batch</dt>
-              <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Crop / Variety</dt>
-              <dd className="font-medium text-wl-text">
-                {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-wl-text-secondary">Available plants</dt>
-              <dd className="font-medium text-wl-text">{values.current_available.toLocaleString()}</dd>
-            </div>
-          </dl>
-        )}
-      </fieldset>
+      <SplitWorkspace
+        main={
+          <div className="flex flex-col gap-4">
+            <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Source Seed Tray</legend>
+              <Field label="Source Batch / Tray" error={errors.source_assignment_id?.message}>
+                <FilterableSelect
+                  aria-label="Source Batch / Tray"
+                  options={eligibleSources.map((t) => ({
+                    value: t.batch_carrier_assignment_id,
+                    label: t.tray_code,
+                    description: `${t.batch_code} — ${t.current_source_available_count.toLocaleString()} available`,
+                  }))}
+                  value={values.source_assignment_id}
+                  loading={traysQuery.isLoading}
+                  placeholder="Search Tray by code…"
+                  emptyMessage={batchId ? "No other eligible Trays on this Batch" : "No eligible source Trays"}
+                  onChange={selectSource}
+                />
+              </Field>
+            </fieldset>
 
-      {values.source_assignment_id && (
-        <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-          <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
-          <Field label="InterVines Table" error={errors.destination_location_id?.message}>
-            <FilterableSelect
-              aria-label="InterVines Table"
-              options={tableOptions}
-              loading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
-              value={values.destination_location_id}
-              placeholder="Search Table by code…"
-              emptyMessage="No InterVines Tables configured in this Nursery"
-              onChange={(tableId) => {
-                const table = tableOptions.find((t) => t.value === tableId);
-                setValue("destination_location_id", tableId, { shouldValidate: true });
-                setValue("table_code", table?.label ?? "");
-              }}
-            />
-          </Field>
+            {values.source_assignment_id && (
+              <fieldset className="flex flex-col gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
+                <legend className="px-1 text-sm font-semibold text-wl-text">Destination</legend>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label="InterVines Table" error={errors.destination_location_id?.message}>
+                    <FilterableSelect
+                      aria-label="InterVines Table"
+                      options={tableOptions}
+                      loading={Boolean(effectiveNurseryGreenhouseId) && structureQuery.isLoading}
+                      value={values.destination_location_id}
+                      placeholder="Search Table by code…"
+                      emptyMessage="No InterVines Tables configured in this Nursery"
+                      onChange={(tableId) => {
+                        const table = tableOptions.find((t) => t.value === tableId);
+                        setValue("destination_location_id", tableId, { shouldValidate: true });
+                        setValue("table_code", table?.label ?? "");
+                      }}
+                    />
+                  </Field>
 
-          <Field label="Plants to transfer" error={errors.plant_count?.message}>
-            <input
-              type="number" min={1} step={1} className={`${inputClassBase} w-full sm:w-40`}
-              {...register("plant_count", { valueAsNumber: true })}
-            />
-          </Field>
+                  <Field label="Plants to transfer" error={errors.plant_count?.message}>
+                    <input
+                      type="number" min={1} step={1} className={`${inputClassBase} w-full sm:w-40`}
+                      {...register("plant_count", { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
 
-          {showSpecificationPicker && (
-            <Field label="Grow Cube specification" error={errors.grow_cube_specification_id?.message}>
-              <FilterableSelect
-                aria-label="Grow Cube specification"
-                options={specificationOptions}
-                loading={growCubePoolsQuery.isLoading}
-                value={values.grow_cube_specification_id}
-                placeholder="Search specification…"
-                emptyMessage="No Grow Cube specifications available"
-                onChange={(specId) => setValue("grow_cube_specification_id", specId, { shouldValidate: true })}
-              />
-            </Field>
-          )}
+                {showSpecificationPicker && (
+                  <Field label="Grow Cube specification" error={errors.grow_cube_specification_id?.message}>
+                    <FilterableSelect
+                      aria-label="Grow Cube specification"
+                      options={specificationOptions}
+                      loading={growCubePoolsQuery.isLoading}
+                      value={values.grow_cube_specification_id}
+                      placeholder="Search specification…"
+                      emptyMessage="No Grow Cube specifications available"
+                      onChange={(specId) => setValue("grow_cube_specification_id", specId, { shouldValidate: true })}
+                    />
+                  </Field>
+                )}
+              </fieldset>
+            )}
 
-          <dl className="text-sm">
-            <div>
-              <dt className="text-wl-text-secondary">Available Grow Cubes</dt>
-              <dd className="font-medium text-wl-text">{availableGrowCubes.toLocaleString()}</dd>
-            </div>
-          </dl>
-        </fieldset>
-      )}
-
-      <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
-        <Field label="Date" error={errors.effective_date?.message}>
-          <input type="date" {...register("effective_date")} className={inputClass} />
-        </Field>
-        <Field label="Time" error={errors.effective_time_of_day?.message}>
-          <input type="time" {...register("effective_time_of_day")} className={inputClass} />
-        </Field>
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4 rounded-xl border border-wl-border bg-wl-surface-raised p-4">
-        <legend className="px-1 text-sm font-semibold text-wl-text">Note (optional)</legend>
-        <textarea {...register("note")} className={`${inputClass} min-h-20`} rows={2} />
-      </fieldset>
-
-      {serverError && (
-        <p role="alert" className={errorClass}>
-          {friendlyMutationErrorMessage(serverError)}
-        </p>
-      )}
-
-      <div>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={!values.source_assignment_id || !values.destination_location_id || !values.plant_count}
-        >
-          {values.plant_count > 0 ? `Transfer ${values.plant_count.toLocaleString()} plants` : "Transfer plants"}
-        </Button>
-      </div>
+            <fieldset className="grid grid-cols-1 gap-3 rounded-xl border border-wl-border bg-wl-surface-raised p-4 sm:grid-cols-2">
+              <legend className="px-1 text-sm font-semibold text-wl-text">Transfer date/time</legend>
+              <Field label="Date" error={errors.effective_date?.message}>
+                <input type="date" {...register("effective_date")} className={inputClass} />
+              </Field>
+              <Field label="Time" error={errors.effective_time_of_day?.message}>
+                <input type="time" {...register("effective_time_of_day")} className={inputClass} />
+              </Field>
+              <details className="sm:col-span-2">
+                <summary className="cursor-pointer text-sm font-medium text-wl-text">Note (optional)</summary>
+                <textarea {...register("note")} aria-label="Note" className={`${inputClass} mt-2 min-h-20`} rows={2} />
+              </details>
+            </fieldset>
+          </div>
+        }
+        rail={
+          <AllocationSummaryRail
+            context={
+              values.source_assignment_id &&
+              establishedBatch && (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Batch</dt>
+                    <dd className="font-medium text-wl-text">{establishedBatch.batch_code}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-wl-text-secondary">Crop / Variety</dt>
+                    <dd className="font-medium text-wl-text">
+                      {establishedBatch.crop_common_name} / {establishedBatch.variety_name}
+                    </dd>
+                  </div>
+                </dl>
+              )
+            }
+            stats={railStats}
+            hint={configureHint}
+            blockers={[...capacityBlockers, ...(serverError ? [friendlyMutationErrorMessage(serverError)] : [])]}
+          >
+            <StickyActionBar>
+              <Button type="submit" variant="primary" className="w-full" disabled={!canReview}>
+                Review Transfer
+              </Button>
+            </StickyActionBar>
+          </AllocationSummaryRail>
+        }
+      />
     </form>
   );
 }
