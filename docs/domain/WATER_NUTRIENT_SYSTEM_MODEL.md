@@ -509,6 +509,57 @@ exact interval, and `reservoir_ids`/`location_ids` in the Batch read are
 single-element lists, never an aggregate. The current Exposure page keeps
 working unchanged, with correct rows.
 
+## UX-OPS-001D additions (Water operator workspaces, N03)
+
+### Complete request identity (N03)
+
+The four operational write commands -- Water Measurement, Nutrient Mix,
+Reservoir Event, Water Delivery Event -- fingerprint every material path and
+request fact (`app/services/water_command_identity.py`): farm path scope,
+every header field including notes and every UOM, and for a Mix the ORDERED
+input list with every input field (Store item, component label, actual
+quantity, UOM, sequence number, note). Serialization is canonical JSON:
+`null` never equals `""`, timezone-aware instants are normalized to UTC,
+decimals are compared numerically, list order is preserved. A `null`
+"server now" timestamp stays `null` in the fingerprint, so retrying it
+replays the stored row. `client_command_id` is the lookup key, not part of
+the payload.
+
+- Same tenant + command id + same complete payload replays the original row
+  (no second row, child row, or audit event).
+- Any different material field, including another farm path, is a
+  definitive 4xx conflict (unchanged status codes: Measurement 422, the
+  other three 409) and creates nothing. The unique-index race path uses the
+  same comparison and now also returns that 4xx instead of re-raising.
+- End Delivery's D0 fingerprint is unchanged.
+
+**Legacy rows.** Stored fingerprints are never rewritten or backfilled, and
+no migration was added. A row whose stored fingerprint equals the
+PILOT-WATER-001A calculation for the incoming request replays only when
+every persisted header fact (and, for a Mix, every persisted input -- as a
+full-field multiset, since persisted inputs carry no insertion order beyond
+`sequence_number`) equals the request. A difference in a formerly omitted
+field conflicts.
+
+### Frontend
+
+The five operational routes (Overview, Measurements, Mixing, Delivery,
+Exposure) use URL-backed views, with one bounded work region and one
+guided rail. Every Water write freezes its target, full wire payload,
+display labels and command id when it is first submitted.
+A network/5xx outcome keeps the attempt locked and offers only a
+byte-identical Retry. The sub-nav, view tabs, selection and fields are
+locked, and there is no Cancel. A definitive 4xx releases the attempt for
+editing, and the next submission gets a new id. A multi-metric Measurement
+worksheet is one independent command per filled row. Rows are sent in a
+fixed order and the run stops at the first failure. A confirmed row is
+never re-sent, and after an uncertain row is retried only the still-unsent
+rows continue. Ongoing Deliveries expose the D0 End Delivery command
+(end + note only). The Exposure page reads only the D0 timeline envelopes:
+one row per interval, Batch gaps shown separately, open-source clipping
+stated. The legacy exposure client functions remain for the Batch detail
+panel.
+
 ## Out of scope (both tickets)
 
 Graphical plumbing diagrams, controller integration, sensor ingestion,

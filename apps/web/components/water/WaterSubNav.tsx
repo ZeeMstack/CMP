@@ -10,8 +10,9 @@ import { findActiveHref } from "@/components/AppShell";
  * Inventory's own `StoreSubNav` pattern (a horizontal in-page tab strip,
  * same longest-prefix active matching via `findActiveHref`) scaled from two
  * destinations to six. Rendered on every Water route so there is always a
- * way to every other view. */
-export function WaterSubNav({ farmId }: { farmId: string }) {
+ * way to every other view. `locked` (UX-OPS-001D, optional, default
+ * false) holds navigation while this page owns an unresolved command. */
+export function WaterSubNav({ farmId, locked = false }: { farmId: string; locked?: boolean }) {
   const pathname = usePathname();
   const tabs = [
     { label: "Overview", href: `/farms/${farmId}/water` },
@@ -24,9 +25,23 @@ export function WaterSubNav({ farmId }: { farmId: string }) {
   const activeHref = findActiveHref(pathname, tabs.map((t) => t.href));
 
   return (
-    <nav aria-label="Water & Nutrients" className="mb-5 flex flex-wrap gap-4 border-b border-wl-border">
+    <nav aria-label="Water & Nutrients" className="mb-4 flex flex-wrap items-end gap-4 border-b border-wl-border">
       {tabs.map((tab) => {
         const active = tab.href === activeHref;
+        if (locked && !active) {
+          // UX-OPS-001D: an in-flight/unresolved Water command on this page
+          // must not be unmounted by leaving it -- the other views are shown
+          // but not navigable until Retry resolves it.
+          return (
+            <span
+              key={tab.href}
+              aria-disabled="true"
+              className="-mb-px cursor-not-allowed border-b-2 border-transparent px-1 pb-2 text-sm font-medium text-wl-text-tertiary"
+            >
+              {tab.label}
+            </span>
+          );
+        }
         return (
           <Link
             key={tab.href}
@@ -40,6 +55,11 @@ export function WaterSubNav({ farmId }: { farmId: string }) {
           </Link>
         );
       })}
+      {locked && (
+        <span role="status" className="pb-2 text-xs text-wl-hold-fg">
+          Finish or retry the current command before leaving this view.
+        </span>
+      )}
     </nav>
   );
 }

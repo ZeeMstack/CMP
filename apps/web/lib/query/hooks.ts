@@ -148,6 +148,8 @@ import type {
   NutrientMixCreate,
   ReservoirEventCreate,
   WaterDeliveryEventCreate,
+  WaterDeliveryEventEnd,
+  WaterDeliveryEventRead,
   EquipmentReadinessCurrentState,
   EquipmentReadinessNoteIn,
   EquipmentReadinessReportDamageIn,
@@ -4711,12 +4713,16 @@ export function useMeasurementsForFarm(
     enabled: Boolean(tenantId) && Boolean(farmId),
   });
 }
-export function useRecordMeasurement(farmId: string, samplingPointId: string) {
+/** UX-OPS-001D: the Sampling Point travels WITH each frozen command (never
+ * closed over from live form state), so a retried command always goes to
+ * the exact target it was frozen for. */
+export function useRecordMeasurement(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: WaterMeasurementCreate) => api.recordMeasurement(farmId, samplingPointId, payload),
-    onSuccess: () => {
+    mutationFn: ({ samplingPointId, payload }: { samplingPointId: string; payload: WaterMeasurementCreate }) =>
+      api.recordMeasurement(farmId, samplingPointId, payload),
+    onSuccess: (_data, { samplingPointId }) => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.measurements(tenantId, samplingPointId) });
       queryClient.invalidateQueries({
@@ -4870,12 +4876,14 @@ export function useMixInputs(mixId: string | undefined) {
     enabled: Boolean(tenantId) && Boolean(mixId),
   });
 }
-export function useRecordMix(farmId: string, reservoirId: string) {
+/** UX-OPS-001D: the Reservoir travels with each frozen command. */
+export function useRecordMix(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: NutrientMixCreate) => api.recordMix(farmId, reservoirId, payload),
-    onSuccess: () => {
+    mutationFn: ({ reservoirId, payload }: { reservoirId: string; payload: NutrientMixCreate }) =>
+      api.recordMix(farmId, reservoirId, payload),
+    onSuccess: (_data, { reservoirId }) => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.mixesForReservoir(tenantId, reservoirId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.mixesForFarm(tenantId, farmId) });
@@ -4903,12 +4911,14 @@ export function useReservoirEventsForFarm(farmId: string) {
     enabled: Boolean(tenantId) && Boolean(farmId),
   });
 }
-export function useRecordReservoirEvent(farmId: string, reservoirId: string) {
+/** UX-OPS-001D: the Reservoir travels with each frozen command. */
+export function useRecordReservoirEvent(farmId: string) {
   const tenantId = useSelectedTenantId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: ReservoirEventCreate) => api.recordReservoirEvent(farmId, reservoirId, payload),
-    onSuccess: () => {
+    mutationFn: ({ reservoirId, payload }: { reservoirId: string; payload: ReservoirEventCreate }) =>
+      api.recordReservoirEvent(farmId, reservoirId, payload),
+    onSuccess: (_data, { reservoirId }) => {
       if (!tenantId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.reservoirEvents(tenantId, reservoirId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.reservoirEventsForFarm(tenantId, farmId) });
@@ -4940,11 +4950,44 @@ export function useRecordDeliveryEvent(farmId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: WaterDeliveryEventCreate) => api.recordDeliveryEvent(farmId, payload),
-    onSuccess: (data) => {
-      if (!tenantId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForCircuit(tenantId, data.irrigation_circuit_id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForFarm(tenantId, farmId) });
-    },
+    onSuccess: (data) => invalidateDeliveryReads(queryClient, tenantId, farmId, data),
+  });
+}
+
+/** UX-OPS-001D: after a Delivery create or End Delivery the server response
+ * is authoritative for that row's detail; every farm/circuit delivery list
+ * and every exposure timeline on this farm (any anchor, any window) may now
+ * differ, so the whole timeline prefix is invalidated. */
+function invalidateDeliveryReads(
+  queryClient: ReturnType<typeof useQueryClient>,
+  tenantId: string | null | undefined,
+  farmId: string,
+  delivery: WaterDeliveryEventRead,
+) {
+  if (!tenantId) return;
+  queryClient.setQueryData(queryKeys.deliveryEvent(tenantId, farmId, delivery.id), delivery);
+  queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForCircuit(tenantId, delivery.irrigation_circuit_id) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.deliveryEventsForFarm(tenantId, farmId), exact: true });
+  queryClient.invalidateQueries({ queryKey: queryKeys.waterExposureTimelines(tenantId, farmId) });
+}
+
+export function useDeliveryEvent(farmId: string, deliveryId: string | undefined) {
+  const tenantId = useSelectedTenantId();
+  return useQuery({
+    queryKey: queryKeys.deliveryEvent(tenantId ?? "", farmId, deliveryId ?? ""),
+    queryFn: ({ signal }) => api.getDeliveryEvent(farmId, deliveryId as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(deliveryId),
+  });
+}
+
+export function useEndDeliveryEvent(farmId: string) {
+  const tenantId = useSelectedTenantId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ deliveryId, payload }: { deliveryId: string; payload: WaterDeliveryEventEnd }) =>
+      api.endDeliveryEvent(farmId, deliveryId, payload),
+    onSuccess: (data) => invalidateDeliveryReads(queryClient, tenantId, farmId, data),
   });
 }
 
@@ -4988,6 +5031,46 @@ export function useBatchWaterExposure(
     staleTime: STALE_DETAIL_MS,
     enabled: Boolean(tenantId) && Boolean(batchId) && Boolean(windowStart) && Boolean(windowEnd),
   });
+}
+
+/** UX-OPS-001D: exact D0 interval timelines. Enabled only for a chosen
+ * anchor and an explicit window (the caller validates start < end first;
+ * the backend 422 stays authoritative). */
+function useWaterExposureTimelineQuery<T>(
+  farmId: string,
+  anchor: "batch" | "circuit" | "reservoir",
+  anchorId: string | undefined,
+  windowStart: string | undefined,
+  windowEnd: string | undefined,
+  fetcher: (anchorId: string, farmId: string, start: string, end: string, signal?: AbortSignal) => Promise<T>,
+) {
+  const tenantId = useSelectedTenantId();
+  const windowKey = `${windowStart ?? ""}|${windowEnd ?? ""}`;
+  return useQuery({
+    queryKey: queryKeys.waterExposureTimeline(tenantId ?? "", farmId, anchor, anchorId ?? "", windowKey),
+    queryFn: ({ signal }) => fetcher(anchorId as string, farmId, windowStart as string, windowEnd as string, signal),
+    staleTime: STALE_DETAIL_MS,
+    enabled: Boolean(tenantId) && Boolean(farmId) && Boolean(anchorId) && Boolean(windowStart) && Boolean(windowEnd),
+  });
+}
+export function useBatchWaterExposureTimeline(
+  farmId: string, batchId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  return useWaterExposureTimelineQuery(farmId, "batch", batchId, windowStart, windowEnd, api.getBatchWaterExposureTimeline);
+}
+export function useCircuitWaterExposureTimeline(
+  farmId: string, circuitId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  return useWaterExposureTimelineQuery(
+    farmId, "circuit", circuitId, windowStart, windowEnd, api.getCircuitWaterExposureTimeline,
+  );
+}
+export function useReservoirWaterExposureTimeline(
+  farmId: string, reservoirId: string | undefined, windowStart: string | undefined, windowEnd: string | undefined,
+) {
+  return useWaterExposureTimelineQuery(
+    farmId, "reservoir", reservoirId, windowStart, windowEnd, api.getReservoirWaterExposureTimeline,
+  );
 }
 
 // --- Today on the Farm: Water Attention ---------------------------------------------------

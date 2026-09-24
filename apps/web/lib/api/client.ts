@@ -2904,6 +2904,13 @@ export type WaterDeliveryEventRead = components["schemas"]["WaterDeliveryEventRe
 export type ExposedPlacementRead = components["schemas"]["ExposedPlacementRead"];
 export type BatchWaterExposureRead = components["schemas"]["BatchWaterExposureRead"];
 export type WaterAttentionItem = components["schemas"]["WaterAttentionItem"];
+// UX-OPS-001D: the already-deployed UX-OPS-001D0 contracts (End Delivery +
+// exact exposure timelines) -- no OpenAPI change, only manual exports.
+export type WaterDeliveryEventEnd = components["schemas"]["WaterDeliveryEventEnd"];
+export type BatchWaterExposureTimelineRead = components["schemas"]["BatchWaterExposureTimelineRead"];
+export type WaterExposureTimelineRead = components["schemas"]["WaterExposureTimelineRead"];
+export type WaterExposureIntervalRead = components["schemas"]["WaterExposureIntervalRead"];
+export type WaterExposureGapRead = components["schemas"]["WaterExposureGapRead"];
 
 // --- Water topology: Water Sources ------------------------------------------------
 
@@ -3177,6 +3184,20 @@ export function listDeliveryEventsForCircuit(
 export function listDeliveryEventsForFarm(farmId: string, signal?: AbortSignal): Promise<WaterDeliveryEventRead[]> {
   return getJson<WaterDeliveryEventRead[]>(`/farms/${farmId}/water-delivery-events`, signal);
 }
+/** UX-OPS-001D0 resolved detail read (`effective_end` = original ?? End
+ * Delivery end ?? null). */
+export function getDeliveryEvent(
+  farmId: string, deliveryId: string, signal?: AbortSignal,
+): Promise<WaterDeliveryEventRead> {
+  return getJson<WaterDeliveryEventRead>(`/farms/${farmId}/water-delivery-events/${deliveryId}`, signal);
+}
+/** UX-OPS-001D0 End Delivery command: appends one immutable end fact
+ * (`effective_end`, optional `note`) -- never revises the original row. */
+export function endDeliveryEvent(
+  farmId: string, deliveryId: string, payload: WaterDeliveryEventEnd, signal?: AbortSignal,
+): Promise<WaterDeliveryEventRead> {
+  return postJson<WaterDeliveryEventRead>(`/farms/${farmId}/water-delivery-events/${deliveryId}/end`, payload, signal);
+}
 
 // --- Crop Water Exposure -----------------------------------------------------------------
 
@@ -3199,6 +3220,34 @@ export function getBatchWaterExposure(
 ): Promise<BatchWaterExposureRead[]> {
   const query = new URLSearchParams({ farm_id: farmId, window_start: windowStart, window_end: windowEnd });
   return getJson<BatchWaterExposureRead[]>(`/crop-batches/${batchId}/water-exposure?${query.toString()}`, signal);
+}
+
+// UX-OPS-001D0 exact interval timelines (half-open [start, end)). The legacy
+// functions above stay for their other consumers.
+function exposureWindowQuery(farmId: string, windowStart: string, windowEnd: string): string {
+  return new URLSearchParams({ farm_id: farmId, window_start: windowStart, window_end: windowEnd }).toString();
+}
+export function getBatchWaterExposureTimeline(
+  batchId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<BatchWaterExposureTimelineRead> {
+  return getJson<BatchWaterExposureTimelineRead>(
+    `/crop-batches/${batchId}/water-exposure-timeline?${exposureWindowQuery(farmId, windowStart, windowEnd)}`, signal,
+  );
+}
+export function getCircuitWaterExposureTimeline(
+  circuitId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<WaterExposureTimelineRead> {
+  return getJson<WaterExposureTimelineRead>(
+    `/irrigation-circuits/${circuitId}/water-exposure-timeline?${exposureWindowQuery(farmId, windowStart, windowEnd)}`,
+    signal,
+  );
+}
+export function getReservoirWaterExposureTimeline(
+  reservoirId: string, farmId: string, windowStart: string, windowEnd: string, signal?: AbortSignal,
+): Promise<WaterExposureTimelineRead> {
+  return getJson<WaterExposureTimelineRead>(
+    `/reservoirs/${reservoirId}/water-exposure-timeline?${exposureWindowQuery(farmId, windowStart, windowEnd)}`, signal,
+  );
 }
 
 // --- Today on the Farm: Water Attention ---------------------------------------------------

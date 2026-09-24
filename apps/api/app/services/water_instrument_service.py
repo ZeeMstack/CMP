@@ -21,6 +21,7 @@ from app.models.instrument_calibration_event import InstrumentCalibrationEvent
 from app.models.sampling_point import SamplingPoint
 from app.models.water_instrument import WaterInstrument
 from app.models.water_measurement import CANONICAL_UNIT_BY_METRIC
+from app.services import water_command_identity
 from app.services.audit import append_audit_event
 from app.services.errors import (
     AssetNotFoundError,
@@ -230,14 +231,46 @@ def record_measurement(
 
     from app.models.water_measurement import WaterMeasurement
 
-    fingerprint = _fingerprint(tenant_id, sampling_point_id, metric, value, unit, effective_at, water_instrument_id)
+    # UX-OPS-001D (N03): every material fact, farm scope included.
+    fingerprint = water_command_identity.complete_fingerprint(
+        "water_measurement.record",
+        {
+            "farm_id": water_command_identity.canonical_uuid(farm_id),
+            "sampling_point_id": water_command_identity.canonical_uuid(sampling_point_id),
+            "metric": metric,
+            "value": water_command_identity.canonical_decimal(value),
+            "unit": unit,
+            "effective_at": water_command_identity.canonical_instant(effective_at),
+            "water_instrument_id": water_command_identity.canonical_uuid(water_instrument_id),
+            "notes": notes,
+        },
+    )
+    legacy = water_command_identity.legacy_fingerprint(
+        tenant_id, sampling_point_id, metric, value, unit, effective_at, water_instrument_id
+    )
+
+    def is_replay(row: WaterMeasurement) -> bool:
+        return water_command_identity.is_replay(
+            stored_fingerprint=row.request_fingerprint, complete=fingerprint, legacy=legacy,
+            persisted_facts_match=lambda: (
+                row.farm_id == farm_id
+                and row.sampling_point_id == sampling_point_id
+                and row.metric == metric
+                and water_command_identity.decimals_equal(row.value, value)
+                and row.unit == unit
+                and water_command_identity.effective_time_matches(row.effective_at, effective_at)
+                and row.water_instrument_id == water_instrument_id
+                and row.notes == notes
+            ),
+        )
+
     existing = db.execute(
         select(WaterMeasurement).where(
             WaterMeasurement.tenant_id == tenant_id, WaterMeasurement.client_command_id == client_command_id
         )
     ).scalar_one_or_none()
     if existing is not None:
-        if existing.request_fingerprint == fingerprint:
+        if is_replay(existing):
             return existing
         raise WaterMeasurementValidationError(f"client_command_id {client_command_id} reused with a different payload")
 
@@ -263,8 +296,12 @@ def record_measurement(
                     WaterMeasurement.tenant_id == tenant_id, WaterMeasurement.client_command_id == client_command_id
                 )
             ).scalar_one_or_none()
-            if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
+            if replay is not None:
+                if is_replay(replay):
+                    return replay
+                raise WaterMeasurementValidationError(
+                    f"client_command_id {client_command_id} reused with a different payload"
+                ) from exc
         raise
 
     append_audit_event(

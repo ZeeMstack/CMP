@@ -50,3 +50,14 @@ describe("WaterSubNav (PILOT-WATER-001B navigation)", () => {
     expect(within(nav()).getByRole("link", { name: "Exposure" })).toHaveAttribute("href", "/farms/farm-1/water/exposure");
   });
 });
+
+describe("WaterSubNav unresolved-command lock (UX-OPS-001D)", () => {
+  it("keeps the active view but makes every other view non-navigable while locked, and says why", () => {
+    currentPathname = "/farms/farm-1/water/delivery";
+    render(<WaterSubNav farmId="farm-1" locked />);
+    const links = within(nav()).getAllByRole("link");
+    expect(links.map((l) => l.textContent)).toEqual(["Delivery"]);
+    expect(within(nav()).getByText("Mixing")).toHaveAttribute("aria-disabled", "true");
+    expect(within(nav()).getByRole("status")).toHaveTextContent(/retry the current command/i);
+  });
+});

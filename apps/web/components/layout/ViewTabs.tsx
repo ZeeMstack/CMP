@@ -16,10 +16,15 @@ export function ViewTabs<V extends string>({
   items,
   active,
   onChange,
+  disabled = false,
 }: {
   items: readonly ViewTabItem<V>[];
   active: V;
   onChange: (value: V) => void;
+  /** UX-OPS-001D: optional, default `false` (every existing caller is
+   * unchanged). `true` while a command attempt on this screen is in flight
+   * or unresolved, so switching view can never unmount/replace it. */
+  disabled?: boolean;
 }) {
   return (
     <div role="tablist" aria-label="Work view" className="flex flex-wrap gap-1 border-b border-wl-border">
@@ -31,11 +36,12 @@ export function ViewTabs<V extends string>({
             type="button"
             role="tab"
             aria-selected={isActive}
+            disabled={disabled && !isActive}
             onClick={() => onChange(item.value)}
             className={`flex min-h-11 items-center gap-1.5 rounded-t-lg border-b-2 px-3 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wl-focus ${
               isActive
                 ? "border-wl-brand text-wl-text"
-                : "border-transparent text-wl-text-secondary hover:text-wl-text"
+                : "border-transparent text-wl-text-secondary hover:text-wl-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-wl-text-secondary"
             }`}
           >
             {item.label}

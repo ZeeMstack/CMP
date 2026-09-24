@@ -102,3 +102,22 @@ describe("same tenant, different sub-ids still produce distinct keys (no regress
     );
   });
 });
+
+describe("UX-OPS-001D Water D0 keys", () => {
+  it("delivery detail and exposure timelines are tenant- and farm-scoped", () => {
+    expect(queryKeys.deliveryEvent(TENANT_A, FARM_ID, "d")).not.toEqual(queryKeys.deliveryEvent(TENANT_B, FARM_ID, "d"));
+    expect(queryKeys.waterExposureTimeline(TENANT_A, "farm-a", "batch", BATCH_ID, "w")).not.toEqual(
+      queryKeys.waterExposureTimeline(TENANT_A, "farm-b", "batch", BATCH_ID, "w"),
+    );
+  });
+
+  it("each explicit window and anchor kind is its own cache entry, all under one farm prefix", () => {
+    const a = queryKeys.waterExposureTimeline(TENANT_A, FARM_ID, "circuit", "x", "2026-09-01|2026-09-02");
+    const b = queryKeys.waterExposureTimeline(TENANT_A, FARM_ID, "circuit", "x", "2026-09-01|2026-09-03");
+    const c = queryKeys.waterExposureTimeline(TENANT_A, FARM_ID, "reservoir", "x", "2026-09-01|2026-09-02");
+    expect(a).not.toEqual(b);
+    expect(a).not.toEqual(c);
+    const prefix = queryKeys.waterExposureTimelines(TENANT_A, FARM_ID);
+    for (const key of [a, b, c]) expect(key.slice(0, prefix.length)).toEqual([...prefix]);
+  });
+});

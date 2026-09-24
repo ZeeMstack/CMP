@@ -21,7 +21,7 @@ from app.models.reservoir_event import ReservoirEvent
 from app.models.unit_of_measure import UnitOfMeasure
 from app.models.water_delivery_end_event import WaterDeliveryEndEvent
 from app.models.water_delivery_event import WaterDeliveryEvent
-from app.services import nutrient_mix_service, water_topology_service
+from app.services import nutrient_mix_service, water_command_identity, water_topology_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     InventoryItemNotFoundError,
@@ -34,10 +34,6 @@ from app.services.errors import (
     WaterDeliveryEventNotFoundError,
     WaterDeliveryEventValidationError,
 )
-
-
-def _fingerprint(*parts: object) -> str:
-    return hashlib.sha256("|".join("" if p is None else str(p) for p in parts).encode("utf-8")).hexdigest()
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -81,12 +77,45 @@ def record_reservoir_event(
         if item is None:
             raise InventoryItemNotFoundError(str(inventory_item_id))
 
-    fingerprint = _fingerprint(tenant_id, reservoir_id, event_type, effective_at, quantity, quantity_uom_id, inventory_item_id)
+    # UX-OPS-001D (N03): every material fact, farm scope included.
+    ident = water_command_identity
+    fingerprint = ident.complete_fingerprint(
+        "reservoir_event.record",
+        {
+            "farm_id": ident.canonical_uuid(farm_id),
+            "reservoir_id": ident.canonical_uuid(reservoir_id),
+            "event_type": event_type,
+            "effective_at": ident.canonical_instant(effective_at),
+            "quantity": ident.canonical_decimal(quantity),
+            "quantity_uom_id": ident.canonical_uuid(quantity_uom_id),
+            "inventory_item_id": ident.canonical_uuid(inventory_item_id),
+            "notes": notes,
+        },
+    )
+    legacy = ident.legacy_fingerprint(
+        tenant_id, reservoir_id, event_type, effective_at, quantity, quantity_uom_id, inventory_item_id
+    )
+
+    def is_replay(row: ReservoirEvent) -> bool:
+        return ident.is_replay(
+            stored_fingerprint=row.request_fingerprint, complete=fingerprint, legacy=legacy,
+            persisted_facts_match=lambda: (
+                row.farm_id == farm_id
+                and row.reservoir_id == reservoir_id
+                and row.event_type == event_type
+                and ident.effective_time_matches(row.effective_at, effective_at)
+                and ident.decimals_equal(row.quantity, quantity)
+                and row.quantity_uom_id == quantity_uom_id
+                and row.inventory_item_id == inventory_item_id
+                and row.notes == notes
+            ),
+        )
+
     existing = db.execute(
         select(ReservoirEvent).where(ReservoirEvent.tenant_id == tenant_id, ReservoirEvent.client_command_id == client_command_id)
     ).scalar_one_or_none()
     if existing is not None:
-        if existing.request_fingerprint == fingerprint:
+        if is_replay(existing):
             return existing
         raise ReservoirEventValidationError(f"client_command_id {client_command_id} reused with a different payload")
 
@@ -112,8 +141,12 @@ def record_reservoir_event(
                     ReservoirEvent.tenant_id == tenant_id, ReservoirEvent.client_command_id == client_command_id
                 )
             ).scalar_one_or_none()
-            if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
+            if replay is not None:
+                if is_replay(replay):
+                    return replay
+                raise ReservoirEventValidationError(
+                    f"client_command_id {client_command_id} reused with a different payload"
+                ) from exc
         raise
 
     append_audit_event(
@@ -158,17 +191,52 @@ def record_delivery_event(
     if nutrient_mix_id is not None:
         nutrient_mix_service.get_mix(db, tenant_id=tenant_id, nutrient_mix_id=nutrient_mix_id)
 
-    fingerprint = _fingerprint(
+    # UX-OPS-001D (N03): every material fact, farm scope included. The
+    # original row's own `effective_end` (never the resolved End Delivery
+    # end) is the fact this command recorded.
+    ident = water_command_identity
+    fingerprint = ident.complete_fingerprint(
+        "water_delivery_event.record",
+        {
+            "farm_id": ident.canonical_uuid(farm_id),
+            "reservoir_id": ident.canonical_uuid(reservoir_id),
+            "irrigation_circuit_id": ident.canonical_uuid(irrigation_circuit_id),
+            "effective_start": ident.canonical_instant(effective_start),
+            "effective_end": ident.canonical_instant(effective_end),
+            "delivered_volume": ident.canonical_decimal(delivered_volume),
+            "delivered_volume_uom_id": ident.canonical_uuid(delivered_volume_uom_id),
+            "nutrient_mix_id": ident.canonical_uuid(nutrient_mix_id),
+            "notes": notes,
+        },
+    )
+    legacy = ident.legacy_fingerprint(
         tenant_id, reservoir_id, irrigation_circuit_id, effective_start, effective_end, delivered_volume,
         nutrient_mix_id,
     )
+
+    def is_replay(row: WaterDeliveryEvent) -> bool:
+        return ident.is_replay(
+            stored_fingerprint=row.request_fingerprint, complete=fingerprint, legacy=legacy,
+            persisted_facts_match=lambda: (
+                row.farm_id == farm_id
+                and row.reservoir_id == reservoir_id
+                and row.irrigation_circuit_id == irrigation_circuit_id
+                and ident.effective_time_matches(row.effective_start, effective_start)
+                and ident.instants_equal(row.effective_end, effective_end)
+                and ident.decimals_equal(row.delivered_volume, delivered_volume)
+                and row.delivered_volume_uom_id == delivered_volume_uom_id
+                and row.nutrient_mix_id == nutrient_mix_id
+                and row.notes == notes
+            ),
+        )
+
     existing = db.execute(
         select(WaterDeliveryEvent).where(
             WaterDeliveryEvent.tenant_id == tenant_id, WaterDeliveryEvent.client_command_id == client_command_id
         )
     ).scalar_one_or_none()
     if existing is not None:
-        if existing.request_fingerprint == fingerprint:
+        if is_replay(existing):
             return existing
         raise WaterDeliveryEventValidationError(f"client_command_id {client_command_id} reused with a different payload")
 
@@ -199,8 +267,12 @@ def record_delivery_event(
                     WaterDeliveryEvent.client_command_id == client_command_id,
                 )
             ).scalar_one_or_none()
-            if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
+            if replay is not None:
+                if is_replay(replay):
+                    return replay
+                raise WaterDeliveryEventValidationError(
+                    f"client_command_id {client_command_id} reused with a different payload"
+                ) from exc
         raise
 
     append_audit_event(

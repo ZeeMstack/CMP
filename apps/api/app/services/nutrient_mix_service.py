@@ -7,7 +7,6 @@ NEVER touches Store inventory existence (section 15) -- this module never
 imports or references `inventory_existence_ledger_service`/
 `inventory_material_event_service`."""
 
-import hashlib
 import uuid
 from datetime import datetime, timezone
 
@@ -19,7 +18,7 @@ from app.models.inventory_item import InventoryItem
 from app.models.nutrient_mix import NutrientMix
 from app.models.nutrient_mix_input import NutrientMixInput
 from app.models.unit_of_measure import UnitOfMeasure
-from app.services import water_topology_service
+from app.services import water_command_identity, water_topology_service
 from app.services.audit import append_audit_event
 from app.services.errors import (
     InventoryItemNotFoundError,
@@ -28,10 +27,6 @@ from app.services.errors import (
     UnitOfMeasureKindMismatchError,
     UnitOfMeasureNotFoundError,
 )
-
-
-def _fingerprint(*parts: object) -> str:
-    return hashlib.sha256("|".join("" if p is None else str(p) for p in parts).encode("utf-8")).hexdigest()
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
@@ -79,15 +74,105 @@ def record_mix(
     if not inputs:
         raise NutrientMixValidationError("a NutrientMix must record at least one actual input")
 
-    fingerprint = _fingerprint(
+    # UX-OPS-001D (N03): every material header fact, farm scope included,
+    # plus the ORDERED input list with every input field.
+    ident = water_command_identity
+    fingerprint = ident.complete_fingerprint(
+        "nutrient_mix.record",
+        {
+            "farm_id": ident.canonical_uuid(farm_id),
+            "reservoir_id": ident.canonical_uuid(reservoir_id),
+            "nutrient_recipe_version_id": ident.canonical_uuid(nutrient_recipe_version_id),
+            "effective_at": ident.canonical_instant(effective_at),
+            "target_volume": ident.canonical_decimal(target_volume),
+            "target_volume_uom_id": ident.canonical_uuid(target_volume_uom_id),
+            "actual_volume": ident.canonical_decimal(actual_volume),
+            "actual_volume_uom_id": ident.canonical_uuid(actual_volume_uom_id),
+            "notes": notes,
+            "inputs": [
+                {
+                    "inventory_item_id": ident.canonical_uuid(i.get("inventory_item_id")),
+                    "component_label": i["component_label"],
+                    "actual_quantity": ident.canonical_decimal(i["actual_quantity"]),
+                    "actual_quantity_uom_id": ident.canonical_uuid(i["actual_quantity_uom_id"]),
+                    "sequence_number": i.get("sequence_number"),
+                    "note": i.get("note"),
+                }
+                for i in inputs
+            ],
+        },
+    )
+    legacy = ident.legacy_fingerprint(
         tenant_id, reservoir_id, nutrient_recipe_version_id, effective_at, target_volume, actual_volume,
         tuple((i.get("inventory_item_id"), i["component_label"], i["actual_quantity"]) for i in inputs),
     )
+
+    def input_facts(entries) -> list[tuple]:
+        # Persisted inputs carry no insertion order beyond `sequence_number`,
+        # so the legacy comparison is a full-field multiset match (the
+        # legacy fingerprint has already proven the ordered item/label/
+        # quantity sequence).
+        return sorted(
+            (
+                str(e["inventory_item_id"]) if e["inventory_item_id"] is not None else "",
+                e["component_label"],
+                ident.canonical_decimal(e["actual_quantity"]),
+                str(e["actual_quantity_uom_id"]),
+                -1 if e["sequence_number"] is None else e["sequence_number"],
+                e["sequence_number"] is None,
+                "" if e["note"] is None else e["note"],
+                e["note"] is None,
+            )
+            for e in entries
+        )
+
+    def persisted_facts_match(row: NutrientMix) -> bool:
+        if not (
+            row.farm_id == farm_id
+            and row.reservoir_id == reservoir_id
+            and row.nutrient_recipe_version_id == nutrient_recipe_version_id
+            and ident.effective_time_matches(row.effective_at, effective_at)
+            and ident.decimals_equal(row.target_volume, target_volume)
+            and row.target_volume_uom_id == target_volume_uom_id
+            and ident.decimals_equal(row.actual_volume, actual_volume)
+            and row.actual_volume_uom_id == actual_volume_uom_id
+            and row.notes == notes
+        ):
+            return False
+        persisted_inputs = db.execute(
+            select(NutrientMixInput).where(
+                NutrientMixInput.tenant_id == tenant_id, NutrientMixInput.nutrient_mix_id == row.id
+            )
+        ).scalars()
+        persisted = [
+            {
+                "inventory_item_id": p.inventory_item_id, "component_label": p.component_label,
+                "actual_quantity": p.actual_quantity, "actual_quantity_uom_id": p.actual_quantity_uom_id,
+                "sequence_number": p.sequence_number, "note": p.note,
+            }
+            for p in persisted_inputs
+        ]
+        requested = [
+            {
+                "inventory_item_id": i.get("inventory_item_id"), "component_label": i["component_label"],
+                "actual_quantity": i["actual_quantity"], "actual_quantity_uom_id": i["actual_quantity_uom_id"],
+                "sequence_number": i.get("sequence_number"), "note": i.get("note"),
+            }
+            for i in inputs
+        ]
+        return input_facts(persisted) == input_facts(requested)
+
+    def is_replay(row: NutrientMix) -> bool:
+        return ident.is_replay(
+            stored_fingerprint=row.request_fingerprint, complete=fingerprint, legacy=legacy,
+            persisted_facts_match=lambda: persisted_facts_match(row),
+        )
+
     existing = db.execute(
         select(NutrientMix).where(NutrientMix.tenant_id == tenant_id, NutrientMix.client_command_id == client_command_id)
     ).scalar_one_or_none()
     if existing is not None:
-        if existing.request_fingerprint == fingerprint:
+        if is_replay(existing):
             return existing
         raise NutrientMixValidationError(f"client_command_id {client_command_id} reused with a different payload")
 
@@ -114,8 +199,12 @@ def record_mix(
                     NutrientMix.tenant_id == tenant_id, NutrientMix.client_command_id == client_command_id
                 )
             ).scalar_one_or_none()
-            if replay is not None and replay.request_fingerprint == fingerprint:
-                return replay
+            if replay is not None:
+                if is_replay(replay):
+                    return replay
+                raise NutrientMixValidationError(
+                    f"client_command_id {client_command_id} reused with a different payload"
+                ) from exc
         raise
 
     for entry in inputs:

@@ -443,6 +443,17 @@ export const queryKeys = {
   batchWaterExposure: (tenantId: string, farmId: string, batchId: string, windowKey: string) =>
     ["tenant", tenantId, "farms", farmId, "crop-batches", batchId, "water-exposure", windowKey] as const,
   waterAttention: (tenantId: string, farmId: string) => ["tenant", tenantId, "farms", farmId, "water-attention"] as const,
+  // UX-OPS-001D: D0 contracts. Delivery detail is farm-scoped (its route
+  // is); every timeline lives under ONE farm prefix so a Delivery create/
+  // End Delivery invalidates all of them at once, while each anchor and
+  // explicit window remains its own cache entry.
+  deliveryEvent: (tenantId: string, farmId: string, deliveryId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-delivery-events", "detail", deliveryId] as const,
+  waterExposureTimelines: (tenantId: string, farmId: string) =>
+    ["tenant", tenantId, "farms", farmId, "water-exposure-timeline"] as const,
+  waterExposureTimeline: (
+    tenantId: string, farmId: string, anchor: "batch" | "circuit" | "reservoir", anchorId: string, windowKey: string,
+  ) => ["tenant", tenantId, "farms", farmId, "water-exposure-timeline", anchor, anchorId, windowKey] as const,
 
   // --- PILOT-ASSET-001: Equipment Readiness + Critical Equipment Incidents ---
   assetReadiness: (tenantId: string, farmId: string, assetId: string) =>

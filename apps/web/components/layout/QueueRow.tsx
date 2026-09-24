@@ -50,7 +50,7 @@ export function QueueRow({
             )}
             <span className="min-w-0 truncate">{title}</span>
           </span>
-          {context && <span className="truncate text-xs text-wl-text-secondary">{context}</span>}
+          {context && <span className="max-w-full truncate text-xs text-wl-text-secondary">{context}</span>}
         </button>
         {status && <div className="shrink-0">{status}</div>}
         {meta && <div className="shrink-0 text-xs text-wl-text-secondary">{meta}</div>}
