@@ -77,6 +77,7 @@ from app.models.irrigation_circuit import IrrigationCircuit
 from app.models.sampling_point import SamplingPoint
 from app.models.water_source import WaterSource
 from app.models.water_delivery_point import WaterDeliveryPoint
+from app.models.water_delivery_end_event import WaterDeliveryEndEvent
 from app.models.water_delivery_event import WaterDeliveryEvent
 from app.models.water_return_point import WaterReturnPoint
 from app.models.water_measurement import WaterMeasurement
@@ -183,6 +184,7 @@ __all__ = [
     "SamplingPoint",
     "WaterSource",
     "WaterDeliveryPoint",
+    "WaterDeliveryEndEvent",
     "WaterDeliveryEvent",
     "WaterReturnPoint",
     "WaterMeasurement",

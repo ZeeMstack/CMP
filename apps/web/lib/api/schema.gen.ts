@@ -5285,6 +5285,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/farms/{farm_id}/water-delivery-events/{water_delivery_event_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Delivery Event
+         * @description UX-OPS-001D0: end an ongoing delivery by appending an immutable end
+         *     event. Returns the delivery with its resolved `effective_end`. A replay
+         *     of the same command returns the original result.
+         */
+        post: operations["end_delivery_event_farms__farm_id__water_delivery_events__water_delivery_event_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/farms/{farm_id}/water-delivery-events/{water_delivery_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Delivery Event */
+        get: operations["get_delivery_event_farms__farm_id__water_delivery_events__water_delivery_event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/irrigation-circuits/{irrigation_circuit_id}/water-delivery-events": {
         parameters: {
             query?: never;
@@ -5362,6 +5401,57 @@ export interface paths {
         };
         /** Get Water Exposure History For Batch */
         get: operations["get_water_exposure_history_for_batch_crop_batches__batch_id__water_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/crop-batches/{batch_id}/water-exposure-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch Water Exposure Timeline */
+        get: operations["get_batch_water_exposure_timeline_crop_batches__batch_id__water_exposure_timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/irrigation-circuits/{irrigation_circuit_id}/water-exposure-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Circuit Water Exposure Timeline */
+        get: operations["get_circuit_water_exposure_timeline_irrigation_circuits__irrigation_circuit_id__water_exposure_timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reservoirs/{reservoir_id}/water-exposure-timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reservoir Water Exposure Timeline */
+        get: operations["get_reservoir_water_exposure_timeline_reservoirs__reservoir_id__water_exposure_timeline_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7457,6 +7547,55 @@ export interface components {
             location_ids: string[];
             /** Exposure Kind */
             exposure_kind: string;
+            /** Carrier Id */
+            carrier_id?: string | null;
+            /** Water Delivery Point Id */
+            water_delivery_point_id?: string | null;
+            /** Water Delivery Event Id */
+            water_delivery_event_id?: string | null;
+            /** Interval Start */
+            interval_start?: string | null;
+            /** Interval End */
+            interval_end?: string | null;
+            /**
+             * End Clipped To Window
+             * @default false
+             */
+            end_clipped_to_window: boolean;
+            /**
+             * Open Ended Sources
+             * @default []
+             */
+            open_ended_sources: string[];
+        };
+        /** BatchWaterExposureTimelineRead */
+        BatchWaterExposureTimelineRead: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Interval Convention */
+            interval_convention: string;
+            /** Intervals */
+            intervals: components["schemas"]["WaterExposureIntervalRead"][];
+            /** Gaps */
+            gaps: components["schemas"]["WaterExposureGapRead"][];
         };
         /** CalibrationEventCreate */
         CalibrationEventCreate: {
@@ -8979,6 +9118,22 @@ export interface components {
              * Format: date-time
              */
             overlap_end: string;
+            /** Reservoir Id */
+            reservoir_id?: string | null;
+            /** Water Delivery Point Id */
+            water_delivery_point_id?: string | null;
+            /** Water Delivery Event Id */
+            water_delivery_event_id?: string | null;
+            /**
+             * End Clipped To Window
+             * @default false
+             */
+            end_clipped_to_window: boolean;
+            /**
+             * Open Ended Sources
+             * @default []
+             */
+            open_ended_sources: string[];
         };
         /** FarmCreate */
         FarmCreate: {
@@ -19086,6 +19241,26 @@ export interface components {
              */
             client_command_id: string;
         };
+        /**
+         * WaterDeliveryEventEnd
+         * @description UX-OPS-001D0 End Delivery command. Operator-approved scope: records
+         *     only `effective_end` and an optional `note` -- never a final volume,
+         *     UOM, mix, reservoir, circuit, or start time.
+         */
+        WaterDeliveryEventEnd: {
+            /**
+             * Effective End
+             * Format: date-time
+             */
+            effective_end: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Client Command Id
+             * Format: uuid
+             */
+            client_command_id: string;
+        };
         /** WaterDeliveryEventRead */
         WaterDeliveryEventRead: {
             /**
@@ -19128,6 +19303,12 @@ export interface components {
             nutrient_mix_id: string | null;
             /** Notes */
             notes: string | null;
+            /** End Source */
+            end_source?: string | null;
+            /** Water Delivery End Event Id */
+            water_delivery_end_event_id?: string | null;
+            /** End Note */
+            end_note?: string | null;
         };
         /** WaterDeliveryPointCreate */
         WaterDeliveryPointCreate: {
@@ -19173,6 +19354,170 @@ export interface components {
             status: string;
             /** Notes */
             notes: string | null;
+        };
+        /**
+         * WaterExposureGapRead
+         * @description Time within a valid Batch assignment + Occupancy (inside the window)
+         *     that no complete Reservoir -> Circuit -> Delivery Point route covers.
+         *     Not an exposure kind.
+         */
+        WaterExposureGapRead: {
+            /** Reason */
+            reason: string;
+            /**
+             * Gap Start
+             * Format: date-time
+             */
+            gap_start: string;
+            /**
+             * Gap End
+             * Format: date-time
+             */
+            gap_end: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Occupancy Id
+             * Format: uuid
+             */
+            occupancy_id: string;
+            /** Start Clipped To Window */
+            start_clipped_to_window: boolean;
+            /** End Clipped To Window */
+            end_clipped_to_window: boolean;
+            /** Open Ended Sources */
+            open_ended_sources: string[];
+        };
+        /**
+         * WaterExposureIntervalRead
+         * @description One exact exposure interval on one Reservoir -> Circuit -> Delivery
+         *     Point route for one Batch/Carrier/Location placement. For
+         *     `RECORDED_DELIVERY_EXPOSURE`, `water_delivery_event_id` names the
+         *     delivery; for `CONFIGURED_TOPOLOGY_EXPOSURE` it is null.
+         */
+        WaterExposureIntervalRead: {
+            /** Exposure Kind */
+            exposure_kind: string;
+            /**
+             * Interval Start
+             * Format: date-time
+             */
+            interval_start: string;
+            /**
+             * Interval End
+             * Format: date-time
+             */
+            interval_end: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Carrier Id
+             * Format: uuid
+             */
+            carrier_id: string;
+            /**
+             * Location Id
+             * Format: uuid
+             */
+            location_id: string;
+            /**
+             * Reservoir Id
+             * Format: uuid
+             */
+            reservoir_id: string;
+            /**
+             * Irrigation Circuit Id
+             * Format: uuid
+             */
+            irrigation_circuit_id: string;
+            /**
+             * Water Delivery Point Id
+             * Format: uuid
+             */
+            water_delivery_point_id: string;
+            /**
+             * Delivery Point Location Id
+             * Format: uuid
+             */
+            delivery_point_location_id: string;
+            /** Water Delivery Event Id */
+            water_delivery_event_id: string | null;
+            /**
+             * Batch Carrier Assignment Id
+             * Format: uuid
+             */
+            batch_carrier_assignment_id: string;
+            /**
+             * Occupancy Id
+             * Format: uuid
+             */
+            occupancy_id: string;
+            /**
+             * Reservoir Circuit Link Id
+             * Format: uuid
+             */
+            reservoir_circuit_link_id: string;
+            /**
+             * Circuit Delivery Point Link Id
+             * Format: uuid
+             */
+            circuit_delivery_point_link_id: string;
+            /** Start Clipped To Window */
+            start_clipped_to_window: boolean;
+            /** End Clipped To Window */
+            end_clipped_to_window: boolean;
+            /** Open Ended Sources */
+            open_ended_sources: string[];
+        };
+        /** WaterExposureTimelineRead */
+        WaterExposureTimelineRead: {
+            /** Anchor Type */
+            anchor_type: string;
+            /**
+             * Anchor Id
+             * Format: uuid
+             */
+            anchor_id: string;
+            /**
+             * Farm Id
+             * Format: uuid
+             */
+            farm_id: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Interval Convention */
+            interval_convention: string;
+            /** Intervals */
+            intervals: components["schemas"]["WaterExposureIntervalRead"][];
         };
         /** WaterInstrumentCreate */
         WaterInstrumentCreate: {
@@ -33954,6 +34299,84 @@ export interface operations {
             };
         };
     };
+    end_delivery_event_farms__farm_id__water_delivery_events__water_delivery_event_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                water_delivery_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaterDeliveryEventEnd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_delivery_event_farms__farm_id__water_delivery_events__water_delivery_event_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                farm_id: string;
+                water_delivery_event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterDeliveryEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_delivery_events_irrigation_circuits__irrigation_circuit_id__water_delivery_events_get: {
         parameters: {
             query?: never;
@@ -34030,7 +34453,9 @@ export interface operations {
         parameters: {
             query: {
                 farm_id: string;
+                /** @description Inclusive, timezone-aware. */
                 window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
                 window_end: string;
             };
             header?: {
@@ -34070,7 +34495,9 @@ export interface operations {
         parameters: {
             query: {
                 farm_id: string;
+                /** @description Inclusive, timezone-aware. */
                 window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
                 window_end: string;
             };
             header?: {
@@ -34110,7 +34537,9 @@ export interface operations {
         parameters: {
             query: {
                 farm_id: string;
+                /** @description Inclusive, timezone-aware. */
                 window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
                 window_end: string;
             };
             header?: {
@@ -34133,6 +34562,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchWaterExposureRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_water_exposure_timeline_crop_batches__batch_id__water_exposure_timeline_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                /** @description Inclusive, timezone-aware. */
+                window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchWaterExposureTimelineRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_circuit_water_exposure_timeline_irrigation_circuits__irrigation_circuit_id__water_exposure_timeline_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                /** @description Inclusive, timezone-aware. */
+                window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                irrigation_circuit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterExposureTimelineRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reservoir_water_exposure_timeline_reservoirs__reservoir_id__water_exposure_timeline_get: {
+        parameters: {
+            query: {
+                farm_id: string;
+                /** @description Inclusive, timezone-aware. */
+                window_start: string;
+                /** @description Exclusive, timezone-aware; must be after window_start. */
+                window_end: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-CMP-Tenant-Id"?: string | null;
+                "X-Dev-Tenant-Id"?: string | null;
+                "X-Dev-User-Id"?: string | null;
+            };
+            path: {
+                reservoir_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaterExposureTimelineRead"];
                 };
             };
             /** @description Validation Error */

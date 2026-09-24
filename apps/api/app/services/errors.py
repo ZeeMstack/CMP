@@ -2650,6 +2650,33 @@ class WaterDeliveryEventValidationError(DomainError):
     pass
 
 
+class WaterDeliveryEventNotFoundError(DomainError):
+    """UX-OPS-001D0: raised for a missing, cross-tenant, or cross-farm
+    delivery alike, so existence never leaks across a scope boundary."""
+
+    pass
+
+
+class WaterDeliveryEventAlreadyEndedError(DomainError):
+    """UX-OPS-001D0: the delivery already has an authoritative end -- either
+    recorded at creation or by an earlier end event."""
+
+    pass
+
+
+class WaterDeliveryEndCommandConflictError(DomainError):
+    """UX-OPS-001D0: `client_command_id` reused with a different payload."""
+
+    pass
+
+
+class WaterDeliveryEndValidationError(DomainError):
+    """UX-OPS-001D0: `effective_end` before the delivery's start, or in the
+    future."""
+
+    pass
+
+
 class UnitOfMeasureKindMismatchError(DomainError):
     """Raised when a caller-supplied UOM id does not carry the physical
     `quantity_kind` (volume) the field requires -- e.g. passing `EA` for a

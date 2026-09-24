@@ -81,3 +81,26 @@ class WaterDeliveryEventRead(BaseModel):
     delivered_volume_uom_id: uuid.UUID | None
     nutrient_mix_id: uuid.UUID | None
     notes: str | None
+    # UX-OPS-001D0: `effective_end` above is the RESOLVED domain end --
+    # the original end recorded at creation, otherwise the end recorded by
+    # the End Delivery command, otherwise NULL (still ongoing). These
+    # additive trace fields say which fact supplied it; clients never have
+    # to reconstruct the interval themselves.
+    end_source: str | None = None  # "RECORDED_AT_CREATION" | "END_EVENT" | None
+    water_delivery_end_event_id: uuid.UUID | None = None
+    end_note: str | None = None
+
+
+class WaterDeliveryEventEnd(BaseModel):
+    """UX-OPS-001D0 End Delivery command. Operator-approved scope: records
+    only `effective_end` and an optional `note` -- never a final volume,
+    UOM, mix, reservoir, circuit, or start time."""
+
+    effective_end: datetime
+    note: str | None = None
+    client_command_id: uuid.UUID
+
+    @field_validator("effective_end")
+    @classmethod
+    def validate_effective_end(cls, v: datetime) -> datetime:
+        return _require_tz_aware(v)

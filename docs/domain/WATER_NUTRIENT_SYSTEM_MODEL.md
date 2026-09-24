@@ -55,9 +55,11 @@ These are never re-derived or silently relaxed by any command in this domain:
   never writes to `inventory_existence_ledger_entries` or any other Store
   accounting table.
 - **Topology Exposure != Confirmed Actual Exposure** unless backed by a
-  real, overlapping `WaterDeliveryEvent` (in which case it is labelled
-  `RECORDED_DELIVERY_EXPOSURE`, still never "confirmed" in the sense of a
-  disease/quality finding — that remains a separate domain, e.g. `CropIssue`).
+  real, overlapping `WaterDeliveryEvent` on the same Reservoir and Circuit
+  (in which case exactly the overlapping interval — never the surrounding
+  time — is labelled `RECORDED_DELIVERY_EXPOSURE`, still never "confirmed"
+  in the sense of a disease/quality finding — that remains a separate
+  domain, e.g. `CropIssue`).
 
 ## Water topology
 
@@ -204,36 +206,71 @@ open-or-closed operating interval, never fabricated discrete pulses.
 `nutrient_mix_id` is optional context, never implying that recording a Mix
 caused a Delivery or vice versa.
 
+An ongoing delivery is ended only by the UX-OPS-001D0 End Delivery command,
+which appends a `water_delivery_end_events` row and never updates the
+original row. Every delivery read resolves the domain end as `original
+effective_end ?? end-event effective_end ?? NULL` (see "UX-OPS-001D0
+additions" below).
+
 ## Crop Water Exposure read model (`app/services/water_exposure_service.py`)
 
 Read-only. No table is written to; no audit event is appended for a read.
+Rebuilt by UX-OPS-001D0 as one exact interval engine shared by every read
+(the PILOT-WATER-001A version labelled the whole query window as recorded
+exposure whenever any delivery on the Circuit overlapped it, and aggregated
+reservoirs/Locations across non-overlapping evidence).
 
-- **Forward:** `get_water_exposure_history_for_batch` — given a Batch and
-  a time window, which Reservoir(s)/Circuit(s) potentially supplied water
-  to it.
-- **Reverse:** `get_potentially_exposed_placements_for_circuit` /
-  `..._for_reservoir` — given a Circuit/Reservoir and a time window, which
-  Batch Placements were potentially exposed.
+- **Forward:** a Batch and a time window → its exact exposure intervals, and
+  explicit gaps.
+- **Reverse:** a Circuit or Reservoir and a time window → the exact exposure
+  intervals of every Batch Placement it reached.
 
-Both directions intersect two independent histories that must each
-overlap the query window: `Occupancy` (which Location a carrier physically
-occupied) and `BatchCarrierAssignment` (which Batch that carrier was
-assigned to) — never assumed from either alone. A Circuit's eligible
-Location scope is its currently/historically mapped `WaterDeliveryPoint`
-Location(s), expanded to every descendant Location (a `WITH RECURSIVE`
-walk down `locations.parent_location_id`) — so a Circuit mapped to a whole
-Zone correctly includes every Table inside it, honestly, without
-fabricating narrower precision the topology mapping does not actually
-have (section 20).
+**Interval convention: half-open `[start, end)`.** Start is inclusive, end
+exclusive; touching intervals do not overlap; no zero-duration interval is
+ever emitted; `window_start < window_end` (both timezone-aware) is validated
+at the API boundary (422 otherwise). A source interval with no persisted end
+(an open Occupancy/Assignment/link, or an ongoing Delivery) is clipped to
+`window_end` in the response. The record then has `end_clipped_to_window`
+set and names the open sources in `open_ended_sources`. No end is ever
+fabricated or persisted. Every timeline response carries `interval_convention
+= "HALF_OPEN_START_INCLUSIVE_END_EXCLUSIVE"`.
+
+**Route.** One `reservoir_circuit_links` row joined to one
+`circuit_delivery_point_links` row on the same Circuit, active over their
+intersection. A route serves its Delivery Point's Location and every
+descendant Location (a `WITH RECURSIVE` walk down
+`locations.parent_location_id` — parentage is immutable, so the current tree
+is exact for any past window). A Circuit mapped to a whole Zone honestly
+includes every Table in it (section 20).
+
+**Placement.** A `BatchCarrierAssignment` and an `Occupancy` of the same
+Carrier, intersected — never assumed from either alone.
 
 Two distinct, explicitly labelled exposure kinds:
 
-- `CONFIGURED_TOPOLOGY_EXPOSURE` — the Location was within the Circuit's
-  configured scope during the window, regardless of whether a Delivery was
-  ever actually recorded.
-- `RECORDED_DELIVERY_EXPOSURE` — additionally, at least one real
-  `WaterDeliveryEvent` for that Circuit overlaps the window. Strictly
-  stronger evidence.
+- `RECORDED_DELIVERY_EXPOSURE` — the exact non-empty intersection of
+  (1) the query window, (2) the Batch-to-Carrier assignment, (3) that
+  Carrier's Occupancy at a Location the route serves, (4) the
+  Circuit→Delivery Point link, (5) the Reservoir→Circuit link, and (6) a
+  `WaterDeliveryEvent` whose Reservoir AND Circuit both match the route,
+  using its resolved end. A delivery on the same Circuit from a Reservoir
+  not linked at that time is not evidence for the route. One record per
+  delivery event.
+- `CONFIGURED_TOPOLOGY_EXPOSURE` — the exact non-empty intersection of
+  (1)–(5) where no recorded delivery covers the period. Topology-only time
+  is split around recorded deliveries, never upgraded.
+
+Records are split at every assignment, occupancy, link, delivery, closure,
+and window boundary; they are never merged across different reservoirs,
+circuits, delivery points, Locations, carriers, delivery events, or evidence
+kinds, and are not coalesced at all (each carries its full source
+provenance: assignment, occupancy, both link ids, delivery event id).
+
+**Gaps (Batch-forward only).** Time within a valid assignment + Occupancy
+(inside the window) that no complete Reservoir → Circuit → Delivery Point
+route covers is returned in a separate `gaps` collection with reason
+`NO_COMPLETE_TOPOLOGY_ROUTE`. A gap is not an exposure kind; topology-only
+time is not a gap. Time with no valid assignment or Occupancy is neither.
 
 Neither kind, nor any value this module returns, is ever "affected",
 "contaminated", "infected", or "confirmed" in a disease/quality sense —
@@ -272,12 +309,15 @@ Every mutation appends an `AuditEvent` via the shared `append_audit_event`
 helper: topology entity register/status-change, topology link open/close,
 Recipe register/version-create/activate/retire/component-add, Measurement
 record, Calibration record, Nutrient Mix record, Reservoir Event record,
-Water Delivery Event record. No hard delete anywhere in this domain.
+Water Delivery Event record, Water Delivery Event end
+(`water_delivery_event.ended`, UX-OPS-001D0). No hard delete anywhere in
+this domain.
 
 ## Corrections
 
 Insert-only tables (`WaterMeasurement`, `InstrumentCalibrationEvent`,
-`NutrientMix`/`NutrientMixInput`, `ReservoirEvent`, `WaterDeliveryEvent`)
+`NutrientMix`/`NutrientMixInput`, `ReservoirEvent`, `WaterDeliveryEvent`,
+`WaterDeliveryEndEvent`)
 reject every UPDATE/DELETE at the database level
 (`reject_append_only_mutation`, reused from `c48f21a6b3d9`). A wrong entry
 is corrected by recording a new, later, correct one — see
@@ -399,6 +439,75 @@ never cross-expose each other in the UI).
   create-command idempotency, exposure reverse-index optimization, and the
   Store-consumption linkage remain exactly as documented under "Known
   gaps" below — 001B did not touch any of them.
+
+## UX-OPS-001D0 additions (water correctness foundation, N06/N07)
+
+Backend and read-model only; no Water UI change (the Water workspace
+reorganization is the follow-up UX-OPS-001D).
+
+### End Delivery command (N07)
+
+`POST /farms/{farm_id}/water-delivery-events/{water_delivery_event_id}/end`,
+permission `nutrient_operations.manage`. Request:
+`{ "effective_end": <tz-aware>, "note": <string|null>, "client_command_id": <uuid> }`.
+Operator-approved scope: records only `effective_end` and an optional
+`note` — never a final volume, UOM, mix, reservoir, circuit, or start time.
+Response: `WaterDeliveryEventRead` with the resolved end (201).
+
+- `water_delivery_end_events` (migration `3686130d89a9`): append-only
+  (`reject_append_only_mutation` UPDATE/DELETE triggers); exactly one per
+  delivery (`ux_water_delivery_end_events_delivery`); command identity
+  unique per tenant; tenant/farm pinned to the delivery by a composite FK
+  (backed by the new `uq_water_delivery_events_tenant_farm_id`); a BEFORE
+  INSERT trigger rejects ending a delivery created with an end, and an end
+  before the delivery's start.
+- Command: locks the delivery (`FOR UPDATE`, tenant+farm scoped), validates,
+  inserts the end event plus a `water_delivery_event.ended` audit event,
+  and commits once. The fingerprint covers farm, delivery, `effective_end`
+  (normalized to UTC) and `note` (a null note differs from an empty one).
+  Same command + same payload replays (no second row or audit); a different
+  payload returns 409; a second command on an ended delivery returns 409;
+  end before start or in the future returns 422. Missing, cross-tenant and
+  cross-farm targets all return the same 404.
+- No backfill: a delivery created with an end keeps its original end as
+  authoritative. The original `water_delivery_events` row is never updated.
+
+**Resolved delivery read.** Every delivery read (farm list, circuit list,
+the new `GET /farms/{farm_id}/water-delivery-events/{id}` detail, the
+command/replay responses, and the exposure engine) returns `effective_end`
+as `original ?? end-event ?? null`. Additive fields: `end_source`
+(`RECORDED_AT_CREATION` | `END_EVENT` | null), `water_delivery_end_event_id`,
+`end_note`.
+
+### Exposure timeline contract (N06)
+
+Additive endpoints (permission `water_exposure.read`, query `farm_id`,
+`window_start`, `window_end`):
+
+- `GET /crop-batches/{batch_id}/water-exposure-timeline` →
+  `BatchWaterExposureTimelineRead { batch_id, farm_id, window_start,
+  window_end, interval_convention, intervals[], gaps[] }`
+- `GET /irrigation-circuits/{id}/water-exposure-timeline` and
+  `GET /reservoirs/{id}/water-exposure-timeline` →
+  `WaterExposureTimelineRead { anchor_type, anchor_id, farm_id,
+  window_start, window_end, interval_convention, intervals[] }`
+
+`WaterExposureIntervalRead`: `exposure_kind`, `interval_start`,
+`interval_end`, `batch_id`, `carrier_id`, `location_id`, `reservoir_id`,
+`irrigation_circuit_id`, `water_delivery_point_id`,
+`delivery_point_location_id`, `water_delivery_event_id` (null for topology
+only), `batch_carrier_assignment_id`, `occupancy_id`,
+`reservoir_circuit_link_id`, `circuit_delivery_point_link_id`,
+`start_clipped_to_window`, `end_clipped_to_window`, `open_ended_sources`.
+`WaterExposureGapRead`: `reason`, `gap_start`, `gap_end`, placement ids,
+the same clipping flags.
+
+The three PILOT-WATER-001A endpoints (`.../exposed-placements` ×2,
+`/crop-batches/{id}/water-exposure`) keep their response shapes, with
+additive fields only. They are now built from the same engine: one row per
+exact interval, and `reservoir_ids`/`location_ids` in the Batch read are
+single-element lists, never an aggregate. The current Exposure page keeps
+working unchanged, with correct rows.
 
 ## Out of scope (both tickets)
 
